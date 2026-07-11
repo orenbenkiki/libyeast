@@ -1,0 +1,47 @@
+name: test-c
+
+# All C tests pass (+ coverage gate) across compilers/OSes: the "test-c" sub-gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unix:
+    name: ${{ matrix.os }} / ${{ matrix.cc }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, cc: gcc, gcov: "gcov" }
+          - { os: ubuntu-latest, cc: clang, gcov: "llvm-cov gcov" }
+          - { os: macos-latest, cc: clang, gcov: "llvm-cov gcov" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dev dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sh scripts/install-debian-dev-deps.sh test-c
+      - name: Install dev dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: sh scripts/install-macos-dev-deps.sh test-c
+      - name: C tests + coverage gate
+        run: make test-c CC=${{ matrix.cc }} GCOV_EXE="${{ matrix.gcov }}"
+
+  # Windows/MSVC: the Makefile needs a Unix shell, so drive CMake directly to run the tests.
+  windows:
+    name: windows-latest / msvc
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Set up the MSVC toolchain so the AddressSanitizer runtime DLL is on PATH for the Debug tests.
+      - uses: ilammy/msvc-dev-cmd@v1
+      - run: cmake -S . -B build
+      # Debug is AddressSanitizer-instrumented (heap/stack overflow + use-after-free); Release is the plain smoke build.
+      - run: cmake --build build --config Debug
+      - run: ctest --test-dir build -C Debug --output-on-failure
+      - run: cmake --build build --config Release
+      - run: ctest --test-dir build -C Release --output-on-failure

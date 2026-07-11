@@ -1,0 +1,28 @@
+name: codeql
+
+# CodeQL static analysis for C — a third analyzer alongside clang-tidy and
+# cppcheck, focused on security. Results appear under the repository's Security tab.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CMake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+      - name: Build (library only)
+        run: cmake -S . -B build -DYEAST_BUILD_TESTS=OFF && cmake --build build
+      - uses: github/codeql-action/analyze@v3

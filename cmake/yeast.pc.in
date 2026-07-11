@@ -1,0 +1,10 @@
+prefix=${pcfiledir}/../..
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: yeast
+Description: Grammar-derived C YAML parser
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lyeast
+Cflags: -I${includedir}

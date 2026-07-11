@@ -1,0 +1,41 @@
+name: gh-pages
+
+# Build the Doxygen API docs + gcovr coverage report and publish them to GitHub Pages on every push to main. Nothing
+# generated is committed to the repository.
+#
+# One-time repo setting: Settings -> Pages -> Source = GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dev dependencies
+        run: |
+          sudo apt-get update
+          sh scripts/install-debian-dev-deps.sh gh-pages
+      - name: Build docs + coverage report
+        run: make gh-pages
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build-gh-pages
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
