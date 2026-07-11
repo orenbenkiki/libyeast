@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Grammar-Derived C YAML Parser Generator — Implementation Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F1F2EE;
+    --paper-2:#E9EBE4;
+    --ink:#171A17;
+    --ink-2:#3B403A;
+    --ink-3:#6B716A;
+    --line:#C9CCC2;
+    --line-2:#DADCD3;
+    --accent:#0E6B59;      /* commit / resolve / static-c */
+    --accent-soft:#0E6B591A;
+    --accent-line:#0E6B5940;
+    --runtime:#8A5A16;     /* runtime-n, used sparingly */
+    --runtime-soft:#8A5A160F;
+    --serif:"Source Serif 4",Georgia,"Times New Roman",serif;
+    --disp:"Space Grotesk","Helvetica Neue",Arial,sans-serif;
+    --mono:"JetBrains Mono","SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    --measure:70ch;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--serif);
+    font-size:18px;
+    line-height:1.62;
+    font-weight:400;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+
+  .wrap{max-width:920px;margin:0 auto;padding:0 40px}
+  .col{max-width:var(--measure)}
+
+  /* ---- masthead ---- */
+  .masthead{border-bottom:2px solid var(--ink);padding:72px 0 34px;margin-bottom:8px}
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+    color:var(--ink-3);
+    font-weight:500;
+    margin:0 0 26px;
+  }
+  h1{
+    font-family:var(--disp);
+    font-weight:600;
+    font-size:clamp(30px,5.2vw,50px);
+    line-height:1.04;
+    letter-spacing:-.02em;
+    margin:0 0 24px;
+    max-width:20ch;
+  }
+  .thesis{
+    font-size:20px;
+    line-height:1.5;
+    color:var(--ink-2);
+    max-width:60ch;
+    margin:0;
+  }
+  .thesis b{color:var(--ink);font-weight:600}
+  .metaline{
+    display:flex;flex-wrap:wrap;gap:8px 26px;
+    margin-top:30px;
+    font-family:var(--mono);
+    font-size:12.5px;
+    color:var(--ink-3);
+    letter-spacing:.02em;
+  }
+  .metaline span{white-space:nowrap}
+  .metaline b{color:var(--accent);font-weight:500}
+
+  /* ---- section scaffolding ---- */
+  section{padding:46px 0;border-bottom:1px solid var(--line-2)}
+  section:last-of-type{border-bottom:none}
+  .sec-num{
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:.16em;
+    color:var(--accent);
+    font-weight:600;
+    display:block;
+    margin-bottom:12px;
+  }
+  h2{
+    font-family:var(--disp);
+    font-weight:600;
+    font-size:clamp(22px,3.4vw,30px);
+    line-height:1.12;
+    letter-spacing:-.015em;
+    margin:0 0 22px;
+    max-width:26ch;
+  }
+  h3{
+    font-family:var(--disp);
+    font-weight:500;
+    font-size:19px;
+    letter-spacing:-.01em;
+    margin:34px 0 10px;
+  }
+  p{margin:0 0 16px;max-width:var(--measure)}
+  .lede{font-size:19px;color:var(--ink-2)}
+  strong{font-weight:600}
+  a{color:var(--accent);text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px}
+
+  /* parameter tokens — the signature */
+  .c{font-family:var(--mono);font-weight:500;color:var(--accent);background:var(--accent-soft);padding:0 4px;border-radius:2px;font-size:.9em}
+  .n{font-family:var(--mono);font-weight:500;color:var(--runtime);background:var(--runtime-soft);padding:0 4px;border-radius:2px;font-size:.9em;border-bottom:1px solid #8A5A1655}
+  code{font-family:var(--mono);font-size:.86em;background:var(--paper-2);padding:1px 5px;border-radius:3px;color:var(--ink)}
+
+  /* key/legend row for the two params */
+  .paramkey{
+    display:flex;flex-wrap:wrap;gap:14px 30px;
+    background:var(--paper-2);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    padding:18px 22px;
+    margin:8px 0 30px;
+    max-width:var(--measure);
+  }
+  .paramkey div{font-size:15.5px;line-height:1.5}
+  .paramkey .tag{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:3px;color:var(--ink-3)}
+
+  /* grammar / production block */
+  .grammar{
+    font-family:var(--mono);
+    font-size:14px;
+    line-height:1.75;
+    background:var(--ink);
+    color:#E7E9E3;
+    border-radius:5px;
+    padding:20px 24px;
+    margin:22px 0;
+    overflow-x:auto;
+    max-width:var(--measure);
+  }
+  .grammar .gc{color:#5FD3B8}
+  .grammar .gn{color:#E6B45C}
+  .grammar .gcom{color:#7C837A;font-style:italic}
+  .grammar .gk{color:#9FB4E8}
+
+  /* callout */
+  .note{
+    border-left:3px solid var(--accent);
+    background:var(--accent-soft);
+    padding:16px 20px;
+    margin:24px 0;
+    max-width:var(--measure);
+    font-size:16.5px;
+    line-height:1.55;
+  }
+  .note .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;display:block;margin-bottom:6px}
+
+  /* phase cards */
+  .phase{
+    display:grid;
+    grid-template-columns:64px 1fr;
+    gap:0 24px;
+    padding:30px 0;
+    border-top:1px solid var(--line-2);
+    max-width:calc(var(--measure) + 88px);
+  }
+  .phase:first-of-type{border-top:2px solid var(--ink)}
+  .pnum{
+    font-family:var(--mono);
+    font-size:26px;
+    font-weight:700;
+    color:var(--accent);
+    line-height:1;
+    letter-spacing:-.02em;
+  }
+  .pnum small{display:block;font-size:10px;font-weight:500;letter-spacing:.14em;color:var(--ink-3);margin-top:8px;text-transform:uppercase}
+  .phead{
+    font-family:var(--disp);
+    font-weight:600;
+    font-size:20px;
+    letter-spacing:-.01em;
+    margin:2px 0 4px;
+  }
+  .pmeta{font-family:var(--mono);font-size:12px;color:var(--ink-3);margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap}
+  .pmeta .risk{font-weight:500}
+  .risk.low{color:var(--accent)}
+  .risk.med{color:var(--runtime)}
+  .risk.high{color:#A23B2D}
+  .phase p{font-size:16.5px;line-height:1.55;margin-bottom:12px}
+  .steps{margin:0;padding:0;list-style:none;counter-reset:step}
+  .steps li{
+    position:relative;
+    padding:6px 0 6px 30px;
+    font-size:15.5px;
+    line-height:1.5;
+    border-bottom:1px dotted var(--line);
+  }
+  .steps li:last-child{border-bottom:none}
+  .steps li::before{
+    counter-increment:step;
+    content:counter(step,lower-alpha);
+    position:absolute;left:0;top:6px;
+    font-family:var(--mono);font-size:12px;font-weight:600;
+    color:var(--accent);
+  }
+  .exit{
+    margin-top:12px;font-size:14px;font-family:var(--mono);color:var(--ink-2);
+    background:var(--paper-2);border:1px solid var(--line);border-radius:4px;padding:9px 13px;line-height:1.5;
+  }
+  .exit b{color:var(--accent);font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:11px}
+
+  /* risk table */
+  table{border-collapse:collapse;width:100%;max-width:var(--measure);margin:20px 0;font-size:15px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;border-bottom:1.5px solid var(--ink)}
+  td:first-child{font-weight:600}
+  .bar{font-family:var(--mono);letter-spacing:2px;color:var(--accent);white-space:nowrap}
+  .bar.m{color:var(--runtime)}
+  .bar.h{color:#A23B2D}
+
+  ul.plain{max-width:var(--measure);padding-left:22px;margin:14px 0}
+  ul.plain li{margin-bottom:8px;line-height:1.5}
+
+  .footer{padding:40px 0 70px;color:var(--ink-3);font-family:var(--mono);font-size:12.5px;line-height:1.7}
+  .footer .col{max-width:var(--measure)}
+
+  @media (max-width:640px){
+    body{font-size:16.5px}
+    .wrap{padding:0 22px}
+    .phase{grid-template-columns:1fr;gap:10px}
+    .pnum{font-size:20px}
+    .masthead{padding:48px 0 28px}
+  }
+
+  @media print{
+    :root{--paper:#fff}
+    body{font-size:11pt;line-height:1.45}
+    .wrap{max-width:none;padding:0}
+    section,.phase{break-inside:avoid}
+    .grammar{background:#f4f4f0;color:#111;border:1px solid #ccc}
+    .grammar .gc{color:#0a6}
+    .grammar .gn{color:#960}
+    .grammar .gk{color:#248}
+    .grammar .gcom{color:#777}
+    a{color:var(--ink);text-decoration:none}
+    .masthead{padding-top:0}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="col">
+      <p class="eyebrow">Engineering Plan · Parser Infrastructure</p>
+      <h1>A grammar-derived C YAML parser generator</h1>
+      <p class="thesis">Emit a fast, single-pass, pull-driven YAML&nbsp;1.2 parser in C <b>from the formal productions</b> — so that correctness is a property of the generator, not of hand-testing. The output is the machine you'd hand-write anyway; the value is that a proof, not luck, says it's the right language.</p>
+      <div class="metaline">
+        <span>Target: <b>libyamlstar</b> ABI-compatible <code>.so</code></span>
+        <span>Complexity: <b>O(n)</b>, libyaml-class</span>
+        <span>API: <b>pull</b> · next_token()</span>
+        <span>Stream: <b>yeast</b> · reference-identical codes</span>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <span class="sec-num">§0 — WHY THIS, AND WHY IT'S HARD</span>
+    <h2>The tension the generator exists to resolve</h2>
+    <p class="lede">Every YAML parser to date sits on one horn of a dilemma.</p>
+    <p>The <strong>reference parser</strong> (pure Clojure, the basis of YAMLStar) is mechanically faithful to the ~211 productions but slow — naive backtracking over the grammar can go superlinear, and it ships a heavy runtime (GraalVM today, Go tomorrow). The <strong>libyaml-class</strong> hand-written state machine is fast and O(n) but its conformance is established test-by-test; it has known deviations from the 1.2 grammar and is "faithful by luck."</p>
+    <p>The reconciliation is a machine that is <em>both</em>: a deterministic, committed, character-at-a-time automaton with an indentation stack and bounded deferred-token tracking — <strong>generated from the parameterized productions</strong> so that its speed comes from the state machine and its fidelity comes from the derivation. That generator is the whole prize, and it is a small compiler, not a weekend parser.</p>
+    <div class="note">
+      <span class="lbl">The one load-bearing fact</span>
+      YAML restricts implicit ("simple") keys to a <strong>single line</strong>. That restriction is what makes determinization finite, makes the deferred-token set bounded, and makes a pull <code>next_token()</code> able to return without draining the whole document. It is doing triple duty and the entire architecture rests on it.
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-num">§1 — THE CENTRAL PRINCIPLE</span>
+    <h2>Two parameters, two fates</h2>
+    <p>The productions are indexed by two parameters. The generator's core intellectual move — a binding-time analysis — is to treat them completely differently.</p>
+    <div class="paramkey">
+      <div><span class="tag">c — context · STATIC</span><span class="c">c</span> ranges over a <strong>finite</strong> set (block-in, block-out, flow-in, flow-out, block-key, flow-key). Specialize it away at generation time: each <span class="c">c</span>-parameterized production monomorphizes into ≤6 concrete ones. Compile-time. Gone from the runtime.</div>
+      <div><span class="tag">n — indentation · RUNTIME</span><span class="n">n</span> is an <strong>unbounded</strong> integer threaded as <code>s-indent(n)</code>, <code>s-indent(&lt;n)</code>, <code>s-indent(≤n)</code>. It cannot be specialized away; it must survive into the emitted automaton, carried on the indentation stack.</div>
+    </div>
+    <p>Throughout this document, <span class="c">c</span> is drawn in teal (resolved at generation time) and <span class="n">n</span> in amber (resolved at runtime). Getting this split right is the crux: partial-evaluate over <span class="c">c</span> while <em>preserving</em> <span class="n">n</span>.</p>
+    <div class="grammar"><span class="gcom"># a production, before and after c-specialization</span>
+ns-plain(<span class="gn">n</span>,<span class="gc">c</span>)            <span class="gcom">::= parameterized on both</span>
+
+  <span class="gcom"># becomes, at generation time:</span>
+ns-plain-<span class="gk">blockKey</span>(<span class="gn">n</span>)  <span class="gcom"># c pinned → concrete automaton fragment</span>
+ns-plain-<span class="gk">flowIn</span>(<span class="gn">n</span>)    <span class="gcom"># n still threaded → indentation stack</span></div>
+  </section>
+
+  <section>
+    <span class="sec-num">§2 — TARGET ARCHITECTURE</span>
+    <h2>What the generated parser looks like</h2>
+    <p>The pull-API requirement (caller invokes <code>next_token()</code>; the parser does <em>not</em> call the caller back) forces the lowering target and, helpfully, agrees with the speed and streaming requirements. All three want the same non-recursive machine.</p>
+
+    <h3>Two coupled layers</h3>
+    <ul class="plain">
+      <li><strong>Scanner</strong> — a character state machine that emits a queue of tokens. It over-reads eagerly <em>only</em> within the one bounded region it must: the simple-key line. Internally it buffers that line, resolves key-vs-scalar, and still hands tokens out one at a time.</li>
+      <li><strong>Parser</strong> — consumes the token queue against the (c-specialized, n-threaded) grammar automaton, emitting the event/node stream.</li>
+    </ul>
+
+    <h3>An explicit pushdown automaton, not a call stack</h3>
+    <p>A recursive-descent shape keeps "where am I" in the C return-address chain, which cannot suspend to return a token. So the generator emits a <strong>state enum + explicit heap stack + single dispatch loop</strong>. Suspension is then free: run the loop until a token is produced, save the state struct, return. This is exactly libyaml's shape — and libyaml's API is already pull for the same reason.</p>
+
+    <h3>The deferred set is a token queue with a resolution tag</h3>
+    <p>The "possibly-key, possibly-scalar" hypothesis becomes a literal queue entry marked <em>provisional</em>. <code>next_token()</code> returns the frontmost <em>resolved</em> token, advancing input only when the head is still ambiguous or the queue is empty. Because the ambiguity is line-bounded, the eager buffering before an honest return is bounded too.</p>
+
+    <h3>The canonical stream is yeast</h3>
+    <p>The event/node stream the parser emits is <strong>yeast</strong> — the Haskell reference parser's own token model (from <code>yamlreference</code>): zero-width <code>Begin</code>/<code>End</code> markers wrapping the interesting productions, and every consumed character classified as a leaf token (<code>Indicator</code>, <code>White</code>, <code>Indent</code>, <code>Break</code>, <code>Text</code>, <code>Meta</code>, …). The codes are kept <strong>byte-identical to the Haskell reference's <span class="c">Code</span> constructors</strong>, and that one decision makes the single stream do three jobs at once:</p>
+    <ul class="plain">
+      <li><strong>The load API</strong> — <code>compose → resolve → serialize</code> is a downstream fold over yeast. YAMLStar already owns that back half and already eats these tokens, so the JSON path is a front-end swap, not new code (§9).</li>
+      <li><strong>A debug view</strong> — folding the balanced <code>Begin</code>/<code>End</code> markers rebuilds the nested productions tree, rendered by the package's own <code>yaml2html</code> (migrated from the Haskell reference; §8). Identical codes make the port a faithful copy, validated against the Haskell reference's own rendering.</li>
+      <li><strong>The differential oracles</strong> — identical codes make the yeast comparison against the Haskell reference token-for-token; the folded load output is checked value-for-value against the Clojure reference (§3).</li>
+    </ul>
+    <div class="note">
+      <span class="lbl">Where the rewind problem went</span>
+      A backtracking parser would have to discard emitted events on every failed alternative. The determinized automaton (phase 5) doesn't backtrack — committed transitions emit on commit, so there is nothing to rewind. The only provisional events are those inside the line-bounded simple-key lookahead; they live in the deferred queue above and are discarded there if the key hypothesis fails. The single-line rule that bounds the deferral bounds the event retention too.
+    </div>
+
+    <div class="grammar"><span class="gcom">/* the emitted C surface — pull, suspendable, arena-backed */</span>
+ys_parser *ys_parser_new(<span class="gk">const char</span> *input, size_t len);
+ys_token   ys_next_token(ys_parser *p);   <span class="gcom">/* one token, or ERROR, then halts */</span>
+<span class="gk">void</span>       ys_parser_free(ys_parser *p);   <span class="gcom">/* frees the arena */</span>
+
+<span class="gcom">/* state = a serializable struct: grammar stack + indentation stack + queue */</span></div>
+  </section>
+
+  <section>
+    <span class="sec-num">§3 — VALIDATION STRATEGY</span>
+    <h2>How fidelity is actually earned</h2>
+    <p>Passing tests is a floor, not a proof — every place backtracking is replaced by a committed decision is a place the automaton can diverge from the productions' meaning. So validation runs on three legs, strongest first:</p>
+    <ul class="plain">
+      <li><strong>Refinement obligation (where feasible).</strong> The determinization transform must be shown to preserve the language of the productions — commit-here <em>and here's why it's still the same language</em>. This is the part that touches formal-methods territory and is what makes the result worth more than libyaml.</li>
+      <li><strong>Differential oracles — both reference implementations.</strong> The parser is pinned against <em>both</em> references, each authoritative for a different half of the pipeline. Against the <strong>Haskell <code>yamlreference</code></strong> the comparison is <em>token-for-token</em> on yeast — codes are identical, so it validates the syntactic layer (production structure, character classes) at the finest possible grain. Against the <strong>Clojure reference</strong> (YAMLStar's basis) the comparison is <em>value-for-value</em> on the folded load output, validating composition and schema resolution — the semantic layer. Agreement with both spans the whole pipeline; a mismatch with exactly one half localizes the bug, and the yeast→HTML debug view renders the divergence.</li>
+      <li><strong>YAML Test Suite + fuzzing.</strong> The ~350+ case suite as the empirical floor; structure-aware fuzzing over the grammar to hunt the long tail, especially in the semantic rules the BNF doesn't capture.</li>
+    </ul>
+  </section>
+
+  <section>
+    <span class="sec-num">§4 — IMPLEMENTATION PHASES</span>
+    <h2>Dependency-ordered build sequence</h2>
+    <p class="lede">Phases are ordered by dependency, not convenience. The easy ~70% (0–3, 6–8) is well-trodden compiler work; risk concentrates in phases 4 and 5.</p>
+
+    <div class="phase">
+      <div class="pnum">00<small>Foundations</small></div>
+      <div>
+        <div class="phead">Oracles & harness before any parser code</div>
+        <div class="pmeta"><span class="risk low">Risk: Low</span><span>~2–4 wks</span></div>
+        <p>Stand up the two things that will judge every later phase, so nothing is built blind.</p>
+        <ul class="steps">
+          <li>Vendor the YAML Test Suite; build a runner that consumes its event-stream expectations.</li>
+          <li>Wire <em>both</em> reference parsers as differential oracles behind stable diff interfaces: the Haskell <code>yamlreference</code> for token-level (yeast) diffs, the Clojure reference for value-level (load/event) diffs.</li>
+          <li>Set up CI: every commit runs suite + differential fuzz corpus, reports first divergence.</li>
+          <li>Define the canonical internal stream as <strong>yeast</strong>, codes identical to the Haskell reference's <span class="c">Code</span> constructors — the one schema the scanner, parser, load API, and differential oracles all speak.</li>
+          <li>Bootstrap the yeast→HTML debug view on the Haskell reference's <code>yaml2html</code> as the divergence microscope for the early phases; it later serves as the reference oracle for the package's own port (§8).</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — a red/green harness exists that can score any candidate parser against both oracles.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">01<small>Grammar IR</small></div>
+      <div>
+        <div class="phead">Ingest the 211 productions into a typed IR</div>
+        <div class="pmeta"><span class="risk low">Risk: Low</span><span>~3–5 wks</span></div>
+        <p>Turn the semi-formal BNF into an algebraic data type the rest of the compiler operates on. Data-entry plus cleanup, but the foundation must be exact.</p>
+        <ul class="steps">
+          <li>Transcribe productions into an ADT: sequence, alternation, repetition, char-class, parameter reference (<span class="c">c</span>, <span class="n">n</span>), lookahead assertion.</li>
+          <li>Validate: every referenced production resolves; every parameter use is well-formed.</li>
+          <li>Round-trip the IR back to readable BNF and diff against the spec text to catch transcription errors.</li>
+          <li>Freeze the IR as the single source of truth; downstream reads only the IR.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — the full grammar loads, validates, and round-trips.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">02<small>Binding-time</small></div>
+      <div>
+        <div class="phead">Classify each parameter static vs runtime</div>
+        <div class="pmeta"><span class="risk med">Risk: Medium</span><span>~2–4 wks</span></div>
+        <p>The analysis that decides the machine's whole shape. Mark <span class="c">c</span> compile-time, <span class="n">n</span> runtime, and prove nothing leaks across the line.</p>
+        <ul class="steps">
+          <li>Enumerate the finite domain of <span class="c">c</span>; confirm it is closed and bounded across all productions.</li>
+          <li>Trace <span class="n">n</span>'s propagation; verify it only ever appears in indentation predicates (<code>&lt;n</code>, <code>≤n</code>, <code>=n</code>).</li>
+          <li>Flag any production where a parameter's binding-time is ambiguous — resolve by hand, document the ruling.</li>
+          <li>Emit an annotated IR tagging every parameter occurrence static or dynamic.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — every parameter occurrence carries a proven binding-time tag.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">03<small>Specialize c</small></div>
+      <div>
+        <div class="phead">Monomorphize context away</div>
+        <div class="pmeta"><span class="risk low">Risk: Low</span><span>~3–5 wks</span></div>
+        <p>Partial-evaluate over <span class="c">c</span>. Each context-parameterized production expands into its concrete instances; the runtime never sees <span class="c">c</span> again.</p>
+        <ul class="steps">
+          <li>For each production, generate one specialization per reachable <span class="c">c</span> value.</li>
+          <li>Prune unreachable specializations (not every context reaches every production).</li>
+          <li>Simplify: collapse now-constant branches, dead-alternative elimination.</li>
+          <li>Verify against oracle that the specialized grammar recognizes exactly the original language.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — a <span class="c">c</span>-free grammar, still parameterized only on <span class="n">n</span>, language-equivalent to the source.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">04<small>Semantics</small></div>
+      <div>
+        <div class="phead">Specify what the BNF doesn't say</div>
+        <div class="pmeta"><span class="risk high">Risk: High</span><span>~4–8 wks</span></div>
+        <p>The productions alone don't fully specify a parser. The spec leans on prose for rules that must become an explicit, auditable input to the generator — this is where bugs get smuggled in undetected.</p>
+        <ul class="steps">
+          <li>Encode the single-line simple-key restriction and its hard length bound as a first-class constraint.</li>
+          <li>Specify tab handling (forbidden as indentation), and the comment rule (<code>#</code> starts a comment only after whitespace: <code>foo#bar</code> is a scalar).</li>
+          <li>Decide and document duplicate-mapping-key policy (error / last-wins / first-wins) — the spec underspecifies it.</li>
+          <li>Specify line-break normalization, BOM handling, block-scalar indentation auto-detection, error-recovery states.</li>
+          <li>Mark each rule as "grammar" vs "asserted semantic action" so the fidelity claim is honest about its boundary.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — a written semantic spec, versioned alongside the IR, covering every rule beyond the BNF.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">05<small>Determinize</small></div>
+      <div>
+        <div class="phead">Committed, bounded-lookahead automaton</div>
+        <div class="pmeta"><span class="risk high">Risk: High — the prize</span><span>~3–6 mo</span></div>
+        <p>Convert the priority-and-lookahead grammar into a deterministic, backtrack-free recognizer that runs in O(n). This is where fidelity is won or lost, and the only phase with real research risk.</p>
+        <ul class="steps">
+          <li>Compute, per decision point, the lookahead needed to commit; prove it is bounded by the single-line key rule.</li>
+          <li>Replace ordered-alternative backtracking with peek-k-then-commit transitions.</li>
+          <li>Attach the yeast <code>Begin</code>/<code>End</code> emission points to productions and confirm they survive determinization: committed transitions emit on commit, so no rewind is needed; provisional events stay confined to the bounded-lookahead region.</li>
+          <li>For each commitment, discharge a refinement obligation: the committed choice preserves the source language.</li>
+          <li>Where a full proof is infeasible, isolate the decision and pin it with exhaustive differential + fuzz coverage; log it as an assurance gap.</li>
+          <li>Handle the two indentation gotchas explicitly: zero-indent sequences under a key, and flow context suspending indentation entirely.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — a deterministic automaton IR with a documented fidelity argument per commitment point.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">06<small>Pushdown IR</small></div>
+      <div>
+        <div class="phead">Lower to an explicit, suspendable stack machine</div>
+        <div class="pmeta"><span class="risk med">Risk: Medium</span><span>~2–3 mo</span></div>
+        <p>Target the pull API. Emit state + explicit stack + dispatch loop so continuation is a serializable struct — never the C call stack.</p>
+        <ul class="steps">
+          <li>Choose the stack representation: unified grammar+indentation frames, or two coupled stacks. Decide early; it colours all codegen.</li>
+          <li>Lower automaton transitions to a state enum and a single-loop dispatcher.</li>
+          <li>Thread <span class="n">n</span> through the indentation stack; encode <code>&lt;n</code>/<code>≤n</code>/<code>=n</code> as stack comparisons.</li>
+          <li>Define the suspend/resume points so <code>next_token()</code> can save-and-return at any token boundary.</li>
+          <li>Model errors as a terminal "return ERROR, stay halted" state, not a longjmp.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — a lowered IR whose execution state is fully captured by a serializable struct.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">07<small>Scanner split</small></div>
+      <div>
+        <div class="phead">Two-layer scanner/parser with a provisional queue</div>
+        <div class="pmeta"><span class="risk med">Risk: Medium</span><span>~2–3 mo</span></div>
+        <p>Make pull genuinely manageable by separating the character scanner from the grammar parser, with the deferred-token set as an explicit tagged queue.</p>
+        <ul class="steps">
+          <li>Build the scanner as its own character state machine emitting tokens with a provisional/resolved flag.</li>
+          <li>Implement bounded eager buffering for the simple-key line; resolve key-vs-scalar on line completion or <code>:&#8202;</code>.</li>
+          <li>Implement the "is the head resolved?" predicate that gates <code>next_token()</code>.</li>
+          <li>Feed resolved tokens to the parser layer; verify end-to-end event output against the oracle.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — tokens flow scanner → queue → parser → events, pull-driven, oracle-clean.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">08<small>C codegen</small></div>
+      <div>
+        <div class="phead">Emit the C library</div>
+        <div class="pmeta"><span class="risk low">Risk: Low</span><span>~1–2 mo</span></div>
+        <p>The easy end of every compiler. Turn the lowered IR into a switch-on-state character loop with arena allocation.</p>
+        <ul class="steps">
+          <li>Emit the state dispatcher, stack ops, and scanner as portable C99 with no external deps.</li>
+          <li>Arena-allocate everything; lifetimes are input-bounded, so free the arena on parser teardown — no GC.</li>
+          <li>Handle backtracking-region scratch within the arena; ensure discarded provisional state is reclaimed cleanly.</li>
+          <li>Emit the pull surface: <code>new</code> / <code>next_token</code> / <code>free</code>, plus structured error extraction.</li>
+          <li>Emit the <span class="c">Code</span> enum and the compose fold (yeast → node graph); event retention is trace-mode only — the committed hot path emits and consumes without buffering.</li>
+          <li>Migrate <code>yaml2html</code> into the package: a small C companion that folds the yeast stream to colorized nested HTML, sharing the emitted <span class="c">Code</span> enum — so the debug view ships <em>with</em> the library and carries no Haskell/reference dependency. Validate byte-for-byte against the Haskell reference renderer.</li>
+          <li>Build as <code>cdylib</code>-style <code>.so</code> across Linux/macOS (and Windows once the toolchain is clean).</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — a self-contained C <code>.so</code>, plus the bundled <code>yaml2html</code> tool, passing suite + differential + fuzz.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">09<small>ABI layer</small></div>
+      <div>
+        <div class="phead">Drop-in for libyamlstar</div>
+        <div class="pmeta"><span class="risk low">Risk: Low</span><span>~3–5 wks</span></div>
+        <p>The existing YAMLStar ABI was designed as a swappable seam — thin, JSON-string in/out, no exposed structs — so this is nearly free. Every existing binding works unchanged.</p>
+        <ul class="steps">
+          <li>Reimplement the create/destroy/<code>load</code>/<code>load_all</code>/<code>version</code> entry points over the new core.</li>
+          <li>Route <code>load</code> through the yeast fold — <code>compose → resolve → serialize</code> — reusing YAMLStar's existing resolver and dumper rather than reimplementing them; ship the two other consumers of the same stream — the now-bundled <code>yaml2html</code> debug view (§8) and the differential harness.</li>
+          <li>Keep GraalVM-era lifecycle calls as cheap no-ops or lightweight context handles (vestigial, harmless).</li>
+          <li>Serialize errors into the exact type/cause/message shape the bindings parse back out.</li>
+          <li>Reproduce the JSON-interchange contract faithfully (including its documented <code>.inf</code>/<code>.nan</code> limitation) for true drop-in behaviour.</li>
+          <li>Run the existing binding test suites (Python, Go, Rust, C#, …) unmodified against the new <code>.so</code>.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — the new <code>.so</code> slots in where the GraalVM blob sat; all bindings green.</div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="pnum">10<small>Harden</small></div>
+      <div>
+        <div class="phead">Fuzz, tune, and reach libyaml-class speed</div>
+        <div class="pmeta"><span class="risk med">Risk: Medium</span><span>~2–4 mo</span></div>
+        <p>Correct-but-slow is not the goal. Close the algorithmic gaps naive codegen leaves and prove robustness under hostile input.</p>
+        <ul class="steps">
+          <li>Continuous structure-aware + byte-level fuzzing (ASan/UBSan) targeting the semantic long tail.</li>
+          <li>Profile; eliminate any residual super-linear behaviour from over-broad lookahead.</li>
+          <li>Benchmark against libyaml on representative corpora; tune hot states and buffering.</li>
+          <li>Optionally: extend to an emitter (dump), or keep libyaml's emitter alongside for a complete round-trip library.</li>
+          <li>Cut prebuilt binaries per platform so adoption isn't gated on a local native build.</li>
+        </ul>
+        <div class="exit"><b>Exit</b> — O(n) confirmed, libyaml-competitive, fuzz-clean, packaged.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="sec-num">§5 — RISK REGISTER</span>
+    <h2>Where the effort and danger concentrate</h2>
+    <table>
+      <thead>
+        <tr><th>Risk</th><th>Phase</th><th>Severity</th><th>Mitigation</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Determinization silently diverges from the productions</td>
+          <td>05</td>
+          <td><span class="bar h">▪▪▪▪</span></td>
+          <td>Per-commitment refinement obligation; dual differential oracles on every input — token-for-token against the Haskell <code>yamlreference</code> and value-level against the Clojure reference; log assurance gaps explicitly rather than hiding them.</td>
+        </tr>
+        <tr>
+          <td>Semantic rules beyond the BNF encoded wrongly / incompletely</td>
+          <td>04</td>
+          <td><span class="bar h">▪▪▪▪</span></td>
+          <td>Written, versioned semantic spec; each rule tagged grammar vs asserted; fuzz the corners the suite misses.</td>
+        </tr>
+        <tr>
+          <td>Naive codegen is correct but super-linear</td>
+          <td>05 / 10</td>
+          <td><span class="bar m">▪▪▪</span></td>
+          <td>Lookahead-boundedness proof in phase 5; profiling and hot-state tuning in phase 10.</td>
+        </tr>
+        <tr>
+          <td>Binding-time analysis mis-classifies a parameter</td>
+          <td>02</td>
+          <td><span class="bar m">▪▪▪</span></td>
+          <td>Prove <span class="c">c</span>'s domain closed and <span class="n">n</span> confined to indentation predicates; oracle-check the specialized grammar.</td>
+        </tr>
+        <tr>
+          <td>Stack representation choice fights the pull API</td>
+          <td>06</td>
+          <td><span class="bar m">▪▪</span></td>
+          <td>Decide unified-vs-coupled stack early; prototype suspend/resume before full codegen.</td>
+        </tr>
+        <tr>
+          <td>Arena/backtracking scratch leaks or corrupts</td>
+          <td>08</td>
+          <td><span class="bar">▪▪</span></td>
+          <td>Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.</td>
+        </tr>
+        <tr>
+          <td>Incumbency: 1.1 quirks are load-bearing in real configs</td>
+          <td>—</td>
+          <td><span class="bar">▪▪</span></td>
+          <td>Out of scope to "fix" silently; position as a conformance upgrade, document behavioural deltas from libyaml/1.1.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <span class="sec-num">§6 — SHAPE OF THE WHOLE</span>
+    <h2>Effort, sequencing, and the honest bottom line</h2>
+    <p>For one very strong engineer who deeply knows both YAML and parser generation, this is a <strong>many-months to low-single-digit-years</strong> project. The difficulty is lumpy, not uniform:</p>
+    <ul class="plain">
+      <li><strong>The easy ~70%</strong> — grammar IR, <span class="c">c</span>-specialization, pushdown lowering, C codegen, the ABI layer. Well-trodden compiler work; high effort, low research risk.</li>
+      <li><strong>The hard ~20%</strong> — provably-faithful determinization (phase 5). This is the part that determines whether the result is worth more than libyaml, and it touches formal methods.</li>
+      <li><strong>The judgment-heavy long tail</strong> — the semantic spec beyond the BNF (phase 4), continuous throughout, the source of the subtle bugs no single test happens to catch.</li>
+    </ul>
+    <p>The reason this doesn't already exist isn't that any one piece is impossible. It's that the <em>valuable</em> version requires the determinization to be faithful-by-construction — a real proof effort on top of a real compiler — and the set of people who can do both <em>and</em> care enough about YAML specifically is tiny. The generator, not the parsers, is the mountain. This plan is a route up it.</p>
+  </section>
+
+  <footer class="footer">
+    <div class="col">
+      Grammar-derived C YAML parser generator — implementation plan.<br>
+      Core bet: static-eval <span class="c">c</span> · runtime-thread <span class="n">n</span> · bound the deferral by the single-line simple-key rule.<br>
+      Canonical stream: one yeast trace — reference-identical codes — feeding the load API, the debug view, and both reference oracles (Haskell yeast · Clojure load).<br>
+      Output: an O(n), pull-driven, suspendable, ABI-compatible C <code>.so</code> whose fidelity is derived, not tested.
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
