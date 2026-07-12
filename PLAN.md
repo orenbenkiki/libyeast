@@ -148,9 +148,6 @@ concentrates in phases 04 and 05.
    the one schema the scanner, parser, load API, and differential oracles all speak.
 1. Bootstrap the yeast→HTML debug view on the Haskell reference's `yaml2html` as the divergence microscope for the early
    phases; it later serves as the reference oracle for the package's own port (phase 08).
-1. Add a counting-allocator test helper (a `ys_allocator` that tallies allocations vs frees) and assert a zero balance
-   at the end of each test — a deterministic, portable, per-test leak gate that names the leaking test. ASan/UBSan and
-   LeakSanitizer/`leaks` (already wired) stay as the coarser backstops.
 
 **Exit** — a red/green harness exists that can score any candidate parser against both oracles.
 

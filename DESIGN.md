@@ -2,13 +2,17 @@
 
 libyeast is a YAML 1.2 parser in C, generated from the formal grammar. This document is a map: it names the pieces and
 how they relate, and points at where each piece's design and rationale live — in that piece's own source (its file or
-its comments). The parser itself is not yet implemented; what exists is the project framework and a placeholder API.
+its comments). The full public API surface is declared, but the parser core is not yet implemented — parsing returns a
+"not implemented" error — so what exists is the project framework and this facade.
 
 ## Pieces
 
 - **Public API** — `include/yeast.h`: the API surface and its behavioral contract, documented inline as Doxygen comments
-  (published to GitHub Pages). Currently the version query (`ys_version`, `ys_major`/`ys_minor`/`ys_patch`).
-- **Library** — `src/yeast.c`: the implementation, including the load-time version-sanity constructor.
+  (published to GitHub Pages). The version query; the pull-parser surface (`ys_new_string_parser` /
+  `ys_new_stream_parser` / `ys_next_token` / `ys_free_parser`) with `ys_fd_reader`/`ys_fp_reader` adapters; a pluggable
+  allocator; and the `ys_counting_allocator` leak counter.
+- **Library** — `src/yeast.c`: the implementation of everything the header declares, including the load-time
+  version-sanity constructor. The parser facade returns "not implemented" until the grammar-derived core lands.
 - **Build** — `CMakeLists.txt` is the source of truth for building, testing, installing, and the version. It defines the
   shared + static libraries (hardened, symbol-visibility controlled), the sanitized Debug and hardened Release configs,
   and the coverage option.
@@ -31,10 +35,11 @@ its comments). The parser itself is not yet implemented; what exists is the proj
 
 ## Memory safety
 
-The Debug build compiles the library and tests with AddressSanitizer + UndefinedBehaviorSanitizer, so use-after-free,
-buffer overflows, and undefined behavior fail the tests on every platform. Leaks are caught per platform: on Linux the
-Debug build's LeakSanitizer flags them at each test's exit; on macOS — where Apple clang has no LeakSanitizer — the
-Release test run is passed through the `leaks` tool. A deterministic, portable, per-test leak check via a counting
-`ys_allocator` is on the roadmap.
+The Debug build is AddressSanitizer-instrumented on all three OSes (plus UndefinedBehaviorSanitizer on Linux/macOS
+Clang; MSVC has no UBSan), so use-after-free and buffer overflows fail the tests everywhere. Leaks are caught per
+platform: on Linux the Debug build's LeakSanitizer flags them at each test's exit; on macOS — where Apple clang has no
+LeakSanitizer — the Release test run is passed through the `leaks` tool; MSVC has no leak sanitizer. The portable,
+deterministic net is `ys_counting_allocator`: route a parser's allocations through it and assert
+`ys_counting_allocator_live_buffers()` is 0 after the parser is freed (the facade tests do exactly this).
 
 The roadmap — what is left to build — lives in `PLAN.md`.
