@@ -79,30 +79,28 @@ before an honest return is bounded too.
 **The canonical stream is yeast.** The event/node stream the parser emits is **yeast** — the Haskell reference parser's
 own token model (from `yamlreference`): zero-width `Begin`/`End` markers wrapping the interesting productions, and every
 consumed character classified as a leaf token (`Indicator`, `White`, `Indent`, `Break`, `Text`, `Meta`, …). The codes
-are kept **byte-identical to the Haskell reference's `Code` constructors**, and that one decision makes the single
-stream do three jobs at once:
+are kept **byte-identical to the Haskell reference's `Code` constructors** (already declared as `ys_code` in the public
+header), and that one decision makes the single stream do three jobs at once:
 
 - **The load API** — `compose → resolve → serialize` is a downstream fold over yeast. YAMLStar already owns that back
-  half and already eats these tokens, so the JSON path is a front-end swap, not new code (§9/phase 09).
+  half and already eats these tokens, so the JSON path is a front-end swap, not new code (phase 10).
 - **A debug view** — folding the balanced `Begin`/`End` markers rebuilds the nested productions tree, rendered by the
-  package's own `yaml2html` (migrated from the Haskell reference; phase 08). Identical codes make the port a faithful
+  package's own `yaml2html` (migrated from the Haskell reference; phase 09). Identical codes make the port a faithful
   copy, validated against the Haskell reference's own rendering.
 - **The differential oracles** — identical codes make the yeast comparison against the Haskell reference
   token-for-token; the folded load output is checked value-for-value against the Clojure reference (§3).
 
 **Where the rewind problem went:** a backtracking parser would have to discard emitted events on every failed
-alternative. The determinized automaton (phase 05) doesn't backtrack — committed transitions emit on commit, so there is
+alternative. The determinized automaton (phase 06) doesn't backtrack — committed transitions emit on commit, so there is
 nothing to rewind. The only provisional events are those inside the line-bounded simple-key lookahead; they live in the
 deferred queue above and are discarded there if the key hypothesis fails. The single-line rule that bounds the deferral
 bounds the event retention too.
 
 ```c
-/* the emitted C surface — pull, suspendable, arena-backed */
-ys_parser *ys_parser_new(const char *input, size_t len);
-ys_token   ys_next_token(ys_parser *p);   /* one token, or ERROR, then halts */
-void       ys_parser_free(ys_parser *p);  /* frees the arena */
-
-/* state = a serializable struct: grammar stack + indentation stack + queue */
+/* the emitted C surface — pull, suspendable, arena-backed (see include/yeast.h for the full declared API) */
+ys_parser *ys_new_string_parser(const char *input, size_t length, const ys_options *options);
+ys_token ys_next_token(ys_parser *parser); /* one token, or ERROR, then halts */
+void ys_free_parser(ys_parser *parser);
 ```
 
 ## §3 — Validation strategy: how fidelity is actually earned
@@ -133,38 +131,74 @@ fourth, orthogonal leg for safety:
 
 ## §4 — Implementation phases
 
-Phases are ordered by dependency, not convenience. The easy ~70% (00–03, 06–08) is well-trodden compiler work; risk
-concentrates in phases 04 and 05.
+Phases are ordered by dependency. The first real leap is **phase 01** — a working slice of the parser — and it is the
+biggest single jump in the plan. The deepest research risk lives in **phase 06** (determinize), with **phase 05**
+(semantics) close behind. The rest — grammar IR, `c`-specialization, pushdown lowering, codegen, and the ABI layer — is
+well-trodden compiler work.
 
-### Phase 00 — Foundations · Oracles & harness before any parser code
+### Phase 00 — Grammar IR · Ingest the productions into a typed IR
 
-*Risk: Low · ~2–4 wks.* Stand up the two things that will judge every later phase, so nothing is built blind.
+*Risk: Low — the first concrete work of the project.* The grammar is already machine-readable: the `yaml/yaml-grammar`
+repo encodes the ~211 productions as operator-keyed YAML (`(all)`, `(any)`, `(+++)`, `(***)`, `(???)`, `({n})`, `(===)`,
+`(!==)`, `(---)`, `(case)`, …). Vendor that file (pinned, under `third_party/`) as the single source of truth and
+translate it into a typed Python IR the rest of the compiler operates on. `ir.py` (fixed) defines the node ADT — `Seq` /
+`Alt` / `Star` / `Plus` / `Opt` / `Repeat` / `Look` / `NegLook` / `Exclude` / `Case` / `Ref` / `Char` / `Range`, plus
+the parameter sub-language (`Param` / `Lit` / `Call` — the latter for `in-flow` and the `n` predicates). `grammar.py`
+(generated, **not** committed) is the frozen `GRAMMAR` mapping of `Prod` objects.
+
+First concrete steps; the rest of the phase is scoped once these land:
+
+1. **`spec2grammar.py`** — load the vendored `yaml-spec-1.2.yaml` and translate each production **1:1** into
+   `grammar.py`. Faithful capture only — preserve the source's node structure exactly (no flattening or normalization;
+   that belongs to later `grammar2parser.py` passes), so the round-trip stays exact.
+1. **`grammar2spec.py`** — the inverse: regenerate the yaml-grammar notation from `grammar.py`.
+1. **Round-trip check** — run `spec2grammar → grammar.py → grammar2spec` and diff (as parsed data, not text) against the
+   vendored source; it must be empty. That empty diff is a self-consistent state worth committing (vendored spec +
+   `ir.py` + the two scripts; `grammar.py` regenerated and verified, never committed).
+
+Later, to be scoped when we get there: deeper static validation (every `Ref` resolves; every `Case` covers `c`'s
+domain), an independent correctness leg running the yaml-test-suite through the yaml-grammar harness against our IR, and
+the hand-off into `grammar2parser.py`. (The grammar is version-stable — 1.2 and 1.2.2 share productions — so this
+vendored source also matches the `yamlreference` token oracle of phase 02.)
+
+**Exit** — the vendored grammar translates into the typed IR and round-trips faithfully.
+
+### Phase 01 — First productions · A walking skeleton that emits real tokens
+
+*Risk: High — the first real leap.* **This is the biggest single jump in the plan**, and it will be broken into many
+small, individually-verified sub-steps when it is actually tackled; it is listed here as one phase only to mark it as
+the next major goal. Take a handful of grammar productions all the way through — IR → minimal lowering → C — so
+`ys_next_token` emits genuine yeast tokens for simple inputs, replacing the "not implemented" stub for those cases.
+Checked against **hand-written expected token streams** (the reference-parser oracles come next, once there is output to
+compare). The point is a *thin* vertical slice that proves the whole pipeline on something small before the machinery is
+built out properly.
+
+Illustrative shape (to be decomposed carefully when this phase begins):
+
+1. Pick a minimal, self-contained subset of productions (e.g. a plain scalar, a flow sequence) that exercises the token
+   model without the hard indentation/lookahead machinery.
+1. Build the thinnest end-to-end path that emits the correct yeast `Code` stream for that subset.
+1. Assert output against hand-written expected token streams for a small set of inputs.
+1. Grow the subset one production at a time, staying green at every step — the incremental discipline the rest of the
+   generator work will follow.
+
+**Exit** — `ys_next_token` produces correct yeast tokens for a first, hand-checked subset of YAML; the pipeline is
+proven end-to-end on something small.
+
+### Phase 02 — Differential oracles · Pin the output against the reference parsers
+
+*Risk: Low · ~2–4 wks.* Now that the parser emits real tokens, stand up the two things that judge every later phase.
 
 1. Vendor the YAML Test Suite; build a runner that consumes its event-stream expectations.
 1. Wire *both* reference parsers as differential oracles behind stable diff interfaces: the Haskell `yamlreference` for
    token-level (yeast) diffs, the Clojure reference for value-level (load/event) diffs.
+1. Bootstrap the yeast→HTML debug view on the Haskell reference's `yaml2html` as the divergence microscope; it later
+   serves as the reference oracle for the package's own port (phase 09).
 1. Set up CI: every commit runs suite + differential fuzz corpus, reports first divergence.
-1. Define the canonical internal stream as **yeast**, codes identical to the Haskell reference's `Code` constructors —
-   the one schema the scanner, parser, load API, and differential oracles all speak.
-1. Bootstrap the yeast→HTML debug view on the Haskell reference's `yaml2html` as the divergence microscope for the early
-   phases; it later serves as the reference oracle for the package's own port (phase 08).
 
-**Exit** — a red/green harness exists that can score any candidate parser against both oracles.
+**Exit** — a red/green harness scores the parser against both oracles on every commit.
 
-### Phase 01 — Grammar IR · Ingest the 211 productions into a typed IR
-
-*Risk: Low · ~3–5 wks.* Turn the semi-formal BNF into an algebraic data type the rest of the compiler operates on.
-Data-entry plus cleanup, but the foundation must be exact.
-
-1. Transcribe productions into an ADT: sequence, alternation, repetition, char-class, parameter reference (`c`, `n`),
-   lookahead assertion.
-1. Validate: every referenced production resolves; every parameter use is well-formed.
-1. Round-trip the IR back to readable BNF and diff against the spec text to catch transcription errors.
-1. Freeze the IR as the single source of truth; downstream reads only the IR.
-
-**Exit** — the full grammar loads, validates, and round-trips.
-
-### Phase 02 — Binding-time · Classify each parameter static vs runtime
+### Phase 03 — Binding-time · Classify each parameter static vs runtime
 
 *Risk: Medium · ~2–4 wks.* The analysis that decides the machine's whole shape. Mark `c` compile-time, `n` runtime, and
 prove nothing leaks across the line.
@@ -176,7 +210,7 @@ prove nothing leaks across the line.
 
 **Exit** — every parameter occurrence carries a proven binding-time tag.
 
-### Phase 03 — Specialize c · Monomorphize context away
+### Phase 04 — Specialize c · Monomorphize context away
 
 *Risk: Low · ~3–5 wks.* Partial-evaluate over `c`. Each context-parameterized production expands into its concrete
 instances; the runtime never sees `c` again.
@@ -188,7 +222,7 @@ instances; the runtime never sees `c` again.
 
 **Exit** — a `c`-free grammar, still parameterized only on `n`, language-equivalent to the source.
 
-### Phase 04 — Semantics · Specify what the BNF doesn't say
+### Phase 05 — Semantics · Specify what the BNF doesn't say
 
 *Risk: High · ~4–8 wks.* The productions alone don't fully specify a parser. The spec leans on prose for rules that must
 become an explicit, auditable input to the generator — this is where bugs get smuggled in undetected.
@@ -202,7 +236,7 @@ become an explicit, auditable input to the generator — this is where bugs get 
 
 **Exit** — a written semantic spec, versioned alongside the IR, covering every rule beyond the BNF.
 
-### Phase 05 — Determinize · Committed, bounded-lookahead automaton
+### Phase 06 — Determinize · Committed, bounded-lookahead automaton
 
 *Risk: High — the prize · ~3–6 mo.* Convert the priority-and-lookahead grammar into a deterministic, backtrack-free
 recognizer that runs in O(n). This is where fidelity is won or lost, and the only phase with real research risk.
@@ -219,7 +253,7 @@ recognizer that runs in O(n). This is where fidelity is won or lost, and the onl
 
 **Exit** — a deterministic automaton IR with a documented fidelity argument per commitment point.
 
-### Phase 06 — Pushdown IR · Lower to an explicit, suspendable stack machine
+### Phase 07 — Pushdown IR · Lower to an explicit, suspendable stack machine
 
 *Risk: Medium · ~2–3 mo.* Target the pull API. Emit state + explicit stack + dispatch loop so continuation is a
 serializable struct — never the C call stack.
@@ -233,7 +267,7 @@ serializable struct — never the C call stack.
 
 **Exit** — a lowered IR whose execution state is fully captured by a serializable struct.
 
-### Phase 07 — Scanner split · Two-layer scanner/parser with a provisional queue
+### Phase 08 — Scanner split · Two-layer scanner/parser with a provisional queue
 
 *Risk: Medium · ~2–3 mo.* Make pull genuinely manageable by separating the character scanner from the grammar parser,
 with the deferred-token set as an explicit tagged queue.
@@ -245,7 +279,7 @@ with the deferred-token set as an explicit tagged queue.
 
 **Exit** — tokens flow scanner → queue → parser → events, pull-driven, oracle-clean.
 
-### Phase 08 — C codegen · Emit the C library
+### Phase 09 — C codegen · Emit the C library
 
 *Risk: Low · ~1–2 mo.* The easy end of every compiler. Turn the lowered IR into a switch-on-state character loop with
 arena allocation.
@@ -263,7 +297,7 @@ arena allocation.
 
 **Exit** — a self-contained C `.so`, plus the bundled `yaml2html` tool, passing suite + differential + fuzz.
 
-### Phase 09 — ABI layer · Drop-in for libyamlstar
+### Phase 10 — ABI layer · Drop-in for libyamlstar
 
 *Risk: Low · ~3–5 wks.* The existing YAMLStar ABI was designed as a swappable seam — thin, JSON-string in/out, no
 exposed structs — so this is nearly free. Every existing binding works unchanged.
@@ -280,7 +314,7 @@ exposed structs — so this is nearly free. Every existing binding works unchang
 
 **Exit** — the new `.so` slots in where the GraalVM blob sat; all bindings green.
 
-### Phase 10 — Harden · Fuzz, tune, and reach libyaml-class speed
+### Phase 11 — Harden · Fuzz, tune, and reach libyaml-class speed
 
 *Risk: Medium · ~2–4 mo.* Correct-but-slow is not the goal. Close the algorithmic gaps naive codegen leaves and prove
 robustness under hostile input.
@@ -298,12 +332,13 @@ robustness under hostile input.
 | Risk                                                                | Phase   | Severity | Mitigation                                                                                                                                                                                                                                         |
 | ------------------------------------------------------------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Malicious input triggers memory-unsafety or resource-exhaustion DoS | all     | ▪▪▪▪     | Hardening flags on the release build; ASan/UBSan on every run; structure-aware fuzzing from day one; bounded allocation plus a configurable parse-depth cap; billion-laughs / recursive-alias guards; continuous security audit, not a final pass. |
-| Determinization silently diverges from the productions              | 05      | ▪▪▪▪     | Per-commitment refinement obligation; dual differential oracles on every input — token-for-token against the Haskell `yamlreference` and value-level against the Clojure reference; log assurance gaps explicitly rather than hiding them.         |
-| Semantic rules beyond the BNF encoded wrongly / incompletely        | 04      | ▪▪▪▪     | Written, versioned semantic spec; each rule tagged grammar vs asserted; fuzz the corners the suite misses.                                                                                                                                         |
-| Naive codegen is correct but super-linear                           | 05 / 10 | ▪▪▪      | Lookahead-boundedness proof in phase 05; profiling and hot-state tuning in phase 10.                                                                                                                                                               |
-| Binding-time analysis mis-classifies a parameter                    | 02      | ▪▪▪      | Prove `c`'s domain closed and `n` confined to indentation predicates; oracle-check the specialized grammar.                                                                                                                                        |
-| Stack representation choice fights the pull API                     | 06      | ▪▪       | Decide unified-vs-coupled stack early; prototype suspend/resume before full codegen.                                                                                                                                                               |
-| Arena/backtracking scratch leaks or corrupts                        | 08      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                       |
+| Determinization silently diverges from the productions              | 06      | ▪▪▪▪     | Per-commitment refinement obligation; dual differential oracles on every input — token-for-token against the Haskell `yamlreference` and value-level against the Clojure reference; log assurance gaps explicitly rather than hiding them.         |
+| Semantic rules beyond the BNF encoded wrongly / incompletely        | 05      | ▪▪▪▪     | Written, versioned semantic spec; each rule tagged grammar vs asserted; fuzz the corners the suite misses.                                                                                                                                         |
+| The first working slice is a big leap from IR to emitting tokens    | 01      | ▪▪▪      | Decompose into many small, individually-verified sub-steps; grow the production subset one at a time, staying green; hand-checked expected outputs before the reference oracles exist.                                                             |
+| Naive codegen is correct but super-linear                           | 06 / 11 | ▪▪▪      | Lookahead-boundedness proof in phase 06; profiling and hot-state tuning in phase 11.                                                                                                                                                               |
+| Binding-time analysis mis-classifies a parameter                    | 03      | ▪▪▪      | Prove `c`'s domain closed and `n` confined to indentation predicates; oracle-check the specialized grammar.                                                                                                                                        |
+| Stack representation choice fights the pull API                     | 07      | ▪▪       | Decide unified-vs-coupled stack early; prototype suspend/resume before full codegen.                                                                                                                                                               |
+| Arena/backtracking scratch leaks or corrupts                        | 09      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                       |
 | Incumbency: 1.1 quirks are load-bearing in real configs             | —       | ▪▪       | Out of scope to "fix" silently; position as a conformance upgrade, document behavioural deltas from libyaml/1.1.                                                                                                                                   |
 
 ## §6 — Shape of the whole
@@ -313,9 +348,9 @@ low-single-digit-years** project. The difficulty is lumpy, not uniform:
 
 - **The easy ~70%** — grammar IR, `c`-specialization, pushdown lowering, C codegen, the ABI layer. Well-trodden compiler
   work; high effort, low research risk.
-- **The hard ~20%** — provably-faithful determinization (phase 05). This is the part that determines whether the result
+- **The hard ~20%** — provably-faithful determinization (phase 06). This is the part that determines whether the result
   is worth more than libyaml, and it touches formal methods.
-- **The judgment-heavy long tail** — the semantic spec beyond the BNF (phase 04), continuous throughout, the source of
+- **The judgment-heavy long tail** — the semantic spec beyond the BNF (phase 05), continuous throughout, the source of
   the subtle bugs no single test happens to catch.
 
 The reason this doesn't already exist isn't that any one piece is impossible. It's that the *valuable* version requires
