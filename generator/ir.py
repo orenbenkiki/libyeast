@@ -31,6 +31,11 @@ class Match:
 
 
 @dataclass(frozen=True)
+class AutoDetectIndent:
+    """`<auto-detect-indent>`: the block-scalar indentation the parser auto-detects."""
+
+
+@dataclass(frozen=True)
 class Add:
     """`(+)`: integer addition of two expressions."""
 
@@ -97,6 +102,16 @@ class Ref:
 @dataclass(frozen=True)
 class Empty:
     """`<empty>`: the epsilon match."""
+
+
+@dataclass(frozen=True)
+class StartOfLine:
+    """`<start-of-line>`: a zero-width assertion that the parser is at the start of a line."""
+
+
+@dataclass(frozen=True)
+class EndOfStream:
+    """`<end-of-stream>`: a zero-width assertion that the parser is at the end of the input."""
 
 
 @dataclass(frozen=True)

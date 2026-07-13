@@ -20,6 +20,23 @@ PARAMS = frozenset({"n", "c", "m", "t"})
 HEX = re.compile(r"^x[0-9A-Fa-f]+$")
 REP = re.compile(r"^\(\{(.+)\}\)$")  # ({2}) / ({n})
 INT = re.compile(r"^-?[0-9]+$")
+SPECIAL = re.compile(r"^<(.+)>$")  # <empty>, <start-of-line>, <end-of-stream>, <auto-detect-indent>
+SPECIALS = {
+    "empty": ir.Empty,
+    "start-of-line": ir.StartOfLine,
+    "end-of-stream": ir.EndOfStream,
+    "auto-detect-indent": ir.AutoDetectIndent,
+}
+
+
+def special(x):
+    """The marker node for a `<...>` token, or None if `x` is not one."""
+    marker = SPECIAL.match(x) if isinstance(x, str) else None
+    if marker is None:
+        return None
+    if marker.group(1) not in SPECIALS:
+        raise ValueError(f"unknown special token {x!r}")
+    return SPECIALS[marker.group(1)]()
 
 
 def char(text):
@@ -75,6 +92,9 @@ def expr(x):
         return ir.Lit(None)
     if INT.match(x):
         return ir.Lit(int(x))
+    marker = special(x)
+    if marker is not None:
+        return marker
     return ir.Lit(x)  # a value string, e.g. "block-in", "auto-detect"
 
 
@@ -129,8 +149,9 @@ def node(x):
         if op.startswith("("):
             raise ValueError(f"unhandled grammar operator {op!r}")
         return ir.Ref(op, args(value))  # a single non-operator key: a parameterized reference
-    if x == "<empty>":
-        return ir.Empty()
+    marker = special(x)
+    if marker is not None:
+        return marker
     if is_char(x):
         return char(x)
     if isinstance(x, str):

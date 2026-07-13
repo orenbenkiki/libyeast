@@ -43,6 +43,8 @@ def expr_yaml(e):
         return e.value
     if isinstance(e, ir.Match):
         return "(match)"
+    if isinstance(e, ir.AutoDetectIndent):
+        return "<auto-detect-indent>"
     if isinstance(e, ir.Add):
         return {"(+)": [expr_yaml(e.a), expr_yaml(e.b)]}
     if isinstance(e, ir.Sub):
@@ -68,6 +70,10 @@ def node_yaml(n):
         return n.name if not n.args else {n.name: args_yaml(n.args)}
     if isinstance(n, ir.Empty):
         return "<empty>"
+    if isinstance(n, ir.StartOfLine):
+        return "<start-of-line>"
+    if isinstance(n, ir.EndOfStream):
+        return "<end-of-stream>"
     if isinstance(n, ir.Seq):
         return {"(all)": [node_yaml(i) for i in n.items]}
     if isinstance(n, ir.Alt):

@@ -197,6 +197,11 @@ build-docs/.docs: $(PUB_HDR) Doxyfile CMakeLists.txt
 	python3 generator/check_spec_roundtrip.py
 	@touch $@
 
+# Grammar validation: every reference resolves to a production with a matching arity, and every production is reachable.
+.stamps/grammar-validate: $(GRAMMAR_SPEC) $(GEN_SRC) | .stamps
+	python3 generator/validate_grammar.py
+	@touch $@
+
 # --- package-consumption test: install Release, build+run a consumer via pkg-config ---
 build-pkgtest/.pkg: build-release/.build $(PKG_SRC)
 	rm -rf "$(PKG_PREFIX)"
@@ -253,7 +258,7 @@ lint: .stamps/lint
 $(TODO_X): .stamps/$(TODO_X)
 docs: build-docs/.docs
 check-version: .stamps/version-check
-check-grammar: .stamps/grammar-roundtrip
+check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate
 coverage: .stamps/coverage-gate
 pkg-test: build-pkgtest/.pkg
 
