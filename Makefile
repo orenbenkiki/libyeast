@@ -33,6 +33,7 @@ endif
 # Input sets (wildcards catch untracked new files too).
 LIB_SRC   := $(wildcard src/*.c)
 PUB_HDR   := $(wildcard include/*.h)
+PRIV_HDR  := $(wildcard src/*.h)
 UNIT_TEST := tests/test_c.c
 PKG_SRC   := tests/pkg_consumer.c
 VENDOR_H  := $(wildcard third_party/acutest/*.h)
@@ -40,7 +41,7 @@ CMAKE_IN  := CMakeLists.txt $(wildcard cmake/*.in)
 # Version from the single source (CMakeLists project()); `.` matches the literal '(' so make's paren-balancing in
 # $(shell ...) stays happy.
 VERSION   := $(shell sed -n 's/^project.yeast VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt)
-ALL_SRC   := $(LIB_SRC) $(PUB_HDR) $(wildcard tests/*.c)   # what the format/lint/comment checks scan
+ALL_SRC   := $(LIB_SRC) $(PUB_HDR) $(PRIV_HDR) $(wildcard tests/*.c)   # what the format/lint/comment checks scan
 # Common find prune (skip .git, vendored third_party, and build dirs), reused below.
 FIND_PRUNE := -name .git -prune -o -name third_party -prune -o -path './build*' -prune -o
 MD_FILES  := $(shell find . $(FIND_PRUNE) -name '*.md' -print)
@@ -51,8 +52,8 @@ SH_FILES  := $(shell find . $(FIND_PRUNE) -name '*.sh' -print)
 TODO_X    := $(subst -,,todo-x)
 # Files the leftover-marker scan covers: every tracked file except docs/ (which documents the marker).
 SCAN_FILES := $(shell git ls-files -- . ':(exclude)docs')
-BUILD_DEPS := $(LIB_SRC) $(PUB_HDR) $(UNIT_TEST) $(VENDOR_H) $(CMAKE_IN)
-LINT_FILES := src/yeast.c tests/test_c.c
+BUILD_DEPS := $(LIB_SRC) $(PUB_HDR) $(PRIV_HDR) $(wildcard tests/*.c) $(VENDOR_H) $(CMAKE_IN)
+LINT_FILES := src/yeast.c src/decoder.c tests/test_c.c tests/test_decoder.c
 PKG_PREFIX := $(CURDIR)/build-pkgtest/prefix
 GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
 GEN_SRC    := $(wildcard generator/*.py)
@@ -202,6 +203,12 @@ build-docs/.docs: $(PUB_HDR) Doxyfile CMakeLists.txt
 	python3 generator/validate_grammar.py
 	@touch $@
 
+# Decoder tables: the committed src/decoder_tables.h must be exactly what the grammar produces, and every bit of every
+# key must agree with a direct evaluation of the character set it stands for. The classification cannot drift.
+.stamps/decoder-tables: $(GRAMMAR_SPEC) $(GEN_SRC) src/decoder_tables.h | .stamps
+	python3 generator/check_decoder.py
+	@touch $@
+
 # --- package-consumption test: install Release, build+run a consumer via pkg-config ---
 build-pkgtest/.pkg: build-release/.build $(PKG_SRC)
 	rm -rf "$(PKG_PREFIX)"
@@ -258,7 +265,7 @@ lint: .stamps/lint
 $(TODO_X): .stamps/$(TODO_X)
 docs: build-docs/.docs
 check-version: .stamps/version-check
-check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate
+check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/decoder-tables
 coverage: .stamps/coverage-gate
 pkg-test: build-pkgtest/.pkg
 

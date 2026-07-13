@@ -17,5 +17,9 @@ All notable changes to this project are documented here. The format follows
 - Pull-parser API surface: `ys_new_string_parser` / `ys_new_stream_parser` / `ys_next_token` / `ys_free_parser`, with
   `ys_fd_reader`/`ys_fp_reader` reader adapters, a pluggable allocator, and the `ys_counting_allocator` leak counter.
   The parser core is not implemented yet, so `ys_next_token` returns a "not implemented" error.
+- Character decoder: UTF-8 input is validated and classified against the grammar without a Unicode codepoint ever being
+  assembled. Each character becomes a 32-bit key — the id of the character where the grammar names it, one bit per
+  character set the grammar tests, and the bytes it consumed — so a test in the parser is a single comparison or a
+  single AND. The tables are generated from the grammar and gated against drift.
 
 _No release has been tagged yet; the YAML parser itself is not implemented._

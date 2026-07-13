@@ -112,8 +112,8 @@ else()
 endif()
 
 # Library — shared and static from the same source, same base name.
-add_library(yeast SHARED src/yeast.c)
-add_library(yeast_static STATIC src/yeast.c)
+add_library(yeast SHARED src/yeast.c src/decoder.c)
+add_library(yeast_static STATIC src/yeast.c src/decoder.c)
 foreach(_t IN ITEMS yeast yeast_static)
     target_include_directories(
         ${_t}
@@ -154,6 +154,19 @@ if(YEAST_BUILD_TESTS)
     endif()
     target_link_libraries(test_c PRIVATE yeast_build)
     add_test(NAME test_c COMMAND test_c)
+
+    # The decoder is internal, so its test links the static archive — whose symbols survive -fvisibility=hidden, which
+    # governs only the dynamic symbol table — and includes src/ directly.
+    add_executable(test_decoder tests/test_decoder.c)
+    target_include_directories(
+        test_decoder
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/acutest ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_decoder PRIVATE yeast_static yeast_build)
+    if(NOT MSVC)
+        target_compile_options(test_decoder PRIVATE -Wall -Wextra -Werror)
+    endif()
+    add_test(NAME test_decoder COMMAND test_decoder)
 endif()
 
 # Install / packaging.

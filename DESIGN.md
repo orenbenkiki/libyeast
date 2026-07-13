@@ -13,10 +13,19 @@ its comments). The full public API surface is declared, but the parser core is n
   allocator; and the `ys_counting_allocator` leak counter.
 - **Library** — `src/yeast.c`: the implementation of everything the header declares, including the load-time
   version-sanity constructor. The parser facade returns "not implemented" until the grammar-derived core lands.
+- **Decoder** — `src/decoder.h`, `src/decoder.c` and the generated `src/decoder_tables.h`: the bottom layer, which turns
+  input bytes into characters the parser can branch on. A character becomes a 32-bit key holding the id of the character
+  if the grammar names it, one bit per character set the grammar tests, and the bytes it consumed — so a test is one
+  comparison or one AND, with the grammar's unions and subtractions already evaluated into the bits. No Unicode
+  codepoint is ever assembled: tokens are spans of input bytes, so nothing compares a character's numeric value, and the
+  decoder validates and classifies instead of decoding. That is also why no existing UTF-8 library serves — they all
+  exist to produce the codepoint we do not want, or to validate in bulk without classifying at all. `decoder.h`
+  documents the key; `decoder.c` holds the UTF-8 mechanics, which are RFC 3629's and not the grammar's.
 - **Parser generator** — `generator/`: `ir.py` (the typed grammar IR), `spec2grammar.py` (translate the vendored
-  `third_party/yaml-grammar/yaml-spec-1.2.yaml` into the IR), `grammar2spec.py` (the inverse), and
-  `check_spec_roundtrip.py` (the gate check that the two are lossless inverses). This is where the grammar-derived
-  parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
+  `third_party/yaml-grammar/yaml-spec-1.2.yaml` into the IR), `grammar2spec.py` (the inverse), `chars.py` (the character
+  model the decoder is built from), `grammar2decoder.py` (emit `src/decoder_tables.h`), and the gate checks
+  `check_spec_roundtrip.py`, `validate_grammar.py` and `check_decoder.py`. This is where the grammar-derived parser will
+  be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
 - **Build** — `CMakeLists.txt` is the source of truth for building, testing, installing, and the version. It defines the
   shared + static libraries (hardened, symbol-visibility controlled), the sanitized Debug and hardened Release configs,
   and the coverage option.
