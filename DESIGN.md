@@ -12,7 +12,10 @@ its comments). The full public API surface is declared, but the parser core is n
   `ys_new_stream_parser` / `ys_next_token` / `ys_free_parser`) with `ys_fd_reader`/`ys_fp_reader` adapters; a pluggable
   allocator; and the `ys_counting_allocator` leak counter.
 - **Library** — `src/yeast.c`: the implementation of everything the header declares, including the load-time
-  version-sanity constructor. The parser facade returns "not implemented" until the grammar-derived core lands.
+  version-sanity constructor, and the yeast wire format — one character and its escaped text per token, which
+  `ys_write_token` writes and `ys_read_token` reads back. That format is what a token stream is compared against the
+  reference parser in, and what lets one be piped between tools; it is complete and works. The parser facade returns
+  "not implemented" until the grammar-derived core lands.
 - **Decoder** — `src/decoder.h`, `src/decoder.c` and the generated `src/decoder_tables.h`: the bottom layer, which turns
   input bytes into characters the parser can branch on. A character becomes a 32-bit key holding the id of the character
   if the grammar names it, one bit per character set the grammar tests, and the bytes it consumed — so a test is one
