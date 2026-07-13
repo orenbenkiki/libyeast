@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Check that libyeast's grammar is still the official grammar.
 
-Erases libyeast's token annotations and indicator productions from `grammar/annotated.yaml`, and compares what remains,
+Erases libyeast's token annotations and indicator productions from `grammar/yeast-spec-1.2.yaml`, and compares what remains,
 production by production, against the vendored `yaml-spec-1.2.yaml`. A production that differs is either a mistake or a
 departure we chose; a chosen one must be declared in DEVIATIONS, with its reason, or this fails. What libyeast adds
 therefore cannot quietly become what libyeast changes.

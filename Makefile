@@ -56,7 +56,7 @@ BUILD_DEPS := $(LIB_SRC) $(PUB_HDR) $(PRIV_HDR) $(wildcard tests/*.c) $(VENDOR_H
 LINT_FILES := src/yeast.c src/decoder.c tests/test_c.c tests/test_decoder.c
 PKG_PREFIX := $(CURDIR)/build-pkgtest/prefix
 GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
-ANNOTATED := grammar/annotated.yaml
+ANNOTATED := grammar/yeast-spec-1.2.yaml
 GEN_SRC    := $(wildcard generator/*.py)
 
 # Tool dependencies, verified by check-build-deps / check-dev-deps.
@@ -205,10 +205,16 @@ build-docs/.docs: $(PUB_HDR) Doxyfile CMakeLists.txt
 	@touch $@
 
 # The official grammar, recovered: erase libyeast's token annotations and its indicator productions from
-# grammar/annotated.yaml, and what remains must be the vendored grammar. What libyeast adds cannot quietly become what
+# grammar/yeast-spec-1.2.yaml, and what remains must be the vendored grammar. What libyeast adds cannot quietly become what
 # libyeast changes.
 .stamps/vendor-spec: $(GRAMMAR_SPEC) $(ANNOTATED) $(GEN_SRC) | .stamps
 	python3 generator/check_vendor_spec.py
+	@touch $@
+
+# Grammar documentation: every rule that emits tokens must say which, in the order it emits them — checked against the
+# grammar itself, so a note that is wrong fails as surely as one that is missing.
+.stamps/grammar-docs: $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_grammar_docs.py
 	@touch $@
 
 # Decoder tables: the committed src/decoder_tables.h must be exactly what the grammar produces, and every bit of every
@@ -273,7 +279,8 @@ lint: .stamps/lint
 $(TODO_X): .stamps/$(TODO_X)
 docs: build-docs/.docs
 check-version: .stamps/version-check
-check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/vendor-spec .stamps/decoder-tables
+check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/vendor-spec .stamps/grammar-docs \
+               .stamps/decoder-tables
 coverage: .stamps/coverage-gate
 pkg-test: build-pkgtest/.pkg
 

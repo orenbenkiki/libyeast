@@ -175,7 +175,7 @@ def production(number, name, definition):
     return ir.Prod(number, name, params, node(definition))
 
 
-DEFAULT_GRAMMAR = "grammar/annotated.yaml"
+DEFAULT_GRAMMAR = "grammar/yeast-spec-1.2.yaml"
 
 
 def translate(grammar):
