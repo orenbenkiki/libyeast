@@ -9,6 +9,6 @@ goal="${1:-}"
 if command -v cmake >/dev/null 2>&1; then
     echo "cmake present; nothing to install"
 else
-    echo "install CMake and the MSVC C++ build tools (e.g. winget install Kitware.CMake, plus VS Build Tools)" >&2
+    echo "install CMake, the MSVC C++ build tools, and Python 3 with PyYAML (e.g. winget install Kitware.CMake, plus VS Build Tools, plus 'py -m pip install pyyaml')" >&2
     exit 1
 fi

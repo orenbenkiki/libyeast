@@ -54,9 +54,11 @@ SCAN_FILES := $(shell git ls-files -- . ':(exclude)docs')
 BUILD_DEPS := $(LIB_SRC) $(PUB_HDR) $(UNIT_TEST) $(VENDOR_H) $(CMAKE_IN)
 LINT_FILES := src/yeast.c tests/test_c.c
 PKG_PREFIX := $(CURDIR)/build-pkgtest/prefix
+GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
+GEN_SRC    := $(wildcard generator/*.py)
 
 # Tool dependencies, verified by check-build-deps / check-dev-deps.
-BUILD_DEP_TOOLS := cmake $(CC)
+BUILD_DEP_TOOLS := cmake $(CC) python3 python3:yaml
 DEV_DEP_TOOLS   := clang-format $(CLANG_TIDY) $(CPPCHECK) $(GCOVR) $(MDFORMAT) $(BLACK) $(GERSEMI) $(SHFMT) \
                    doxygen $(firstword $(GCOV_EXE))
 
@@ -64,7 +66,7 @@ DEV_DEP_TOOLS   := clang-format $(CLANG_TIDY) $(CPPCHECK) $(GCOVR) $(MDFORMAT) $
         reformat reformat-c reformat-md reformat-py reformat-cmake reformat-sh \
         check-format check-format-c check-format-md check-format-py check-format-cmake check-format-sh \
         check-comments check-build-deps check-dev-deps \
-        lint $(TODO_X) docs check-version coverage pkg-test vet gh-pages pc clean
+        lint $(TODO_X) docs check-version check-grammar coverage pkg-test vet gh-pages pc clean
 
 all: package
 
@@ -189,6 +191,12 @@ build-docs/.docs: $(PUB_HDR) Doxyfile CMakeLists.txt
 	else echo "version consistent: $(VERSION)"; fi
 	@touch $@
 
+# Grammar round-trip: spec2grammar -> IR -> grammar2spec must reproduce the vendored grammar exactly. A lossless-ingest
+# gate for the generator; nothing is silently dropped or mangled in translation.
+.stamps/grammar-roundtrip: $(GRAMMAR_SPEC) $(GEN_SRC) | .stamps
+	python3 generator/check_spec_roundtrip.py
+	@touch $@
+
 # --- package-consumption test: install Release, build+run a consumer via pkg-config ---
 build-pkgtest/.pkg: build-release/.build $(PKG_SRC)
 	rm -rf "$(PKG_PREFIX)"
@@ -245,6 +253,7 @@ lint: .stamps/lint
 $(TODO_X): .stamps/$(TODO_X)
 docs: build-docs/.docs
 check-version: .stamps/version-check
+check-grammar: .stamps/grammar-roundtrip
 coverage: .stamps/coverage-gate
 pkg-test: build-pkgtest/.pkg
 
@@ -262,7 +271,7 @@ gh-pages: build-gh-pages/.assembled
 
 # --- the three sub-gates: static quality + packaging (vet), C tests + coverage gate (test-c), docs + coverage report
 # (gh-pages). Each is one CI workflow of the same name. ---
-vet: check-format check-comments lint $(TODO_X) check-version pkg-test
+vet: check-format check-comments lint $(TODO_X) check-version check-grammar pkg-test
 
 # --- pre-commit gate: every check, run before every commit. A pure aggregator of the three sub-gates. CI never runs pc
 # itself; it runs each sub-gate (vet, test-c, gh-pages) in its own workflow. ---

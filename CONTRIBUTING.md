@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- A C99 compiler (GCC, Clang, or MSVC), CMake ≥ 3.20, and GNU make.
+- A C99 compiler (GCC, Clang, or MSVC), CMake ≥ 3.20, GNU make, and Python 3 with PyYAML (the parser generator).
 - The formatters, linters, coverage, and docs tools the gate uses. Install them with the provided scripts rather than
   chasing a hand-maintained list:
   - `scripts/install-debian-dev-deps.sh` / `scripts/install-macos-dev-deps.sh` install everything the gate needs. Each

@@ -15,4 +15,6 @@
 *.gcda
 *.gcov
 compile_commands.json
+__pycache__/
+*.pyc
 *junk*

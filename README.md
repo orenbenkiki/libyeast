@@ -24,6 +24,7 @@ drop-in, ABI-compatible C shared library.
 
 - A C99 compiler (GCC, Clang, or MSVC)
 - CMake ≥ 3.20
+- Python 3 with PyYAML — the parser generator runs at build time
 - For the full dev gate: the formatters, linters, coverage, and docs tools installed by `scripts/install-*-dev-deps.sh`
   (see [`CONTRIBUTING.md`](CONTRIBUTING.md))
 
