@@ -32,56 +32,67 @@ codepoint, which is strictly less work than any decode-first design and is why n
 
 ## What the grammar actually demands
 
-Derived mechanically from the 211-production IR, by partitioning all of Unicode by every `Char` and `Range` atom the
-grammar tests:
+Derived mechanically from the 211-production IR:
 
-| quantity                                                                | value                      |
-| ----------------------------------------------------------------------- | -------------------------- |
-| distinct literal characters named by the grammar                        | 57                         |
-| distinct composite character sets tested (unions, subtractions, ranges) | 28                         |
-| equivalence classes over all of Unicode                                 | 68                         |
-| literal characters above U+007F                                         | 2 (`x85` NEL, `xFEFF` BOM) |
+| quantity                                         | value                      |
+| ------------------------------------------------ | -------------------------- |
+| distinct literal characters named by the grammar | 57                         |
+| distinct character sets the grammar tests        | 19                         |
+| literal characters above U+007F                  | 2 (`x85` NEL, `xFEFF` BOM) |
+| character classes needed above U+007F            | 6                          |
 
-The 28 composite sets are semantically distinct — none collapse. Everything above U+007F reduces to six classes, and the
-only individually-named non-ASCII characters in the entire grammar are NEL and the BOM.
+A *tested set* is a **maximal** character-set node in a matching position — maximal meaning its parent is not itself a
+character set. The four ranges inside `c-printable`'s union are constituents, not tested sets: nothing asks about them
+on their own, only about `c-printable`. Deduplicating the maximal nodes by denotation (two productions describing the
+same codepoints share one entry) leaves 19.
 
 These numbers are computed by the generator, not asserted here; if the vendored grammar changes, they change with it.
 
 ## The character key
 
-```c
-typedef struct ys_char {
-    uint32_t sets; ///< One bit per composite character set the character belongs to; 28 used, 4 spare.
-    uint8_t lit;   ///< The named-literal id: 0 for "not a named literal", else 1..57, or a sentinel id.
-    uint8_t len;   ///< Bytes of input the character consumed.
-} ys_char;
-```
-
-Eight bytes: one aligned load out of the generated ASCII table, and it travels in a single register.
-
-Every test the generated parser emits is one of two shapes, both against immediates:
+The key is a **precomputed answer sheet**. There are only 19 questions the grammar can ask about a character, so the
+decoder answers all of them once, per character, and stores the answers as bits.
 
 ```c
-(ch.sets & YS_SET_NS_CHAR) != 0     // any character set — union, range, or subtraction alike
- ch.lit == YS_LIT_DASH              // a single named literal
+typedef uint32_t ys_char;   // [ 27..25 len | 24..6 set bits | 5..0 literal id ]
+
+#define YS_LIT(ch) ((ch) & 0x3Fu) ///< 0 = not a named literal; 1..57 = the grammar's named characters; 58/59 sentinels.
+#define YS_LEN(ch) (((ch) >> 25) & 0x7u) ///< Bytes of input the character consumed, 0..4.
 ```
 
-Subtraction never appears at a test site: `ns-char = nb-char - s-white` is precomputed into the `ns-char` bit when the
-generator evaluates the set over each codepoint. A set of literals (`c-indicator`, nineteen of them) is a set like any
-other and gets its own bit. The generator does no bit reasoning — it evaluates each set's IR definition per codepoint
-and lights the bit — so a wrong mask is not a failure mode that exists.
+Twenty-eight of thirty-two bits used. One 32-bit load out of a 512-byte, 128-entry ASCII table, travelling in one
+register.
 
-`sets` and `lit` are separate fields rather than one packed 64-bit word deliberately: 6 + 28 bits does not fit a
-`uint32_t`, so packing would exile one field above bit 31 and force 64-bit immediates (`movabs` on x86-64) at every test
-site. As two fields, the compiler tests `sets` with a 32-bit immediate and `lit` with an 8-bit compare, out of the same
-register pair.
+Every test the generated parser emits is one of two shapes, both against 32-bit immediates:
+
+```c
+(ch & YS_SET_NS_CHAR) != 0     // any character set — union, range, or subtraction alike
+YS_LIT(ch) == YS_LIT_DASH      // a single named literal
+```
+
+Subtraction and union never appear at a test site. `ns-char = c-printable - x0A - x0D - xFEFF - x20 - x09` is evaluated
+by the generator against every codepoint, and the answer becomes one bit. The generator does no bit reasoning — it
+evaluates each set's IR definition per codepoint and lights the bit — so a wrong mask is not a failure mode that exists.
+
+One bit per *tested set* rather than one bit per *minimal generating atom*: the minimal family is 18 bits, one narrower,
+but it stores a character's equivalence class rather than the answers, so a production must reconstruct membership from
+a multi-bit mask. Same instruction count, one bit saved, one layer of indirection added — and with 4 bits spare there is
+nothing to buy. The key holds answers.
+
+Bitfields are deliberately avoided: C leaves bitfield allocation order implementation-defined, and the generator emits
+the table as raw `uint32_t` constants, so a bitfield layout would have to be assumed rather than controlled. Explicit
+shifts and masks let the generator own the layout, and let a set test be a single AND against the whole word rather than
+a field extraction followed by an AND.
 
 ### Sentinels
 
-End of input and invalid UTF-8 are literal ids (`YS_LIT_EOF`, `YS_LIT_INVALID`) with `sets == 0`. Because they belong to
-no set, **every** generated membership test fails at them automatically — no end-of-input special case is needed at any
-of the thousands of test sites. `len` is 0 for EOF and 1 for invalid, so an error path can skip the offending byte and
-keep collecting diagnostics rather than halting at the first.
+End of input and invalid UTF-8 are literal ids (`YS_LIT_EOF` = 58, `YS_LIT_INVALID` = 59) carrying no set bits. Because
+they belong to no set, **every** generated membership test fails at them automatically — no end-of-input special case is
+needed at any of the thousands of test sites. `YS_LEN` is 0 for EOF and 1 for invalid, so an error path can skip the
+offending byte and keep collecting diagnostics rather than halting at the first.
+
+The sentinels are distinguishable from an unclassified byte (a C0 control such as `x01` belongs to no set and is no
+named literal, so its literal id is 0) precisely because their literal ids are non-zero.
 
 There is no `INCOMPLETE` sentinel. A multi-byte sequence truncated by the end of the window is `INVALID`, which is the
 right answer at true end of input; a stream buffer that hands the decoder a partial sequence before its true end has a
@@ -97,17 +108,18 @@ static inline ys_char ys_next_char(const uint8_t *bytes, size_t size);
 size_t ys_scan_set(const uint8_t *bytes, size_t size, ys_set_id set);
 ```
 
-`ys_set_id` is a generated enum naming the 28 sets. `ys_scan_set` takes the id rather than the bit mask because the
+`ys_set_id` is a generated enum naming the 19 sets. `ys_scan_set` takes the id rather than the bit mask because the
 vector kernels index a generated table of nibble-table pairs by it; the scalar loop recovers the mask from the id.
 
-Both are pure functions of a `(bytes, size)` window; the caller advances by `len`. `size` is the true number of readable
-bytes — no padding contract, because `ys_new_string_parser()` takes the caller's buffer and cannot be asked to pad it.
+Both are pure functions of a `(bytes, size)` window; the caller advances by `YS_LEN(ch)`. `size` is the true number of
+readable bytes — no padding contract, because `ys_new_string_parser()` takes the caller's buffer and cannot be asked to
+pad it.
 
 `ys_next_char` is `static inline` in the internal header. A function call per character would negate this entire design:
 
 ```c
 static inline ys_char ys_next_char(const uint8_t *bytes, size_t size) {
-    if (size == 0) return YS_CHAR_EOF;
+    if (size == 0) return YS_KEY_EOF;
     if (bytes[0] < 0x80) return YS_ASCII[bytes[0]];  // one load; over 99% of real YAML bytes
     return ys_next_char_slow(bytes, size);           // out-of-line, cold, bounds-checked
 }
@@ -129,24 +141,28 @@ remaining continuation bytes are checked against `80..BF`.
 
 Classification then falls out of the byte pattern, because the grammar names only a handful of non-ASCII characters:
 
-| bytes                    | class                                                      |
-| ------------------------ | ---------------------------------------------------------- |
-| `C2 85`                  | NEL — a named literal                                      |
-| `C2 80..9F`              | C1 control zone — in `nb-json`, not in `c-printable`       |
-| `EF BB BF`               | BOM — a named literal                                      |
-| `EF BF BE`, `EF BF BF`   | noncharacter — in `nb-json`, not in `c-printable`          |
-| any other valid sequence | ordinary content character — one shared constant `ys_char` |
-| anything else            | `YS_LIT_INVALID`                                           |
+| bytes                    | class                                                |
+| ------------------------ | ---------------------------------------------------- |
+| `C2 85`                  | NEL — a named literal                                |
+| `C2 80..9F`              | C1 control zone — in `nb-json`, not in `c-printable` |
+| `EF BB BF`               | BOM — a named literal                                |
+| `EF BF BE`, `EF BF BF`   | noncharacter — in `nb-json`, not in `c-printable`    |
+| any other valid sequence | ordinary content character — one shared constant key |
+| anything else            | `YS_LIT_INVALID`                                     |
 
 ## Generator
 
 `generator/grammar2decoder.py` emits `decoder_tables.h` from the IR. It emits **data only**:
 
-- the 256-entry ASCII key table,
+- the 128-entry ASCII key table,
 - the named-literal ids and the sentinel ids,
-- the 28 set-bit constants, computed by evaluating each set's IR definition per codepoint,
+- the 19 set-bit constants, computed by evaluating each set's IR definition per codepoint,
 - the non-ASCII class constants,
-- the SIMD nibble tables (see below).
+- the SIMD nibble tables, once the vector kernels land (see below).
+
+A set's name is the character-set production that defines it; a set the grammar tests inline, with no production of its
+own, is named for its enclosing production plus an index (`ns-plain-first` holds two of them, so they must be
+distinguished).
 
 It does **not** emit the UTF-8 mechanics. Those are fixed by RFC 3629, not by YAML; generating them would be generating
 a constant. They live hand-written in `decoder.h` / `decoder.c`.
@@ -189,7 +205,7 @@ Every fast UTF-8 implementation in C solves one of two problems, and neither is 
   project.)
 
 "Validate and classify without decoding" is not a problem anyone else has, because it only exists once the grammar has
-handed you a 28-set key. So the code is ours, and correctness comes from the test corpus instead — which is the part
+handed you a 19-set key. So the code is ours, and correctness comes from the test corpus instead — which is the part
 worth borrowing.
 
 ## Testing
@@ -197,8 +213,9 @@ worth borrowing.
 - **Kuhn's UTF-8 stress test** (`UTF-8-decoder-capability-and-stress-test`): the canonical malformed-input torture file
   — overlongs, lone surrogates, truncated sequences, boundary codepoints. Every case asserts `YS_LIT_INVALID` or the
   expected class.
-- **Differential fuzz against Python's decoder**: random byte strings, compare validity and sequence length. Python's
-  `bytes.decode("utf-8")` is the oracle for well-formedness; the grammar IR is the oracle for classification.
+- **Exhaustive codepoint sweep**: every codepoint UTF-8 can encode is encoded by an encoder written independently of the
+  decoder, decoded, and checked for the right length; every surrogate must be rejected. The independence of the two
+  implementations is what makes this a check rather than a tautology.
 - **Table-versus-grammar property test**: for every codepoint, the generated key must agree with a direct evaluation of
   the IR's set definitions. This is the check that keeps `decoder_tables.h` honest, and it is exhaustive — 1.1 M
   codepoints is a second of CPU.
