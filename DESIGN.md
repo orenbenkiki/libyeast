@@ -21,11 +21,25 @@ its comments). The full public API surface is declared, but the parser core is n
   decoder validates and classifies instead of decoding. That is also why no existing UTF-8 library serves — they all
   exist to produce the codepoint we do not want, or to validate in bulk without classifying at all. `decoder.h`
   documents the key; `decoder.c` holds the UTF-8 mechanics, which are RFC 3629's and not the grammar's.
-- **Parser generator** — `generator/`: `ir.py` (the typed grammar IR), `spec2grammar.py` (translate the vendored
-  `third_party/yaml-grammar/yaml-spec-1.2.yaml` into the IR), `grammar2spec.py` (the inverse), `chars.py` (the character
-  model the decoder is built from), `grammar2decoder.py` (emit `src/decoder_tables.h`), and the gate checks
-  `check_spec_roundtrip.py`, `validate_grammar.py` and `check_decoder.py`. This is where the grammar-derived parser will
-  be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
+- **Grammar** — `grammar/annotated.yaml`: libyeast's grammar, and the source everything else is generated from. It is
+  the YAML 1.2 productions with two additions: each indicator character is reached through the production that names it,
+  and 97 of the 211 productions carry the yeast token codes — which productions bracket their match in `Begin`/`End`
+  markers, and what code each consumed character is given. The vendored `third_party/yaml-grammar/yaml-spec-1.2.yaml`
+  cannot serve as the source: it inlines the indicator characters, so it cannot say that a quotation mark opens a scalar
+  as an indicator but is meta inside an escape, and it names no token at all. `make check-grammar` erases the
+  annotations and the indicator productions and checks that what remains is the vendored grammar, production for
+  production — so what libyeast adds cannot quietly become what libyeast changes, and a departure must be declared, with
+  its reason, in `check_vendor_spec.py`.
+- **Parser generator** — `generator/`: `ir.py` (the typed grammar IR), `annotated2ir.py` (read `grammar/annotated.yaml`
+  into the IR), `ir2annotated.py` (the inverse), `ir2spec.py` (erase libyeast's additions and recover the official
+  grammar), `chars.py` (the character model the decoder is built from), `grammar2decoder.py` (emit
+  `src/decoder_tables.h`), and the gate checks `check_annotated_roundtrip.py`, `check_vendor_spec.py`,
+  `validate_grammar.py` and `check_decoder.py`. This is where the grammar-derived parser will be generated (see
+  `PLAN.md`); it runs on Python 3 + PyYAML.
+- **Reference** — `third_party/yamlreference/`: the Haskell YAML reference parser, vendored to be read. Its grammar
+  carries the token annotations `grammar/annotated.yaml` replicates, and its `Code` type is where `ys_code` comes from.
+  It is LGPL, while libyeast is MIT: nothing is copied from it, nothing links against it, and nothing of it is built.
+  Later it becomes the differential oracle.
 - **Build** — `CMakeLists.txt` is the source of truth for building, testing, installing, and the version. It defines the
   shared + static libraries (hardened, symbol-visibility controlled), the sanitized Debug and hardened Release configs,
   and the coverage option.

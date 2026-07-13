@@ -17,7 +17,7 @@ import unicodedata
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import chars  # noqa: E402
 import ir  # noqa: E402
-import spec2grammar  # noqa: E402
+import annotated2ir  # noqa: E402
 
 ASCII_LIMIT = 0x80
 DELETE = 0x7F
@@ -122,17 +122,26 @@ def spelling(codepoint):
     return f"U+{codepoint:04X}"
 
 
+def defined(body):
+    """The character a production defines outright, or None — looking through any token annotation that wraps it."""
+    while isinstance(body, (ir.Token, ir.Wrap)):
+        body = body.item
+    return body.cp if isinstance(body, ir.Char) else None
+
+
 def sites(grammar):
     """For each character the grammar names, where it is named: `{codepoint: ([defining], [using])}` production texts.
 
-    A production defines a character when its whole body is that character; the 21 characters no production defines are
-    written inline, inside `ns-uri-char` and its like, so those are cited by where they appear instead.
+    A production defines a character when its whole body is that character, however the production annotates it; the
+    characters no production defines are written inline, inside `ns-uri-char` and its like, so those are cited by where
+    they appear instead.
     """
     found = {}
     for name, production in grammar.items():
         cited = f"[{production.number:03d}] {name}"
-        if isinstance(production.body, ir.Char):
-            found.setdefault(production.body.cp, ([], []))[0].append(cited)
+        codepoint = defined(production.body)
+        if codepoint is not None:
+            found.setdefault(codepoint, ([], []))[0].append(cited)
             continue
         pending, seen = [production.body], set()
         while pending:
@@ -293,7 +302,7 @@ def utf8_length(codepoint):
 
 
 def main():
-    grammar = spec2grammar.load()
+    grammar = annotated2ir.load()
     model = chars.Model(grammar)
     emit(sys.stdout, model, grammar, check_groups(model, grammar))
 

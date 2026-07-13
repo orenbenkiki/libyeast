@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """Typed IR for the YAML grammar.
 
-`spec2grammar.py` emits these nodes into `grammar.py`; `grammar2parser.py` consumes them. This is a faithful 1:1
+`annotated2ir.py` emits these nodes into the IR; `grammar2parser.py` consumes them. This is a faithful 1:1
 mirror of the yaml-grammar operator vocabulary — every operator maps to one node and nothing is normalized here.
 Flattening and simplification belong to later `grammar2parser.py` passes, so the round-trip stays exact.
 """
@@ -246,6 +246,49 @@ class SetVar:
 
     param: str
     value: object
+
+
+# --- token annotations ---
+#
+# The parser accumulates the characters it consumes into a run, and gives the run a code. A run ends — becoming one
+# token — wherever a `Token` scope begins or ends, and wherever an `Emit` marker falls. So an annotation does not make
+# *a* token: it says what code the characters consumed within it carry, and where the runs are cut.
+#
+# A character consumed under no annotation at all carries the code `unparsed`, which is what the parser says about
+# input it could not parse. On the success path that is always a mistake, so `validate_grammar.py` holds every
+# character-consuming node to lying within some `Token`.
+
+
+@dataclass(frozen=True)
+class Token:
+    """`(token)`: the characters `item` consumes carry `code`, but for those a nested annotation claims.
+
+    The run is cut at both edges, so the characters before, within and after `item` fall into separate tokens. `item`
+    may yield several tokens (where it nests annotations of its own) or none at all (where it consumes nothing).
+    """
+
+    code: str
+    item: object
+
+
+@dataclass(frozen=True)
+class Wrap:
+    """`(wrap)`: zero-width `begin` and `end` markers bracketing `item` — sugar for an `Emit` on either side of it.
+
+    A node of its own, rather than the sequence it stands for, so that the two markers are paired by construction and
+    a `begin` cannot lose its `end`.
+    """
+
+    begin: str
+    end: str
+    item: object
+
+
+@dataclass(frozen=True)
+class Emit:
+    """`(emit)`: a zero-width token at this point, which also cuts the run of characters around it."""
+
+    code: str
 
 
 @dataclass(frozen=True)

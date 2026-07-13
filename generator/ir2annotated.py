@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
-"""Regenerate the yaml-grammar notation from the typed IR — the inverse of `spec2grammar.py`.
+"""Regenerate the yaml-grammar notation from the typed IR — the inverse of `annotated2ir.py`.
 
-`check_spec_roundtrip.py` uses this to prove the translation is lossless: `spec2grammar` then `grammar2spec` must
+`check_annotated_roundtrip.py` uses this to prove the translation is lossless: `annotated2ir` then `ir2annotated` must
 reproduce the vendored source exactly. Run directly to dump the regenerated grammar as YAML.
 
-Usage: `python3 generator/grammar2spec.py [spec.yaml] > regenerated.yaml`
+Usage: `python3 generator/ir2annotated.py [spec.yaml] > regenerated.yaml`
 """
 
 import os
@@ -12,7 +12,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ir  # noqa: E402
-import spec2grammar  # noqa: E402
+import annotated2ir  # noqa: E402
 
 import yaml  # noqa: E402
 
@@ -113,6 +113,12 @@ def node_yaml(n):
         return {"(flip)": {"var": n.var, **{k: expr_yaml(v) for k, v in n.branches}}}
     if isinstance(n, ir.Bind):
         return {"(if)": node_yaml(n.cond), "(set)": [n.param, expr_yaml(n.value)]}
+    if isinstance(n, ir.Token):
+        return {"(token)": [n.code, node_yaml(n.item)]}
+    if isinstance(n, ir.Wrap):
+        return {"(wrap)": [n.begin, n.end, node_yaml(n.item)]}
+    if isinstance(n, ir.Emit):
+        return {"(emit)": n.code}
     raise TypeError(f"not a grammar node: {n!r}")
 
 
@@ -131,8 +137,8 @@ def regenerate(productions):
 
 
 def main():
-    source = sys.argv[1] if len(sys.argv) > 1 else spec2grammar.DEFAULT_SPEC
-    yaml.safe_dump(regenerate(spec2grammar.load(source)), sys.stdout, sort_keys=False, allow_unicode=True)
+    source = sys.argv[1] if len(sys.argv) > 1 else annotated2ir.DEFAULT_GRAMMAR
+    yaml.safe_dump(regenerate(annotated2ir.load(source)), sys.stdout, sort_keys=False, allow_unicode=True)
 
 
 if __name__ == "__main__":

@@ -30,6 +30,14 @@ is a small compiler, not a weekend parser.
 makes determinization finite, makes the deferred-token set bounded, and makes a pull `next_token()` able to return
 without draining the whole document. It is doing triple duty and the entire architecture rests on it.
 
+It bounds the *key* deferral, and nothing else. Indentation detection is a second deferral, and it is not line-bounded:
+a block collection's indentation is measured past any number of comment lines, and a block scalar's past any number of
+empty ones. The Haskell reference looks ahead across them and re-parses them afterwards, which a backtracking parser can
+afford. libyeast cannot — unbounded lookahead is unbounded input retention, and for a streaming parser that is a memory
+bound an attacker chooses. So libyeast **consumes** where the reference peeks: the tokens of those lines do not depend
+on the indentation being measured, so they are emitted as the lines are crossed, and only then is the indentation read
+off the first line that is not skippable. One forward pass, nothing retained.
+
 ## §1 — The central principle: two parameters, two fates
 
 The productions are indexed by two parameters. The generator's core intellectual move — a binding-time analysis — is to
@@ -93,8 +101,14 @@ header), and that one decision makes the single stream do three jobs at once:
 **Where the rewind problem went:** a backtracking parser would have to discard emitted events on every failed
 alternative. The determinized automaton (phase 06) doesn't backtrack — committed transitions emit on commit, so there is
 nothing to rewind. The only provisional events are those inside the line-bounded simple-key lookahead; they live in the
-deferred queue above and are discarded there if the key hypothesis fails. The single-line rule that bounds the deferral
-bounds the event retention too.
+deferred queue above and are discarded there if the key hypothesis fails. The single-line rule that bounds that deferral
+bounds its event retention too. Indentation detection, the other deferral, retains nothing at all: it consumes and emits
+as it goes (§0).
+
+**The grammar is libyeast's own.** `grammar/annotated.yaml` holds the productions *and* the yeast codes they emit; the
+vendored `yaml-spec-1.2.yaml` holds neither the token layer nor the structure it needs, having inlined the indicator
+characters. A gate erases libyeast's additions and recovers the official grammar exactly, so the generator's input is
+hand-authored where it must be and machine-proved where it can be.
 
 ```c
 /* the emitted C surface — pull, suspendable, arena-backed (see include/yeast.h for the full declared API) */
@@ -138,30 +152,36 @@ well-trodden compiler work.
 
 ### Phase 00 — Grammar IR · Ingest the productions into a typed IR
 
-*Risk: Low — the first concrete work of the project.* The grammar is already machine-readable: the `yaml/yaml-grammar`
-repo encodes the ~211 productions as operator-keyed YAML (`(all)`, `(any)`, `(+++)`, `(***)`, `(???)`, `({n})`, `(===)`,
-`(!==)`, `(---)`, `(case)`, …). Vendor that file (pinned, under `third_party/`) as the single source of truth and
-translate it into a typed Python IR the rest of the compiler operates on. `ir.py` (fixed) defines the node ADT — `Seq` /
-`Alt` / `Star` / `Plus` / `Opt` / `Repeat` / `Look` / `NegLook` / `Exclude` / `Case` / `Ref` / `Char` / `Range`, plus
-the parameter sub-language (`Param` / `Lit` / `Call` — the latter for `in-flow` and the `n` predicates). `grammar.py`
-(generated, **not** committed) is the frozen `GRAMMAR` mapping of `Prod` objects.
+**Done.** `grammar/annotated.yaml` is the generator's source, `generator/ir.py` the typed IR, and four gates hold them:
+the grammar round-trips through the IR losslessly, every reference resolves with a matching arity, every character the
+parser consumes lies within a token annotation, and erasing libyeast's additions recovers the vendored official grammar
+production for production. The decoder is generated from it. `DESIGN.md` says where each piece lives; `CHANGELOG.md`
+records what it is.
 
-First concrete steps; the rest of the phase is scoped once these land:
+What that phase taught, which the rest of this plan is written against: **the vendored grammar cannot be the source of
+truth.** It inlines the indicator characters, so it cannot say that a quotation mark opens a scalar as an indicator but
+is meta inside an escape, and it names no token at all. libyeast's grammar restores that structure and annotates it, and
+the erasure gate is what keeps the addition from becoming a change.
 
-1. **`spec2grammar.py`** — load the vendored `yaml-spec-1.2.yaml` and translate each production **1:1** into
-   `grammar.py`. Faithful capture only — preserve the source's node structure exactly (no flattening or normalization;
-   that belongs to later `grammar2parser.py` passes), so the round-trip stays exact.
-1. **`grammar2spec.py`** — the inverse: regenerate the yaml-grammar notation from `grammar.py`.
-1. **Round-trip check** — run `spec2grammar → grammar.py → grammar2spec` and diff (as parsed data, not text) against the
-   vendored source; it must be empty. That empty diff is a self-consistent state worth committing (vendored spec +
-   `ir.py` + the two scripts; `grammar.py` regenerated and verified, never committed).
+**What is left of it: make `grammar/annotated.yaml` a document, not a dump.** It works, and it is gated, but it was
+written by a machine and reads like it — no header, no sections, no word about any production. The vendored
+`yaml-spec-1.2.yaml` is a reference someone can learn the grammar from; ours is the only place the *yeast token format*
+is written down anywhere, and it should be at least as good:
 
-Later, to be scoped when we get there: deeper static validation (every `Ref` resolves; every `Case` covers `c`'s
-domain), an independent correctness leg running the yaml-test-suite through the yaml-grammar harness against our IR, and
-the hand-off into `grammar2parser.py`. (The grammar is version-stable — 1.2 and 1.2.2 share productions — so this
-vendored source also matches the `yamlreference` token oracle of phase 02.)
+1. A header explaining the notation — the operator vocabulary, and libyeast's three additions (`(token)`, `(wrap)`,
+   `(emit)`), with what a token annotation means: a code scoped over what a node consumes, cut into runs at its edges.
+1. The yeast codes themselves, named and explained, since no other document lists them.
+1. The spec's own chapter structure, so a production can be found where the reader expects it.
+1. Per production: its number, its BNF, and — where it carries one — what it emits and why that is the right code.
+   `c-quoted-quote` marking the second quote `meta` while the first is an `indicator` is a decision, and a reader should
+   not have to reverse-engineer it.
 
-**Exit** — the vendored grammar translates into the typed IR and round-trips faithfully.
+The comments are free to be written by hand: the round-trip gate compares parsed data, so nothing a comment says can
+break it, and nothing regenerates the file.
+
+Still to be scoped, when the parser needs them: an independent correctness leg running the yaml-test-suite through the
+yaml-grammar harness against our IR, and the hand-off into `grammar2parser.py`. (The grammar is version-stable — 1.2 and
+1.2.2 share productions — so it also matches the `yamlreference` token oracle of phase 02.)
 
 ### Phase 01 — First productions · A walking skeleton that emits real tokens
 
@@ -231,7 +251,19 @@ become an explicit, auditable input to the generator — this is where bugs get 
 1. Specify tab handling (forbidden as indentation), and the comment rule (`#` starts a comment only after whitespace:
    `foo#bar` is a scalar).
 1. Decide and document duplicate-mapping-key policy (error / last-wins / first-wins) — the spec underspecifies it.
-1. Specify line-break normalization, BOM handling, block-scalar indentation auto-detection, error-recovery states.
+1. Specify line-break normalization, BOM handling, and error-recovery states.
+1. **Indentation detection** — the official grammar leaves it undefined and says so: `<auto-detect-indent>` is declared
+   a "special rule" and never given a meaning, and a block scalar's `m` is set to the *string* `"auto-detect"`, so that
+   `l-literal-content(n + m)` is an IOU nothing redeems. Three productions close it — the indentation of a block
+   collection, of a block scalar, and of an inline collection — and libyeast writes them **consuming**, where the
+   reference peeks: the tokens of the lines crossed on the way do not depend on the indentation being measured, so they
+   are emitted as they are crossed, and only then is the indentation read off the first line that is not skippable.
+   Needs value-returning productions in the IR (the reference's `do m <- …`), and the first entry in
+   `check_vendor_spec.py`'s `DEVIATIONS`, saying that libyeast consumes where the official grammar is silent.
+1. **Settle a real divergence first.** The reference treats a leading all-space line longer than the detected indent as
+   *content*; the spec calls a line with no non-space character *empty*, and an over-indented empty line an *error*.
+   They disagree, the differential oracle will trip on it, and the answer must be decided before the productions are
+   written rather than after.
 1. Mark each rule as "grammar" vs "asserted semantic action" so the fidelity claim is honest about its boundary.
 
 **Exit** — a written semantic spec, versioned alongside the IR, covering every rule beyond the BNF.

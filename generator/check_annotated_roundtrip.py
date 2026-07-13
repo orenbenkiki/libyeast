@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Round-trip check: `spec2grammar` then `grammar2spec` must reproduce the vendored grammar exactly.
+"""Round-trip check: `annotated2ir` then `ir2annotated` must reproduce the vendored grammar exactly.
 
 Loads the vendored yaml-grammar, translates it to the IR and back, and asserts the regenerated data equals the source
 (compared as parsed data, not text). Reports the first differing production and exits non-zero on any mismatch.
@@ -9,17 +9,17 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import grammar2spec  # noqa: E402
-import spec2grammar  # noqa: E402
+import ir2annotated  # noqa: E402
+import annotated2ir  # noqa: E402
 
 import yaml  # noqa: E402
 
 
 def main():
-    source = sys.argv[1] if len(sys.argv) > 1 else spec2grammar.DEFAULT_SPEC
+    source = sys.argv[1] if len(sys.argv) > 1 else annotated2ir.DEFAULT_GRAMMAR
     with open(source) as handle:
         original = yaml.safe_load(handle)
-    regenerated = grammar2spec.regenerate(spec2grammar.translate(original))
+    regenerated = ir2annotated.regenerate(annotated2ir.translate(original))
 
     if regenerated == original:
         rules = sum(1 for key in original if not key.startswith(":"))

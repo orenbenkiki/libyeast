@@ -21,5 +21,11 @@ All notable changes to this project are documented here. The format follows
   assembled. Each character becomes a 32-bit key — the id of the character where the grammar names it, one bit per
   character set the grammar tests, and the bytes it consumed — so a test in the parser is a single comparison or a
   single AND. The tables are generated from the grammar and gated against drift.
+- Annotated grammar: `grammar/annotated.yaml` is libyeast's own grammar, and the source everything is generated from. It
+  carries the YAML 1.2 productions together with the yeast token codes they emit, which the official grammar cannot
+  express — it inlines the indicator characters, losing the structure the token layer hangs on, and names no token at
+  all. A gate erases the annotations and recovers the official grammar exactly, so the grammar is hand-authored where it
+  must be and machine-proved where it can be; another holds every character the parser consumes to lying within an
+  annotation, so a forgotten one fails the build rather than emitting an `unparsed` token years later.
 
 _No release has been tagged yet; the YAML parser itself is not implemented._

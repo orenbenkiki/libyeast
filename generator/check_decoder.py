@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import chars  # noqa: E402
 import grammar2decoder  # noqa: E402
 import ir  # noqa: E402
-import spec2grammar  # noqa: E402
+import annotated2ir  # noqa: E402
 
 TABLES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "decoder_tables.h")
 
@@ -86,7 +86,7 @@ def check_literals(model):
 
 
 def main():
-    grammar = spec2grammar.load()
+    grammar = annotated2ir.load()
     model = chars.Model(grammar)
     errors = check_keys(model, grammar) + check_literals(model) + check_scanned_sets(model, grammar)
     with open(TABLES, encoding="utf-8") as handle:

@@ -56,6 +56,7 @@ BUILD_DEPS := $(LIB_SRC) $(PUB_HDR) $(PRIV_HDR) $(wildcard tests/*.c) $(VENDOR_H
 LINT_FILES := src/yeast.c src/decoder.c tests/test_c.c tests/test_decoder.c
 PKG_PREFIX := $(CURDIR)/build-pkgtest/prefix
 GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
+ANNOTATED := grammar/annotated.yaml
 GEN_SRC    := $(wildcard generator/*.py)
 
 # Tool dependencies, verified by check-build-deps / check-dev-deps.
@@ -192,20 +193,27 @@ build-docs/.docs: $(PUB_HDR) Doxyfile CMakeLists.txt
 	else echo "version consistent: $(VERSION)"; fi
 	@touch $@
 
-# Grammar round-trip: spec2grammar -> IR -> grammar2spec must reproduce the vendored grammar exactly. A lossless-ingest
-# gate for the generator; nothing is silently dropped or mangled in translation.
-.stamps/grammar-roundtrip: $(GRAMMAR_SPEC) $(GEN_SRC) | .stamps
-	python3 generator/check_spec_roundtrip.py
+# Grammar round-trip: annotated2ir -> IR -> ir2annotated must reproduce libyeast's grammar exactly. A lossless-ingest
+# gate for the generator; nothing, the token annotations included, is silently dropped or mangled in translation.
+.stamps/grammar-roundtrip: $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_annotated_roundtrip.py
 	@touch $@
 
 # Grammar validation: every reference resolves to a production with a matching arity, and every production is reachable.
-.stamps/grammar-validate: $(GRAMMAR_SPEC) $(GEN_SRC) | .stamps
+.stamps/grammar-validate: $(ANNOTATED) $(GEN_SRC) | .stamps
 	python3 generator/validate_grammar.py
+	@touch $@
+
+# The official grammar, recovered: erase libyeast's token annotations and its indicator productions from
+# grammar/annotated.yaml, and what remains must be the vendored grammar. What libyeast adds cannot quietly become what
+# libyeast changes.
+.stamps/vendor-spec: $(GRAMMAR_SPEC) $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_vendor_spec.py
 	@touch $@
 
 # Decoder tables: the committed src/decoder_tables.h must be exactly what the grammar produces, and every bit of every
 # key must agree with a direct evaluation of the character set it stands for. The classification cannot drift.
-.stamps/decoder-tables: $(GRAMMAR_SPEC) $(GEN_SRC) src/decoder_tables.h | .stamps
+.stamps/decoder-tables: $(ANNOTATED) $(GEN_SRC) src/decoder_tables.h | .stamps
 	python3 generator/check_decoder.py
 	@touch $@
 
@@ -265,7 +273,7 @@ lint: .stamps/lint
 $(TODO_X): .stamps/$(TODO_X)
 docs: build-docs/.docs
 check-version: .stamps/version-check
-check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/decoder-tables
+check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/vendor-spec .stamps/decoder-tables
 coverage: .stamps/coverage-gate
 pkg-test: build-pkgtest/.pkg
 

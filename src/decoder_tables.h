@@ -18,7 +18,7 @@
 #define YS_LIT_KEY_LINE_FEED                 0x02000242u // U+000A, [024] b-line-feed
 #define YS_LIT_KEY_CARRIAGE_RETURN           0x02000243u // U+000D, [025] b-carriage-return
 #define YS_LIT_KEY_SPACE                     0x03007A04u // U+0020, [031] s-space, [051] ns-esc-space
-#define YS_LIT_KEY_EXCLAMATION_MARK          0x0202FB05u // '!',    [015] c-tag, [090] c-primary-tag-handle, [100] c-non-specific-tag
+#define YS_LIT_KEY_EXCLAMATION_MARK          0x0202FB05u // '!',    [015] c-tag
 #define YS_LIT_KEY_QUOTATION_MARK            0x0202EB06u // '"',    [019] c-double-quote, [052] ns-esc-double-quote
 #define YS_LIT_KEY_NUMBER_SIGN               0x0202FB07u // '#',    [012] c-comment
 #define YS_LIT_KEY_DOLLAR_SIGN               0x0222FA08u // '$',    [039] ns-uri-char

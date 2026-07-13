@@ -26,7 +26,12 @@ LIT_NONE = 0  # not one of the grammar's named characters; the named characters 
 
 
 def denote(grammar, node, seen=()):
-    """The set of codepoints `node` denotes, or None if `node` is not a pure character node."""
+    """The set of codepoints `node` denotes, or None if `node` is not a pure character node.
+
+    A token annotation says what the characters are called, not which they are, so it is looked straight through.
+    """
+    if isinstance(node, (ir.Token, ir.Wrap)):
+        return denote(grammar, node.item, seen)
     if isinstance(node, ir.Char):
         return ("literal", node.cp)
     if isinstance(node, ir.Range):
