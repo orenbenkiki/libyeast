@@ -20,6 +20,10 @@ import annotated2ir  # noqa: E402
 
 import yaml  # noqa: E402
 
+# The rules libyeast adds that match nothing at all. They exist only to emit a marker, so the official grammar can
+# leave them out and never notice: `x / end-block-scalar` is `x / <empty>`, which is `x?`, which is what it writes.
+MARKER_ONLY = frozenset({"end-block-scalar"})
+
 # The character each indicator production names. The official grammar writes the character; libyeast writes the
 # production, so that the token annotation has somewhere to go.
 INDICATORS = {
@@ -75,6 +79,10 @@ def normalize(node):
     if isinstance(node, ir.Seq):
         items = flatten(node.items)
         return items[0] if len(items) == 1 else ir.Seq(items)
+    if isinstance(node, ir.Alt) and node.items and isinstance(node.items[-1], ir.Empty):
+        # An alternation whose last branch matches nothing is an optional, which is how the official grammar writes it.
+        rest = node.items[:-1]
+        return ir.Opt(rest[0] if len(rest) == 1 else ir.Alt(rest))
     return node
 
 
@@ -84,6 +92,8 @@ def erase(node, owner):
         return erase(node.item, owner)
     if isinstance(node, ir.Case):
         return ir.Case(node.var, tuple((value, erase(branch, owner)) for value, branch in node.branches))
+    if isinstance(node, ir.Ref) and node.name in MARKER_ONLY:
+        return ir.Empty()
     if isinstance(node, ir.Ref) and not node.args and node.name in INDICATORS and node.name != owner:
         return ir.Char(INDICATORS[node.name])
     if isinstance(node, ir.Seq):
@@ -105,6 +115,8 @@ def official(grammar):
     """The official grammar's mapping, recovered from libyeast's."""
     recovered = {}
     for name, production in grammar.items():
+        if name in MARKER_ONLY:
+            continue  # the official grammar has no such rule: it matches nothing, and emits nothing there to emit
         body = normalize(erase(production.body, name))
         recovered[name] = ir.Prod(production.number, name, production.params, body)
     return ir2annotated.regenerate(recovered)

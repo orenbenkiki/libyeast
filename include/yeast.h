@@ -178,7 +178,18 @@ typedef struct ys_allocator {
 /// Parser construction options. A zeroed struct selects all defaults.
 typedef struct ys_options {
     ys_allocator allocator; ///< Custom allocator; a zeroed allocator selects `malloc`/`realloc`/`free`.
-    size_t max_token_bytes; ///< Cap on the bytes buffered for one token (a streaming OOM guard); 0 means unlimited.
+    /// Cap on the input bytes the parser may buffer before it can hand a token back — a streaming OOM guard. 0 means
+    /// unlimited. Exceeding it is a @ref YS_CODE_ERROR token, not an allocation failure.
+    ///
+    /// Two things consume it. One is a single enormous token, such as a scalar of several gigabytes. The other is a run
+    /// of tokens whose codes are not yet decided: the empty lines that open a block scalar are content if a content
+    /// line follows them, and are chomped away if none does, so none of them can be handed back until the parser finds
+    /// out which. YAML bounds neither — it bounds lookahead only for implicit keys, at 1024 characters — so libyeast
+    /// bounds them here.
+    ///
+    /// It caps the *input* bytes. The parser's own memory is a multiple of that: the buffered bytes stay live because
+    /// the tokens that are held back point into them, and each held-back token costs a few dozen bytes of its own.
+    size_t max_token_bytes;
 } ys_options;
 
 /// An opaque leak-checking allocator: it wraps `malloc`/`realloc`/`free` and counts live allocations, so a test — or a

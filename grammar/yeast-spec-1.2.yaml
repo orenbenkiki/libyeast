@@ -122,8 +122,10 @@
 #   == Special Rule Names ==
 #
 # A handful of rule names are words inside angle brackets. These are called
-# "special rules". They are not defined in the grammar. Each of these rules is
-# an assertion that doesn't consume any text in the parse. They are:
+# "special rules". They are not written as rules; each is an assertion, or a
+# measurement, that consumes no text. The grammar this one derives from leaves
+# the last two of them undefined, and says so. Here they are defined, because a
+# parser cannot be generated from a rule whose meaning is left to the reader.
 #
 #   * <empty>
 #     Always matches.
@@ -135,7 +137,31 @@
 #     Current parse position is at the end of the input stream.
 #
 #   * <auto-detect-indent>
-#     Detect the number of characters of new indentation.
+#     The indentation of the next line that holds a character other than a
+#     space, less n, and at least 1. The line the parse stands on counts only if
+#     the parse is at its start.
+#
+#     So a block collection (rules 183 and 187) measures the line it is already
+#     at the start of, and nothing is skipped. A block scalar (rule 163) is at
+#     its indicator, in the middle of a line, so the rest of that line is
+#     skipped — the header's own comment — and the break, and however many empty
+#     lines follow, until a line with content is reached, and that line's
+#     indentation is the answer.
+#
+#     Which is why the empty lines of a block scalar are the one place libyeast
+#     must hold tokens back. Whether such a line is content — a line feed the
+#     scalar keeps — or is chomped away, depends on whether a line with content
+#     ever follows it, and until one does the answer is not known. YAML bounds
+#     this nowhere; libyeast bounds it by `max_token_bytes`.
+#
+#   * <auto-detect-in-line-indent>
+#     The number of spaces that follow, on this line, and at least 1. Not a
+#     line's indentation: the parse is in the middle of a line, just past the
+#     '-' or the '?' that introduced a compact collection, and this is what that
+#     collection is indented by.
+#
+#     Rule 185 needs it. The grammar this one derives from reads m there and
+#     sets it nowhere at all.
 #
 #   == Rule Definitions ==
 #
@@ -2989,7 +3015,7 @@ c-indentation-indicator:
     - (if): ns-dec-digit
       (set): [ m, { (ord): (match) } ]
     - (if): <empty>
-      (set): [ m, "auto-detect" ]
+      (set): [ m, <auto-detect-indent> ]
 
 
 
@@ -3158,6 +3184,33 @@ b-nb-literal-next:
 
 
 
+#===============================================================================
+# A block scalar with no content at all still has to close. b-chomped-last ends the
+# scalar when there was content to end; when there was none, this does — unless the
+# breaks are kept, in which case they are content, and l-keep-empty ends it after them.
+#
+# It matches nothing, so the grammar it derives from can write the alternation as an
+# optional and never notice the difference. libyeast notices: without this the markers do
+# not balance, and an empty stripped block scalar would open a scalar it never closed.
+#===============================================================================
+
+:212: end-block-scalar
+# end-block-scalar(t) ::=
+#   ( t = strip => <empty> )
+#   ( t = clip  => <empty> )
+#   ( t = keep  => <empty> )
+#
+# Emits: end-scalar
+
+end-block-scalar:
+  (...): t
+  (case):
+    var: t
+    "strip": { (emit): end-scalar }
+    "clip": { (emit): end-scalar }
+    "keep": <empty>
+
+
 :173: l-literal-content
 # l-literal-content(n,t) ::=
 #   ( l-nb-literal-text(n)
@@ -3168,11 +3221,12 @@ b-nb-literal-next:
 l-literal-content:
   (...): [ n, t ]
   (all):
-  - (???):
-      (all):
+  - (any):
+    - (all):
       - l-nb-literal-text: n
       - (***): { b-nb-literal-next: n }
       - b-chomped-last: t
+    - end-block-scalar: t
   - l-chomped-empty: [ n, t ]
 
 
@@ -3315,10 +3369,11 @@ l-nb-diff-lines:
 l-folded-content:
   (...): [ n, t ]
   (all):
-  - (???):
-      (all):
+  - (any):
+    - (all):
       - l-nb-diff-lines: n
       - b-chomped-last: t
+    - end-block-scalar: t
   - l-chomped-empty: [ n, t ]
 
 
@@ -3381,16 +3436,18 @@ c-l-block-seq-entry:
 
 s-l+block-indented:
   (...): [ n, c ]
-  (any):
-  - (all):
-    - s-indent: m
-    - (any):
-      - ns-l-compact-sequence: { (+): [ n, { (+): [ 1, m ] } ] }
-      - ns-l-compact-mapping: { (+): [ n, { (+): [ 1, m ] } ] }
-  - s-l+block-node: [ n, c ]
-  - (all):
-    - e-node
-    - s-l-comments
+  (all):
+  - (set): [ m, <auto-detect-in-line-indent> ]
+  - (any):
+    - (all):
+      - s-indent: m
+      - (any):
+        - ns-l-compact-sequence: { (+): [ n, { (+): [ 1, m ] } ] }
+        - ns-l-compact-mapping: { (+): [ n, { (+): [ 1, m ] } ] }
+    - s-l+block-node: [ n, c ]
+    - (all):
+      - e-node
+      - s-l-comments
 
 
 

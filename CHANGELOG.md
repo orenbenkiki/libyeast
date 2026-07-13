@@ -25,10 +25,15 @@ All notable changes to this project are documented here. The format follows
   from. It carries the YAML 1.2 rules together with the yeast tokens they emit, which the official grammar cannot
   express — it inlines the indicator characters, losing the structure the token layer hangs on, and names no token at
   all. It is also the only place the yeast token format is written down: the notation, the codes, and, rule by rule,
-  what each emits and why. Three gates keep it honest. Erasing libyeast's additions recovers the official grammar
+  what each emits and why. Four gates keep it honest. Erasing libyeast's additions recovers the official grammar
   exactly, so the grammar is hand-authored where it must be and machine-proved where it can be. Every character the
   parser consumes must lie within a token action, so a forgotten one fails the build rather than emitting an `unparsed`
-  token years later. And every rule that emits tokens must say which, checked against the grammar itself, so a note that
-  is wrong fails as surely as one that is missing.
+  token years later. Every `begin-` marker must be closed by its own `end-`, on every path and for every context and
+  chomping. And every rule that emits tokens must say which, checked against the grammar itself, so a note that is wrong
+  fails as surely as one that is missing.
+- Indentation detection, which the official grammar declares a "special rule" and never defines, and which it elsewhere
+  leaves as an integer added to the string `"auto-detect"`. libyeast defines it, and its two departures from the
+  official grammar are declared, with their reasons: `m` is an indentation now, and `s-l+block-indented` sets the `m` it
+  had been reading and never setting.
 
 _No release has been tagged yet; the YAML parser itself is not implemented._

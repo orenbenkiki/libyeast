@@ -16,9 +16,21 @@ import annotated2ir  # noqa: E402
 
 VENDORED = "third_party/yaml-grammar/yaml-spec-1.2.yaml"
 
-# The productions where libyeast departs from the official grammar, and why. A deviation is a decision, not an escape:
-# nothing belongs here that could be fixed by correcting the grammar instead.
-DEVIATIONS = {}
+# Where libyeast departs from the official grammar, and why. A deviation is a decision, not an escape: nothing belongs
+# here that could be fixed by correcting the grammar instead.
+DEVIATIONS = {
+    "c-indentation-indicator": (
+        'the official grammar sets m to the string "auto-detect", and then computes n + m — an integer plus a string, '
+        "which nothing in it ever redeems. libyeast sets m to <auto-detect-indent>, the marker the official grammar "
+        "already uses for the same thing in l+block-sequence and l+block-mapping, so that m is always an indentation"
+    ),
+    "s-l+block-indented": (
+        "the official grammar reads m here and sets it nowhere — its own notes concede that it 'assumes that m is "
+        "stored as a state/stack variable and has been set somewhere else'. libyeast sets it, from "
+        "<auto-detect-in-line-indent>: the spaces that follow on this line, which is what a compact collection is "
+        "indented by"
+    ),
+}
 
 
 def main():
@@ -44,6 +56,8 @@ def main():
         sys.exit(1)
     productions = sum(1 for key in vendored if not key.startswith(":"))
     print(f"official grammar recovered: {productions} productions, {len(DEVIATIONS)} declared deviation(s)")
+    for name in sorted(DEVIATIONS):
+        print(f"    {name}: {DEVIATIONS[name]}")
 
 
 if __name__ == "__main__":

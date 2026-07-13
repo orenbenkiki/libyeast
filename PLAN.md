@@ -30,13 +30,28 @@ is a small compiler, not a weekend parser.
 makes determinization finite, makes the deferred-token set bounded, and makes a pull `next_token()` able to return
 without draining the whole document. It is doing triple duty and the entire architecture rests on it.
 
-It bounds the *key* deferral, and nothing else. Indentation detection is a second deferral, and it is not line-bounded:
-a block collection's indentation is measured past any number of comment lines, and a block scalar's past any number of
-empty ones. The Haskell reference looks ahead across them and re-parses them afterwards, which a backtracking parser can
-afford. libyeast cannot — unbounded lookahead is unbounded input retention, and for a streaming parser that is a memory
-bound an attacker chooses. So libyeast **consumes** where the reference peeks: the tokens of those lines do not depend
-on the indentation being measured, so they are emitted as the lines are crossed, and only then is the indentation read
-off the first line that is not skippable. One forward pass, nothing retained.
+It bounds the *key* deferral, and nothing else. There is a second, and the block scalar is where it lives.
+
+**Indentation detection is not the problem.** A block collection's indentation, and an inline one's, are read straight
+off the current column — the reference peeks past comment lines first, but `s-l-comments` has already eaten them, so
+there is nothing to peek past. Those two cost no lookahead at all.
+
+**The empty lines that open a block scalar are the problem, and the chomping is why.** An empty line there is content if
+a content line follows it — `l-empty`, a `line-feed` — and is chomped away if none does — `b-non-content`, a `break`.
+The same line, told apart by something that has not happened yet. So none of those tokens can be handed back until the
+parser reaches a content line or the end of the scalar, and the run of them has no bound: YAML bounds lookahead only for
+implicit keys, at 1024 characters, and says nothing at all here.
+
+Nor is this an artefact of yeast. The *value* depends on it too — `|-` with two blank lines and nothing after is `""`,
+and with `text` after is `"\n\ntext"` — so any parser that produces a value looks exactly as far.
+
+So libyeast queues them. The tokens of the run are built and held, none handed back; when the run resolves, either they
+become content and the scalar's end arrives later, or `end-scalar` is **injected ahead of them** and they become the
+breaks that were chomped away — the marker's position is what says they were never content. `end-block-scalar` exists to
+emit that marker, and without it an empty stripped block scalar opens a scalar it never closes.
+
+`max_token_bytes` bounds it, being the same guard a single enormous token needs: the bytes the parser may buffer before
+it can hand a token back. Past the cap it is an error, not an out-of-memory.
 
 ## §1 — The central principle: two parameters, two fates
 
@@ -242,18 +257,17 @@ become an explicit, auditable input to the generator — this is where bugs get 
    divergence the differential oracle will find. Deciding this decides three things at once: whether the decoder grows a
    transcoding front end or stays UTF-8 and rejects the rest, what a `bom` token's text is, and whether libyeast may
    call itself conformant.
-1. **Indentation detection** — the official grammar leaves it undefined and says so: `<auto-detect-indent>` is declared
-   a "special rule" and never given a meaning, and a block scalar's `m` is set to the *string* `"auto-detect"`, so that
-   `l-literal-content(n + m)` is an IOU nothing redeems. Three productions close it — the indentation of a block
-   collection, of a block scalar, and of an inline collection — and libyeast writes them **consuming**, where the
-   reference peeks: the tokens of the lines crossed on the way do not depend on the indentation being measured, so they
-   are emitted as they are crossed, and only then is the indentation read off the first line that is not skippable.
-   Needs value-returning productions in the IR (the reference's `do m <- …`), and the first entry in
-   `check_vendor_spec.py`'s `DEVIATIONS`, saying that libyeast consumes where the official grammar is silent.
+1. **Indentation detection — defined; implement it.** The grammar now says what the official grammar would not:
+   `<auto-detect-indent>` is the indentation of the next line holding a character other than a space, less `n`, the
+   current line counting only if the parse is at its start; `<auto-detect-in-line-indent>` is the spaces that follow on
+   this line, which is what a compact collection is indented by. `m` is an indentation now and never the string
+   `"auto-detect"`, and the two departures that took are declared in `check_vendor_spec.py`, with their reasons. What is
+   left is for the generator to implement the two markers — and to do so **consuming**, not peeking: the grammar says
+   what is measured, not that the parser must read the input twice to measure it.
 1. **Settle a real divergence first.** The reference treats a leading all-space line longer than the detected indent as
    *content*; the spec calls a line with no non-space character *empty*, and an over-indented empty line an *error*.
-   They disagree, the differential oracle will trip on it, and the answer must be decided before the productions are
-   written rather than after.
+   They disagree, the differential oracle will trip on it, and the answer must be decided before the generator
+   implements the markers rather than after.
 1. Mark each rule as "grammar" vs "asserted semantic action" so the fidelity claim is honest about its boundary.
 
 **Exit** — a written semantic spec, versioned alongside the IR, covering every rule beyond the BNF.

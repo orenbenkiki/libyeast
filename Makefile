@@ -211,6 +211,13 @@ build-docs/.docs: $(PUB_HDR) Doxyfile CMakeLists.txt
 	python3 generator/check_vendor_spec.py
 	@touch $@
 
+# Marker balance: every begin- marker must be closed by its own end-, on every path, and a rule must balance them the
+# same way whichever path is taken through it. Nothing else catches this: a marker consumes no character, so the rule
+# that every character lies within a token action says nothing about it.
+.stamps/markers: $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_markers.py
+	@touch $@
+
 # Grammar documentation: every rule that emits tokens must say which, in the order it emits them — checked against the
 # grammar itself, so a note that is wrong fails as surely as one that is missing.
 .stamps/grammar-docs: $(ANNOTATED) $(GEN_SRC) | .stamps
@@ -279,8 +286,8 @@ lint: .stamps/lint
 $(TODO_X): .stamps/$(TODO_X)
 docs: build-docs/.docs
 check-version: .stamps/version-check
-check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/vendor-spec .stamps/grammar-docs \
-               .stamps/decoder-tables
+check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/vendor-spec .stamps/markers \
+               .stamps/grammar-docs .stamps/decoder-tables
 coverage: .stamps/coverage-gate
 pkg-test: build-pkgtest/.pkg
 

@@ -45,6 +45,8 @@ def expr_yaml(e):
         return "(match)"
     if isinstance(e, ir.AutoDetectIndent):
         return "<auto-detect-indent>"
+    if isinstance(e, ir.AutoDetectInLineIndent):
+        return "<auto-detect-in-line-indent>"
     if isinstance(e, ir.Add):
         return {"(+)": [expr_yaml(e.a), expr_yaml(e.b)]}
     if isinstance(e, ir.Sub):

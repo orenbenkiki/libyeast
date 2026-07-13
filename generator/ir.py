@@ -32,7 +32,19 @@ class Match:
 
 @dataclass(frozen=True)
 class AutoDetectIndent:
-    """`<auto-detect-indent>`: the block-scalar indentation the parser auto-detects."""
+    """`<auto-detect-indent>`: the indentation of the next line that holds a character other than a space, less `n`.
+
+    The current line counts only if the parse is at its start — so a block collection measures the line it stands on,
+    and a block scalar measures past the rest of its header line, the break, and however many empty lines follow.
+    """
+
+
+@dataclass(frozen=True)
+class AutoDetectInLineIndent:
+    """`<auto-detect-in-line-indent>`: the spaces that follow, here, on this line — not a line's indentation.
+
+    What a compact collection is indented by, measured from just after the `-` or the `?` that introduced it.
+    """
 
 
 @dataclass(frozen=True)
