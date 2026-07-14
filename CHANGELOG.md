@@ -46,16 +46,43 @@ All notable changes to this project are documented here. The format follows
   `ys_read_token` reads one back, so a stream can be piped between tools, stored, or compared against another parser's.
   `ys_writer` mirrors `ys_reader`, with the same file-descriptor and `FILE *` adapters.
 
-- Errors tell the caller what to do about them. A malformed document is `YS_CODE_ERROR_FORMAT`, and parsing resumes at
-  the next one, the skipped bytes classified as `YS_CODE_UNPARSED` rather than lost. Running out of memory is
-  `YS_CODE_ERROR_MEMORY` and a reader that fails is `YS_CODE_ERROR_READER`, and those end the parse for good — the input
-  must be parsed again, by a new parser with a larger cap. On the wire all three are `!`, since a consumer of the wire
-  has no choice to make between them.
+- Errors tell the caller what to do about them. A malformed document is `YS_CODE_ERROR_FORMAT`, running out of memory is
+  `YS_CODE_ERROR_MEMORY`, and a reader that fails is `YS_CODE_ERROR_READER`; the last two end the parse for good — the
+  input must be parsed again, by a new parser with a larger cap. On the wire all three are `!`, since a consumer of the
+  wire has no choice to make between them. What the parser does with the input after a malformed document is
+  `ys_options.resume`: by default the error ends the parse and the rest of the input comes back as `YS_CODE_UNPARSED`
+  tokens, which is what the reference parser does, so the two token streams stay comparable on every input, valid or
+  not. `YS_RESUME_DOCUMENT` instead carries on at the next document, so that one malformed document in a stream does not
+  cost the caller the others — at the price that only the input before the first error can be compared.
+
+- Parser state: the window over the input, the stack of productions the parser is inside, the queue of tokens it has
+  built but not handed back, and the state it is in — the whole of it in one struct, none of it in the C call stack,
+  which is what lets `ys_next_token` hand back a token from the middle of a production and resume there. The queue holds
+  a run of undecided tokens, whose codes are rewritten and ahead of which a marker is injected when the parser learns
+  what they were, and the stack's frames carry the grammar's one runtime parameter, `n`. The automaton that drives them
+  is not generated yet, so `ys_next_token` still returns a "not implemented" error.
 
 ### Changed
 
 - `ys_options.max_token_bytes` becomes `max_bytes`, and caps the memory the parser allocates rather than the bytes it
-  buffers for one token. Four things grow — the buffered input, the tokens held back with it, the parser's stack, which
-  deep nesting grows and no quantity of input bounds, and an error's message — and one cap now bounds them together.
+  buffers for one token. Three things grow — the buffered input, the tokens held back with it, and the parser's stack,
+  which deep nesting grows and no quantity of input bounds — and one cap now bounds them together.
+
+### Fixed
+
+- The reference parser does not resume after an error, and libyeast had been built to match a reading of it that said it
+  did: it emits the error token, hands back the input behind it as unparsed, and stops. So resuming at the next document
+  was not fidelity but a departure, and the one thing it was adopted to protect — the token-for-token comparison against
+  the reference — is exactly what it broke. Not resuming is now the default, and resuming is an option the caller asks
+  for, knowing what it costs.
+
+- An error's message is a static string, so its lifetime is no longer an exception to the rule every other token's text
+  follows. It cannot be, since the message names the production the parser was inside and what it expected there, both
+  of which are the grammar's and not the input's. What the parser found is not in the message and does not need to be:
+  the first `YS_CODE_UNPARSED` token behind an error begins at exactly the byte that failed.
+
+- No token spans a line — not text, not a comment, and not the input skipped after a malformed document, which comes
+  back as one `YS_CODE_UNPARSED` token for a line's content and another for its break. A token that spanned a line would
+  have made a stream parser's output depend on how much of the input its buffer happened to hold.
 
 _No release has been tagged yet; the YAML parser itself is not implemented._

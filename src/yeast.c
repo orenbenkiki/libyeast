@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-#include <yeast.h>
-
+#include "alloc.h"
 #include <errno.h>
 #include <limits.h>
 #include <stdint.h>
@@ -64,24 +63,6 @@ int ys_patch(void) {
     return YS_VERSION_PATCH;
 }
 
-// --- Allocation. Each ys_allocator callback that is NULL falls back to its C counterpart. ---
-
-static void *ys_allocate(const ys_allocator *allocator, size_t size) {
-    if (allocator->allocate != NULL) {
-        return allocator->allocate(allocator->context, size);
-    } else {
-        return malloc(size);
-    }
-}
-
-static void ys_deallocate(const ys_allocator *allocator, void *pointer) {
-    if (allocator->deallocate != NULL) {
-        allocator->deallocate(allocator->context, pointer);
-    } else {
-        free(pointer);
-    }
-}
-
 // --- Counting allocator: a malloc/free wrapper that counts live allocations, for leak checking. ---
 
 struct ys_counting_allocator {
@@ -140,71 +121,6 @@ size_t ys_counting_allocator_live_buffers(const ys_counting_allocator *counter) 
 
 void ys_free_counting_allocator(ys_counting_allocator *counter) {
     free(counter);
-}
-// --- Parser. ---
-
-struct ys_parser {
-    ys_allocator allocator;
-    size_t max_bytes;
-    const char *input;
-    size_t length;
-    ys_reader reader;
-    bool tokens_stable;
-};
-
-static ys_parser *ys_new_parser(const ys_options *options) {
-    ys_options resolved = options != NULL ? *options : (ys_options){0};
-    ys_parser *parser = ys_allocate(&resolved.allocator, sizeof(*parser));
-    if (parser != NULL) {
-        parser->allocator = resolved.allocator;
-        parser->max_bytes = resolved.max_bytes;
-        parser->input = NULL;
-        parser->length = 0;
-        parser->reader = (ys_reader){0};
-        parser->tokens_stable = false;
-    }
-    return parser;
-}
-
-ys_parser *ys_new_string_parser(const char *input, size_t length, const ys_options *options) {
-    ys_parser *parser = ys_new_parser(options);
-    if (parser != NULL) {
-        parser->input = input;
-        parser->length = length;
-        parser->tokens_stable = true;
-    }
-    return parser;
-}
-
-ys_parser *ys_new_stream_parser(ys_reader reader, const ys_options *options) {
-    ys_parser *parser = ys_new_parser(options);
-    if (parser != NULL) {
-        parser->reader = reader;
-    }
-    return parser;
-}
-
-bool ys_are_tokens_stable(const ys_parser *parser) {
-    return parser->tokens_stable;
-}
-
-ys_token ys_next_token(ys_parser *parser) {
-    (void)parser; // no state consulted yet: parsing is not implemented, so every call yields the same error.
-    ys_token token;
-    token.code = YS_CODE_ERROR_FORMAT;
-    token.start = (ys_mark){0, 0, 0, 0};
-    token.end = token.start;
-    token.text = "not implemented";
-    return token;
-}
-
-void ys_free_parser(ys_parser *parser) {
-    if (parser != NULL) {
-        if (parser->reader.close != NULL) {
-            parser->reader.close(parser->reader.context);
-        }
-        ys_deallocate(&parser->allocator, parser);
-    }
 }
 
 // --- Reader adapters. The fd/FILE* is stashed in the reader context; ownership picks whether close is wired up. ---

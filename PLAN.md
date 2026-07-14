@@ -81,13 +81,11 @@ ns-plain-flowIn(n)      # n still threaded → indentation stack
 The pull-API requirement (caller invokes `next_token()`; the parser does *not* call the caller back) forces the lowering
 target and, helpfully, agrees with the speed and streaming requirements. All three want the same non-recursive machine.
 
-**Two coupled layers:**
-
-- **Scanner** — a character state machine that emits a queue of tokens. It over-reads eagerly *only* within the one
-  bounded region it must: the simple-key line. Internally it buffers that line, resolves key-vs-scalar, and still hands
-  tokens out one at a time.
-- **Parser** — consumes the token queue against the (`c`-specialized, `n`-threaded) grammar automaton, emitting the
-  event/node stream.
+**One automaton, not two layers.** A scanner emitting tokens for a parser to consume would need a vocabulary between
+them, and yeast has none: the automaton's output already *is* the token stream — the `Begin`/`End` markers and the
+classified spans of input. A hand-written scanner would also be the one thing on the hot path the grammar did not
+derive. So there is a single character-driven automaton, `c`-specialized and `n`-threaded, emitting yeast tokens into an
+output queue; `next_token()` hands back the queue's first token once it is decided.
 
 **An explicit pushdown automaton, not a call stack.** A recursive-descent shape keeps "where am I" in the C
 return-address chain, which cannot suspend to return a token. So the generator emits a **state enum + explicit heap
@@ -303,24 +301,28 @@ serializable struct — never the C call stack.
 
 **Exit** — a lowered IR whose execution state is fully captured by a serializable struct.
 
-### Phase 08 — Scanner split · Two-layer scanner/parser with a provisional queue
+### Phase 08 — Deferral · Drive the provisional queue from the automaton
 
-*Risk: Medium · ~2–3 mo.* Make pull genuinely manageable by separating the character scanner from the grammar parser,
-with the deferred-token set as an explicit tagged queue.
+*Risk: Medium · ~2–3 mo.* The queue and its undecided run are built (`src/parser.h`); what is left is teaching the
+automaton to open, patch, inject into and resolve them, in the two places that need it.
 
-1. Build the scanner as its own character state machine emitting tokens with a provisional/resolved flag.
 1. Implement bounded eager buffering for the simple-key line; resolve key-vs-scalar on line completion or `:`.
-1. Implement the "is the head resolved?" predicate that gates `next_token()`.
-1. Feed resolved tokens to the parser layer; verify end-to-end event output against the oracle.
+1. Implement the block scalar's opening empty lines: hold the run, and on resolution either make it content or inject
+   `end-scalar` ahead of it and make it breaks.
+1. Verify end-to-end token output against the oracle, with the deferral exercised deliberately.
 
-**Exit** — tokens flow scanner → queue → parser → events, pull-driven, oracle-clean.
+**Exit** — the two deferrals resolve correctly, pull-driven, oracle-clean.
 
 ### Phase 09 — C codegen · Emit the C library
 
 *Risk: Low · ~1–2 mo.* The easy end of every compiler. Turn the lowered IR into a switch-on-state character loop with
 arena allocation.
 
-1. Emit the state dispatcher, stack ops, and scanner as portable C99 with no external deps.
+1. Emit the state dispatcher and the transition tables into `src/parser_tables.h`, as portable C99 with no external
+   deps, over the runtime `src/parser.c` already provides.
+1. Emit, per state, the production it belongs to and what its outgoing edges expect — a table of static strings shaped
+   like `src/messages.c`'s, and the text of every format error. What the parser found is not in them, and need not be:
+   the first `unparsed` token behind an error begins at exactly the byte that failed.
 1. Arena-allocate everything; lifetimes are input-bounded, so free the arena on parser teardown — no GC.
 1. Handle backtracking-region scratch within the arena; ensure discarded provisional state is reclaimed cleanly.
 1. Emit the pull surface: `new` / `next_token` / `free`, plus structured error extraction.
@@ -377,7 +379,15 @@ robustness under hostile input.
 | Arena/backtracking scratch leaks or corrupts                        | 09      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                       |
 | Incumbency: 1.1 quirks are load-bearing in real configs             | —       | ▪▪       | Out of scope to "fix" silently; position as a conformance upgrade, document behavioural deltas from libyaml/1.1.                                                                                                                                   |
 
-## §6 — Shape of the whole
+## §6 — Future work
+
+Wanted, but not planned, and not on the way to anything else:
+
+- **`YS_RESUME_INDENT`** — resume after a malformed document at the next less-indented line, bounding the error by the
+  document's own indentation rather than skipping to the next document wholesale. Finer-grained than
+  `YS_RESUME_DOCUMENT`, and harder: it needs the indentation stack to survive an error, which nothing else asks of it.
+
+## §7 — Shape of the whole
 
 For one very strong engineer who deeply knows both YAML and parser generation, this is a **many-months to
 low-single-digit-years** project. The difficulty is lumpy, not uniform:

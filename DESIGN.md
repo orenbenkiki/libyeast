@@ -16,6 +16,19 @@ its comments). The full public API surface is declared, but the parser core is n
   `ys_write_token` writes and `ys_read_token` reads back. That format is what a token stream is compared against the
   reference parser in, and what lets one be piped between tools; it is complete and works. The parser facade returns
   "not implemented" until the grammar-derived core lands.
+- **Parser** — `src/parser.h` and `src/parser.c`: the parser's whole execution state, and the runtime that keeps it. A
+  window over the input, a stack of the productions the parser is inside, a queue of the tokens it has built but not yet
+  handed back, and the state it is in — none of it in the C call stack, which is what lets `ys_next_token` hand back a
+  token from the middle of a production and resume there on the next call. `parser.h` says why each piece is shaped as
+  it is: why the queue's undecided tokens are a suffix and the marker injected ahead of them needs no room made for it,
+  why a frame carries `n` and nothing carries `c`, and why an error can always be reported. There is one automaton, not
+  a scanner and a parser: in yeast the automaton's output already *is* the token stream, so a second layer would need a
+  vocabulary that does not exist — and would be the one thing on the hot path the grammar did not derive. The automaton
+  itself is not generated yet (see `PLAN.md`); what is here is everything it will run on.
+- **Messages** — `src/messages.h` and `src/messages.c`: what libyeast says to its caller, as one table of static strings
+  indexed by name, so that all of it can be read in one place and swapped for another language. The messages that depend
+  on the grammar — the production the parser was inside, and what it expected there — will be a second table of the same
+  shape, generated into `src/parser_tables.h`.
 - **Decoder** — `src/decoder.h`, `src/decoder.c` and the generated `src/decoder_tables.h`: the bottom layer, which turns
   input bytes into characters the parser can branch on. A character becomes a 32-bit key holding the id of the character
   if the grammar names it, one bit per character set the grammar tests, and the bytes it consumed — so a test is one

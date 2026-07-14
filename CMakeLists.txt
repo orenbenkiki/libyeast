@@ -112,8 +112,9 @@ else()
 endif()
 
 # Library — shared and static from the same source, same base name.
-add_library(yeast SHARED src/yeast.c src/decoder.c)
-add_library(yeast_static STATIC src/yeast.c src/decoder.c)
+set(YEAST_SOURCES src/yeast.c src/decoder.c src/parser.c src/messages.c)
+add_library(yeast SHARED ${YEAST_SOURCES})
+add_library(yeast_static STATIC ${YEAST_SOURCES})
 foreach(_t IN ITEMS yeast yeast_static)
     target_include_directories(
         ${_t}
@@ -155,18 +156,20 @@ if(YEAST_BUILD_TESTS)
     target_link_libraries(test_c PRIVATE yeast_build)
     add_test(NAME test_c COMMAND test_c)
 
-    # The decoder is internal, so its test links the static archive — whose symbols survive -fvisibility=hidden, which
-    # governs only the dynamic symbol table — and includes src/ directly.
-    add_executable(test_decoder tests/test_decoder.c)
-    target_include_directories(
-        test_decoder
-        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/acutest ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-    target_link_libraries(test_decoder PRIVATE yeast_static yeast_build)
-    if(NOT MSVC)
-        target_compile_options(test_decoder PRIVATE -Wall -Wextra -Werror)
-    endif()
-    add_test(NAME test_decoder COMMAND test_decoder)
+    # The decoder and the parser are internal, so their tests link the static archive — whose symbols survive
+    # -fvisibility=hidden, which governs only the dynamic symbol table — and include src/ directly.
+    foreach(_internal IN ITEMS decoder parser)
+        add_executable(test_${_internal} tests/test_${_internal}.c)
+        target_include_directories(
+            test_${_internal}
+            PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/acutest ${CMAKE_CURRENT_SOURCE_DIR}/src
+        )
+        target_link_libraries(test_${_internal} PRIVATE yeast_static yeast_build)
+        if(NOT MSVC)
+            target_compile_options(test_${_internal} PRIVATE -Wall -Wextra -Werror)
+        endif()
+        add_test(NAME test_${_internal} COMMAND test_${_internal})
+    endforeach()
 endif()
 
 # Install / packaging.

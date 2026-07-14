@@ -131,10 +131,11 @@ typedef enum ys_code {
     YS_CODE_END_DOCUMENT,     ///< End of a document.
     YS_CODE_BEGIN_STREAM,     ///< Start of the token stream.
     YS_CODE_END_STREAM,       ///< End of the token stream.
-    YS_CODE_ERROR_FORMAT,     ///< The document is malformed; @ref ys_token::text holds the message. Parsing resumes.
+    YS_CODE_ERROR_FORMAT,     ///< The document is malformed; @ref ys_token::text holds the message.
     YS_CODE_ERROR_MEMORY,     ///< The parser reached @ref ys_options::max_bytes, or its allocator refused. It halts.
     YS_CODE_ERROR_READER,     ///< The reader failed; @ref ys_token::text holds the message. The parser halts.
-    YS_CODE_UNPARSED,         ///< Input skipped after a malformed document, classified rather than lost.
+    YS_CODE_UNPARSED,         ///< Input skipped after a malformed document, classified rather than lost. Like every
+                              ///< token it stays within one line, so a skipped line is two of these: content, break.
     YS_CODE_DETECTED          ///< An internally detected token.
 } ys_code;
 
@@ -158,12 +159,21 @@ YS_API bool ys_code_of_char(char character, ys_code *code);
 
 /// A single token produced by ys_next_token(). For a zero-width `BEGIN_*`/`END_*` marker, `start` equals `end` and
 /// `text` is NULL. For a leaf token, `text` points at the matched bytes and the byte length is
-/// `end.byte_offset - start.byte_offset`.
+/// `end.byte_offset - start.byte_offset`. An error consumes nothing, so `start` equals `end` there too — but its `text`
+/// is the message, which is not in the input, and is never NULL; the input it failed on comes back behind it as
+/// @ref YS_CODE_UNPARSED tokens.
+///
+/// **No token spans a line.** Every leaf token lies within one line, so `start.line` equals `end.line` for all of them,
+/// and a line break is always a token of its own. The input skipped after a malformed document obeys this like
+/// everything else, rather than coming back as one token holding the lot: each skipped line yields a
+/// @ref YS_CODE_UNPARSED token for its content and another for its break. The break is unparsed as well, since calling
+/// it a @ref YS_CODE_BREAK would claim a structure the parser never found.
 typedef struct ys_token {
     ys_code code;     ///< The token's classification.
     ys_mark start;    ///< Position of the token's first character.
     ys_mark end;      ///< Position just past the token's last character.
-    const char *text; ///< The matched bytes (leaf tokens), or NULL for zero-width markers; not NUL-terminated.
+    const char *text; ///< The matched bytes (leaf tokens), the message (errors), or NULL for a zero-width marker. Not
+                      ///< NUL-terminated, except for a message, which is.
 } ys_token;
 
 /// A byte source for ys_new_stream_parser(). It abstracts over any stream — not only files or file descriptors;
@@ -250,20 +260,35 @@ typedef struct ys_allocator {
     void *context;                                                  ///< Opaque state passed to the callbacks.
 } ys_allocator;
 
+/// What the parser does with the input after a malformed document.
+typedef enum ys_resume {
+    /// The error ends the parse. The rest of the input comes back as @ref YS_CODE_UNPARSED tokens, and nothing in it is
+    /// parsed. This is what the reference parser does, so the two token streams stay comparable on every input, valid
+    /// or not — which is why it is the default.
+    YS_RESUME_NONE,
+    /// Skip to the next document and carry on parsing there, so that one malformed document in a stream does not cost
+    /// the caller the others. The lines skipped to reach it come back as @ref YS_CODE_UNPARSED tokens. Under this
+    /// setting the token stream departs from the reference's at the first error, and only the input before it can be
+    /// compared. A finer-grained resumption — at the next less-indented line, bounding the error by the document's own
+    /// indentation — may be added later.
+    YS_RESUME_DOCUMENT
+} ys_resume;
+
 /// Parser construction options. A zeroed struct selects all defaults.
 typedef struct ys_options {
     ys_allocator allocator; ///< Custom allocator; a zeroed allocator selects `malloc`/`realloc`/`free`.
+    ys_resume resume;       ///< What to do after a malformed document; the default is @ref YS_RESUME_NONE.
     /// Cap on the memory the parser allocates for itself, in bytes. 0 means unlimited. Reaching it is a
     /// @ref YS_CODE_ERROR_MEMORY token, and it ends the parse for good: there is no way to raise the cap and carry on.
     /// To parse the input after such a failure, build a new parser with a larger cap and parse it again from its start.
     /// It is not an allocation failure, and @ref allocator never sees it.
     ///
-    /// Four things grow, and this caps them together. The input a stream parser buffers, which a single enormous token
+    /// Three things grow, and this caps them together. The input a stream parser buffers, which a single enormous token
     /// fills, and so does a run of tokens whose codes are not yet decided — the empty lines that open a block scalar
     /// are content if a content line follows them and are chomped away if none does, so none of them can be handed back
-    /// until the parser finds out which. The tokens themselves, held back with them. The parser's stack, which deep
-    /// nesting grows and no quantity of input bounds. And an error's message. YAML bounds none of it: it bounds
-    /// lookahead only for implicit keys, at 1024 characters.
+    /// until the parser finds out which. The tokens themselves, held back with them. And the parser's stack, which deep
+    /// nesting grows and no quantity of input bounds. YAML bounds none of it: it bounds lookahead only for implicit
+    /// keys, at 1024 characters. An error's message is not among them, being a static string.
     ///
     /// It does not count the input of a string parser, which belongs to the caller and is never copied — so a document
     /// of any size parses under a small cap, since only the held-back tokens and the stack are the parser's own.
@@ -326,16 +351,21 @@ YS_API ys_parser *ys_new_stream_parser(ys_reader reader, const ys_options *optio
 /// Report whether token text pointers stay valid for the parser's whole lifetime.
 ///
 /// @param parser the parser to query.
-/// @return true for a string parser (text points into the caller's buffer); false for a stream parser (text is valid
-/// only until the next ys_next_token() call).
+/// @return true for a string parser (text points into the caller's buffer, and an error's message is a static string);
+/// false for a stream parser (text points into a buffer the next ys_next_token() call may overwrite).
 YS_API bool ys_are_tokens_stable(const ys_parser *parser);
 
 /// Pull the next token. Every byte of the input is accounted for by exactly one token, the ill-formed bytes included.
 ///
-/// A **syntax error** does not end the parse. The returned token has code @ref YS_CODE_ERROR_FORMAT and its
-/// @ref ys_token::text is the message; the bytes the parser then skips over are handed back as @ref YS_CODE_UNPARSED
-/// tokens, and the parse resumes at the next document. So a stream of several documents, one of them malformed, still
-/// yields the tokens of the others — and the malformed one is not silently lost, but classified.
+/// A **syntax error** yields a @ref YS_CODE_ERROR_FORMAT token whose @ref ys_token::text is the message. What the
+/// parser does next is what @ref ys_options::resume says. By default the error ends the parse, and the rest of the
+/// input comes back as @ref YS_CODE_UNPARSED tokens — so nothing is silently lost, and the token stream stays
+/// comparable to the reference parser's. Set @ref YS_RESUME_DOCUMENT and the parse carries on at the next document, so
+/// malformed document in a stream does not cost the caller the others.
+///
+/// The message names the production the parser was inside and what it expected there. It does not name what it found,
+/// which it does not have to: the first @ref YS_CODE_UNPARSED token behind the error begins at exactly the byte that
+/// failed.
 ///
 /// A **resource error** does end it, for good. Running past @ref ys_options::max_bytes, or an allocator that refuses,
 /// yields a @ref YS_CODE_ERROR_MEMORY token; a reader that fails yields a @ref YS_CODE_ERROR_READER one. Every later
@@ -345,9 +375,9 @@ YS_API bool ys_are_tokens_stable(const ys_parser *parser);
 /// after such a failure, build a new parser with a larger @ref ys_options::max_bytes, or an allocator that can meet it,
 /// and parse the input again from its start.
 ///
-/// The caller never frees a token's @ref ys_token::text. For a leaf token, that text stays valid for as long as
-/// ys_are_tokens_stable() promises — the input's lifetime for a string parser, or only until the next call for a
-/// stream parser. An error message is owned by the parser and stays valid until ys_free_parser().
+/// The caller never frees a token's @ref ys_token::text, and one rule covers every token, whatever its code: it stays
+/// valid for as long as ys_are_tokens_stable() promises — the input's lifetime for a string parser, or only until the
+/// next call for a stream parser. An error is no exception to it, its message being a static string.
 ///
 /// @param parser the parser to advance.
 /// @return the next token.

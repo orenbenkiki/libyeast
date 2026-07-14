@@ -45,7 +45,7 @@ static void test_string_parser(void) {
 static void test_stream_parser(void) {
     ys_counting_allocator *counter = ys_new_counting_allocator();
     TEST_ASSERT(counter != NULL);
-    ys_options options = {ys_counting_allocator_functions(counter), 0};
+    ys_options options = {ys_counting_allocator_functions(counter), YS_RESUME_NONE, 0};
 
     FILE *file = tmpfile();
     TEST_ASSERT(file != NULL);
@@ -69,7 +69,7 @@ static void *failing_allocate(void *context, size_t size) {
 
 static void test_alloc_failure(void) {
     ys_allocator allocator = {failing_allocate, NULL, NULL, NULL};
-    ys_options options = {allocator, 0};
+    ys_options options = {allocator, YS_RESUME_NONE, 0};
     TEST_CHECK(ys_new_string_parser("x", 1, &options) == NULL);
     TEST_CHECK(ys_new_stream_parser(ys_fp_reader(stdin, YS_BORROW), &options) == NULL);
 }
@@ -349,7 +349,8 @@ static void test_wire_memory_cap(void) {
     wire.size = strlen(line);
     memcpy(wire.bytes, line, wire.size);
 
-    ys_options options = {{NULL, NULL, NULL, NULL}, 64}; // too small for the reader and any buffer at all
+    ys_options options = {
+        {NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 64}; // too small for the reader and any buffer at all
     ys_reader reader = {wire_read, NULL, &wire};
     ys_token_reader *tokens = ys_new_token_reader(reader, &options);
     TEST_ASSERT(tokens != NULL);
