@@ -12,21 +12,56 @@
 /// @mainpage libyeast
 ///
 /// libyeast is a fast, single-pass, pull-driven YAML 1.2 parser in C, generated from the formal grammar so that its
-/// conformance is derived rather than hand-tested.
+/// conformance is derived rather than hand-tested. It parses a document into a stream of @ref ys_token values — the
+/// yeast token model, whose codes are @ref ys_code — pulled one at a time.
 ///
-/// The public API is the version query (ys_version(), ys_major(), ys_minor(), ys_patch()); the pull-parser surface —
-/// create a parser with ys_new_string_parser() or ys_new_stream_parser(), pull @ref ys_token values with
-/// ys_next_token(), and release it with ys_free_parser(); and the yeast wire format, which writes a token stream to
-/// anywhere (ys_write_token()) and reads one back (ys_read_token()), so that a stream can be piped between tools,
-/// stored, or compared against another parser's. The grammar-derived core is not implemented yet, so parsing currently
-/// yields a single @ref YS_CODE_ERROR_FORMAT token reading "not implemented"; the wire format is complete and works.
+/// @note The grammar-derived core is not implemented yet, so ys_next_token() currently yields a single
+/// @ref YS_CODE_ERROR_FORMAT token reading "not implemented". The rest of the surface below — readers, writers, the
+/// allocator, and the wire format — is complete and works.
 ///
-/// **`errno` policy.** A function that returns a token reports every failure through that token and leaves `errno` for
-/// the callback that set it — so a reader's or allocator's `errno` survives beside the error token it became. A
-/// function that can fail without a token to carry the reason — the constructors, ys_write_token() — sets `errno`:
-/// `EINVAL` for a bad argument, `ENOMEM` for insufficient memory, or the value a failing callback set, passed through
-/// untouched. Every other function cannot fail and does not touch `errno`. libyeast requires an allocator or reader
-/// callback to set `errno` on failure, and passes that value through rather than overriding it.
+/// @section parsing Parsing
+///
+/// Make a parser, pull @ref ys_token values from it with ys_next_token() until the stream ends, then release it with
+/// ys_free_parser(). The input comes from one of two constructors:
+///
+/// - ys_new_string_parser() over a caller-owned buffer. Nothing is copied, so a token's text points into that buffer
+///   and stays valid as long as it does; ys_are_tokens_stable() returns true.
+/// - ys_new_stream_parser() over a @ref ys_reader, which pulls bytes on demand. Build one with ys_fd_reader() for a
+///   file descriptor or ys_fp_reader() for a `FILE *` — each takes a @ref ys_ownership saying whether to close the
+///   underlying resource when the parser is freed — or fill in a @ref ys_reader of your own for any other source. A
+///   stream parser's token text is valid only until the next ys_next_token() call; ys_are_tokens_stable() returns
+///   false.
+///
+/// @code
+/// ys_parser *parser = ys_new_string_parser(input, length, NULL);
+/// for (ys_token token = ys_next_token(parser); token.code != YS_CODE_END_STREAM; token = ys_next_token(parser)) {
+///     // use token.code, token.start, token.end, token.text
+/// }
+/// ys_free_parser(parser);
+/// @endcode
+///
+/// @section wire The yeast wire format
+///
+/// A token stream can be serialized — to pipe it between tools, store it, or compare it against another parser's — as
+/// the yeast wire format, a character and its escaped text per token. ys_write_token() writes one token to a
+/// @ref ys_writer (build one with ys_fd_writer() or ys_fp_writer(), the mirror of the reader adapters), and a
+/// @ref ys_token_reader made with ys_new_token_reader() reads them back with ys_read_token().
+///
+/// @section options Options and memory
+///
+/// Both parser constructors and ys_new_token_reader() take a @ref ys_options, or NULL for defaults: a pluggable
+/// @ref ys_allocator, and @ref ys_options::max_bytes to cap the memory the parser allocates for itself. The
+/// @ref ys_counting_allocator is a drop-in allocator that counts live allocations, so a test or a consumer can confirm
+/// nothing leaked.
+///
+/// @section errno The `errno` policy
+///
+/// A function that returns a token reports every failure through that token and leaves `errno` for the callback that
+/// set it — so a reader's or allocator's `errno` survives beside the error token it became. A function that can fail
+/// without a token to carry the reason — the constructors, ys_write_token() — sets `errno`: `EINVAL` for a bad
+/// argument, `ENOMEM` for insufficient memory, or the value a failing callback set, passed through untouched. Every
+/// other function cannot fail and does not touch `errno`. libyeast requires an allocator or reader callback to set
+/// `errno` on failure, and passes that value through rather than overriding it.
 ///
 /// For the architecture, see the
 /// [design document](https://github.com/orenbenkiki/libyeast/blob/main/DESIGN.md); for what is left to build, see the
@@ -256,8 +291,9 @@ YS_API ys_writer ys_fp_writer(FILE *file, ys_ownership ownership);
 /// @param writer the writer to close.
 YS_API void ys_close_writer(ys_writer *writer);
 
-/// Write a token to a writer, in the yeast wire format — two lines, the first its position and the second its code
-/// character followed by its text:
+/// Write a token to a writer, in the yeast wire format.
+///
+/// A token is two lines, the first its position and the second its code character followed by its text:
 ///
 ///     # B: 12, C: 12, L: 1, c: 4
 ///     I-
@@ -323,7 +359,7 @@ typedef struct ys_options {
     size_t max_bytes;
 } ys_options;
 
-/// An opaque leak-checking allocator: it wraps `malloc`/`realloc`/`free` and counts live allocations, so a test — or a
+/// An opaque leak-checking allocator. It wraps `malloc`/`realloc`/`free` and counts live allocations, so a test — or a
 /// consumer — can confirm everything allocated through it was freed. Its overhead over plain `malloc`/`free` is a
 /// single counter, so it is cheap enough to leave enabled in a release build if desired. It does not detect memory
 /// corruption; use a sanitizer for that.
@@ -462,7 +498,7 @@ YS_API ys_token_reader *ys_new_token_reader(ys_reader reader, const ys_options *
 /// @return true if a token was read; false at the end of the wire.
 YS_API bool ys_read_token(ys_token_reader *reader, ys_token *token);
 
-/// Free a token reader and everything it owns, including its reader's `close` callback, if it has one.
+/// Free a token reader and everything it owns. Its reader's `close` callback is called, if it has one.
 ///
 /// @param reader the token reader to free; may be NULL, in which case this is a no-op.
 YS_API void ys_free_token_reader(ys_token_reader *reader);

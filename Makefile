@@ -186,7 +186,7 @@ build-coverage/.cov: build-coverage/.cfg $(BUILD_DEPS) scripts/coverage_badge.py
 # Generates HTML (build-docs/html — what the Pages job publishes) AND enforces completeness: WARN_AS_ERROR in the
 # Doxyfile fails on any undocumented public symbol or missing @param/@return. Deliverable and gate in one, so pc depends
 # on it directly — there is no separate check target.
-build-docs/.docs: $(PUB_HDR) Doxyfile CMakeLists.txt
+build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	YEAST_VERSION="$(VERSION)" doxygen Doxyfile
 	@touch $@
 

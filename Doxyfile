@@ -13,6 +13,19 @@ GENERATE_MAN          = NO
 GENERATE_LATEX        = NO
 QUIET                 = YES
 
+# The first sentence of every doc comment is its brief, so the compound and function indexes show a one-line
+# description for each entity instead of a blank. Without this, a single-line `///` comment is a brief but a wrapped
+# one is not, so half the API listed blank.
+JAVADOC_AUTOBRIEF     = YES
+
+# DoxygenLayout.xml leads with Data Structures and Functions and drops the one-entry Files tab; no sidebar tree.
+GENERATE_TREEVIEW     = NO
+LAYOUT_FILE           = DoxygenLayout.xml
+
+# Every symbol shares the library prefix — ys_ on functions and types, YS_ on constants — so the alphabetical index
+# buckets by the letter after it (ys_version under V, YS_CODE_BOM under C) instead of filing the whole API under Y.
+IGNORE_PREFIX         = ys_ YS_
+
 # No Graphviz dependency: skip the dot-rendered graphs (and the legend) so docs build without `dot` installed.
 HAVE_DOT              = NO
 

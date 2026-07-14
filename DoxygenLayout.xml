@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Navigation for a single-header C API. The default layout leads with a "Files" tab, which is noise when there is one
+  header, and buries the functions under it as "File Members". This promotes Data Structures and Functions to the top
+  and drops Files. Every other part of the layout falls back to Doxygen's default.
+-->
+<doxygenlayout version="1.0">
+  <navindex>
+    <tab type="mainpage" visible="yes" title="Overview"/>
+    <tab type="classlist" visible="yes" title="Data Structures" intro=""/>
+    <tab type="globals" visible="yes" title="Functions" intro=""/>
+  </navindex>
+</doxygenlayout>

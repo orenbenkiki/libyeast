@@ -19,3 +19,4 @@ compile_commands.json
 __pycache__/
 *.pyc
 *junk*
+.DS_Store
