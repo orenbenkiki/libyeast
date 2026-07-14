@@ -21,6 +21,13 @@
 /// stored, or compared against another parser's. The grammar-derived core is not implemented yet, so parsing currently
 /// yields a single @ref YS_CODE_ERROR_FORMAT token reading "not implemented"; the wire format is complete and works.
 ///
+/// **`errno` policy.** A function that returns a token reports every failure through that token and leaves `errno` for
+/// the callback that set it — so a reader's or allocator's `errno` survives beside the error token it became. A
+/// function that can fail without a token to carry the reason — the constructors, ys_write_token() — sets `errno`:
+/// `EINVAL` for a bad argument, `ENOMEM` for insufficient memory, or the value a failing callback set, passed through
+/// untouched. Every other function cannot fail and does not touch `errno`. libyeast requires an allocator or reader
+/// callback to set `errno` on failure, and passes that value through rather than overriding it.
+///
 /// For the architecture, see the
 /// [design document](https://github.com/orenbenkiki/libyeast/blob/main/DESIGN.md); for what is left to build, see the
 /// [roadmap](https://github.com/orenbenkiki/libyeast/blob/main/PLAN.md).
@@ -136,7 +143,15 @@ typedef enum ys_code {
     YS_CODE_ERROR_READER,     ///< The reader failed; @ref ys_token::text holds the message. The parser halts.
     YS_CODE_UNPARSED,         ///< Input skipped after a malformed document, classified rather than lost. Like every
                               ///< token it stays within one line, so a skipped line is two of these: content, break.
-    YS_CODE_DETECTED          ///< An internally detected token.
+    YS_CODE_DETECTED,         ///< Kept for compatibility with the reference parser's `Code` set, and for future use
+                              ///< once libyeast emits its own detection tokens (see the token-emission levels in
+                              ///< `PLAN.md`). No parse emits it yet; the wire round-trips it.
+    YS_CODE_WIRE_ERROR        ///< The yeast wire being read is not the wire format. ys_read_token() alone produces it —
+                              ///< no parse does, no writer emits it, and no valid wire carries it — so it is never one
+                              ///< of the error tokens a wire legitimately replays. @ref ys_token::text is what was
+                              ///< wrong, and @ref ys_token::start locates it: @ref ys_mark::line (1-based) and
+                              ///< @ref ys_mark::column (0-based) are where in the wire, and the byte and codepoint
+                              ///< offsets are 0. Nothing follows it.
 } ys_code;
 
 /// The character the yeast wire format writes for a code.
@@ -180,9 +195,13 @@ typedef struct ys_token {
 /// adapters for common sources are provided separately.
 typedef struct ys_reader {
     /// Read up to `size` bytes into `buffer`, returning the number of bytes read, 0 at end of input, or a negative
-    /// value on error. The `context` argument is @ref context.
+    /// value on error. On error it must set `errno`; libyeast passes that value through untouched, so it survives
+    /// alongside the @ref YS_CODE_ERROR_READER or @ref YS_CODE_WIRE_ERROR token the failure becomes. The `context`
+    /// argument is @ref context.
     ptrdiff_t (*read)(void *context, char *buffer, size_t size);
-    /// Release @ref context, if it needs releasing. May be NULL. ys_free_parser() calls it exactly once.
+    /// Release @ref context, if it needs releasing. May be NULL. Whatever the reader is handed to calls it exactly
+    /// once: ys_free_parser() or ys_free_token_reader() when it was built, and the constructor itself when it was not.
+    /// Either way the caller never calls it, having handed the reader over.
     void (*close)(void *context);
     void *context; ///< Opaque state passed to @ref read and @ref close.
 } ys_reader;
@@ -209,8 +228,9 @@ YS_API ys_reader ys_fp_reader(FILE *file, ys_ownership ownership);
 
 /// A byte sink, the mirror of @ref ys_reader. It abstracts over any stream, not only files or file descriptors.
 typedef struct ys_writer {
-    /// Write `size` bytes from `buffer`, returning the number written, or a negative value on error. The `context`
-    /// argument is @ref context.
+    /// Write `size` bytes from `buffer`, returning the number written, or a negative value on error. On error it must
+    /// set `errno`; ys_write_token() passes that value through, so it is what the caller reads after ys_write_token()
+    /// returns false. The `context` argument is @ref context.
     ptrdiff_t (*write)(void *context, const char *buffer, size_t size);
     /// Release @ref context, if it needs releasing. May be NULL.
     void (*close)(void *context);
@@ -248,14 +268,19 @@ YS_API void ys_close_writer(ys_writer *writer);
 ///
 /// @param writer where to write.
 /// @param token the token to write.
-/// @return true if it was written; false if the writer failed.
+/// @return true if it was written; false if the writer failed, in which case `errno` is what the writer's `write`
+/// callback set.
 YS_API bool ys_write_token(ys_writer *writer, ys_token token);
 
 /// A custom allocator. Each callback that is NULL falls back individually to its C counterpart, so a zeroed struct
 /// uses `malloc`/`realloc`/`free`, and setting only some callbacks mixes custom and standard behavior.
+///
+/// `allocate` and `reallocate` must set `errno` when they return NULL, as `malloc` and `realloc` do. libyeast passes
+/// that value through the constructor that was allocating, so it is what the caller reads after the constructor returns
+/// NULL; a debug build asserts a failing allocator set it.
 typedef struct ys_allocator {
-    void *(*allocate)(void *context, size_t size);                  ///< Allocate `size` bytes, or return NULL.
-    void *(*reallocate)(void *context, void *pointer, size_t size); ///< Resize `pointer` to `size` bytes.
+    void *(*allocate)(void *context, size_t size);                  ///< Allocate `size` bytes, or NULL (set `errno`).
+    void *(*reallocate)(void *context, void *pointer, size_t size); ///< Resize `pointer` to `size` bytes, or NULL.
     void (*deallocate)(void *context, void *pointer);               ///< Free `pointer`.
     void *context;                                                  ///< Opaque state passed to the callbacks.
 } ys_allocator;
@@ -306,7 +331,8 @@ typedef struct ys_counting_allocator ys_counting_allocator;
 
 /// Create a counting allocator.
 ///
-/// @return a new counting allocator (free it with ys_free_counting_allocator()), or NULL on allocation failure.
+/// @return a new counting allocator (free it with ys_free_counting_allocator()), or NULL on allocation failure, with
+/// `errno` set to `ENOMEM` by the underlying `malloc`.
 YS_API ys_counting_allocator *ys_new_counting_allocator(void);
 
 /// The allocator functions to place in @ref ys_options::allocator so allocations route through the counter.
@@ -334,18 +360,27 @@ typedef struct ys_parser ys_parser;
 /// Create a parser over an in-memory buffer. The buffer must outlive the parser; token text points directly into it,
 /// so ys_are_tokens_stable() returns true.
 ///
-/// @param input the bytes to parse; must remain valid until ys_free_parser().
+/// @param input the bytes to parse; must remain valid until ys_free_parser(). NULL is allowed only with a @p length of
+/// 0, an empty input.
 /// @param length the number of bytes in @p input.
 /// @param options construction options, or NULL for defaults.
-/// @return a new parser, or NULL on allocation failure.
+/// @return a new parser, or NULL on failure, with `errno` set: `EINVAL` if @p input is NULL and @p length is not 0;
+/// otherwise `ENOMEM` — @ref ys_options::max_bytes is smaller than a parser, or the allocator refused (and set it).
 YS_API ys_parser *ys_new_string_parser(const char *input, size_t length, const ys_options *options);
 
 /// Create a parser that pulls input from @p reader on demand. Token text points into an internal buffer valid only
 /// until the next ys_next_token() call, so ys_are_tokens_stable() returns false.
 ///
-/// @param reader the byte source; its `read` callback must be non-NULL.
+/// **The parser takes @p reader, whether or not it can be built.** If it cannot, it closes @p reader before returning
+/// NULL — calling its `close` callback exactly as ys_free_parser() would have. So a @ref YS_OWN reader's file
+/// descriptor is never leaked, and the caller must not close it themselves: they no longer have anything to close it
+/// with, and doing so would close it twice.
+///
+/// @param reader the byte source; its `read` callback must be non-NULL. Owned by the parser from this call onwards.
 /// @param options construction options, or NULL for defaults.
-/// @return a new parser, or NULL on allocation failure.
+/// @return a new parser, or NULL on failure — in which case @p reader has been closed — with `errno` set: `EINVAL` if
+/// @p reader has no `read` callback; otherwise `ENOMEM` — @ref ys_options::max_bytes is smaller than a parser, or the
+/// allocator refused (and set it).
 YS_API ys_parser *ys_new_stream_parser(ys_reader reader, const ys_options *options);
 
 /// Report whether token text pointers stay valid for the parser's whole lifetime.
@@ -379,6 +414,10 @@ YS_API bool ys_are_tokens_stable(const ys_parser *parser);
 /// valid for as long as ys_are_tokens_stable() promises — the input's lifetime for a string parser, or only until the
 /// next call for a stream parser. An error is no exception to it, its message being a static string.
 ///
+/// This does not report through `errno` — every failure is a token — and it does not clear it: a reader or allocator
+/// that failed set `errno`, and it is left untouched behind the @ref YS_CODE_ERROR_READER or @ref YS_CODE_ERROR_MEMORY
+/// token, for a caller who wants the underlying reason.
+///
 /// @param parser the parser to advance.
 /// @return the next token.
 YS_API ys_token ys_next_token(ys_parser *parser);
@@ -389,10 +428,16 @@ typedef struct ys_token_reader ys_token_reader;
 
 /// Create a reader of the yeast wire format.
 ///
-/// @param reader the byte source; its `read` callback must be non-NULL.
+/// **The token reader takes @p reader, whether or not it can be built.** If it cannot, it closes @p reader before
+/// returning NULL — calling its `close` callback exactly as ys_free_token_reader() would have. So a @ref YS_OWN
+/// reader's file descriptor is never leaked, and the caller must not close it themselves.
+///
+/// @param reader the byte source; its `read` callback must be non-NULL. Owned by the token reader from this call
+/// onwards.
 /// @param options construction options, or NULL for defaults. Only @ref ys_options::allocator and
 /// @ref ys_options::max_bytes are consulted.
-/// @return a new token reader, or NULL on allocation failure.
+/// @return a new token reader, or NULL on failure — in which case @p reader has been closed — with `errno` set:
+/// `EINVAL` if @p reader has no `read` callback; otherwise `ENOMEM`.
 YS_API ys_token_reader *ys_new_token_reader(ys_reader reader, const ys_options *options);
 
 /// Read the next token of a yeast wire stream.
@@ -400,11 +445,21 @@ YS_API ys_token_reader *ys_new_token_reader(ys_reader reader, const ys_options *
 /// The wire records only a token's start, so its @ref ys_token::end is worked out from that start and its text. Its
 /// @ref ys_token::text points into storage the reader owns, and is valid only until the next call.
 ///
-/// A `!` on the wire yields @ref YS_CODE_ERROR_FORMAT, since the wire does not distinguish the three failures.
+/// A `!` on the wire yields @ref YS_CODE_ERROR_FORMAT, since the wire does not distinguish the three failures — that is
+/// an error token the wire legitimately carries, content like any other.
+///
+/// A wire that cannot be read — one that is not the wire format, or one the reader has no memory left to read, or whose
+/// byte source failed — ends the stream on a @ref YS_CODE_WIRE_ERROR token. That code is never valid content, so it is
+/// never mistaken for the error tokens above; its @ref ys_token::text says what was wrong and its @ref ys_token::start
+/// says where in the wire (see @ref YS_CODE_WIRE_ERROR). Nothing follows it. So a caller reading until this returns
+/// false learns why it stopped, and false means one thing only: the wire ended.
+///
+/// This does not report through `errno`; a wire fault is the @ref YS_CODE_WIRE_ERROR token, and a byte source that set
+/// `errno` when it failed has that value left untouched behind the token.
 ///
 /// @param reader the token reader.
-/// @param token where to put the token read.
-/// @return true if a token was read; false at the end of the stream, or if the stream is not the yeast wire format.
+/// @param token where to put the token read, the @ref YS_CODE_WIRE_ERROR token a fault ends on included.
+/// @return true if a token was read; false at the end of the wire.
 YS_API bool ys_read_token(ys_token_reader *reader, ys_token *token);
 
 /// Free a token reader and everything it owns, including its reader's `close` callback, if it has one.

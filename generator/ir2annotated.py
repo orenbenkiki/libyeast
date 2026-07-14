@@ -7,14 +7,12 @@ reproduce the vendored source exactly. Run directly to dump the regenerated gram
 Usage: `python3 generator/ir2annotated.py [spec.yaml] > regenerated.yaml`
 """
 
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ir  # noqa: E402
-import annotated2ir  # noqa: E402
+import ir
+import annotated2ir
 
-import yaml  # noqa: E402
+import yaml
 
 
 def hex_text(cp):
@@ -56,7 +54,7 @@ def expr_yaml(e):
     if isinstance(e, ir.Len):
         return {"(len)": expr_yaml(e.arg)}
     if isinstance(e, ir.Flip):
-        return {"(flip)": {"var": e.var, **{k: expr_yaml(v) for k, v in e.branches}}}
+        return {"(flip)": {"var": e.var, **{b.value: expr_yaml(b.item) for b in e.branches}}}
     if isinstance(e, ir.Ref):
         return {e.name: args_yaml(e.args)}
     raise TypeError(f"not an expression: {e!r}")
@@ -110,9 +108,9 @@ def node_yaml(n):
     if isinstance(n, ir.Le):
         return {"(<=)": [expr_yaml(n.a), expr_yaml(n.b)]}
     if isinstance(n, ir.Case):
-        return {"(case)": {"var": n.var, **{k: node_yaml(v) for k, v in n.branches}}}
+        return {"(case)": {"var": n.var, **{b.value: node_yaml(b.item) for b in n.branches}}}
     if isinstance(n, ir.Flip):
-        return {"(flip)": {"var": n.var, **{k: expr_yaml(v) for k, v in n.branches}}}
+        return {"(flip)": {"var": n.var, **{b.value: expr_yaml(b.item) for b in n.branches}}}
     if isinstance(n, ir.Bind):
         return {"(if)": node_yaml(n.cond), "(set)": [n.param, expr_yaml(n.value)]}
     if isinstance(n, ir.Token):

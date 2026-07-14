@@ -3,6 +3,8 @@
 #define YEAST_PARSER_H
 
 #include "decoder.h"
+#include "memory.h"
+#include "source.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -22,49 +24,24 @@
 typedef uint16_t ys_state;
 #define YS_STATE_START ((ys_state)0)
 
-// --- Memory. ---
-
-// What the parser may allocate, and what it has. Everything the parser grows goes through here, so that
-// ys_options::max_bytes has exactly one door: the window's buffer, the queue and the stack are the three things that
-// grow, and there is no fourth.
-typedef struct ys_memory {
-    ys_allocator allocator;
-    size_t max_bytes;       // the cap; 0 for none
-    size_t allocated_bytes; // what the parser has allocated for itself, the ys_parser struct included
-} ys_memory;
-
-// Whether `wanted` more bytes are within the cap, charging them to the parser if they are.
-bool ys_memory_reserve(ys_memory *memory, size_t wanted);
-
-// Give `bytes` back to the cap.
-void ys_memory_release(ys_memory *memory, size_t bytes);
-
-// Grow an array of `item_size`-byte items to hold at least `wanted` of them, doubling its capacity, and return it. NULL
-// if the cap or the allocator refuses, in which case the array is left as it was.
-void *ys_memory_grow(ys_memory *memory, void *items, size_t *capacity, size_t wanted, size_t item_size);
-
 // --- The window over the input. ---
 
 // The input, and where the parser has reached in it.
 //
 // A string parser's window is the caller's buffer: it is never copied, never grown and never freed, and it holds the
-// whole input from its first byte, so `base` stays 0. A stream parser's window is `buffer`, its own, holding the bytes
-// it has read and not yet discarded — it keeps every byte a token in the queue still points at, and `base` says where
-// in the input its first byte is.
+// whole input from its first byte, so `base` stays 0 and the source has no reader to give it more. A stream parser's
+// window is the source's buffer, holding the bytes it has read and not yet discarded — it keeps every byte a token in
+// the queue still points at, and `base` says where in the input its first byte is.
 typedef struct ys_window {
-    const uint8_t *bytes; // the readable bytes: the caller's input, or `buffer` when there is one
-    uint8_t *buffer;      // the parser's own bytes, when the input is a stream; NULL when the bytes are the caller's
-    size_t size;          // how many of them are readable
-    size_t capacity;      // how many `buffer` holds
+    const uint8_t *bytes; // the readable bytes: the caller's input, or the source's buffer once it has one
+    ys_source source;     // where more bytes come from, and the buffer they land in
     size_t base;          // the offset, in the whole input, of bytes[0]
     ys_mark mark;         // where the next unread character is, in the whole input
-    ys_reader reader;     // where more bytes come from; its `read` is NULL for a string parser
-    bool is_at_end;       // the source has no more bytes to give
 } ys_window;
 
 // The bytes the window has read and the parser has not yet consumed.
 static inline size_t ys_window_readable(const ys_window *window) {
-    return window->size - (window->mark.byte_offset - window->base);
+    return window->source.size - (window->mark.byte_offset - window->base);
 }
 
 // The first of them, which is where the next character is.
@@ -126,7 +103,8 @@ bool ys_queue_emit(ys_memory *memory, ys_queue *queue, ys_code code, ys_mark sta
 // Open a run: the tokens emitted from now on are undecided.
 void ys_queue_open_run(ys_queue *queue);
 
-// The `count` tokens of the open run, whose codes the parser rewrites when it learns what they were.
+// The `count` tokens of the open run, whose codes the parser rewrites when it learns what they were. The pointer is
+// into the queue's own array, so emitting another token invalidates it: rewrite the run, then carry on.
 ys_pending *ys_queue_run(ys_queue *queue, size_t *count);
 
 // Put a decided token ahead of the run, and of everything else in the queue.

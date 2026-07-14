@@ -11,11 +11,24 @@ its comments). The full public API surface is declared, but the parser core is n
   (published to GitHub Pages). The version query; the pull-parser surface (`ys_new_string_parser` /
   `ys_new_stream_parser` / `ys_next_token` / `ys_free_parser`) with `ys_fd_reader`/`ys_fp_reader` adapters; a pluggable
   allocator; and the `ys_counting_allocator` leak counter.
-- **Library** — `src/yeast.c`: the implementation of everything the header declares, including the load-time
-  version-sanity constructor, and the yeast wire format — one character and its escaped text per token, which
-  `ys_write_token` writes and `ys_read_token` reads back. That format is what a token stream is compared against the
-  reference parser in, and what lets one be piped between tools; it is complete and works. The parser facade returns
-  "not implemented" until the grammar-derived core lands.
+- **Wire format** — `src/wire.c`: the yeast wire format, one character and its escaped text per token, which
+  `ys_write_token` writes and `ys_read_token` reads back — together with the table that says which character each code
+  is. That format is what a token stream is compared against the reference parser in, and what lets one be piped between
+  tools; it is complete and works. The reader treats the wire as untrusted: a wire it cannot read ends on a
+  `YS_CODE_WIRE_ERROR` token — a code no valid wire carries, so it is never mistaken for the error tokens a wire
+  legitimately replays — with a located, specific message.
+- **Memory** — `src/memory.h` and `src/memory.c`: allocation through a `ys_allocator`, and `ys_memory` — what an object
+  may allocate and what it has. Everything that grows goes through it, so `ys_options::max_bytes` has exactly one door,
+  and the parser and the wire-format reader are held to their cap by the same code rather than by two copies of it.
+- **Source** — `src/source.h` and `src/source.c`: bytes read from a `ys_reader`, and the buffer they land in. Compact to
+  what is still needed, grow only if that left no room, read into the tail. The parser reads its input through one of
+  these and so does the wire-format reader; they had one each, and the two drifted — one grew a buffer the size of the
+  whole stream and the other did not, one told a reader's failure from the end of the input and the other did not. That
+  is the argument for their having one.
+- **Version** — `src/version.c`: the version query, and the load-time constructor that refuses a library built without a
+  version at all. **Counting allocator** — `src/counting_allocator.c`: the leak counter. **Stream adapters** —
+  `src/streams.c`: the file-descriptor and `FILE *` adapters for `ys_reader` and `ys_writer`, which share a file because
+  they share the act of closing.
 - **Parser** — `src/parser.h` and `src/parser.c`: the parser's whole execution state, and the runtime that keeps it. A
   window over the input, a stack of the productions the parser is inside, a queue of the tokens it has built but not yet
   handed back, and the state it is in — none of it in the C call stack, which is what lets `ys_next_token` hand back a
@@ -58,7 +71,9 @@ its comments). The full public API surface is declared, but the parser core is n
   built. Later it becomes the differential oracle.
 - **Build** — `CMakeLists.txt` is the source of truth for building, testing, installing, and the version. It defines the
   shared + static libraries (hardened, symbol-visibility controlled), the sanitized Debug and hardened Release configs,
-  and the coverage option.
+  and the coverage option. No list of files is kept by hand, here or in the `Makefile`: the sources and the tests are
+  globbed, with `CONFIGURE_DEPENDS` to reconfigure when the set changes, so a new file cannot be left out of the build
+  or slip past the gate — which a hand-kept list is exactly what allows.
 - **Gate** — `Makefile` wraps CMake as the incremental pre-commit gate `make pc`, a pure aggregator of three sub-gates:
   `vet` (formatting, lint, comment rule, marker scan, version-drift, grammar round-trip, packaging), `test-c` (Debug +
   Release tests and the `// UNTESTED` coverage gate), and `gh-pages` (Doxygen docs + gcovr coverage report). Stamp-file
@@ -69,7 +84,8 @@ its comments). The full public API surface is declared, but the parser core is n
   Actions current.
 - **Quality scripts** — `scripts/`: `check_comments.py` (comment-style rule), `coverage_gate.py` (the `// UNTESTED`
   contract), `coverage_badge.py` (coverage-percentage badge JSON), `check-deps.sh` (tool presence), and the
-  `install-*-deps.sh` dependency installers.
+  `install-*-deps.sh` dependency installers. Every generator gate reports through `generator/gate.py`, so that a failure
+  reads the same wherever it came from and no gate can report success by forgetting to exit.
 - **Packaging** — `cmake/*.in` (relocatable pkg-config + CMake package config), `conanfile.py` (Conan), and
   `ports/yeast/` (vcpkg). The version flows from the single CMake source into all of them; `make check-version` guards
   against vcpkg drift.

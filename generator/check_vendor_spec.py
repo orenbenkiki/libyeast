@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: MIT
 """Check that libyeast's grammar is still the official grammar.
 
-Erases libyeast's token annotations and indicator productions from `grammar/yeast-spec-1.2.yaml`, and compares what remains,
-production by production, against the vendored `yaml-spec-1.2.yaml`. A production that differs is either a mistake or a
-departure we chose; a chosen one must be declared in DEVIATIONS, with its reason, or this fails. What libyeast adds
-therefore cannot quietly become what libyeast changes.
+Erases libyeast's token annotations and indicator productions from `grammar/yeast-spec-1.2.yaml`, and compares what
+remains, production by production, against the vendored `yaml-spec-1.2.yaml`. A production that differs is either a
+mistake or a departure we chose; a chosen one must be declared in DEVIATIONS, with its reason, or this fails. What
+libyeast adds therefore cannot quietly become what libyeast changes.
 """
 
+import ir2spec
 import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ir2spec  # noqa: E402
-import annotated2ir  # noqa: E402
+import annotated2ir
+import gate
 
-VENDORED = "third_party/yaml-grammar/yaml-spec-1.2.yaml"
+VENDORED = os.path.join(annotated2ir.TREE, "third_party", "yaml-grammar", "yaml-spec-1.2.yaml")
 
 # Where libyeast departs from the official grammar, and why. A deviation is a decision, not an escape: nothing belongs
 # here that could be fixed by correcting the grammar instead.
@@ -49,13 +48,17 @@ def main():
     for name in sorted(DEVIATIONS):
         if name not in vendored:
             errors.append(f"{name}: declared as a deviation, but the official grammar has no such production")
+        elif recovered.get(name) == vendored[name]:
+            # A deviation that no longer deviates is a stale declaration, and a dangerous one: it exempts the production
+            # from the comparison, so any later drift in it goes unseen. If it matches now, it must not be declared.
+            errors.append(f"{name}: declared as a deviation, but no longer differs from the official grammar")
 
-    if errors:
-        for error in errors:
-            print(error, file=sys.stderr)
-        sys.exit(1)
     productions = sum(1 for key in vendored if not key.startswith(":"))
-    print(f"official grammar recovered: {productions} productions, {len(DEVIATIONS)} declared deviation(s)")
+    gate.report(
+        errors,
+        "production(s) that are not the official grammar's",
+        f"official grammar recovered: {productions} productions, {len(DEVIATIONS)} declared deviation(s)",
+    )
     for name in sorted(DEVIATIONS):
         print(f"    {name}: {DEVIATIONS[name]}")
 

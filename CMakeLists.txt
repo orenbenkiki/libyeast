@@ -111,8 +111,10 @@ else()
     target_link_options(yeast_build INTERFACE $<$<CONFIG:Debug>:/INCREMENTAL:NO>)
 endif()
 
-# Library — shared and static from the same source, same base name.
-set(YEAST_SOURCES src/yeast.c src/decoder.c src/parser.c src/messages.c)
+# Library — shared and static from the same source, same base name. The sources are globbed, and CONFIGURE_DEPENDS is
+# what makes that safe: CMake re-checks the glob on every build and reconfigures when the set of files changes, so a new
+# source cannot be silently left out of the library — which is exactly what a hand-kept list lets happen.
+file(GLOB YEAST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c)
 add_library(yeast SHARED ${YEAST_SOURCES})
 add_library(yeast_static STATIC ${YEAST_SOURCES})
 foreach(_t IN ITEMS yeast yeast_static)
@@ -156,19 +158,23 @@ if(YEAST_BUILD_TESTS)
     target_link_libraries(test_c PRIVATE yeast_build)
     add_test(NAME test_c COMMAND test_c)
 
-    # The decoder and the parser are internal, so their tests link the static archive — whose symbols survive
-    # -fvisibility=hidden, which governs only the dynamic symbol table — and include src/ directly.
-    foreach(_internal IN ITEMS decoder parser)
-        add_executable(test_${_internal} tests/test_${_internal}.c)
+    # Every other tests/test_*.c tests something internal, so it links the static archive — whose symbols survive
+    # -fvisibility=hidden, which governs only the dynamic symbol table — and includes src/ directly. Globbed, so a new
+    # test file is a test the moment it exists.
+    file(GLOB YEAST_INTERNAL_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.c)
+    list(REMOVE_ITEM YEAST_INTERNAL_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_c.c)
+    foreach(_test IN LISTS YEAST_INTERNAL_TESTS)
+        get_filename_component(_name ${_test} NAME_WE)
+        add_executable(${_name} ${_test})
         target_include_directories(
-            test_${_internal}
+            ${_name}
             PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/acutest ${CMAKE_CURRENT_SOURCE_DIR}/src
         )
-        target_link_libraries(test_${_internal} PRIVATE yeast_static yeast_build)
+        target_link_libraries(${_name} PRIVATE yeast_static yeast_build)
         if(NOT MSVC)
-            target_compile_options(test_${_internal} PRIVATE -Wall -Wextra -Werror)
+            target_compile_options(${_name} PRIVATE -Wall -Wextra -Werror)
         endif()
-        add_test(NAME test_${_internal} COMMAND test_${_internal})
+        add_test(NAME ${_name} COMMAND ${_name})
     endforeach()
 endif()
 

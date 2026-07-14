@@ -1,12 +1,20 @@
 # SPDX-License-Identifier: MIT
 """Typed IR for the YAML grammar.
 
-`annotated2ir.py` emits these nodes into the IR; `grammar2parser.py` consumes them. This is a faithful 1:1
-mirror of the yaml-grammar operator vocabulary — every operator maps to one node and nothing is normalized here.
-Flattening and simplification belong to later `grammar2parser.py` passes, so the round-trip stays exact.
+`annotated2ir.py` reads the grammar into these nodes; `grammar2decoder.py` and the gate checks read them back out. This
+is a faithful 1:1 mirror of the yaml-grammar operator vocabulary — every operator maps to one node and nothing is
+normalized here, so the round-trip stays exact. Flattening and simplification belong to whatever consumes the IR:
+`ir2spec.py` does its own, to compare against the official grammar.
+
+Every node is a dataclass, and every grammar node it holds is a field of its own or an item of a tuple of them — which
+is what lets a walker recurse over the IR without knowing what any particular node is. `Branch` exists for that reason:
+a `(case)` branch is a node rather than a bare pair, so nothing has to special-case one.
 """
 
 from dataclasses import dataclass
+
+# The production the whole grammar hangs off.
+ROOT = "l-yaml-stream"
 
 # --- value / parameter expressions ---
 
@@ -78,11 +86,19 @@ class Len:
 
 
 @dataclass(frozen=True)
+class Branch:
+    """One branch of a `(case)` or a `(flip)`: what to use when the parameter has this value."""
+
+    value: str
+    item: object
+
+
+@dataclass(frozen=True)
 class Flip:
     """`(flip)`: a pure value transformer over a parameter (e.g. `in-flow` mapping one context to another)."""
 
     var: str
-    branches: tuple  # ((value, result-expression), ...)
+    branches: tuple  # (Branch, ...), each holding a result expression
 
 
 # --- grammar nodes (matchers) ---
@@ -240,7 +256,7 @@ class Case:
     """`(case)`: dispatch on a parameter's value, each branch a grammar node."""
 
     var: str
-    branches: tuple  # ((value, node), ...)
+    branches: tuple  # (Branch, ...), each holding a grammar node
 
 
 @dataclass(frozen=True)
@@ -311,3 +327,7 @@ class Prod:
     name: str
     params: tuple
     body: object
+
+
+# The nodes that match without consuming: a lookahead reads the input and gives it back.
+ZERO_WIDTH = (Look, NegLook, LookBehind, ExcludeAt)

@@ -10,16 +10,12 @@ Reports every problem found and exits non-zero if there are any.
 """
 
 import dataclasses
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import chars  # noqa: E402
-import ir  # noqa: E402
-import annotated2ir  # noqa: E402
 
-ROOT = "l-yaml-stream"
-ZERO_WIDTH = (ir.Look, ir.NegLook, ir.LookBehind, ir.ExcludeAt)
+import chars
+import ir
+import annotated2ir
+import gate
 
 
 def walk(node):
@@ -53,15 +49,12 @@ def consumed(node, is_annotated, references):
     """
     if isinstance(node, ir.Token):
         yield from consumed(node.item, True, references)
-    elif isinstance(node, ZERO_WIDTH):
+    elif isinstance(node, ir.ZERO_WIDTH):
         return
     elif isinstance(node, (ir.Char, ir.Range, ir.Diff)):
         yield is_annotated
     elif isinstance(node, ir.Ref):
         references.append((node.name, is_annotated))
-    elif isinstance(node, ir.Case):
-        for _value, branch in node.branches:
-            yield from consumed(branch, is_annotated, references)
     else:
         for child in chars.children(node):
             yield from consumed(child, is_annotated, references)
@@ -78,7 +71,7 @@ def check_annotated(grammar):
     root through every reference, until it settles.
     """
     reached = {name: set() for name in grammar}
-    reached[ROOT].add(False)
+    reached[ir.ROOT].add(False)
     is_settled = False
     while not is_settled:
         is_settled = True
@@ -120,14 +113,8 @@ def validate(grammar):
 
 
 def main():
-    grammar = annotated2ir.load(sys.argv[1] if len(sys.argv) > 1 else annotated2ir.DEFAULT_GRAMMAR)
-    errors = validate(grammar)
-    if errors:
-        for error in errors:
-            print(error, file=sys.stderr)
-        print(f"{len(errors)} grammar validation error(s)", file=sys.stderr)
-        sys.exit(1)
-    print(f"grammar validation OK: {len(grammar)} productions")
+    grammar = annotated2ir.load()
+    gate.report(validate(grammar), "grammar validation error(s)", f"grammar validation OK: {len(grammar)} productions")
 
 
 if __name__ == "__main__":

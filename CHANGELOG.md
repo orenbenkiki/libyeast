@@ -68,7 +68,69 @@ All notable changes to this project are documented here. The format follows
   buffers for one token. Three things grow — the buffered input, the tokens held back with it, and the parser's stack,
   which deep nesting grows and no quantity of input bounds — and one cap now bounds them together.
 
+- `src/yeast.c` is gone, split by topic: the version query and its load-time sanity check, the counting allocator, the
+  stream adapters, and the yeast wire format each have a file of their own. Allocation and the `max_bytes` accounting
+  are one place, `src/memory.c`, rather than one copy in the parser and another in the wire-format reader; a reader held
+  under a cap it cannot even be built in is now refused outright, as the parser already was.
+
+- The reader of the yeast wire format tells a broken wire from the tokens a wire carries. Every token code, the three
+  error codes included, is content the wire legitimately replays, so the reader cannot signal its own trouble with one
+  of them. A wire it cannot read — not the wire format, out of the memory to read it, or a byte source that failed —
+  ends the stream on a `YS_CODE_WIRE_ERROR` token, a code no parse emits and no writer produces. Its text says what was
+  wrong, one message per way the wire can be broken, and its marks say where: the line and column in the wire. So
+  `false` from `ys_read_token` means one thing, the wire ended, and a caller reading until then still learns why it
+  stopped. The reader validates its input as the parser does: a byte that a conformant wire would have escaped, an
+  escape naming no Unicode codepoint, a position that is not a number — each is a located `YS_CODE_WIRE_ERROR`, not a
+  misread.
+
+- An `errno` policy across the API. A function that returns a token reports through the token and leaves `errno` for the
+  callback that set it, so a reader's or allocator's `errno` survives beside the error token it became. A function that
+  fails without a token — a constructor, `ys_write_token` — sets `errno`: `EINVAL` for a bad argument (a stream parser
+  or token reader with no `read` callback, a string parser given a NULL buffer with a length), `ENOMEM` for insufficient
+  memory, or the value a failing callback set, passed through. An allocator or reader callback must set `errno` when it
+  fails; a debug build asserts a failing allocator did.
+
 ### Fixed
+
+- The yeast wire format dropped an error's message. It took a token's text to be the input the token spans, and an error
+  spans none — so a malformed document wrote `!` and nothing else, where the reference writes `!` and the message. The
+  wire exists to compare token streams against the reference, and an invalid document is exactly where two parsers
+  differ, so the comparison was broken precisely where it was worth the most.
+
+- The wire reader handed out a token text that was not NUL-terminated, and `ys_write_token` took an error's length with
+  `strlen` — so reading an error token off a wire and writing it back, the read-then-write pipe the wire exists for,
+  overread the heap whenever the text filled its buffer exactly. The reader now leaves every text terminated, and a bare
+  error reads back with an empty text rather than a NULL one, as the header always promised.
+
+- A reader was leaked when the parser it was handed to could not be built. A reader is handed over, so an owned file
+  descriptor is the caller's no longer — and a NULL return left them with nothing to close it with. Both constructors
+  now close what they were given, and preserve the `errno` that named the failure across the close.
+
+- `ys_hex` accumulated eight hexadecimal digits into a signed `long`, which overflows wherever a `long` is 32 bits —
+  MSVC among them — and a wire could name a codepoint Unicode does not have, or half of a surrogate pair, and have it
+  written into the reader's own text as bytes that are not UTF-8. And `ys_scan` read a position with `strtoul`, which
+  takes a sign, so `# B: -1` was a position of `SIZE_MAX`.
+
+- The marker gate could not see inside a `(<<<)`. It walked every other node and passed over that one, discarding what
+  it held — so an unclosed `begin-` marker inside an indentation bound passed all six grammar gates. The gate that
+  proves every marker is closed had a blind spot, and it was the only gate looking.
+
+- The coverage gate passed on a report that covered nothing. The day gcovr's filters stopped matching, the `// UNTESTED`
+  contract would have evaporated in silence while the badge still showed a percentage.
+
+- The reader of the yeast wire format grew its line buffer on every refill, whether or not the lines it had handed back
+  had already left room — so it grew to the size of the whole stream, and under a cap it stopped partway and read as a
+  stream that had simply ended. A stream of 2000 short lines under a 16 KB cap yielded 2 tokens. It now grows only when
+  what is left really does fill the buffer, which is what the parser's window already did: the two had the same shape
+  and only one of them had the check, which is the argument for their now growing through the same code.
+
+- Nothing in the build system keeps a list of files by hand. `CMakeLists.txt` globs the sources and the tests with
+  `CONFIGURE_DEPENDS`, as the `Makefile` already globbed its inputs — and the one list that was still hand-kept, the
+  `Makefile`'s set of files to lint, had already gone stale: it named neither `src/parser.c` nor `src/messages.c`, so
+  neither had ever been linted.
+
+- The `FILE *` writer adapter is tested on Windows, where it had never run: its test was portable but sat behind the
+  guard that hides the file-descriptor ones, and behind that guard a second copy of the guard.
 
 - The reference parser does not resume after an error, and libyeast had been built to match a reading of it that said it
   did: it emits the error token, hands back the input behind it as unparsed, and stops. So resuming at the next document

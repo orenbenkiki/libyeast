@@ -10,14 +10,12 @@ it emits them. That the codes are checked against the grammar itself, rather tha
 keeps the comment from drifting: a note that is wrong fails the build exactly as a note that is missing does.
 """
 
-import os
 import re
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import annotated2ir  # noqa: E402
-import chars  # noqa: E402
-import ir  # noqa: E402
+import annotated2ir
+import gate
+import chars
+import ir
 
 EMITS = re.compile(r"^#\s*Emits:\s*(.*)$", re.M)
 
@@ -34,9 +32,6 @@ def emitted(node):
         codes.append(node.end)
     elif isinstance(node, ir.Emit):
         codes.append(node.code)
-    elif isinstance(node, ir.Case):
-        for _value, branch in node.branches:
-            codes.extend(emitted(branch))
     else:
         for child in chars.children(node):
             codes.extend(emitted(child))
@@ -70,13 +65,11 @@ def main():
         elif said[name] != codes:
             errors.append(f"{name}: says it emits {', '.join(said[name])}, but it emits {', '.join(codes)}")
 
-    if errors:
-        for error in errors:
-            print(error, file=sys.stderr)
-        print(f"{len(errors)} undocumented or misdocumented rule(s)", file=sys.stderr)
-        sys.exit(1)
-    print(
-        f"grammar documented: {sum(1 for name in grammar if emitted(grammar[name].body))} rules emit tokens, all said"
+    emitting = sum(1 for name in grammar if emitted(grammar[name].body))
+    gate.report(
+        errors,
+        "undocumented or misdocumented rule(s)",
+        f"grammar documented: {emitting} rules emit tokens, all said",
     )
 
 

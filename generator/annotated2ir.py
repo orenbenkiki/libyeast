@@ -11,10 +11,14 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ir  # noqa: E402
+import ir
 
-import yaml  # noqa: E402
+import yaml
+
+# The tree this generator belongs to, so that a script finds the grammar wherever it is run from and not only from the
+# root of the tree.
+TREE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DEFAULT_GRAMMAR = os.path.join(TREE, "grammar", "yeast-spec-1.2.yaml")
 
 PARAMS = frozenset({"n", "c", "m", "t"})
 HEX = re.compile(r"^x[0-9A-Fa-f]+$")
@@ -63,7 +67,7 @@ def args(value):
 
 def branches(mapping, translate):
     """The value-keyed branches of a `(case)`/`(flip)`, minus the `var` selector."""
-    return tuple((key, translate(val)) for key, val in mapping.items() if key != "var")
+    return tuple(ir.Branch(key, translate(val)) for key, val in mapping.items() if key != "var")
 
 
 def expr(x):
@@ -174,9 +178,6 @@ def production(number, name, definition):
         params = tuple(declared) if isinstance(declared, list) else (declared,)
         definition = {k: v for k, v in definition.items() if k != "(...)"}
     return ir.Prod(number, name, params, node(definition))
-
-
-DEFAULT_GRAMMAR = "grammar/yeast-spec-1.2.yaml"
 
 
 def translate(grammar):

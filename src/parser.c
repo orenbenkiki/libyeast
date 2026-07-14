@@ -1,54 +1,14 @@
 // SPDX-License-Identifier: MIT
 #include "parser.h"
-#include "alloc.h"
+#include "memory.h"
 #include "messages.h"
+#include <errno.h>
 #include <stdint.h>
 #include <string.h>
-
-// What a buffer holds the first time it is grown. The window's is a page, since it is filled by a read; the queue's and
-// the stack's are small, since most documents never reach past them.
-#define YS_WINDOW_BYTES 4096
-#define YS_QUEUE_TOKENS 16
-#define YS_STACK_FRAMES 16
 
 // A window with no buffer of its own yet still has readable bytes to point at — none of them. Pointing at nothing is
 // not the same as pointing nowhere: NULL plus zero is undefined, and the sanitizers say so.
 static const uint8_t YS_NO_BYTES[1] = {0};
-
-// --- Memory. ---
-
-bool ys_memory_reserve(ys_memory *memory, size_t wanted) {
-    if (memory->max_bytes != 0 && wanted > memory->max_bytes - memory->allocated_bytes) {
-        return false;
-    }
-    memory->allocated_bytes += wanted;
-    return true;
-}
-
-void ys_memory_release(ys_memory *memory, size_t bytes) {
-    memory->allocated_bytes -= bytes;
-}
-
-void *ys_memory_grow(ys_memory *memory, void *items, size_t *capacity, size_t wanted, size_t item_size) {
-    if (*capacity >= wanted) {
-        return items;
-    }
-    size_t doubled = *capacity <= SIZE_MAX / 2 && *capacity * 2 > wanted ? *capacity * 2 : wanted;
-    if (doubled > SIZE_MAX / item_size) {
-        return NULL; // UNTESTED
-    }
-    size_t more = (doubled - *capacity) * item_size;
-    if (!ys_memory_reserve(memory, more)) {
-        return NULL;
-    }
-    void *grown = ys_reallocate(&memory->allocator, items, doubled * item_size);
-    if (grown == NULL) {
-        ys_memory_release(memory, more);
-        return NULL;
-    }
-    *capacity = doubled;
-    return grown;
-}
 
 // --- The window over the input. ---
 
@@ -74,47 +34,24 @@ static size_t ys_parser_retained(const ys_parser *parser) {
     return parser->window.mark.byte_offset;
 }
 
-// Make room in the window's buffer to read into: discard the bytes no token points at any more, and grow it if that
-// leaves no room. Halts the parse if the cap or the allocator refuses.
-static bool ys_window_make_room(ys_parser *parser) {
-    ys_window *window = &parser->window;
-    size_t discard = ys_parser_retained(parser) - window->base;
-    if (discard > 0) {
-        memmove(window->buffer, window->buffer + discard, window->size - discard);
-        window->size -= discard;
-        window->base += discard;
-    }
-    if (window->size < window->capacity) {
-        return true;
-    }
-
-    size_t wanted = window->capacity == 0 ? YS_WINDOW_BYTES : window->capacity + 1;
-    uint8_t *grown = ys_memory_grow(&parser->memory, window->buffer, &window->capacity, wanted, sizeof(uint8_t));
-    if (grown == NULL) {
-        ys_parser_halt(parser, YS_CODE_ERROR_MEMORY, ys_message(YS_MESSAGE_OUT_OF_MEMORY));
-        return false;
-    }
-    window->buffer = grown;
-    window->bytes = grown;
-    return true;
-}
-
 bool ys_parser_fill(ys_parser *parser, size_t wanted) {
     ys_window *window = &parser->window;
-    while (!window->is_at_end && ys_window_readable(window) < wanted) {
-        if (!ys_window_make_room(parser)) {
+    while (!window->source.is_at_end && ys_window_readable(window) < wanted) {
+        // The bytes before the oldest token the parser still holds are wanted no longer, and the fill discards them
+        // whether or not it goes on to read anything, so the window moves past them either way.
+        size_t used = ys_parser_retained(parser) - window->base;
+        ys_fill filled = ys_source_fill(&window->source, &parser->memory, used, 0);
+        window->base += used;
+        if (window->source.bytes != NULL) {
+            window->bytes = window->source.bytes;
+        }
+        if (filled == YS_FILL_OUT_OF_MEMORY) {
+            ys_parser_halt(parser, YS_CODE_ERROR_MEMORY, ys_message(YS_MESSAGE_OUT_OF_MEMORY));
             return false;
         }
-        ptrdiff_t read_count = window->reader.read(window->reader.context, (char *)window->buffer + window->size,
-                                                   window->capacity - window->size);
-        if (read_count < 0) {
+        if (filled == YS_FILL_READER_FAILED) {
             ys_parser_halt(parser, YS_CODE_ERROR_READER, ys_message(YS_MESSAGE_READER_FAILED));
             return false;
-        }
-        if (read_count == 0) {
-            window->is_at_end = true;
-        } else {
-            window->size += (size_t)read_count;
         }
     }
     return true;
@@ -136,8 +73,8 @@ static bool ys_queue_make_room(ys_memory *memory, ys_queue *queue) {
         return true;
     }
 
-    size_t wanted = queue->capacity == 0 ? YS_QUEUE_TOKENS : queue->capacity + 1;
-    ys_pending *grown = ys_memory_grow(memory, queue->tokens, &queue->capacity, wanted, sizeof(ys_pending));
+    ys_pending *grown =
+        ys_memory_grow(memory, queue->tokens, &queue->capacity, queue->count + 1, YS_MEMORY_ITEMS, sizeof(ys_pending));
     if (grown == NULL) {
         return false;
     }
@@ -197,8 +134,8 @@ ys_pending ys_queue_pop(ys_queue *queue) {
 
 bool ys_stack_push(ys_memory *memory, ys_stack *stack, ys_state return_state, ptrdiff_t indent) {
     if (stack->depth == stack->capacity) {
-        size_t wanted = stack->capacity == 0 ? YS_STACK_FRAMES : stack->capacity + 1;
-        ys_frame *grown = ys_memory_grow(memory, stack->frames, &stack->capacity, wanted, sizeof(ys_frame));
+        ys_frame *grown = ys_memory_grow(memory, stack->frames, &stack->capacity, stack->depth + 1, YS_MEMORY_ITEMS,
+                                         sizeof(ys_frame));
         if (grown == NULL) {
             return false;
         }
@@ -241,8 +178,7 @@ ys_token ys_parser_token(const ys_parser *parser, ys_pending pending) {
     token.code = pending.code;
     token.start = pending.start;
     token.end = pending.end;
-    if (pending.code == YS_CODE_ERROR_FORMAT || pending.code == YS_CODE_ERROR_MEMORY ||
-        pending.code == YS_CODE_ERROR_READER) {
+    if (ys_is_error_code(pending.code)) {
         token.text = parser->error.message;
     } else if (pending.end.byte_offset > pending.start.byte_offset) {
         const uint8_t *at = parser->window.bytes + (pending.start.byte_offset - parser->window.base);
@@ -254,47 +190,61 @@ ys_token ys_parser_token(const ys_parser *parser, ys_pending pending) {
 }
 
 static ys_parser *ys_new_parser(const ys_options *options) {
-    ys_options resolved = options != NULL ? *options : (ys_options){0};
-    ys_memory memory = {resolved.allocator, resolved.max_bytes, 0};
-    if (!ys_memory_reserve(&memory, sizeof(ys_parser))) {
-        return NULL;
-    }
-    ys_parser *parser = ys_allocate(&memory.allocator, sizeof(*parser));
+    ys_memory memory;
+    ys_parser *parser = ys_memory_new(&memory, options, sizeof(ys_parser));
     if (parser != NULL) {
-        *parser = (ys_parser){0};
         parser->memory = memory;
         parser->window.bytes = YS_NO_BYTES;
-        parser->error.resume = resolved.resume;
+        parser->error.resume = options != NULL ? options->resume : YS_RESUME_NONE;
         parser->state = YS_STATE_START;
     }
     return parser;
 }
 
 ys_parser *ys_new_string_parser(const char *input, size_t length, const ys_options *options) {
-    ys_parser *parser = ys_new_parser(options);
+    if (input == NULL && length > 0) {
+        errno = EINVAL; // a NULL buffer of nonzero length is not an empty input, it is a mistake
+        return NULL;
+    }
+    ys_parser *parser = ys_new_parser(options); // sets errno on failure
     if (parser != NULL) {
         // The window is the caller's buffer, whole: there is no reader to give it more, and no buffer of its own to
         // free. That is what makes a string parser's tokens stable — their text is the caller's bytes.
         if (input != NULL) {
             parser->window.bytes = (const uint8_t *)input;
         }
-        parser->window.size = length;
-        parser->window.is_at_end = true;
+        parser->window.source.size = length;
+        parser->window.source.is_at_end = true;
     }
     return parser;
 }
 
 ys_parser *ys_new_stream_parser(ys_reader reader, const ys_options *options) {
-    ys_parser *parser = ys_new_parser(options);
-    if (parser != NULL) {
-        parser->window.reader = reader;
+    // The reader is handed over whether or not the parser can be built, so an owned one is closed here rather than
+    // leaked. errno is set after the close and preserved across it, so the close cannot overwrite the reason.
+    if (reader.read == NULL) {
+        if (reader.close != NULL) {
+            reader.close(reader.context);
+        }
+        errno = EINVAL; // a reader with nothing to read from
+        return NULL;
     }
+    ys_parser *parser = ys_new_parser(options); // sets errno on failure
+    if (parser == NULL) {
+        if (reader.close != NULL) {
+            int saved_errno = errno; // the close must not overwrite the reason ys_new_parser gave
+            reader.close(reader.context);
+            errno = saved_errno;
+        }
+        return NULL;
+    }
+    parser->window.source.reader = reader;
     return parser;
 }
 
 bool ys_are_tokens_stable(const ys_parser *parser) {
     // A string parser is exactly a parser with nowhere to read more input from.
-    return parser->window.reader.read == NULL;
+    return parser->window.source.reader.read == NULL;
 }
 
 ys_token ys_next_token(ys_parser *parser) {
@@ -319,12 +269,12 @@ ys_token ys_next_token(ys_parser *parser) {
 
 void ys_free_parser(ys_parser *parser) {
     if (parser != NULL) {
-        if (parser->window.reader.close != NULL) {
-            parser->window.reader.close(parser->window.reader.context);
+        if (parser->window.source.reader.close != NULL) {
+            parser->window.source.reader.close(parser->window.source.reader.context);
         }
         // The messages are static and the window may be the caller's; what is the parser's own is what it grew.
         ys_allocator allocator = parser->memory.allocator;
-        ys_deallocate(&allocator, parser->window.buffer);
+        ys_source_free(&parser->window.source, &allocator);
         ys_deallocate(&allocator, parser->queue.tokens);
         ys_deallocate(&allocator, parser->stack.frames);
         ys_deallocate(&allocator, parser);

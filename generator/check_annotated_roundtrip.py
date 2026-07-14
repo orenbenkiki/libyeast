@@ -5,18 +5,16 @@ Loads the vendored yaml-grammar, translates it to the IR and back, and asserts t
 (compared as parsed data, not text). Reports the first differing production and exits non-zero on any mismatch.
 """
 
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ir2annotated  # noqa: E402
-import annotated2ir  # noqa: E402
+import ir2annotated
+import annotated2ir
 
-import yaml  # noqa: E402
+import yaml
 
 
 def main():
-    source = sys.argv[1] if len(sys.argv) > 1 else annotated2ir.DEFAULT_GRAMMAR
+    source = annotated2ir.DEFAULT_GRAMMAR
     with open(source) as handle:
         original = yaml.safe_load(handle)
     regenerated = ir2annotated.regenerate(annotated2ir.translate(original))

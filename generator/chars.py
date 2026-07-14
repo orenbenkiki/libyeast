@@ -8,11 +8,8 @@ in the parser is a single bit test.
 """
 
 import dataclasses
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ir  # noqa: E402
+import ir
 
 MAX_CODEPOINT = 0x10FFFF
 
@@ -73,10 +70,6 @@ def children(node):
         for item in value if isinstance(value, tuple) else (value,):
             if dataclasses.is_dataclass(item):
                 yield item
-            elif isinstance(item, tuple):
-                for nested in item:
-                    if dataclasses.is_dataclass(nested):
-                        yield nested
 
 
 def literals(grammar):

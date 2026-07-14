@@ -387,6 +387,24 @@ Wanted, but not planned, and not on the way to anything else:
   document's own indentation rather than skipping to the next document wholesale. Finer-grained than
   `YS_RESUME_DOCUMENT`, and harder: it needs the indentation stack to survive an error, which nothing else asks of it.
 
+- **Lenient wire positions** — treat a `#` line in the wire as a comment, not a required field. Where it carries a token
+  position (`# B: …, C: …, L: …, c: …`), use it; where it does not, estimate the position from the tokens themselves
+  where that is possible, and otherwise give the token an obvious "no position" value rather than rejecting the wire.
+  This lets a wire be hand-written or trimmed, position lines and all, and still read.
+
+- **Token-emission levels** — a knob in `ys_options` choosing how much of the stream `ys_next_token` emits, coarsest to
+  finest, each a superset of the last:
+
+  - the structure markers alone — the `begin-`/`end-` pairs that bracket the productions;
+  - the payload too — the content characters, which is what the default emits;
+  - the non-payload characters as well — indentation, separation, breaks, indicators — so every input byte is covered;
+  - the detection values too — `YS_CODE_DETECTED` tokens carrying the `m`/`t` an indentation or chomping rule computed,
+    which is what makes libyeast's detection comparable to the reference's `Detected` output token for token.
+
+  This is why `YS_CODE_DETECTED` is in the vocabulary already: the finest level is where libyeast emits it, and the wire
+  round-trips it in the meantime. A coarser level is cheaper and is all a caller loading a document needs; a finer one
+  is what the differential oracle and a debugger want.
+
 ## §7 — Shape of the whole
 
 For one very strong engineer who deeply knows both YAML and parser generation, this is a **many-months to

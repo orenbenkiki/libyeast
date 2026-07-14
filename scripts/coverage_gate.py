@@ -24,11 +24,17 @@ def main():
     with open(sys.argv[1], encoding="utf-8") as handle:
         report = json.load(handle)
 
+    # A report covering nothing has nothing to complain about, and would pass — so the contract would evaporate in
+    # silence the day gcovr's filters stopped matching. There is always something to cover.
+    if not report.get("files"):
+        print("coverage gate: the report covers no files at all", file=sys.stderr)
+        return 2
+
     violations = []
-    for entry in report.get("files", []):
+    for entry in report["files"]:
         path = entry["file"]
         if not os.path.exists(path):
-            print("%s: source file in report not found on disk" % path, file=sys.stderr)
+            print(f"{path}: source file in report not found on disk", file=sys.stderr)
             return 2
         with open(path, encoding="utf-8") as source_handle:
             source = source_handle.readlines()
@@ -46,18 +52,18 @@ def main():
             if number < 1 or number > len(source):
                 continue
             text = source[number - 1]
-            annotated = MARKER in text
-            if count == 0 and not annotated:
-                violations.append((path, number, "uncovered line, needs a %s comment" % MARKER, text))
-            elif count > 0 and annotated:
-                violations.append((path, number, "stale %s on a covered line" % MARKER, text))
+            is_annotated = MARKER in text
+            if count == 0 and not is_annotated:
+                violations.append((path, number, f"uncovered line, needs a {MARKER} comment", text))
+            elif count > 0 and is_annotated:
+                violations.append((path, number, f"stale {MARKER} on a covered line", text))
 
     # Editor-friendly `<path>:<line>: message` at column 0 (gcc/clang style).
     for path, number, reason, text in violations:
-        print("%s:%d: %s: %s" % (path, number, reason, text.strip()))
+        print(f"{path}:{number}: {reason}: {text.strip()}")
 
     if violations:
-        print("coverage gate FAILED: %d violation(s)" % len(violations), file=sys.stderr)
+        print(f"coverage gate FAILED: {len(violations)} violation(s)", file=sys.stderr)
         return 1
     print("coverage gate passed: every uncovered line annotated, no stale annotations")
     return 0

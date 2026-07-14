@@ -7,16 +7,14 @@ any.
 """
 
 import io
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import chars  # noqa: E402
-import grammar2decoder  # noqa: E402
-import ir  # noqa: E402
-import annotated2ir  # noqa: E402
+import chars
+import grammar2decoder
+import ir
+import annotated2ir
+import gate
 
-TABLES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "decoder_tables.h")
+TABLES = grammar2decoder.TABLES
 
 
 def regenerated(model, grammar):
@@ -80,7 +78,7 @@ def check_literals(model):
     for codepoint, literal_id in model.literal_ids.items():
         if literal_id in (model.lit_eof, model.lit_invalid):
             errors.append(f"U+{codepoint:04X}: literal id {literal_id} collides with a sentinel")
-        if (model.key(codepoint, 1) & 0x3F) != literal_id:
+        if (model.key(codepoint, 1) & ((1 << chars.LIT_BITS) - 1)) != literal_id:
             errors.append(f"U+{codepoint:04X}: literal id {literal_id} is not what its key carries")
     return errors
 
@@ -91,13 +89,10 @@ def main():
     errors = check_keys(model, grammar) + check_literals(model) + check_scanned_sets(model, grammar)
     with open(TABLES, encoding="utf-8") as handle:
         if handle.read() != regenerated(model, grammar):
-            errors.append(f"{TABLES} is stale; regenerate it with `python3 generator/grammar2decoder.py`")
-    if errors:
-        for error in errors:
-            print(error, file=sys.stderr)
-        print(f"{len(errors)} decoder table error(s)", file=sys.stderr)
-        sys.exit(1)
-    print(f"decoder tables OK: {len(model.literals)} literals, {len(model.sets)} sets")
+            errors.append(f"{TABLES} is stale; regenerate it with `make regen-tables`")
+    gate.report(
+        errors, "decoder table error(s)", f"decoder tables OK: {len(model.literals)} literals, {len(model.sets)} sets"
+    )
 
 
 if __name__ == "__main__":

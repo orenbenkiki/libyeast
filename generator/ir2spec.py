@@ -10,15 +10,14 @@ Usage: `python3 generator/ir2spec.py > recovered.yaml`
 """
 
 import dataclasses
-import os
+
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ir2annotated  # noqa: E402
-import ir  # noqa: E402
-import annotated2ir  # noqa: E402
+import ir2annotated
+import ir
+import annotated2ir
 
-import yaml  # noqa: E402
+import yaml
 
 # The rules libyeast adds that match nothing at all. They exist only to emit a marker, so the official grammar can
 # leave them out and never notice: `x / end-block-scalar` is `x / <empty>`, which is `x?`, which is what it writes.
@@ -62,20 +61,27 @@ def flatten(items):
     return tuple(spliced)
 
 
-def normalize(node):
-    """`node` with its sequences flattened, and a sequence of one item collapsed into that item."""
-    if isinstance(node, ir.Case):
-        return ir.Case(node.var, tuple((value, normalize(branch)) for value, branch in node.branches))
+def rebuilt(node, visit):
+    """`node` with every IR node it holds replaced by `visit` of that node.
+
+    A `Lit` and a `Param` are values rather than grammar, and are left as they are. Everything else is reached the same
+    way, whatever node it is — which is why a `(case)` branch is an `ir.Branch` and not a bare pair.
+    """
     if not dataclasses.is_dataclass(node):
         return node
     changed = {}
     for field in dataclasses.fields(node):
         value = getattr(node, field.name)
         if dataclasses.is_dataclass(value) and not isinstance(value, (ir.Lit, ir.Param)):
-            changed[field.name] = normalize(value)
+            changed[field.name] = visit(value)
         elif isinstance(value, tuple) and value and all(dataclasses.is_dataclass(item) for item in value):
-            changed[field.name] = tuple(normalize(item) for item in value)
-    node = dataclasses.replace(node, **changed) if changed else node
+            changed[field.name] = tuple(visit(item) for item in value)
+    return dataclasses.replace(node, **changed) if changed else node
+
+
+def normalize(node):
+    """`node` with its sequences flattened, and a sequence of one item collapsed into that item."""
+    node = rebuilt(node, normalize)
     if isinstance(node, ir.Seq):
         items = flatten(node.items)
         return items[0] if len(items) == 1 else ir.Seq(items)
@@ -90,8 +96,6 @@ def erase(node, owner):
     """What the official grammar writes where libyeast writes `node`."""
     if isinstance(node, (ir.Token, ir.Wrap)):
         return erase(node.item, owner)
-    if isinstance(node, ir.Case):
-        return ir.Case(node.var, tuple((value, erase(branch, owner)) for value, branch in node.branches))
     if isinstance(node, ir.Ref) and node.name in MARKER_ONLY:
         return ir.Empty()
     if isinstance(node, ir.Ref) and not node.args and node.name in INDICATORS and node.name != owner:
@@ -99,16 +103,7 @@ def erase(node, owner):
     if isinstance(node, ir.Seq):
         kept = [erase(item, owner) for item in node.items if not isinstance(item, ir.Emit)]
         return ir.Seq(tuple(kept))
-    if not dataclasses.is_dataclass(node):
-        return node
-    changed = {}
-    for field in dataclasses.fields(node):
-        value = getattr(node, field.name)
-        if dataclasses.is_dataclass(value) and not isinstance(value, (ir.Lit, ir.Param)):
-            changed[field.name] = erase(value, owner)
-        elif isinstance(value, tuple) and value and all(dataclasses.is_dataclass(item) for item in value):
-            changed[field.name] = tuple(erase(item, owner) for item in value)
-    return dataclasses.replace(node, **changed) if changed else node
+    return rebuilt(node, lambda item: erase(item, owner))
 
 
 def official(grammar):

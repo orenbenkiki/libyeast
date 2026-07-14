@@ -14,6 +14,7 @@ MDFORMAT   ?= mdformat
 BLACK      ?= black
 GERSEMI    ?= gersemi
 SHFMT      ?= shfmt
+RUFF       ?= ruff
 
 # Platform split. gcov reader: Apple/Homebrew clang need llvm-cov; GCC uses gcov directly. Leak detection: Linux ASan
 # ships LeakSanitizer (enabled explicitly, it runs at each forked test's exit — per-test, isolated); Apple clang has no
@@ -53,7 +54,9 @@ TODO_X    := $(subst -,,todo-x)
 # Files the leftover-marker scan covers: every tracked file except docs/ (which documents the marker).
 SCAN_FILES := $(shell git ls-files -- . ':(exclude)docs')
 BUILD_DEPS := $(LIB_SRC) $(PUB_HDR) $(PRIV_HDR) $(wildcard tests/*.c) $(VENDOR_H) $(CMAKE_IN)
-LINT_FILES := src/yeast.c src/decoder.c tests/test_c.c tests/test_decoder.c
+# clang-tidy needs a compile database, so it lints what build-debug builds: every library source and every test but the
+# packaging consumer, which is built against the installed library and so is not in that database.
+LINT_FILES := $(LIB_SRC) $(filter-out $(PKG_SRC),$(wildcard tests/*.c))
 PKG_PREFIX := $(CURDIR)/build-pkgtest/prefix
 GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
 ANNOTATED := grammar/yeast-spec-1.2.yaml
@@ -61,14 +64,14 @@ GEN_SRC    := $(wildcard generator/*.py)
 
 # Tool dependencies, verified by check-build-deps / check-dev-deps.
 BUILD_DEP_TOOLS := cmake $(CC) python3 python3:yaml
-DEV_DEP_TOOLS   := clang-format $(CLANG_TIDY) $(CPPCHECK) $(GCOVR) $(MDFORMAT) $(BLACK) $(GERSEMI) $(SHFMT) \
-                   doxygen $(firstword $(GCOV_EXE))
+DEV_DEP_TOOLS   := clang-format $(CLANG_TIDY) $(CPPCHECK) $(GCOVR) $(MDFORMAT) $(BLACK) $(RUFF) $(GERSEMI) \
+                   $(SHFMT) doxygen $(firstword $(GCOV_EXE))
 
 .PHONY: all package test test-c test-release test-haskell test-clojure \
         reformat reformat-c reformat-md reformat-py reformat-cmake reformat-sh \
         check-format check-format-c check-format-md check-format-py check-format-cmake check-format-sh \
         check-comments check-build-deps check-dev-deps \
-        lint $(TODO_X) docs check-version check-grammar coverage pkg-test vet gh-pages pc clean
+        lint $(TODO_X) docs check-version check-grammar regen-tables coverage pkg-test vet gh-pages pc clean
 
 all: package
 
@@ -79,7 +82,7 @@ all: package
 build/.cfg: $(CMAKE_IN)
 	cmake -S . -B build
 	@touch $@
-build/.package: build/.cfg $(LIB_SRC) $(PUB_HDR)
+build/.package: build/.cfg $(LIB_SRC) $(PUB_HDR) $(PRIV_HDR)
 	cmake --build build --target yeast yeast_static
 	@touch $@
 package: build/.package
@@ -144,8 +147,11 @@ build-coverage/.cov: build-coverage/.cfg $(BUILD_DEPS) scripts/coverage_badge.py
 .stamps/format-md: $(MD_FILES) | .stamps
 	$(MDFORMAT) --check --wrap 120 $(MD_FILES)
 	@touch $@
+# black reformats code but leaves comments and docstrings alone, so the 120-column rule needs ruff to be a rule at all —
+# and ruff catches the import that nothing uses any more, which black has no opinion about either.
 .stamps/format-py: $(PY_FILES) | .stamps
 	$(BLACK) --check --line-length 120 $(PY_FILES)
+	$(RUFF) check --quiet --select E501,F401 --line-length 120 $(PY_FILES)
 	@touch $@
 .stamps/format-cmake: $(CMAKE_FILES) | .stamps
 	$(GERSEMI) --no-warn-about-unknown-commands --line-length 120 --check $(CMAKE_FILES)
@@ -229,6 +235,11 @@ build-docs/.docs: $(PUB_HDR) Doxyfile CMakeLists.txt
 .stamps/decoder-tables: $(ANNOTATED) $(GEN_SRC) src/decoder_tables.h | .stamps
 	python3 generator/check_decoder.py
 	@touch $@
+
+# And this is how they stop being stale. `src/decoder_tables.h` is the only generated file that is committed, so this is
+# the whole of it; the parser's tables will be the second, and one more line.
+regen-tables:
+	python3 generator/grammar2decoder.py
 
 # --- package-consumption test: install Release, build+run a consumer via pkg-config ---
 build-pkgtest/.pkg: build-release/.build $(PKG_SRC)

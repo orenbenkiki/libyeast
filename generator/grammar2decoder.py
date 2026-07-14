@@ -7,17 +7,17 @@ of each character set the grammar tests, and the few keys a non-ASCII character 
 
 The key's layout is this file's to know. Anything reading or building a key does so through the macros emitted here.
 
-Usage: `python3 generator/grammar2decoder.py > src/decoder_tables.h`
+Usage: `make regen-tables`, or `python3 generator/grammar2decoder.py`, which writes `src/decoder_tables.h`.
 """
 
-import os
-import sys
 import unicodedata
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import chars  # noqa: E402
-import ir  # noqa: E402
-import annotated2ir  # noqa: E402
+import chars
+import ir
+import io
+import os
+
+import annotated2ir
 
 ASCII_LIMIT = 0x80
 DELETE = 0x7F
@@ -175,6 +175,11 @@ def entries(out, rows):
         out.write(f"    {value + ',':<{width + 1}} // {comment}\n")
 
 
+# The header this generator owns, whole: it is committed, and `make check-grammar` fails if it is not what the
+# grammar says it should be.
+TABLES = os.path.join(annotated2ir.TREE, "src", "decoder_tables.h")
+
+
 def emit(out, model, grammar, keys):
     """Write the header.
 
@@ -304,7 +309,13 @@ def utf8_length(codepoint):
 def main():
     grammar = annotated2ir.load()
     model = chars.Model(grammar)
-    emit(sys.stdout, model, grammar, check_groups(model, grammar))
+    # Build the whole header before writing any of it, so that a generator that fails partway leaves the committed file
+    # as it was rather than truncated to whatever it had got to.
+    source = io.StringIO()
+    emit(source, model, grammar, check_groups(model, grammar))
+    with open(TABLES, "w", encoding="utf-8") as handle:
+        handle.write(source.getvalue())
+    print(f"wrote {TABLES}: {len(model.literals)} literals, {len(model.sets)} sets")
 
 
 if __name__ == "__main__":

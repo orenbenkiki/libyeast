@@ -33,7 +33,8 @@ static ys_mark mark_of(size_t byte_offset, size_t column) {
     return mark;
 }
 
-// The cap counts what the parser allocates for itself, and refuses what would pass it. Releasing gives the bytes back.
+// The cap counts what an object allocates for itself, and refuses what would pass it. A cap it cannot even be built
+// under refuses it outright, rather than leaving it to fail at its first allocation.
 static void test_memory_cap(void) {
     ys_memory memory = {{NULL, NULL, NULL, NULL}, 100, 0};
     TEST_CHECK(ys_memory_reserve(&memory, 60));
@@ -41,43 +42,55 @@ static void test_memory_cap(void) {
     TEST_CHECK(!ys_memory_reserve(&memory, 41)); // one byte past the cap
     TEST_CHECK(memory.allocated_bytes == 60);    // and a refusal charges nothing
     TEST_CHECK(ys_memory_reserve(&memory, 40));  // exactly the cap is within it
-    ys_memory_release(&memory, 100);
-    TEST_CHECK(memory.allocated_bytes == 0);
 
     ys_memory uncapped = {{NULL, NULL, NULL, NULL}, 0, 0};
     TEST_CHECK(ys_memory_reserve(&uncapped, SIZE_MAX / 2)); // 0 is no cap at all
+
+    ys_options tight = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 4};
+    ys_memory built;
+    TEST_CHECK(ys_memory_new(&built, &tight, 64) == NULL); // no room for the object itself
+
+    void *object = ys_memory_new(&built, NULL, 64);
+    TEST_ASSERT(object != NULL);
+    TEST_CHECK(built.allocated_bytes == 64);                                       // its own size is charged
+    TEST_CHECK(((const char *)object)[0] == 0 && ((const char *)object)[63] == 0); // and it comes zeroed
+    free(object);
 }
 
-// Growing doubles, charges the cap, and leaves the array alone when it cannot.
+// Growing doubles, never falls below the first block, charges the cap, and leaves the array alone when it cannot.
 static void test_memory_grow(void) {
     ys_memory memory = {{NULL, NULL, NULL, NULL}, 0, 0};
     size_t capacity = 0;
 
-    int *items = ys_memory_grow(&memory, NULL, &capacity, 4, sizeof(int));
+    int *items = ys_memory_grow(&memory, NULL, &capacity, 1, 4, sizeof(int)); // the first block, not the one wanted
     TEST_ASSERT(items != NULL);
     TEST_CHECK(capacity == 4);
     TEST_CHECK(memory.allocated_bytes == 4 * sizeof(int));
 
     items[0] = 7;
-    int *same = ys_memory_grow(&memory, items, &capacity, 4, sizeof(int)); // already big enough: untouched
+    int *same = ys_memory_grow(&memory, items, &capacity, 4, 4, sizeof(int)); // already big enough: untouched
     TEST_CHECK(same == items);
     TEST_CHECK(capacity == 4);
 
-    items = ys_memory_grow(&memory, items, &capacity, 5, sizeof(int)); // doubles rather than creeping
+    items = ys_memory_grow(&memory, items, &capacity, 5, 4, sizeof(int)); // doubles rather than creeping
     TEST_ASSERT(items != NULL);
     TEST_CHECK(capacity == 8);
     TEST_CHECK(items[0] == 7); // and carries what was there
     TEST_CHECK(memory.allocated_bytes == 8 * sizeof(int));
 
+    items = ys_memory_grow(&memory, items, &capacity, 100, 4, sizeof(int)); // and past what doubling would give
+    TEST_ASSERT(items != NULL);
+    TEST_CHECK(capacity == 100);
+
     ys_memory capped = {{NULL, NULL, NULL, NULL}, 8, 0};
     size_t small = 0;
-    TEST_CHECK(ys_memory_grow(&capped, NULL, &small, 100, sizeof(int)) == NULL); // the cap refuses
+    TEST_CHECK(ys_memory_grow(&capped, NULL, &small, 100, 4, sizeof(int)) == NULL); // the cap refuses
     TEST_CHECK(small == 0);
     TEST_CHECK(capped.allocated_bytes == 0);
 
     ys_memory refusing = {ungrowable_allocator(), 0, 0};
     size_t none = 0;
-    TEST_CHECK(ys_memory_grow(&refusing, NULL, &none, 4, sizeof(int)) == NULL); // the allocator refuses
+    TEST_CHECK(ys_memory_grow(&refusing, NULL, &none, 4, 4, sizeof(int)) == NULL); // the allocator refuses
     TEST_CHECK(none == 0);
     TEST_CHECK(refusing.allocated_bytes == 0); // and the refusal is not charged
 
@@ -115,7 +128,7 @@ static void test_string_window(void) {
     TEST_CHECK((const char *)ys_window_at(&parser->window) == input);
     TEST_CHECK(ys_parser_fill(parser, 4096)); // there is nothing to fill from, and that is not a failure
     TEST_CHECK(ys_window_readable(&parser->window) == 5);
-    TEST_CHECK(parser->window.buffer == NULL); // the caller's bytes are never copied
+    TEST_CHECK(parser->window.source.bytes == NULL); // the caller's bytes are never copied
     TEST_CHECK(parser->memory.allocated_bytes == sizeof(ys_parser));
 
     ys_free_parser(parser);
@@ -159,11 +172,11 @@ static void test_stream_window(void) {
     TEST_CHECK(ys_parser_fill(parser, 3));
     TEST_CHECK(ys_window_readable(&parser->window) >= 3);
     TEST_CHECK(memcmp(ys_window_at(&parser->window), "hel", 3) == 0);
-    TEST_CHECK(parser->window.buffer != NULL);
+    TEST_CHECK(parser->window.source.bytes != NULL);
 
     TEST_CHECK(ys_parser_fill(parser, 100)); // asking past the end is not a failure
     TEST_CHECK(ys_window_readable(&parser->window) == 5);
-    TEST_CHECK(parser->window.is_at_end);
+    TEST_CHECK(parser->window.source.is_at_end);
 
     ys_free_parser(parser);
 }

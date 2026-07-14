@@ -39,11 +39,6 @@ typedef struct ys_run {
     size_t characters; // the characters they encoded, which is fewer whenever any of them is not ASCII
 } ys_run;
 
-// The characters of the set `set`.
-static inline uint32_t ys_set_bits(ys_set_id set) {
-    return YS_SET_BITS[set];
-}
-
 // Classify the character at the head of the window, which begins with a byte of 0x80 or above.
 ys_char ys_next_char_slow(const uint8_t *bytes, size_t size);
 

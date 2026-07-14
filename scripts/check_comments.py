@@ -11,77 +11,77 @@ Violations print as <path>:<line>: message, for editor go-to-line.
 import sys
 
 
-def find_block_comments(text):
-    """Yield (start_line, start_col, end_line, end_col) for each /* */ comment (columns 0-based, end_col at the '*' of
-    the closing '*/'). Strings, char literals, and // line comments are skipped."""
+def block_comments(text):
+    """Yield (start_line, start_column, end_line, end_column) for each /* */ comment.
+
+    Columns are 0-based, and the end column is at the '*' of the closing '*/'. Strings, character literals and // line
+    comments are skipped, since a /* in one of those opens nothing.
+    """
     comments = []
     state = "code"
     start = None
-    line, col, i, n = 1, 0, 0, len(text)
-    while i < n:
-        c = text[i]
-        d = text[i + 1] if i + 1 < n else ""
+    line, column, index, size = 1, 0, 0, len(text)
+    while index < size:
+        character = text[index]
+        following = text[index + 1] if index + 1 < size else ""
         step = 1
         if state == "code":
-            if c == '"':
+            if character == '"':
                 state = "string"
-            elif c == "'":
-                state = "char"
-            elif c == "/" and d == "/":
+            elif character == "'":
+                state = "character"
+            elif character == "/" and following == "/":
                 state = "line"
                 step = 2
-            elif c == "/" and d == "*":
+            elif character == "/" and following == "*":
                 state = "block"
-                start = (line, col)
+                start = (line, column)
                 step = 2
-        elif state == "string":
-            if c == "\\":
+        elif state in ("string", "character"):
+            if character == "\\":
                 step = 2
-            elif c == '"':
-                state = "code"
-        elif state == "char":
-            if c == "\\":
-                step = 2
-            elif c == "'":
+            elif character == ('"' if state == "string" else "'"):
                 state = "code"
         elif state == "line":
-            if c == "\n":
+            if character == "\n":
                 state = "code"
         elif state == "block":
-            if c == "*" and d == "/":
-                comments.append((start[0], start[1], line, col))
+            if character == "*" and following == "/":
+                comments.append((start[0], start[1], line, column))
                 state = "code"
                 step = 2
-        for k in range(step):
-            if i + k < n and text[i + k] == "\n":
+        for offset in range(step):
+            if index + offset < size and text[index + offset] == "\n":
                 line += 1
-                col = 0
+                column = 0
             else:
-                col += 1
-        i += step
+                column += 1
+        index += step
     return comments
 
 
 def check(path):
-    text = open(path, encoding="utf-8").read()
+    """The (line, complaint) of every /* */ comment in `path` that is not inline."""
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
     lines = text.split("\n")
     problems = []
-    for _start_line, _start_col, end_line, end_col in find_block_comments(text):
-        after = lines[end_line - 1][end_col + 2 :]
+    for _start_line, _start_column, end_line, end_column in block_comments(text):
+        after = lines[end_line - 1][end_column + 2 :]
         if after.strip() == "":
             problems.append((end_line, "use // — a /* */ comment is allowed only inline, with code after it"))
     return problems
 
 
 def main():
-    rc = 0
+    is_failed = False
     for path in sys.argv[1:]:
-        for line_no, msg in check(path):
-            print("%s:%d: %s" % (path, line_no, msg))
-            rc = 1
-    if rc:
+        for line, complaint in check(path):
+            print(f"{path}:{line}: {complaint}")
+            is_failed = True
+    if is_failed:
         print("comment-style check failed", file=sys.stderr)
-    return rc
+    return 1 if is_failed else 0
 
 
 if __name__ == "__main__":

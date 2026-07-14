@@ -92,7 +92,7 @@ ys_char ys_next_char_slow(const uint8_t *bytes, size_t size) {
 // ASCII loop is where the time goes, and where a vector kernel will go: a nibble-table lookup classifies sixteen bytes
 // at a time under SSSE3 or NEON, behind this same signature, without the generated parser changing a line.
 ys_run ys_scan_set(const uint8_t *bytes, size_t size, ys_set_id set) {
-    const uint32_t wanted = ys_set_bits(set);
+    const uint32_t wanted = YS_SET_BITS[set];
     ys_run run = {0, 0};
     while (run.bytes < size) {
         if (bytes[run.bytes] < 0x80u) {
