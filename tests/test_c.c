@@ -735,11 +735,11 @@ static void test_wire_long_stream(void) {
     ys_free_token_reader(tokens);
 }
 
-// The wire is written with upper-case hexadecimal, but a stream written by another hand may use lower-case, and it
+// The wire is written with lower-case hexadecimal, but a stream written by another hand may use upper-case, and it
 // means the same thing.
-static void test_wire_reads_lower_case_hex(void) {
+static void test_wire_reads_upper_case_hex(void) {
     wire_buffer wire = {{0}, 0, 0};
-    const char *written = "# B: 0, C: 0, L: 0, c: 0\nT\\xe9\\u4e00\n";
+    const char *written = "# B: 0, C: 0, L: 0, c: 0\nT\\xE9\\u4E00\n";
     wire.size = strlen(written);
     memcpy(wire.bytes, written, wire.size);
 
@@ -773,7 +773,7 @@ TEST_LIST = {
     {"wire_long_stream", test_wire_long_stream},
     {"wire_text_out_of_memory", test_wire_text_out_of_memory},
     {"wire_terminator_out_of_memory", test_wire_terminator_out_of_memory},
-    {"wire_reads_lower_case_hex", test_wire_reads_lower_case_hex},
+    {"wire_reads_upper_case_hex", test_wire_reads_upper_case_hex},
     {"alloc_failure", test_alloc_failure},
     {"bad_arguments", test_bad_arguments},
     {"owned_reader_is_closed_when_construction_fails", test_owned_reader_is_closed_when_construction_fails},

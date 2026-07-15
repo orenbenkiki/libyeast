@@ -62,15 +62,16 @@ its comments). The full public API surface is declared, but the parser core is n
 - **Parser generator** — `generator/`: `ir.py` (the typed grammar IR), `annotated2ir.py` (read
   `grammar/yeast-spec-1.2.yaml` into the IR), `ir2annotated.py` (the inverse), `ir2spec.py` (erase libyeast's additions
   and recover the official grammar), `chars.py` (the character model the decoder is built from), `grammar2decoder.py`
-  (emit `src/decoder_tables.h`), and the gate checks `check_annotated_roundtrip.py`, `check_vendor_spec.py`,
-  `validate_grammar.py`, `check_markers.py`, `check_grammar_docs.py` and `check_decoder.py`. This is where the
-  grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
+  (emit `src/decoder_tables.h`), `wire.py` (the yeast wire format in Python), `spec_tests.py` (the conformance
+  fixtures), `migrate_tests.py` (build them from the reference's), and the gate checks `check_annotated_roundtrip.py`,
+  `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`, `check_grammar_docs.py`, `check_decoder.py` and
+  `check_spec_tests.py`. This is where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3
+  \+ PyYAML.
 - **Reference** — `third_party/yamlreference/`: the Haskell YAML reference parser, vendored to be read. Its grammar
   carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code` comes
   from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of it is
-  built. Its `tests/` fixtures are vendored as the static differential oracle — each records the exact token stream a
-  production emits, so libyeast is checked against it without running Haskell (see the reference-test harness in
-  `PLAN.md`).
+  built. Its `tests/` fixtures are the source `migrate_tests.py` builds libyeast's own conformance suite (`tests/spec/`)
+  from — see the differences from the reference below, and the reference-interpreter phase in `PLAN.md`.
 - **Build** — `CMakeLists.txt` is the source of truth for building, testing, installing, and the version. It defines the
   shared + static libraries (hardened, symbol-visibility controlled), the sanitized Debug and hardened Release configs,
   and the coverage option. No list of files is kept by hand, here or in the `Makefile`: the sources and the tests are
@@ -93,6 +94,39 @@ its comments). The full public API surface is declared, but the parser core is n
   against vcpkg drift.
 - **Docs** — `Doxyfile` drives the API docs from the header comments, completeness-gated: an undocumented public symbol
   or a missing `@param`/`@return` fails the build.
+
+## Differences from the reference parser
+
+libyeast's goal is a fast, correct YAML 1.2 parser for YAMLStar and its kin — not a byte-for-byte replica of the Haskell
+reference. Where the token stream a caller sees differs from the reference's, it is a decision, and every one is here
+with its reason. (Deviations from the _official grammar_ are a separate matter, declared with their reasons in
+`generator/check_vendor_spec.py`.) The conformance suite is migrated with these differences applied, so the reference's
+fixtures go on testing libyeast rather than a parser it is not.
+
+- **UTF-8 only.** libyeast reads UTF-8 and nothing else; the reference detects and reads UTF-16 and UTF-32 too. The
+  decoder classifies UTF-8 bytes straight into a key without ever assembling a codepoint, and tokens are spans of those
+  bytes — a design the other encodings would fight (a second classifier, codepoint assembly to serialize a token,
+  source-byte marks). YAML 1.2 asks a conformant parser for UTF-16, and UTF-32 where it accepts JSON; libyeast forgoes
+  them for now. Non-UTF-8 inputs are simply left out of the suite.
+- **A byte-order mark is the character, not the encoding.** libyeast's `bom` token holds the mark it matched (`U+FEFF`);
+  the reference's holds the name of the encoding it detected (`UTF-8`). Detecting no encoding, libyeast has no name to
+  give.
+- **No token spans a line.** libyeast cuts every run at a line break: a skipped line comes back as two `unparsed`
+  tokens, one for its content and one for its break, where the reference can hand back a single token across the break.
+  A token that spanned a line would make a stream parser's output depend on how much of the input its buffer held.
+- **After an error, libyeast stops parsing the document; the reference recovers and continues.** On a malformed document
+  libyeast ends the parse and, by default, returns the rest of the input as `unparsed` tokens — or, with
+  `YS_RESUME_DOCUMENT`, skips to the next document and parses that. The reference instead keeps tokenizing past the
+  error, recovering into structured tokens of its own. So the two streams agree only up to the first error, and that is
+  where the suite stops comparing. The message differs too: libyeast's names the production it was in and what it
+  expected, not the reference's wording, and what carries the meaning is the position — the first `unparsed` token
+  behind the error begins at the byte that failed.
+
+Two further differences never reach the token stream a caller sees, so they are not in the list above: libyeast consumes
+and emits the indentation the reference peeks at (so it needs no cross-line lookahead), and it flattens the
+character-class helpers it uses only inside a `Diff` (so a helper run _alone_ emits `unparsed` where the reference emits
+its tokens — invisible in a real document, since the helper only ever appears in a subtraction). The migration accounts
+for the second where it rewrites those isolated-helper fixtures; see `generator/migrate_tests.py`.
 
 ## Memory safety
 

@@ -70,7 +70,7 @@ PKG_PREFIX := $(CURDIR)/build-pkgtest/prefix
 GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
 ANNOTATED := grammar/yeast-spec-1.2.yaml
 GEN_SRC    := $(wildcard generator/*.py)
-FIXTURES   := $(wildcard third_party/yamlreference/tests/*.input third_party/yamlreference/tests/*.output)
+FIXTURES   := $(wildcard tests/spec/*.input tests/spec/*.output)
 
 # Tool dependencies, verified by check-build-deps / check-dev-deps.
 BUILD_DEP_TOOLS := cmake $(CC) python3 python3:yaml
@@ -253,17 +253,29 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	python3 generator/check_decoder.py
 	@touch $@
 
-# Reference oracle: the vendored fixtures must be intact — every input paired with an output, every name decoding to a
-# production with well-formed parameters — and every fixture the grammar can run must still align with it, so the set
-# that is skipped as the reference parser's own stays known rather than silently growing.
-.stamps/reference-tests: $(FIXTURES) $(ANNOTATED) $(GEN_SRC) | .stamps
-	python3 generator/check_reference_tests.py
+# Conformance fixtures: libyeast's own suite in tests/spec/ must be intact — every input paired with an output, every
+# name decoding to a production the grammar still has, every output a token stream whose marks chain. Migrated once from
+# the vendored reference fixtures by migrate-tests, then libyeast's to keep correct.
+.stamps/spec-tests: $(FIXTURES) $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_spec_tests.py
+	@touch $@
+
+# The reference interpreter reproduces every fixture it covers: it runs the production the grammar describes and its
+# token stream must equal the fixture's, byte for byte. This is where the grammar is proved to emit the reference's
+# tokens — the interpreter's coverage grows a node family at a time, and with it the fixtures this gate reproduces.
+.stamps/interpreter: $(FIXTURES) $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_interpreter.py
 	@touch $@
 
 # And this is how they stop being stale. `src/decoder_tables.h` is the only generated file that is committed, so this is
 # the whole of it; the parser's tables will be the second, and one more line.
 regen-tables:
 	python3 generator/grammar2decoder.py
+
+# Repopulate tests/spec/ from the vendored reference fixtures. Run once, and again only when the migration rules change;
+# the conformance suite is committed and libyeast's to own between runs.
+migrate-tests:
+	python3 generator/migrate_tests.py
 
 # --- package-consumption test: install Release, build+run a consumer via pkg-config ---
 build-pkgtest/.pkg: build-release/.build $(PKG_SRC)
@@ -323,7 +335,7 @@ $(TODO_X): .stamps/$(TODO_X)
 docs: build-docs/.docs
 check-version: .stamps/version-check
 check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/vendor-spec .stamps/markers \
-               .stamps/grammar-docs .stamps/decoder-tables .stamps/reference-tests
+               .stamps/grammar-docs .stamps/decoder-tables .stamps/spec-tests .stamps/interpreter
 coverage: .stamps/coverage-gate
 pkg-test: build-pkgtest/.pkg
 

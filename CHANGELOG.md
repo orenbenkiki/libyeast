@@ -62,12 +62,22 @@ All notable changes to this project are documented here. The format follows
   what they were, and the stack's frames carry the grammar's one runtime parameter, `n`. The automaton that drives them
   is not generated yet, so `ys_next_token` still returns a "not implemented" error.
 
-- The reference oracle, in static form: the reference parser's `tests/` fixtures — 670 YAML fragments each paired with
-  the exact yeast token stream it emits — vendored at `third_party/yamlreference/tests/`, so libyeast is checked against
-  them by reading, never by running Haskell. `generator/reference_tests.py` decodes each fixture's production and
-  parameters from its filename, and a gate keeps the corpus intact and reports which fixtures libyeast's grammar can run
-  (641) versus which exercise the reference parser's own internal productions and are skipped (29). The bytes are held
-  verbatim, CR and CRLF included, out of line-ending normalization.
+- A conformance suite, `tests/spec/`, and the reference fixtures it is migrated from. The reference parser's `tests/`
+  are vendored to be read, and `generator/migrate_tests.py` turns the 637 that align with libyeast's grammar into
+  libyeast's own fixtures — rewriting each expected output into what libyeast emits rather than what the reference does:
+  a production libyeast flattens to a character class becomes plain unparsed, no token spans a line, a byte-order mark
+  is the character it matched and not the reference's encoding name, and an error keeps its position but not its
+  wording. Fixtures the reference tests in encodings libyeast does not read, or with its own internal productions, are
+  left out. From there the suite is libyeast's to own; `generator/check_spec_tests.py` keeps it intact — every input
+  paired, every name a production the grammar still has, every output a token stream whose marks chain. The bytes are
+  held verbatim, CR and CRLF included, out of line-ending normalization.
+
+- A reference interpreter of the grammar, `generator/interpreter.py`: a slow, obviously-correct backtracking matcher
+  that runs a production against an input and emits its yeast tokens, checked fixture by fixture against the conformance
+  suite so libyeast's grammar is proved to produce the reference's tokens before any C runs. It covers the
+  character-level nodes for now — a literal, a range, a subtraction, a sequence, an alternation, and a reference to
+  another production — and reproduces every fixture that rests on only those, emitting each character consumed as
+  unparsed. Its coverage grows a node family at a time, toward running `l-yaml-stream` on the whole suite.
 
 ### Changed
 

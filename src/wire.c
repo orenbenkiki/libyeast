@@ -141,8 +141,9 @@ bool ys_write_token(ys_writer *writer, ys_token token) {
     }
 
     // The text is escaped by codepoint: printable ASCII other than a backslash stands for itself, and everything else
-    // becomes \xXX, \uXXXX or \UXXXXXXXX. An error's text is its message, which is not in the input and so spans none
-    // of it: its length is its own, and the marks would say zero.
+    // becomes \xXX, \uXXXX or \UXXXXXXXX with lower-case hex, as the reference parser writes it, so the two token
+    // streams compare byte for byte. An error's text is its message, which is not in the input and so spans none of it:
+    // its length is its own, and the marks would say zero.
     const unsigned char *text = (const unsigned char *)token.text;
     size_t size = token.text == NULL             ? 0
                   : ys_is_error_code(token.code) ? strlen(token.text)
@@ -159,11 +160,11 @@ bool ys_write_token(ys_writer *writer, ys_token token) {
         } else {
             int escaped;
             if (codepoint <= 0xFFuL) {
-                escaped = snprintf(buffer, sizeof(buffer), "\\x%02lX", codepoint);
+                escaped = snprintf(buffer, sizeof(buffer), "\\x%02lx", codepoint);
             } else if (codepoint <= 0xFFFFuL) {
-                escaped = snprintf(buffer, sizeof(buffer), "\\u%04lX", codepoint);
+                escaped = snprintf(buffer, sizeof(buffer), "\\u%04lx", codepoint);
             } else {
-                escaped = snprintf(buffer, sizeof(buffer), "\\U%08lX", codepoint);
+                escaped = snprintf(buffer, sizeof(buffer), "\\U%08lx", codepoint);
             }
             if (escaped < 0 || !ys_put(writer, buffer, (size_t)escaped)) {
                 return false; // UNTESTED

@@ -193,15 +193,15 @@ Two things fall out of it at once: it proves libyeast's own grammar (`grammar/ye
 reference's tokens, before any C exists to be wrong; and it becomes the verification net for the whole normalization
 pipeline (Phase 03) — the backtracking mode built here, the committed mode added there.
 
-**The oracle is static, and vendored.** `third_party/yamlreference/tests/` holds 670 input/output pairs, each named
-`production[.n=N][.c=C][.t=T].case`, the outputs in the yeast format `ys_read_token` already parses. The module
-`reference_tests.py` decodes that filename convention — production, parameters, and whether the case is `.invalid` — and
-`check_reference_tests.py` gates the corpus: 641 of the fixtures run against libyeast's grammar, the other 29 exercise
-the reference parser's own internal helpers (`detect-*-indentation`, `count-spaces`, …) and its private `m`-based
-parameterization, so they are named and skipped, not chased. The interpreter is thus checked by *reading* fixtures and
-diffing — never by compiling or running Haskell. And because the fixtures are per-production, they hand us a bottom-up
-build order for free: char-class leaves before token leaves before composites, and `l-yaml-stream` only once everything
-under it is green.
+**The oracle is static, and libyeast's own.** `migrate_tests.py` turns the reference parser's per-production fixtures
+into `tests/spec/` — 637 input/output pairs, each named `production[.n=N][.c=C][.t=T].case`, the outputs in the yeast
+format `ys_read_token` already parses. Migration takes only fixtures that align with libyeast's grammar and rewrites
+each output into what libyeast emits, not what the reference does (see the differences from the reference in
+`DESIGN.md`); the reference's internal helpers, its `m`-based parameterization, and its non-UTF-8 inputs are left out.
+`check_spec_tests.py` then keeps the suite intact. The interpreter is thus checked by *reading* fixtures and diffing —
+never by compiling or running Haskell. And because the fixtures are per-production, they hand us a bottom-up build order
+for free: char-class leaves before token leaves before composites, and `l-yaml-stream` only once everything under it is
+green.
 
 Built piece by piece, each a commit gated by the productions it newly covers. The harness above is the diff engine each
 piece runs against; one convention still to pin from the fixtures is that a value-detecting production run alone emits a
