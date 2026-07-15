@@ -5,6 +5,15 @@
 # `make <target>` with nothing changed does nothing at all. The heavy lifting (compilation) is delegated to CMake, which
 # is itself incremental.
 
+# clang-format's LLVM style shifts between major versions (UTF-8 column width, trailing-comment alignment) but is stable
+# within one — 22.1.5 and 22.1.8 agree; 18 and 22 do not — so the gate accepts any build of one major. That major is the
+# single source of truth in .clang-format-version, read here for the gate and by the dev-deps scripts for the wheel they
+# install. CLANG_FORMAT resolves to that wheel's binary, and the format targets verify the major before trusting it; a
+# developer with any build of it on PATH works without the wheel, and any other major fails the gate with instructions.
+CLANG_FORMAT_MAJOR_VERSION := $(shell cat .clang-format-version)
+CLANG_FORMAT ?= $(shell python3 -c "import clang_format, os; \
+                  print(os.path.join(os.path.dirname(clang_format.__file__), 'data', 'bin', 'clang-format'))" \
+                  2>/dev/null || echo clang-format)
 CLANG_TIDY ?= $(shell command -v clang-tidy 2>/dev/null \
                 || command -v "$$(brew --prefix llvm 2>/dev/null)/bin/clang-tidy" 2>/dev/null \
                 || echo clang-tidy)
@@ -64,7 +73,7 @@ GEN_SRC    := $(wildcard generator/*.py)
 
 # Tool dependencies, verified by check-build-deps / check-dev-deps.
 BUILD_DEP_TOOLS := cmake $(CC) python3 python3:yaml
-DEV_DEP_TOOLS   := clang-format $(CLANG_TIDY) $(CPPCHECK) $(GCOVR) $(MDFORMAT) $(BLACK) $(RUFF) $(GERSEMI) \
+DEV_DEP_TOOLS   := $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK) $(GCOVR) $(MDFORMAT) $(BLACK) $(RUFF) $(GERSEMI) \
                    $(SHFMT) doxygen $(firstword $(GCOV_EXE))
 
 .PHONY: all package test test-c test-release test-haskell test-clojure \
@@ -140,9 +149,16 @@ build-coverage/.cov: build-coverage/.cfg $(BUILD_DEPS) scripts/coverage_badge.py
 	python3 scripts/coverage_gate.py build-coverage/coverage.json
 	@touch $@
 
+# The version guard for clang-format, shared by the check and the reformat so neither trusts the wrong major.
+CLANG_FORMAT_CHECK = "$(CLANG_FORMAT)" --version | grep -q "version $(CLANG_FORMAT_MAJOR_VERSION)\." \
+	|| { echo "clang-format $(CLANG_FORMAT_MAJOR_VERSION).x required, found: $$("$(CLANG_FORMAT)" --version 2>/dev/null \
+	     | grep -o 'version [0-9.]*' || echo none). Run scripts/install-<debian|macos>-dev-deps.sh vet, or put a \
+	     $(CLANG_FORMAT_MAJOR_VERSION).x clang-format on PATH." >&2; exit 1; }
+
 # --- format checks (one stamp per language, so each re-checks independently) ---
-.stamps/format-c: $(ALL_SRC) .clang-format | .stamps
-	clang-format --dry-run --Werror $(ALL_SRC)
+.stamps/format-c: $(ALL_SRC) .clang-format .clang-format-version | .stamps
+	@$(CLANG_FORMAT_CHECK)
+	"$(CLANG_FORMAT)" --dry-run --Werror $(ALL_SRC)
 	@touch $@
 .stamps/format-md: $(MD_FILES) | .stamps
 	$(MDFORMAT) --check --wrap 120 $(MD_FILES)
@@ -272,7 +288,8 @@ test-clojure:
 test: test-c test-haskell test-clojure
 # reformat-* CHANGE source files in place; check-format-* only verify.
 reformat-c:
-	clang-format -i $(ALL_SRC)
+	@$(CLANG_FORMAT_CHECK)
+	"$(CLANG_FORMAT)" -i $(ALL_SRC)
 reformat-md:
 	$(MDFORMAT) --wrap 120 $(MD_FILES)
 reformat-py:
