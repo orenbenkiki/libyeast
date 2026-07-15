@@ -55,23 +55,24 @@ its comments). The full public API surface is declared, but the parser core is n
   it, and 97 of the 211 productions carry the yeast token codes — which productions bracket their match in `Begin`/`End`
   markers, and what code each consumed character is given. The vendored `third_party/yaml-grammar/yaml-spec-1.2.yaml`
   cannot serve as the source: it inlines the indicator characters, so it cannot say that a quotation mark opens a scalar
-  as an indicator but is meta inside an escape, and it names no token at all. `make check-grammar` erases the
-  annotations and the indicator productions and checks that what remains is the vendored grammar, production for
-  production — so what libyeast adds cannot quietly become what libyeast changes, and a departure must be declared, with
-  its reason, in `check_vendor_spec.py`.
+  as an indicator but is meta inside an escape, and it names no token at all. `make verify-spec` erases the annotations
+  and the indicator productions and checks that what remains is the vendored grammar, production for production — so
+  what libyeast adds cannot quietly become what libyeast changes, and a departure must be declared, with its reason, in
+  `check_vendor_spec.py`.
 - **Parser generator** — `generator/`: `ir.py` (the typed grammar IR), `annotated2ir.py` (read
   `grammar/yeast-spec-1.2.yaml` into the IR), `ir2annotated.py` (the inverse), `ir2spec.py` (erase libyeast's additions
   and recover the official grammar), `chars.py` (the character model the decoder is built from), `grammar2decoder.py`
   (emit `src/decoder_tables.h`), `wire.py` (the yeast wire format in Python), `spec_tests.py` (the conformance
-  fixtures), `migrate_tests.py` (build them from the reference's), and the gate checks `check_annotated_roundtrip.py`,
-  `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`, `check_grammar_docs.py`, `check_decoder.py` and
-  `check_spec_tests.py`. This is where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3
-  \+ PyYAML.
+  fixtures), `interpreter.py` (a backtracking interpreter of the grammar, run against those fixtures), and the gate
+  checks `check_annotated_roundtrip.py`, `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`,
+  `check_grammar_docs.py`, `check_decoder.py`, `check_spec_tests.py`, `check_wire.py` and `check_interpreter.py`. This
+  is where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
 - **Reference** — `third_party/yamlreference/`: the Haskell YAML reference parser, vendored to be read. Its grammar
   carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code` comes
   from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of it is
-  built. Its `tests/` fixtures are the source `migrate_tests.py` builds libyeast's own conformance suite (`tests/spec/`)
-  from — see the differences from the reference below, and the reference-interpreter phase in `PLAN.md`.
+  built. Its `tests/` fixtures were the source libyeast's own conformance suite (`tests/spec/`) was built from once, and
+  are kept only to be read against — see the differences from the reference below, and the reference-interpreter phase
+  in `PLAN.md`.
 - **Build** — `CMakeLists.txt` is the source of truth for building, testing, installing, and the version. It defines the
   shared + static libraries (hardened, symbol-visibility controlled), the sanitized Debug and hardened Release configs,
   and the coverage option. No list of files is kept by hand, here or in the `Makefile`: the sources and the tests are
@@ -122,11 +123,17 @@ fixtures go on testing libyeast rather than a parser it is not.
   expected, not the reference's wording, and what carries the meaning is the position — the first `unparsed` token
   behind the error begins at the byte that failed.
 
-Two further differences never reach the token stream a caller sees, so they are not in the list above: libyeast consumes
-and emits the indentation the reference peeks at (so it needs no cross-line lookahead), and it flattens the
-character-class helpers it uses only inside a `Diff` (so a helper run _alone_ emits `unparsed` where the reference emits
-its tokens — invisible in a real document, since the helper only ever appears in a subtraction). The migration accounts
-for the second where it rewrites those isolated-helper fixtures; see `generator/migrate_tests.py`.
+Some further differences never reach the token stream a caller sees, so they are not in the list above — they are helper
+productions that diverge only when run alone, and agree once composed into a document:
+
+- libyeast consumes and emits the indentation the reference peeks at, so it needs no cross-line lookahead.
+- It flattens the character-class helpers it uses only inside a `Diff`, so a helper run _alone_ emits `unparsed` where
+  the reference emits its tokens — invisible in a real document, since the helper only ever appears in a subtraction.
+- It follows the spec's factoring of the plain-scalar `:`/`#` exclusion, and the reference does not. The spec keeps
+  `ns-plain-safe-out`/`-in` (rules 128/129) as `ns-char` (and `ns-char - c-flow-indicator`) and excludes `:`/`#` in
+  `ns-plain-char` (rule 130), with its two exceptions; the reference instead subtracts `:`/`#` up in 128/129 and makes
+  130 just `ns-plain-safe`. So run alone, `ns-plain-safe-out(':')` matches for libyeast and errors for the reference —
+  but a full plain scalar accepts the same characters either way (verified against the reference's own fixtures).
 
 ## Memory safety
 

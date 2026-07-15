@@ -1,29 +1,21 @@
 # SPDX-License-Identifier: MIT
-"""libyeast's own conformance fixtures, and the reference fixtures they were migrated from.
+"""libyeast's own conformance fixtures.
 
 `tests/spec/` holds libyeast's differential oracle: for each `<production>[.n=N][.c=C][.t=T].<case>` an `.input` YAML
 fragment and an `.output` YEAST token stream the production must emit for it. The filename says which production to run
 and with which parameters — this module decodes that convention, mirroring the reference's own test runner, and pairs
 each input with its expected output.
 
-The fixtures are migrated once from the vendored reference parser's `tests/` (`SOURCE_DIR`), by `migrate_tests.py`; the
-harness reads only `tests/spec/`, so the suite is libyeast's to add to and correct without being tied to the reference's
-outputs. The migration needs to know which reference fixtures align with libyeast's grammar (`is_runnable`) and which
-productions libyeast flattens to a bare character class and so emits as plain unparsed (`annotation_free`).
+The suite was built once from the vendored reference parser's fixtures and is now libyeast's to add to and correct;
+`is_runnable` and `bad_value` are what the fixture gate checks each fixture against the grammar with.
 """
 
 import os
 import re
 from dataclasses import dataclass
 
-import ir
-
 _TREE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS_DIR = os.path.join(_TREE, "tests", "spec")
-SOURCE_DIR = os.path.join(_TREE, "third_party", "yamlreference", "tests")
-
-# The token-annotation nodes: a production that reaches none of them emits every character it consumes as unparsed.
-_ANNOTATIONS = (ir.Token, ir.Wrap, ir.Emit)
 
 # The parameter values the grammar understands: the six contexts of `c` and the three chomping modes of `t`. `n` is an
 # indentation, any integer (-1 is the auto-detect base). A fixture whose value falls outside these is malformed, not
@@ -103,39 +95,6 @@ def bad_value(fixture):
         if name == "t" and value not in CHOMPINGS:
             return f"t={value!r} is not a chomping mode"
     return None
-
-
-def annotation_free(production, grammar):
-    """Whether running `production` emits every character as unparsed — its reachable body annotates no token.
-
-    These are the productions libyeast flattens to a bare character class because it uses them only inside a `Diff`,
-    where the character set matters and the tokens never fire. Run alone they diverge from the reference, which keeps
-    the tokens; the migration rewrites their expected output to the plain unparsed libyeast emits.
-    """
-    seen = set()
-    frontier = [production]
-    while frontier:
-        name = frontier.pop()
-        if name in seen:
-            continue
-        seen.add(name)
-        node = grammar.get(name)
-        if node is None:
-            continue
-        stack = [node.body]
-        while stack:
-            current = stack.pop()
-            if isinstance(current, _ANNOTATIONS):
-                return False
-            if isinstance(current, ir.Ref):
-                frontier.append(current.name)
-                continue
-            for field in getattr(current, "__dataclass_fields__", ()):
-                value = getattr(current, field)
-                for child in value if isinstance(value, tuple) else (value,):
-                    if hasattr(child, "__dataclass_fields__"):
-                        stack.append(child)
-    return True
 
 
 def load(tests_dir=TESTS_DIR):

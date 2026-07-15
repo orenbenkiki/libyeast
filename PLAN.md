@@ -193,23 +193,22 @@ Two things fall out of it at once: it proves libyeast's own grammar (`grammar/ye
 reference's tokens, before any C exists to be wrong; and it becomes the verification net for the whole normalization
 pipeline (Phase 03) — the backtracking mode built here, the committed mode added there.
 
-**The oracle is static, and libyeast's own.** `migrate_tests.py` turns the reference parser's per-production fixtures
-into `tests/spec/` — 637 input/output pairs, each named `production[.n=N][.c=C][.t=T].case`, the outputs in the yeast
-format `ys_read_token` already parses. Migration takes only fixtures that align with libyeast's grammar and rewrites
-each output into what libyeast emits, not what the reference does (see the differences from the reference in
-`DESIGN.md`); the reference's internal helpers, its `m`-based parameterization, and its non-UTF-8 inputs are left out.
-`check_spec_tests.py` then keeps the suite intact. The interpreter is thus checked by *reading* fixtures and diffing —
-never by compiling or running Haskell. And because the fixtures are per-production, they hand us a bottom-up build order
-for free: char-class leaves before token leaves before composites, and `l-yaml-stream` only once everything under it is
-green.
+**The oracle is static, and libyeast's own.** `tests/spec/` holds 637 input/output pairs, each named
+`production[.n=N][.c=C][.t=T].case`, the outputs in the yeast format `ys_read_token` already parses. It was built once
+from the reference parser's per-production fixtures — those that align with libyeast's grammar, each output rewritten
+into what libyeast emits, not what the reference does (see the differences in `DESIGN.md`); the reference's internal
+helpers, `m`-based parameterization, non-UTF-8 inputs, and isolated-run commit artifacts are left out, and the one-time
+build is not kept. `check_spec_tests.py` keeps the suite intact. The interpreter is thus checked by *reading* fixtures
+and diffing — never by compiling or running Haskell. And because the fixtures are per-production, they hand us a
+bottom-up build order for free: char-class leaves before token leaves before composites, and `l-yaml-stream` only once
+everything under it is green.
 
-Built piece by piece, each a commit gated by the productions it newly covers. The harness above is the diff engine each
-piece runs against; one convention still to pin from the fixtures is that a value-detecting production run alone emits a
-`Detected` token, which the interpreter's isolated-production mode must reproduce.
+Built piece by piece, each a commit gated by the productions it newly covers. The character-level nodes
+(`Char`/`Range`/`Diff`/`Empty`/`Seq`/`Alt`/`Ref`) and the annotation nodes (`Token`/`Wrap`/`Emit`) are done — the
+interpreter reproduces every fixture resting on only those. What is left, in order (one convention still to pin from the
+fixtures: a value-detecting production run alone emits a `Detected` token, which the interpreter's isolated-production
+mode must reproduce):
 
-1. Engine core — `match(node, state) → (ok, pos)`, backtracking with undo: `Char`/`Range`/`Diff`/`Empty`/`Seq`/`Alt`/
-   `Ref`. Verified on the character-class leaves, which also cross-check the decoder's char model.
-1. Token production — run accumulation, `Token`/`Wrap`/`Emit` to yeast tokens with marks, undo on backtrack.
 1. Repetition — `Star`/`Plus`/`Opt`/`Rep`.
 1. Parameters — thread `n`/`m`/`c`/`t`; `Case`/`Flip`/`Bind`/`SetVar`; the arithmetic; the `Lt`/`Le`/`Max`/`Bound`
    predicates. Verified on the indentation and context productions.

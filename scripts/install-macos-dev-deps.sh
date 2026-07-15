@@ -1,28 +1,32 @@
 #!/bin/sh
-# Install the tools the `make pc` gate needs on macOS: the build deps plus formatters, linters, coverage, and docs
-# tools. An optional goal argument ($1: vet, test-c, gh-pages) narrows the install to just that sub-gate's tools;
-# omitted or "pc" installs everything. Run it from the project root: it reads .clang-format-version there.
+# Install the tools a sub-gate needs on macOS, on top of the C build deps: the parser generator's PyYAML, the formatters
+# and linters, and the coverage and docs tools. The goal argument ($1) picks the sub-gate: `c` or `test` (nothing beyond
+# the C build deps), `verify` (PyYAML), `vet` (formatters + linters), `gh-pages` (coverage + docs); omitted or `pc`
+# installs everything. Run it from the project root: it reads .clang-format-version there.
 set -eu
 goal="${1:-}"
 
 # Tool groups this goal needs.
+gen=false
 lint=false
 cov=false
 docs=false
 case "$goal" in
 '' | pc)
+    gen=true
     lint=true
     cov=true
     docs=true
     ;;
+c | test) ;;
+verify) gen=true ;;
 vet) lint=true ;;
-test-c) cov=true ;;
 gh-pages)
     cov=true
     docs=true
     ;;
 *)
-    echo "install-macos-dev-deps.sh: unknown goal '$goal' (expected: pc, vet, test-c, gh-pages)" >&2
+    echo "install-macos-dev-deps.sh: unknown goal '$goal' (expected: pc, c, test, verify, vet, gh-pages)" >&2
     exit 1
     ;;
 esac
@@ -32,10 +36,14 @@ sh "$here/install-macos-build-deps.sh" "$goal"
 
 # LLVM supplies clang-tidy (lint) and llvm-cov (coverage); install it once if either group needs it. clang-format is not
 # taken from it: it comes from a pip wheel, since brew's version differs from a developer's and formats code the gate
-# then rejects. Its major is .clang-format-version, the one source the gate and both dev-deps scripts read.
+# then rejects. Its major is .clang-format-version, the one source the gate and both dev-deps scripts read. Python 3
+# itself comes with the Xcode Command Line Tools the build-deps script installs, so only PyYAML is pip-installed here.
 need_llvm=false
 brew_pkgs=""
 pip_pkgs=""
+if $gen; then
+    pip_pkgs="$pip_pkgs pyyaml"
+fi
 if $lint; then
     need_llvm=true
     brew_pkgs="$brew_pkgs cppcheck shfmt"

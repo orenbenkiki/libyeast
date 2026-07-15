@@ -3,8 +3,8 @@
 
 For each fixture whose production rests on only the nodes the interpreter supports, run the production and compare its
 token stream to the fixture's, byte for byte. This is where libyeast's grammar is proved to emit the reference's tokens,
-one production at a time; a fixture whose input the production is meant to reject awaits the error-handling piece and is
-counted, not run.
+one production at a time; a fixture whose output carries an error token awaits the error-handling piece — the
+interpreter cannot emit one yet — and is counted, not run.
 """
 
 import os
@@ -23,8 +23,8 @@ def main():
     pending = 0
     errors = []
     for fixture in fixtures:
-        if fixture.is_invalid:
-            pending += 1
+        if any(token.code == wire.ERROR for token in wire.parse(fixture.expected)):
+            pending += 1  # its output carries an error token, and emitting errors awaits the error-handling piece
             continue
         tokens = interpreter.run(grammar, fixture.production, fixture.input)
         actual = wire.serialize(tokens) if tokens is not None else "(no match)"

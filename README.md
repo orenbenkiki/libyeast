@@ -1,7 +1,8 @@
 # libyeast
 
 [![vet](https://github.com/orenbenkiki/libyeast/actions/workflows/vet.yml/badge.svg)](https://github.com/orenbenkiki/libyeast/actions/workflows/vet.yml)
-[![C tests](https://github.com/orenbenkiki/libyeast/actions/workflows/test-c.yml/badge.svg)](https://github.com/orenbenkiki/libyeast/actions/workflows/test-c.yml)
+[![test](https://github.com/orenbenkiki/libyeast/actions/workflows/test.yml/badge.svg)](https://github.com/orenbenkiki/libyeast/actions/workflows/test.yml)
+[![verify](https://github.com/orenbenkiki/libyeast/actions/workflows/verify.yml/badge.svg)](https://github.com/orenbenkiki/libyeast/actions/workflows/verify.yml)
 [![docs](https://github.com/orenbenkiki/libyeast/actions/workflows/gh-pages.yml/badge.svg)](https://orenbenkiki.github.io/libyeast/)
 [![CodeQL](https://github.com/orenbenkiki/libyeast/actions/workflows/codeql.yml/badge.svg)](https://github.com/orenbenkiki/libyeast/security/code-scanning)
 [![coverage](https://img.shields.io/endpoint?url=https://orenbenkiki.github.io/libyeast/coverage.json)](https://orenbenkiki.github.io/libyeast/coverage/)
@@ -22,17 +23,18 @@ drop-in, ABI-compatible C shared library.
 
 ## Requirements
 
-- A C99 compiler (GCC, Clang, or MSVC)
-- CMake ≥ 3.20
-- Python 3 with PyYAML — the parser generator runs at build time
-- For the full dev gate: the formatters, linters, coverage, and docs tools installed by `scripts/install-*-dev-deps.sh`
-  (see [`CONTRIBUTING.md`](CONTRIBUTING.md))
+Building the C library needs only a C99 compiler (GCC, Clang, or MSVC), CMake ≥ 3.20, and pkg-config — the generated
+files are committed, so the build calls no Python. `make install-deps` installs those for you (Debian/Ubuntu, macOS, or
+Windows, auto-detected). Working on the generator or running the gate needs more — Python 3 with PyYAML, the formatters,
+linters, and the coverage and docs tools — which `make install-deps-pc` (or a per-sub-gate `make install-deps-<goal>`)
+installs; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Build & install
 
 ```sh
-make                       # build the library (shared + static)
-cmake --install build --prefix /usr/local
+make install-deps                 # compiler, CMake, pkg-config — auto-detects your OS
+make                              # build the shared + static libraries
+make install PREFIX=/usr/local    # (optional) install them
 ```
 
 Consume it via pkg-config or CMake:
@@ -60,35 +62,51 @@ int main(void) {
 
 ## Development
 
-`make pc` is the incremental pre-commit gate: it runs everything below and re-runs only what changed. Its three
-second-level goals each map to one CI workflow and one status badge.
+Goal names reflect the tree: `make <parent>` runs a group, `make <parent>-<part>` runs one part. There are three ways to
+work — build and test the C library (pure C, no Python), verify the generator pipeline, or regenerate its outputs — and
+`make pc` is the developer gate over all of it.
 
-- `make pc` — the full pre-commit gate
-  - `make vet` — static code quality + packaging
-    - `make check-format` — every formatter, check-only
-      - `make check-format-c` — clang-format
-      - `make check-format-md` — mdformat
-      - `make check-format-py` — black
-      - `make check-format-cmake` — gersemi
-      - `make check-format-sh` — shfmt
-    - `make check-comments` — the `/* */`-only-when-inline comment rule
-    - `make lint` — clang-tidy + cppcheck
-    - the leftover-marker scan — its goal name is the scaffolding marker itself, so it is not spelled here (this scan is
-      exactly why); `vet` runs it for you
-    - `make check-version` — guards the vcpkg port against version drift
-    - `make pkg-test` — installs, then builds a consumer against the shared and static libraries via pkg-config
-  - `make test-c` — C unit tests (Debug + Release) plus the coverage gate
-    - `make test-release` — Release build + tests
-    - `make coverage` — coverage build enforcing the `// UNTESTED` contract
-  - `make gh-pages` — assembles the GitHub Pages payload (Doxygen docs + coverage report)
-    - `make docs` — Doxygen HTML, completeness-gated
+`make pc` is the incremental pre-commit gate: it runs `make all`, `make test`, `make verify`, `make vet`, and
+`make gh-pages` in that order, re-running only what changed. Four of those map to one CI workflow and one status badge
+each: `test`, `verify`, `vet`, `gh-pages`.
+
+- **`make all`** (the default) — build the shared + static libraries. Pure C, no Python.
+- **`make test`** — build and run the C parser tests. Pure C.
+  - `make test-debug` — Debug build (sanitized) + tests
+  - `make test-release` — Release build + tests
+- **`make verify`** — the generator pipeline is correct and its outputs current:
+  - `make verify-roundtrip` — the grammar round-trips through the IR losslessly
+  - `make verify-references` — every reference resolves to a production of matching arity, every production reachable
+  - `make verify-spec` — erasing libyeast's additions recovers the vendored official grammar
+  - `make verify-markers` — every `begin-` marker is closed by its own `end-`, on every path
+  - `make verify-emits` — every rule documents the tokens it emits, checked against the grammar
+  - `make verify-decoder` — `src/decoder_tables.h` is exactly what the grammar produces (not stale)
+  - `make verify-wire` — `wire.py`'s code map matches `src/wire.c`'s
+  - `make verify-fixtures` — the conformance fixtures in `tests/spec/` are intact
+  - `make verify-grammar` — every grammar reproduces `tests/spec/`, bottom-up:
+    - `make verify-grammar-base` — the base grammar, via the interpreter
+- **`make vet`** — static code quality:
+  - `make vet-format` — every formatter, check-only:
+    - `make vet-format-c` / `-md` / `-py` / `-cmake` / `-sh` — clang-format / mdformat / black / gersemi / shfmt
+  - `make vet-comments` — the `/* */`-only-when-inline comment rule
+  - `make vet-lint` — clang-tidy + cppcheck
+  - `make vet-version` — guards the vcpkg port against version drift
+  - `make vet-packaging` — installs, then builds a consumer against the shared and static libraries via pkg-config
+  - the leftover-marker scan — its goal is `vet-` followed by the scaffolding marker itself, so it is not spelled here
+    (this scan is exactly why); `vet` runs it for you
+- **`make gh-pages`** — the GitHub Pages payload:
+  - `make gh-pages-docs` — Doxygen HTML, completeness-gated
+  - `make gh-pages-coverage` — the `// UNTESTED` coverage gate + HTML report
 
 Goals outside the gate:
 
+- `make install-deps` — install the C build deps, OS auto-detected (Debian/Ubuntu, macOS, Windows)
+  - `make install-deps-pc` — everything the gate needs; `make install-deps-<sub-gate>` narrows it:
+    `install-deps-verify`, `install-deps-vet`, `install-deps-gh-pages`
+- `make install` — install the built libraries (`PREFIX=…`, default `/usr/local`)
+- `make regen` — regenerate the committed generated files (today `src/decoder_tables.h`)
 - `make reformat` — apply every formatter in place (or one language: `reformat-c`, `reformat-md`, `reformat-py`,
   `reformat-cmake`, `reformat-sh`)
-- `make package` (a.k.a. `make all`) — build the shared + static libraries only, no tests
-- `make test` — `test-c` plus the `test-haskell` / `test-clojure` differential-oracle stubs (not wired yet)
 - `make check-build-deps` / `make check-dev-deps` — verify the required tools are installed
 - `make clean` — remove all build directories and stamps
 
@@ -96,8 +114,8 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Documentation
 
-The API reference lives at **<https://orenbenkiki.github.io/libyeast/>**. It is generated with Doxygen (`make docs` →
-`build-docs/html`) and republished to GitHub Pages on each push to `main`.
+The API reference lives at **<https://orenbenkiki.github.io/libyeast/>**. It is generated with Doxygen
+(`make gh-pages-docs` → `build-docs/html`) and republished to GitHub Pages on each push to `main`.
 
 ## License
 

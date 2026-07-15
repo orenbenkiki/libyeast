@@ -2186,7 +2186,7 @@ c-quoted-quote:
   - end-escape
   - (all):
     - c-single-quote
-    - (token): [ meta, c-single-quote ]
+    - (token): [ meta, '''' ]
 
 
 

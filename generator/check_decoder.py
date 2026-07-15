@@ -89,7 +89,7 @@ def main():
     errors = check_keys(model, grammar) + check_literals(model) + check_scanned_sets(model, grammar)
     with open(TABLES, encoding="utf-8") as handle:
         if handle.read() != regenerated(model, grammar):
-            errors.append(f"{TABLES} is stale; regenerate it with `make regen-tables`")
+            errors.append(f"{TABLES} is stale; regenerate it with `make regen`")
     gate.report(
         errors, "decoder table error(s)", f"decoder tables OK: {len(model.literals)} literals, {len(model.sets)} sets"
     )

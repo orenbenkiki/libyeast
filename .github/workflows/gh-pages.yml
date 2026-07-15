@@ -26,10 +26,10 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install dev dependencies
-        run: |
-          sudo apt-get update
-          sh scripts/install-debian-dev-deps.sh gh-pages
+      - name: Update apt index
+        run: sudo apt-get update
+      - name: Install dependencies
+        run: make install-deps-gh-pages
       - name: Build docs + coverage report
         run: make gh-pages
       - name: Upload Pages artifact

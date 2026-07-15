@@ -1,0 +1,20 @@
+name: verify
+
+# The generator pipeline is correct and its outputs current: the "verify" sub-gate. Pure Python, so one runner.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update apt index
+        run: sudo apt-get update
+      - name: Install dependencies
+        run: make install-deps-verify
+      - name: Verify
+        run: make verify

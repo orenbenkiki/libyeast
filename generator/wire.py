@@ -3,11 +3,11 @@
 
 A token stream is written as, per token, a position comment and a code line — `# B: <byte>, C: <char>, L: <line>,
 c: <column>` then a code character and the token's text, escaped by codepoint. This is the same format `src/wire.c`
-reads and writes and that the reference parser's fixtures are in; here it is what the test migration reads and rewrites,
-and what the interpreter serializes its tokens into to be diffed.
+reads and writes and that the conformance fixtures are in; here it is what the interpreter serializes its tokens into to
+be diffed against them.
 
 The text is escaped exactly as `src/wire.c` does: a printable ASCII byte other than a backslash stands for itself, and
-everything else becomes `\\xXX`, `\\uXXXX`, or `\\UXXXXXXXX` with uppercase hex. Marks advance a byte by its UTF-8
+everything else becomes `\\xXX`, `\\uXXXX`, or `\\UXXXXXXXX` with lower-case hex. Marks advance a byte by its UTF-8
 length, a character by one, and a line at each break — CR, LF, or CR LF together — which resets the column, following
 the reference's own line counting.
 """
@@ -15,9 +15,55 @@ the reference's own line counting.
 import re
 from dataclasses import dataclass
 
-UNPARSED = "-"  # the code a character consumed under no token annotation carries
 ERROR = "!"  # the code all three failures share on the wire
-BOM = "U"  # a byte-order mark; libyeast's text is the matched character, the reference's is the encoding name
+
+# The wire character each token code is written as — the grammar names the code, `src/wire.c`'s YS_WIRE table gives the
+# character, and `check_wire.py` gates this copy against it so the two cannot drift.
+CODE_CHAR = {
+    "bom": "U",
+    "text": "T",
+    "meta": "t",
+    "break": "b",
+    "line-feed": "L",
+    "line-fold": "l",
+    "indicator": "I",
+    "white": "w",
+    "indent": "i",
+    "directives-end": "K",
+    "document-end": "k",
+    "begin-escape": "E",
+    "end-escape": "e",
+    "begin-comment": "C",
+    "end-comment": "c",
+    "begin-directive": "D",
+    "end-directive": "d",
+    "begin-tag": "G",
+    "end-tag": "g",
+    "begin-handle": "H",
+    "end-handle": "h",
+    "begin-anchor": "A",
+    "end-anchor": "a",
+    "begin-properties": "P",
+    "end-properties": "p",
+    "begin-alias": "R",
+    "end-alias": "r",
+    "begin-scalar": "S",
+    "end-scalar": "s",
+    "begin-sequence": "Q",
+    "end-sequence": "q",
+    "begin-mapping": "M",
+    "end-mapping": "m",
+    "begin-pair": "X",
+    "end-pair": "x",
+    "begin-node": "N",
+    "end-node": "n",
+    "begin-document": "O",
+    "end-document": "o",
+    "begin-stream": "Y",
+    "end-stream": "y",
+    "unparsed": "-",
+    "detected": "$",
+}
 
 CARRIAGE_RETURN = 0x0D
 LINE_FEED = 0x0A
@@ -69,42 +115,6 @@ def serialize(tokens):
         mark = token.start
         out.append(f"# B: {mark.byte}, C: {mark.char}, L: {mark.line}, c: {mark.column}\n{token.code}{token.text}\n")
     return "".join(out)
-
-
-def split_unparsed(units, start):
-    """Cut a run of codepoint `units` into unparsed tokens — one per line's content and one per break — from `start`.
-
-    A break is CR, LF, or CR LF together; it becomes its own token, and the next line's content starts at column zero.
-    This is the "no token spans a line" rule, and what emits the input a character class consumes.
-    """
-    tokens = []
-    mark = start
-    content = []
-    content_start = mark
-    index = 0
-    while index < len(units):
-        codepoint, byte_length, escaped = units[index]
-        if codepoint in (CARRIAGE_RETURN, LINE_FEED):
-            if content:
-                tokens.append(Token(UNPARSED, content_start, "".join(content)))
-                content = []
-            group = units[index : index + 2] if _is_crlf(units, index) else units[index : index + 1]
-            tokens.append(Token(UNPARSED, mark, "".join(unit[2] for unit in group)))
-            mark = Mark(mark.byte + sum(unit[1] for unit in group), mark.char + len(group), mark.line + 1, 0)
-            content_start = mark
-            index += len(group)
-        else:
-            content.append(escaped)
-            mark = Mark(mark.byte + byte_length, mark.char + 1, mark.line, mark.column + 1)
-            index += 1
-    if content:
-        tokens.append(Token(UNPARSED, content_start, "".join(content)))
-    return tokens
-
-
-def _is_crlf(units, index):
-    """Whether the unit at `index` is a CR immediately followed by an LF."""
-    return units[index][0] == CARRIAGE_RETURN and index + 1 < len(units) and units[index + 1][0] == LINE_FEED
 
 
 def chain_fault(tokens):

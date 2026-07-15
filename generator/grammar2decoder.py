@@ -7,7 +7,7 @@ of each character set the grammar tests, and the few keys a non-ASCII character 
 
 The key's layout is this file's to know. Anything reading or building a key does so through the macros emitted here.
 
-Usage: `make regen-tables`, or `python3 generator/grammar2decoder.py`, which writes `src/decoder_tables.h`.
+Usage: `make regen`, or `python3 generator/grammar2decoder.py`, which writes `src/decoder_tables.h`.
 """
 
 import unicodedata
@@ -175,7 +175,7 @@ def entries(out, rows):
         out.write(f"    {value + ',':<{width + 1}} // {comment}\n")
 
 
-# The header this generator owns, whole: it is committed, and `make check-grammar` fails if it is not what the
+# The header this generator owns, whole: it is committed, and `make verify-decoder` fails if it is not what the
 # grammar says it should be.
 TABLES = os.path.join(annotated2ir.TREE, "src", "decoder_tables.h")
 

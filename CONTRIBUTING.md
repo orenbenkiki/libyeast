@@ -2,14 +2,12 @@
 
 ## Prerequisites
 
-- A C99 compiler (GCC, Clang, or MSVC), CMake ≥ 3.20, GNU make, and Python 3 with PyYAML (the parser generator).
-- The formatters, linters, coverage, and docs tools the gate uses. Install them with the provided scripts rather than
-  chasing a hand-maintained list:
-  - `scripts/install-debian-dev-deps.sh` / `scripts/install-macos-dev-deps.sh` install everything the gate needs. Each
-    takes an optional sub-gate argument (`vet`, `test-c`, `gh-pages`) to install only that sub-gate's tools; omitted or
-    `pc` installs everything.
-  - `scripts/install-*-build-deps.sh` install just the compiler, CMake, and pkg-config needed to build and install the
-    library.
+- To build and install the C library: a C99 compiler (GCC, Clang, or MSVC), CMake ≥ 3.20, GNU make, and pkg-config.
+  Nothing else — the generated files are committed, so the build calls no Python. `make install-deps` installs these,
+  auto-detecting your OS (Debian/Ubuntu, macOS, Windows).
+- To run the gate or work on the generator: Python 3 with PyYAML, and the formatters, linters, coverage, and docs tools.
+  `make install-deps-pc` installs everything; `make install-deps-<sub-gate>` (`verify`, `vet`, `gh-pages`) narrows it to
+  one sub-gate's tools. These wrap the per-OS scripts in `scripts/`, so you never chase a hand-maintained list.
 - To check what is present without installing anything, run `make check-build-deps` (build tools) or
   `make check-dev-deps` (all gate tools); both call `scripts/check-deps.sh`.
 

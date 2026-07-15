@@ -20,13 +20,10 @@ jobs:
           - { os: macos-latest, cc: clang }
     steps:
       - uses: actions/checkout@v4
-      - name: Install dev dependencies (Linux)
+      - name: Update apt index
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sh scripts/install-debian-dev-deps.sh vet
-      - name: Install dev dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: sh scripts/install-macos-dev-deps.sh vet
+        run: sudo apt-get update
+      - name: Install dependencies
+        run: make install-deps-vet
       - name: Vet
         run: make vet CC=${{ matrix.cc }}
