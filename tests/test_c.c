@@ -594,8 +594,8 @@ static void test_wire_memory_cap(void) {
     ys_options tiny = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 8}; // smaller than the reader itself
     TEST_CHECK(ys_new_token_reader(reader, &tiny) == NULL);
 
-    ys_options small = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 512}; // room for the reader, none for a buffer
-    ys_token_reader *tokens = ys_new_token_reader(reader, &small);
+    ys_options capped = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 512}; // room for the reader, none for a buffer
+    ys_token_reader *tokens = ys_new_token_reader(reader, &capped);
     TEST_ASSERT(tokens != NULL);
 
     // It cannot buffer a line, and it says so — a fault of reading the wire, not a stream that was empty all along.

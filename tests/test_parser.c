@@ -83,9 +83,9 @@ static void test_memory_grow(void) {
     TEST_CHECK(capacity == 100);
 
     ys_memory capped = {{NULL, NULL, NULL, NULL}, 8, 0};
-    size_t small = 0;
-    TEST_CHECK(ys_memory_grow(&capped, NULL, &small, 100, 4, sizeof(int)) == NULL); // the cap refuses
-    TEST_CHECK(small == 0);
+    size_t narrow = 0;
+    TEST_CHECK(ys_memory_grow(&capped, NULL, &narrow, 100, 4, sizeof(int)) == NULL); // the cap refuses
+    TEST_CHECK(narrow == 0);
     TEST_CHECK(capped.allocated_bytes == 0);
 
     ys_memory refusing = {ungrowable_allocator(), 0, 0};
