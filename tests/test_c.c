@@ -446,6 +446,23 @@ static void test_wire_reader_failure(void) {
     ys_free_token_reader(tokens);
 }
 
+// A reader that fails after the position line, while the token line is being read, is a fault located on that next
+// line — a different path through the reader than a failure on the position line itself.
+static void test_wire_reader_failure_mid_token(void) {
+    drip_source source = {"# B: 0, C: 0, L: 0, c: 0\nThello\n", 25, 0}; // hands out the position line, then fails
+    ys_reader reader = {drip_source_read, NULL, &source};
+    ys_token_reader *tokens = ys_new_token_reader(reader, NULL);
+    TEST_ASSERT(tokens != NULL);
+
+    ys_token token;
+    TEST_CHECK(ys_read_token(tokens, &token));
+    TEST_CHECK(token.code == YS_CODE_WIRE_ERROR);
+    TEST_CHECK(token.start.line == 2); // the token line, the second line of the wire, is where it could not read
+    TEST_CHECK(!ys_read_token(tokens, &token));
+
+    ys_free_token_reader(tokens);
+}
+
 // A wire error token carries a code that a wire never legitimately holds, so the reader's own trouble is never mistaken
 // for the error tokens the wire replays — and its marks locate the fault, so a caller can point at where in the wire.
 static void test_wire_error_is_located(void) {
@@ -746,6 +763,7 @@ TEST_LIST = {
     {"wire_round_trip", test_wire_round_trip},
     {"wire_round_trips_an_error", test_wire_round_trips_an_error},
     {"wire_reader_failure", test_wire_reader_failure},
+    {"wire_reader_failure_mid_token", test_wire_reader_failure_mid_token},
     {"wire_error_is_located", test_wire_error_is_located},
     {"wire_error_text_is_terminated", test_wire_error_text_is_terminated},
     {"wire_empty_error_text", test_wire_empty_error_text},
