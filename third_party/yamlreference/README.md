@@ -12,6 +12,13 @@ work and in our own idiom, and departs from it where we judge better — it uses
 libyeast consumes and emits instead, so that libyeast needs no cross-line lookahead. No code is copied from here, and
 none is linked against.
 
-Later it becomes the differential oracle: libyeast's token stream is compared against this parser's, token for token.
+`tests/` is the differential oracle in static form: each `<production>[.n=N][.c=C][.t=T].<case>.input` is a YAML
+fragment, and its `.output` sibling is the exact YEAST token stream this parser produces for that production — captured
+once, so libyeast is checked against it without ever running Haskell. The filename encodes the production and its
+parameters; an `.invalid` case's output ends in an `Error` token. The bytes matter (`b-break.crlf.input` is CR LF), so
+`.gitattributes` keeps the fixtures out of line-ending normalization. 28 of the fixtures exercise this parser's own
+internal helper productions and parameterization rather than the official grammar; the harness lists and skips those.
 
-**It is LGPL** (`lgpl.txt`), while libyeast is MIT. Nothing here is built, linked, or distributed as part of libyeast.
+**It is LGPL** (`lgpl.txt`), while libyeast is MIT — but its author holds libyeast's copyright too, so the fixtures are
+reused here with that permission. No source is copied: `tests/` is captured data, and nothing here is built, linked, or
+distributed as part of libyeast.

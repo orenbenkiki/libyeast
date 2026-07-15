@@ -1,2 +1,6 @@
 # Normalize to LF in the repo and in every working tree, on all platforms.
 * text=auto eol=lf
+
+# The oracle fixtures are byte-exact: their inputs carry CR, CRLF, and other bytes the test is about, and their
+# outputs record those bytes verbatim. Never let line-ending normalization touch them.
+third_party/yamlreference/tests/** -text

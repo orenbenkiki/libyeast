@@ -62,6 +62,13 @@ All notable changes to this project are documented here. The format follows
   what they were, and the stack's frames carry the grammar's one runtime parameter, `n`. The automaton that drives them
   is not generated yet, so `ys_next_token` still returns a "not implemented" error.
 
+- The reference oracle, in static form: the reference parser's `tests/` fixtures — 670 YAML fragments each paired with
+  the exact yeast token stream it emits — vendored at `third_party/yamlreference/tests/`, so libyeast is checked against
+  them by reading, never by running Haskell. `generator/reference_tests.py` decodes each fixture's production and
+  parameters from its filename, and a gate keeps the corpus intact and reports which fixtures libyeast's grammar can run
+  (641) versus which exercise the reference parser's own internal productions and are skipped (29). The bytes are held
+  verbatim, CR and CRLF included, out of line-ending normalization.
+
 ### Changed
 
 - `ys_options.max_token_bytes` becomes `max_bytes`, and caps the memory the parser allocates rather than the bytes it

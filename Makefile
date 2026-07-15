@@ -70,6 +70,7 @@ PKG_PREFIX := $(CURDIR)/build-pkgtest/prefix
 GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
 ANNOTATED := grammar/yeast-spec-1.2.yaml
 GEN_SRC    := $(wildcard generator/*.py)
+FIXTURES   := $(wildcard third_party/yamlreference/tests/*.input third_party/yamlreference/tests/*.output)
 
 # Tool dependencies, verified by check-build-deps / check-dev-deps.
 BUILD_DEP_TOOLS := cmake $(CC) python3 python3:yaml
@@ -252,6 +253,13 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	python3 generator/check_decoder.py
 	@touch $@
 
+# Reference oracle: the vendored fixtures must be intact — every input paired with an output, every name decoding to a
+# production with well-formed parameters — and every fixture the grammar can run must still align with it, so the set
+# that is skipped as the reference parser's own stays known rather than silently growing.
+.stamps/reference-tests: $(FIXTURES) $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_reference_tests.py
+	@touch $@
+
 # And this is how they stop being stale. `src/decoder_tables.h` is the only generated file that is committed, so this is
 # the whole of it; the parser's tables will be the second, and one more line.
 regen-tables:
@@ -315,7 +323,7 @@ $(TODO_X): .stamps/$(TODO_X)
 docs: build-docs/.docs
 check-version: .stamps/version-check
 check-grammar: .stamps/grammar-roundtrip .stamps/grammar-validate .stamps/vendor-spec .stamps/markers \
-               .stamps/grammar-docs .stamps/decoder-tables
+               .stamps/grammar-docs .stamps/decoder-tables .stamps/reference-tests
 coverage: .stamps/coverage-gate
 pkg-test: build-pkgtest/.pkg
 

@@ -67,8 +67,10 @@ its comments). The full public API surface is declared, but the parser core is n
   grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
 - **Reference** — `third_party/yamlreference/`: the Haskell YAML reference parser, vendored to be read. Its grammar
   carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code` comes
-  from. It is LGPL, while libyeast is MIT: nothing is copied from it, nothing links against it, and nothing of it is
-  built. Later it becomes the differential oracle.
+  from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of it is
+  built. Its `tests/` fixtures are vendored as the static differential oracle — each records the exact token stream a
+  production emits, so libyeast is checked against it without running Haskell (see the reference-test harness in
+  `PLAN.md`).
 - **Build** — `CMakeLists.txt` is the source of truth for building, testing, installing, and the version. It defines the
   shared + static libraries (hardened, symbol-visibility controlled), the sanitized Debug and hardened Release configs,
   and the coverage option. No list of files is kept by hand, here or in the `Makefile`: the sources and the tests are
