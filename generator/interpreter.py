@@ -44,6 +44,7 @@ SUPPORTED_NODES = (
     ir.Token,
     ir.Wrap,
     ir.Emit,
+    ir.Cut,
     ir.Star,
     ir.Plus,
     ir.Opt,
@@ -569,6 +570,8 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.Cut):
+        return k()  # inert until error handling: a commit that neither stops backtracking nor emits an error yet
     raise NotImplementedError(f"interpreter does not support {type(node).__name__}")
 
 

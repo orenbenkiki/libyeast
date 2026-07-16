@@ -154,6 +154,8 @@ def node(x):
             return ir.Wrap(value[0], value[1], node(value[2]))
         if op == "(emit)":
             return ir.Emit(value)
+        if op == "(cut)":
+            return ir.Cut(value)
         rep = REP.match(op)
         if rep:
             return ir.Rep(count(rep.group(1)), node(value))

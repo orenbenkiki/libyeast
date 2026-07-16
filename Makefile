@@ -85,6 +85,7 @@ PKG_PREFIX := $(CURDIR)/build-pkgtest/prefix
 PREFIX ?= /usr/local
 GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
 ANNOTATED := grammar/yeast-spec-1.2.yaml
+MESSAGES := grammar/messages.yaml
 GEN_SRC    := $(wildcard generator/*.py)
 FIXTURES   := $(wildcard tests/spec/*.input tests/spec/*.output)
 
@@ -96,7 +97,7 @@ DEV_DEP_TOOLS   := python3 python3:yaml $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK
 
 .PHONY: all package install test test-debug test-release regen \
         verify verify-roundtrip verify-references verify-spec verify-markers verify-emits verify-decoder \
-        verify-wire verify-fixtures verify-grammar verify-grammar-base verify-grammar-base-coverage \
+        verify-wire verify-messages verify-fixtures verify-grammar verify-grammar-base verify-grammar-base-coverage \
         vet vet-format vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh \
         vet-comments vet-lint vet-version vet-packaging vet-$(TODO_X) \
         gh-pages gh-pages-docs gh-pages-coverage \
@@ -286,6 +287,12 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	python3 generator/check_wire.py
 	@touch $@
 
+# Error messages: every `(cut)` in the grammar names a message defined in messages.yaml, and every message is named by a
+# cut — so the cut sites and their text stay the one source the interpreter and the generated C table both derive from.
+.stamps/verify-messages: $(ANNOTATED) $(MESSAGES) $(GEN_SRC) | .stamps
+	python3 generator/check_messages.py
+	@touch $@
+
 # The reference interpreter reproduces every fixture it covers: it runs the production the grammar describes and its
 # token stream must equal the fixture's, byte for byte. This is where the grammar is proved to emit the reference's
 # tokens — the interpreter's coverage grows a node family at a time, and with it the fixtures this gate reproduces.
@@ -345,6 +352,7 @@ verify-markers: .stamps/verify-markers
 verify-emits: .stamps/verify-emits
 verify-decoder: .stamps/verify-decoder
 verify-wire: .stamps/verify-wire
+verify-messages: .stamps/verify-messages
 verify-fixtures: .stamps/verify-fixtures
 verify-grammar-base: .stamps/verify-grammar-base
 verify-grammar-base-coverage: .stamps/verify-grammar-base-coverage
@@ -352,7 +360,7 @@ verify-grammar-base-coverage: .stamps/verify-grammar-base-coverage
 # grammar once it exists.
 verify-grammar: verify-grammar-base verify-grammar-base-coverage
 verify: verify-roundtrip verify-references verify-spec verify-markers verify-emits verify-decoder \
-        verify-wire verify-fixtures verify-grammar
+        verify-wire verify-messages verify-fixtures verify-grammar
 
 # Static code quality.
 vet-format-c: .stamps/vet-format-c

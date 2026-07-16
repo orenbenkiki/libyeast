@@ -320,6 +320,16 @@ class Emit:
 
 
 @dataclass(frozen=True)
+class Cut:
+    """`(cut)`: a zero-width commit past which the parse does not backtrack; on a later failure it is the error, and
+
+    `message` names the expectation to report — a key into `grammar/messages.yaml`.
+    """
+
+    message: str
+
+
+@dataclass(frozen=True)
 class Prod:
     """A named production: its spec number, name, parameter list, and body node."""
 

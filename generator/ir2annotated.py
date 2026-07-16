@@ -119,6 +119,8 @@ def node_yaml(n):
         return {"(wrap)": [n.begin, n.end, node_yaml(n.item)]}
     if isinstance(n, ir.Emit):
         return {"(emit)": n.code}
+    if isinstance(n, ir.Cut):
+        return {"(cut)": n.message}
     raise TypeError(f"not a grammar node: {n!r}")
 
 

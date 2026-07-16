@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: MIT
+#
+# The error messages libyeast emits, keyed by the code a grammar `(cut)` names. Each says what was expected, never what
+# was found — the byte that failed comes back as the first unparsed token behind the error. This file is the single
+# source: the interpreter reads it, and the C parser's message table is generated from it (gated against drift), so the
+# mapping is never hand-duplicated.
+#
+# Every code here is named by a `(cut)` in `yeast-spec-1.2.yaml`. The character-level errors — a byte that is not a YAML
+# character, or not a codepoint at all — are grammar-independent, emitted below the grammar, and live with the other
+# hand-written messages, not here.
+
+# A required construct is absent.
+MISSING_VALUE: "A mapping value is required after ':'"
+MISSING_KEY: "A mapping key is required after '?'"
+MISSING_ENTRY: "A sequence entry is required after '-'"
+MISSING_ANCHOR_NAME: "An anchor name is required after '*'"
+MISSING_DIRECTIVE: "A directive name is required after '%'"
+MISSING_DOCUMENT: "A new document is required after '...'"
+
+# A construct was opened and never closed.
+UNTERMINATED_DOUBLE_QUOTE: "Unterminated double-quoted scalar"
+UNTERMINATED_SINGLE_QUOTE: "Unterminated single-quoted scalar"
+UNTERMINATED_FLOW_SEQ: "Unterminated flow sequence"
+UNTERMINATED_FLOW_MAP: "Unterminated flow mapping"
+
+# An escape or its digits are malformed.
+ESC_X2: "A '\\x' escape requires two hexadecimal digits"
+ESC_U4: "A '\\u' escape requires four hexadecimal digits"
+ESC_U8: "A '\\U' escape requires eight hexadecimal digits"
+ESC_URI: "A '%' escape in a tag requires two hexadecimal digits"
+INVALID_ESCAPE: "Invalid escape sequence"
+
+# A directive is malformed.
+YAML_DIRECTIVE: "The %YAML directive requires a version, e.g. %YAML 1.2"
+TAG_DIRECTIVE: "The %TAG directive requires a handle and a prefix"
+
+# A block scalar header carries trailing junk.
+BLOCK_HEADER: "A block scalar header requires a comment or line break"

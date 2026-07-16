@@ -101,7 +101,7 @@ def erase(node, owner):
     if isinstance(node, ir.Ref) and not node.args and node.name in INDICATORS and node.name != owner:
         return ir.Char(INDICATORS[node.name])
     if isinstance(node, ir.Seq):
-        kept = [erase(item, owner) for item in node.items if not isinstance(item, ir.Emit)]
+        kept = [erase(item, owner) for item in node.items if not isinstance(item, (ir.Emit, ir.Cut))]
         return ir.Seq(tuple(kept))
     return rebuilt(node, lambda item: erase(item, owner))
 
