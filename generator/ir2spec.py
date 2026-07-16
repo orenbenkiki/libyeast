@@ -23,6 +23,11 @@ import yaml
 # leave them out and never notice: `x / end-block-scalar` is `x / <empty>`, which is `x?`, which is what it writes.
 MARKER_ONLY = frozenset({"end-block-scalar"})
 
+# The rules libyeast adds for the unparsed recovery a failed cut hands off to. They consume, so they are not
+# marker-only, and no official rule references them — the runtime matches them — so recovering the official grammar
+# just leaves them out.
+RECOVERY = frozenset({"l-unparsed", "nb-unparsed"})
+
 # The character each indicator production names. The official grammar writes the character; libyeast writes the
 # production, so that the token annotation has somewhere to go.
 INDICATORS = {
@@ -110,8 +115,8 @@ def official(grammar):
     """The official grammar's mapping, recovered from libyeast's."""
     recovered = {}
     for name, production in grammar.items():
-        if name in MARKER_ONLY:
-            continue  # the official grammar has no such rule: it matches nothing, and emits nothing there to emit
+        if name in MARKER_ONLY or name in RECOVERY:
+            continue  # the official grammar has no such rule: a marker-only one, or one for the unparsed recovery
         body = normalize(erase(production.body, name))
         recovered[name] = ir.Prod(production.number, name, production.params, body)
     return ir2annotated.regenerate(recovered)

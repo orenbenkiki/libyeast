@@ -1,4 +1,8 @@
 # B: 0, C: 0, L: 1, c: 0
 k...
 # B: 3, C: 3, L: 1, c: 3
-!
+!A new document is required after '...'
+# B: 3, C: 3, L: 1, c: 3
+-.
+# B: 4, C: 4, L: 1, c: 4
+.\x0a

@@ -3946,4 +3946,36 @@ l-yaml-stream:
         - (???):
             (wrap): [ begin-document, end-document, l-explicit-document ]
 
+#===============================================================================
+# When a commit fails there is no more parsing to do here: the error is emitted and the rest of the input — whatever it
+# is — comes back unparsed, a line's content and its break each its own token so that no token spans a line. These are
+# libyeast's own, matched where a failed cut gives up, and are not rules of the official grammar.
+#===============================================================================
+
+:213: nb-unparsed
+# nb-unparsed ::=
+#   [x:0-x:10FFFF] - b-char
+#
+# Any character at all but a line break: recovery consumes whatever is there, valid or not.
+
+nb-unparsed:
+  (---):
+  - [ 'x00', 'x10FFFF' ]
+  - b-char
+
+
+
+:214: l-unparsed
+# l-unparsed ::=
+#   ( nb-unparsed+ | b-break )*
+#
+# Emits: unparsed, unparsed-break
+
+l-unparsed:
+  (***):
+    (any):
+    - (token): [ unparsed, { (+++): nb-unparsed } ]
+    - (token): [ unparsed-break, b-break ]
+
+
 # vim: iskeyword=@,+,- sw=2:

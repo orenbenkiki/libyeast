@@ -12,7 +12,6 @@ must still exercise all of them.
 """
 
 import annotated2ir
-import check_interpreter
 import gate
 import interpreter
 import ir
@@ -43,7 +42,7 @@ def exercised(grammar):
     interpreter.match, interpreter.evaluate = match, evaluate
     try:
         for fixture in spec_tests.load():
-            if not interpreter.coverable(fixture.production, grammar) or check_interpreter.is_pending(fixture):
+            if not interpreter.coverable(fixture.production, grammar):
                 continue
             # a crashing fixture simply leaves its productions unexercised, for the gate to report
             try:

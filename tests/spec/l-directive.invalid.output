@@ -3,6 +3,8 @@ D
 # B: 0, C: 0, L: 1, c: 0
 I%
 # B: 1, C: 1, L: 1, c: 1
-d
+!A directive name is required after '%'
 # B: 1, C: 1, L: 1, c: 1
-!
+- name
+# B: 6, C: 6, L: 1, c: 6
+.\x0a

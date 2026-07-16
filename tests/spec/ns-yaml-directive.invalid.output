@@ -1,6 +1,8 @@
 # B: 0, C: 0, L: 1, c: 0
 tYAML
 # B: 4, C: 4, L: 1, c: 4
-w 
-# B: 5, C: 5, L: 1, c: 5
-!
+!The %YAML directive requires a version, e.g. %YAML 1.2
+# B: 4, C: 4, L: 1, c: 4
+- a
+# B: 6, C: 6, L: 1, c: 6
+.\x0a

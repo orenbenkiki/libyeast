@@ -9,72 +9,72 @@
 // A character's key holds the id of the character the grammar names in bits 0..5, one bit per
 // character set the grammar tests in bits 6..24, and the bytes the character consumed in bits
 // 25..27. Only these two macros know that.
-#define YS_LEN(key)            (((key) >> 25) & 0x7u)     // the bytes a character consumed
-#define YS_LENGTH_BITS(length) ((uint32_t)(length) << 25) // how the decoder writes them
+#define YS_LEN(key)            (((key) >> 26) & 0x7u)     // the bytes a character consumed
+#define YS_LENGTH_BITS(length) ((uint32_t)(length) << 26) // how the decoder writes them
 
 // The key of each character the grammar names. A character's key is fixed — both its sets and its
 // length are — so testing for one is a single comparison.
-#define YS_LIT_KEY_CHARACTER_TABULATION      0x03087A01u // U+0009, [032] s-tab
-#define YS_LIT_KEY_LINE_FEED                 0x02000242u // U+000A, [024] b-line-feed
-#define YS_LIT_KEY_CARRIAGE_RETURN           0x02000243u // U+000D, [025] b-carriage-return
-#define YS_LIT_KEY_SPACE                     0x03007A04u // U+0020, [031] s-space, [051] ns-esc-space
-#define YS_LIT_KEY_EXCLAMATION_MARK          0x0202FB05u // '!',    [015] c-tag
-#define YS_LIT_KEY_QUOTATION_MARK            0x0202EB06u // '"',    [019] c-double-quote, [052] ns-esc-double-quote
-#define YS_LIT_KEY_NUMBER_SIGN               0x0202FB07u // '#',    [012] c-comment
-#define YS_LIT_KEY_DOLLAR_SIGN               0x0222FA08u // '$',    [039] ns-uri-char
-#define YS_LIT_KEY_PERCENT_SIGN              0x0202FB09u // '%',    [020] c-directive
-#define YS_LIT_KEY_AMPERSAND                 0x0202FB0Au // '&',    [013] c-anchor
-#define YS_LIT_KEY_APOSTROPHE                0x0202BB0Bu // U+0027, [018] c-single-quote
-#define YS_LIT_KEY_LEFT_PARENTHESIS          0x0222FA0Cu // '(',    [039] ns-uri-char
-#define YS_LIT_KEY_RIGHT_PARENTHESIS         0x0222FA0Du // ')',    [039] ns-uri-char
-#define YS_LIT_KEY_ASTERISK                  0x0202FB0Eu // '*',    [014] c-alias
-#define YS_LIT_KEY_PLUS_SIGN                 0x0222FA0Fu // '+',    [039] ns-uri-char, [164] c-chomping-indicator
-#define YS_LIT_KEY_COMMA                     0x02027B90u // ',',    [007] c-collect-entry
-#define YS_LIT_KEY_HYPHEN_MINUS              0x02C2FB11u // '-',    [004] c-sequence-entry
-#define YS_LIT_KEY_FULL_STOP                 0x0222FA12u // '.',    [039] ns-uri-char, [087] ns-yaml-version, [204] c-document-end
-#define YS_LIT_KEY_SOLIDUS                   0x0222FA13u // '/',    [053] ns-esc-slash
-#define YS_LIT_KEY_DIGIT_ZERO                0x02B6FA14u // '0',    [042] ns-esc-null
-#define YS_LIT_KEY_COLON                     0x0242FB15u // ':',    [006] c-mapping-value
-#define YS_LIT_KEY_SEMICOLON                 0x0222FA16u // ';',    [039] ns-uri-char
-#define YS_LIT_KEY_LESS_THAN_SIGN            0x0222FA17u // '<',    [098] c-verbatim-tag
-#define YS_LIT_KEY_EQUALS_SIGN               0x0222FA18u // '=',    [039] ns-uri-char
-#define YS_LIT_KEY_GREATER_THAN_SIGN         0x0202FB19u // '>',    [017] c-folded
-#define YS_LIT_KEY_QUESTION_MARK             0x0242FB1Au // '?',    [005] c-mapping-key
-#define YS_LIT_KEY_COMMERCIAL_AT             0x0202FF1Bu // '@',    [021] c-reserved, [022] c-indicator, [039] ns-uri-char
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_A    0x02B3FA1Cu // 'A',    [086] ns-yaml-directive, [088] ns-tag-directive
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_G    0x02A3FA1Du // 'G',    [088] ns-tag-directive
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_L    0x02A3FA1Eu // 'L',    [057] ns-esc-line-separator
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_M    0x02A3FA1Fu // 'M',    [086] ns-yaml-directive
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_N    0x02A3FA20u // 'N',    [055] ns-esc-next-line
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_P    0x02A3FA21u // 'P',    [058] ns-esc-paragraph-separator
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_T    0x02A3FA22u // 'T',    [088] ns-tag-directive
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_U    0x02A3FA23u // 'U',    [061] ns-esc-32-bit
-#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_Y    0x02A3FA24u // 'Y',    [086] ns-yaml-directive
-#define YS_LIT_KEY_LEFT_SQUARE_BRACKET       0x02027BA5u // '[',    [008] c-sequence-start
-#define YS_LIT_KEY_REVERSE_SOLIDUS           0x0222EA26u // U+005C, [041] c-escape, [054] ns-esc-backslash
-#define YS_LIT_KEY_RIGHT_SQUARE_BRACKET      0x02027BA7u // ']',    [009] c-sequence-end
-#define YS_LIT_KEY_LOW_LINE                  0x0222FA28u // '_',    [056] ns-esc-non-breaking-space
-#define YS_LIT_KEY_GRAVE_ACCENT              0x0202FF29u // '`',    [021] c-reserved, [022] c-indicator
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_A      0x02B3FA2Au // 'a',    [043] ns-esc-bell
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_B      0x02B3FA2Bu // 'b',    [044] ns-esc-backspace
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_E      0x02B3FA2Cu // 'e',    [050] ns-esc-escape
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_F      0x02B3FA2Du // 'f',    [048] ns-esc-form-feed
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_N      0x02A3FA2Eu // 'n',    [046] ns-esc-line-feed
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_R      0x02A3FA2Fu // 'r',    [049] ns-esc-carriage-return
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_T      0x02ABFA30u // 't',    [045] ns-esc-horizontal-tab
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_U      0x02A3FA31u // 'u',    [060] ns-esc-16-bit
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_V      0x02A3FA32u // 'v',    [047] ns-esc-vertical-tab
-#define YS_LIT_KEY_LATIN_SMALL_LETTER_X      0x02A3FA33u // 'x',    [059] ns-esc-8-bit
-#define YS_LIT_KEY_LEFT_CURLY_BRACKET        0x02027BB4u // '{',    [010] c-mapping-start
-#define YS_LIT_KEY_VERTICAL_LINE             0x0202FB35u // '|',    [016] c-literal
-#define YS_LIT_KEY_RIGHT_CURLY_BRACKET       0x02027BB6u // '}',    [011] c-mapping-end
-#define YS_LIT_KEY_TILDE                     0x0222FA37u // '~',    [039] ns-uri-char
-#define YS_LIT_KEY_NEXT_LINE                 0x0422FA38u // U+0085, [001] c-printable
-#define YS_LIT_KEY_ZERO_WIDTH_NO_BREAK_SPACE 0x06007239u // U+FEFF, [003] c-byte-order-mark
+#define YS_LIT_KEY_CHARACTER_TABULATION      0x0610FA01u // U+0009, [032] s-tab
+#define YS_LIT_KEY_LINE_FEED                 0x04000242u // U+000A, [024] b-line-feed
+#define YS_LIT_KEY_CARRIAGE_RETURN           0x04000243u // U+000D, [025] b-carriage-return
+#define YS_LIT_KEY_SPACE                     0x0600FA04u // U+0020, [031] s-space, [051] ns-esc-space
+#define YS_LIT_KEY_EXCLAMATION_MARK          0x0405FB05u // '!',    [015] c-tag
+#define YS_LIT_KEY_QUOTATION_MARK            0x0405EB06u // '"',    [019] c-double-quote, [052] ns-esc-double-quote
+#define YS_LIT_KEY_NUMBER_SIGN               0x0405FB07u // '#',    [012] c-comment
+#define YS_LIT_KEY_DOLLAR_SIGN               0x0445FA08u // '$',    [039] ns-uri-char
+#define YS_LIT_KEY_PERCENT_SIGN              0x0405FB09u // '%',    [020] c-directive
+#define YS_LIT_KEY_AMPERSAND                 0x0405FB0Au // '&',    [013] c-anchor
+#define YS_LIT_KEY_APOSTROPHE                0x0405BB0Bu // U+0027, [018] c-single-quote
+#define YS_LIT_KEY_LEFT_PARENTHESIS          0x0445FA0Cu // '(',    [039] ns-uri-char
+#define YS_LIT_KEY_RIGHT_PARENTHESIS         0x0445FA0Du // ')',    [039] ns-uri-char
+#define YS_LIT_KEY_ASTERISK                  0x0405FB0Eu // '*',    [014] c-alias
+#define YS_LIT_KEY_PLUS_SIGN                 0x0445FA0Fu // '+',    [039] ns-uri-char, [164] c-chomping-indicator
+#define YS_LIT_KEY_COMMA                     0x0404FB90u // ',',    [007] c-collect-entry
+#define YS_LIT_KEY_HYPHEN_MINUS              0x0585FB11u // '-',    [004] c-sequence-entry
+#define YS_LIT_KEY_FULL_STOP                 0x0445FA12u // '.',    [039] ns-uri-char, [087] ns-yaml-version, [204] c-document-end
+#define YS_LIT_KEY_SOLIDUS                   0x0445FA13u // '/',    [053] ns-esc-slash
+#define YS_LIT_KEY_DIGIT_ZERO                0x056DFA14u // '0',    [042] ns-esc-null
+#define YS_LIT_KEY_COLON                     0x0485FB15u // ':',    [006] c-mapping-value
+#define YS_LIT_KEY_SEMICOLON                 0x0445FA16u // ';',    [039] ns-uri-char
+#define YS_LIT_KEY_LESS_THAN_SIGN            0x0445FA17u // '<',    [098] c-verbatim-tag
+#define YS_LIT_KEY_EQUALS_SIGN               0x0445FA18u // '=',    [039] ns-uri-char
+#define YS_LIT_KEY_GREATER_THAN_SIGN         0x0405FB19u // '>',    [017] c-folded
+#define YS_LIT_KEY_QUESTION_MARK             0x0485FB1Au // '?',    [005] c-mapping-key
+#define YS_LIT_KEY_COMMERCIAL_AT             0x0405FF1Bu // '@',    [021] c-reserved, [022] c-indicator, [039] ns-uri-char
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_A    0x0567FA1Cu // 'A',    [086] ns-yaml-directive, [088] ns-tag-directive
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_G    0x0547FA1Du // 'G',    [088] ns-tag-directive
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_L    0x0547FA1Eu // 'L',    [057] ns-esc-line-separator
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_M    0x0547FA1Fu // 'M',    [086] ns-yaml-directive
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_N    0x0547FA20u // 'N',    [055] ns-esc-next-line
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_P    0x0547FA21u // 'P',    [058] ns-esc-paragraph-separator
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_T    0x0547FA22u // 'T',    [088] ns-tag-directive
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_U    0x0547FA23u // 'U',    [061] ns-esc-32-bit
+#define YS_LIT_KEY_LATIN_CAPITAL_LETTER_Y    0x0547FA24u // 'Y',    [086] ns-yaml-directive
+#define YS_LIT_KEY_LEFT_SQUARE_BRACKET       0x0404FBA5u // '[',    [008] c-sequence-start
+#define YS_LIT_KEY_REVERSE_SOLIDUS           0x0445EA26u // U+005C, [041] c-escape, [054] ns-esc-backslash
+#define YS_LIT_KEY_RIGHT_SQUARE_BRACKET      0x0404FBA7u // ']',    [009] c-sequence-end
+#define YS_LIT_KEY_LOW_LINE                  0x0445FA28u // '_',    [056] ns-esc-non-breaking-space
+#define YS_LIT_KEY_GRAVE_ACCENT              0x0405FF29u // '`',    [021] c-reserved, [022] c-indicator
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_A      0x0567FA2Au // 'a',    [043] ns-esc-bell
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_B      0x0567FA2Bu // 'b',    [044] ns-esc-backspace
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_E      0x0567FA2Cu // 'e',    [050] ns-esc-escape
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_F      0x0567FA2Du // 'f',    [048] ns-esc-form-feed
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_N      0x0547FA2Eu // 'n',    [046] ns-esc-line-feed
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_R      0x0547FA2Fu // 'r',    [049] ns-esc-carriage-return
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_T      0x0557FA30u // 't',    [045] ns-esc-horizontal-tab
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_U      0x0547FA31u // 'u',    [060] ns-esc-16-bit
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_V      0x0547FA32u // 'v',    [047] ns-esc-vertical-tab
+#define YS_LIT_KEY_LATIN_SMALL_LETTER_X      0x0547FA33u // 'x',    [059] ns-esc-8-bit
+#define YS_LIT_KEY_LEFT_CURLY_BRACKET        0x0404FBB4u // '{',    [010] c-mapping-start
+#define YS_LIT_KEY_VERTICAL_LINE             0x0405FB35u // '|',    [016] c-literal
+#define YS_LIT_KEY_RIGHT_CURLY_BRACKET       0x0404FBB6u // '}',    [011] c-mapping-end
+#define YS_LIT_KEY_TILDE                     0x0445FA37u // '~',    [039] ns-uri-char
+#define YS_LIT_KEY_NEXT_LINE                 0x0845FA38u // U+0085, [001] c-printable
+#define YS_LIT_KEY_ZERO_WIDTH_NO_BREAK_SPACE 0x0C00F239u // U+FEFF, [003] c-byte-order-mark
 
 // The sentinels: an id and no set bits, so every membership test fails at them.
 #define YS_LIT_KEY_EOF     0x0000003Au // the window is empty
-#define YS_LIT_KEY_INVALID 0x0200003Bu // the bytes are not UTF-8
+#define YS_LIT_KEY_INVALID 0x0400003Bu // the bytes are not UTF-8
 
 // One bit per character set the grammar tests. The unions and subtractions are already evaluated.
 #define YS_SET_BIT_B_CHAR                  0x00000040u // [026] b-char
@@ -86,16 +86,17 @@
 #define YS_SET_BIT_NB_DOUBLE_CHAR_INLINE_0 0x00001000u // [107] nb-double-char
 #define YS_SET_BIT_NB_JSON                 0x00002000u // [002] nb-json
 #define YS_SET_BIT_NB_SINGLE_CHAR_INLINE_0 0x00004000u // [118] nb-single-char
-#define YS_SET_BIT_NS_ANCHOR_CHAR          0x00008000u // [102] ns-anchor-char
-#define YS_SET_BIT_NS_ASCII_LETTER         0x00010000u // [037] ns-ascii-letter
-#define YS_SET_BIT_NS_CHAR                 0x00020000u // [034] ns-char
-#define YS_SET_BIT_NS_DEC_DIGIT            0x00040000u // [035] ns-dec-digit
-#define YS_SET_BIT_NS_ESC_HORIZONTAL_TAB   0x00080000u // [045] ns-esc-horizontal-tab
-#define YS_SET_BIT_NS_HEX_DIGIT            0x00100000u // [036] ns-hex-digit
-#define YS_SET_BIT_NS_PLAIN_FIRST_INLINE_0 0x00200000u // [126] ns-plain-first
-#define YS_SET_BIT_NS_PLAIN_FIRST_INLINE_1 0x00400000u // [126] ns-plain-first
-#define YS_SET_BIT_NS_WORD_CHAR            0x00800000u // [038] ns-word-char
-#define YS_SET_BIT_S_WHITE                 0x01000000u // [033] s-white
+#define YS_SET_BIT_NB_UNPARSED             0x00008000u // [213] nb-unparsed
+#define YS_SET_BIT_NS_ANCHOR_CHAR          0x00010000u // [102] ns-anchor-char
+#define YS_SET_BIT_NS_ASCII_LETTER         0x00020000u // [037] ns-ascii-letter
+#define YS_SET_BIT_NS_CHAR                 0x00040000u // [034] ns-char
+#define YS_SET_BIT_NS_DEC_DIGIT            0x00080000u // [035] ns-dec-digit
+#define YS_SET_BIT_NS_ESC_HORIZONTAL_TAB   0x00100000u // [045] ns-esc-horizontal-tab
+#define YS_SET_BIT_NS_HEX_DIGIT            0x00200000u // [036] ns-hex-digit
+#define YS_SET_BIT_NS_PLAIN_FIRST_INLINE_0 0x00400000u // [126] ns-plain-first
+#define YS_SET_BIT_NS_PLAIN_FIRST_INLINE_1 0x00800000u // [126] ns-plain-first
+#define YS_SET_BIT_NS_WORD_CHAR            0x01000000u // [038] ns-word-char
+#define YS_SET_BIT_S_WHITE                 0x02000000u // [033] s-white
 
 // The character sets by id, for ys_scan_set().
 typedef enum ys_set_id {
@@ -108,6 +109,7 @@ typedef enum ys_set_id {
     YS_SET_ID_NB_DOUBLE_CHAR_INLINE_0,
     YS_SET_ID_NB_JSON,
     YS_SET_ID_NB_SINGLE_CHAR_INLINE_0,
+    YS_SET_ID_NB_UNPARSED,
     YS_SET_ID_NS_ANCHOR_CHAR,
     YS_SET_ID_NS_ASCII_LETTER,
     YS_SET_ID_NS_CHAR,
@@ -132,6 +134,7 @@ static const uint32_t YS_SET_BITS[YS_SET_ID_COUNT] = {
     YS_SET_BIT_NB_DOUBLE_CHAR_INLINE_0, // [107] nb-double-char
     YS_SET_BIT_NB_JSON,                 // [002] nb-json
     YS_SET_BIT_NB_SINGLE_CHAR_INLINE_0, // [118] nb-single-char
+    YS_SET_BIT_NB_UNPARSED,             // [213] nb-unparsed
     YS_SET_BIT_NS_ANCHOR_CHAR,          // [102] ns-anchor-char
     YS_SET_BIT_NS_ASCII_LETTER,         // [037] ns-ascii-letter
     YS_SET_BIT_NS_CHAR,                 // [034] ns-char
@@ -146,17 +149,17 @@ static const uint32_t YS_SET_BITS[YS_SET_ID_COUNT] = {
 
 // The key of an ASCII character the grammar does not name — one per group of characters that the
 // grammar cannot tell apart.
-#define YS_KEY_CONTROL    0x02000000u // a C0 control, which belongs to no set at all
-#define YS_KEY_DELETE     0x02007000u // U+007F, JSON-compatible but not printable
-#define YS_KEY_DIGIT      0x02B6FA00u // '1'..'9' ('0' the grammar names)
-#define YS_KEY_HEX_LETTER 0x02B3FA00u // a letter that is also a hexadecimal digit
-#define YS_KEY_LETTER     0x02A3FA00u // any other letter
-#define YS_KEY_OTHER      0x0222FA00u // printable, and in none of the grammar's classes
+#define YS_KEY_CONTROL    0x04008000u // a C0 control, which belongs to no set at all
+#define YS_KEY_DELETE     0x0400F000u // U+007F, JSON-compatible but not printable
+#define YS_KEY_DIGIT      0x056DFA00u // '1'..'9' ('0' the grammar names)
+#define YS_KEY_HEX_LETTER 0x0567FA00u // a letter that is also a hexadecimal digit
+#define YS_KEY_LETTER     0x0547FA00u // any other letter
+#define YS_KEY_OTHER      0x0445FA00u // printable, and in none of the grammar's classes
 
 // The key of a valid non-ASCII character the grammar does not name, its length bits excluded: such
 // a character may be two, three or four bytes long, so decoder.c ORs its length in.
-#define YS_KEY_NOT_PRINTABLE 0x00007000u // a C1 control or a noncharacter: JSON-compatible, not printable
-#define YS_KEY_CONTENT       0x0022FA00u // an ordinary content character
+#define YS_KEY_NOT_PRINTABLE 0x0000F000u // a C1 control or a noncharacter: JSON-compatible, not printable
+#define YS_KEY_CONTENT       0x0045FA00u // an ordinary content character
 
 // The key of every ASCII character. Index it with the byte.
 static const uint32_t YS_ASCII[128] = {

@@ -37,6 +37,14 @@ sys.setrecursionlimit(20000)
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "grammar", "messages.yaml")) as _f:
     MESSAGES = yaml.safe_load(_f)
 
+# The root production of a whole parse, which is total: it recovers from anything rather than failing. A failure without
+# a commit is expected only when a run starts at some other, non-root production, as the per-production fixtures do.
+ROOT = "l-yaml-stream"
+
+# The production a failed cut hands off to: it consumes the rest of the input as unparsed tokens. Matching it, rather
+# than emitting the tokens by hand, keeps the recovery in the grammar, where the C parser generates it from.
+UNPARSED = "l-unparsed"
+
 
 class CommitFailure(Exception):
     """Raised when the parse fails after passing a `(cut)`.
@@ -356,23 +364,18 @@ def _forbidden_here(emitter, grammar):
         emitter.forbidden = patterns
 
 
-def _recover_unparsed(emitter):
-    """Emit the input from the position to the end as unparsed tokens: each line's content and its break, apart."""
-    text = emitter.text
-    while emitter.position < len(text):
-        emitter.codes.append("unparsed")
-        while emitter.position < len(text) and text[emitter.position] not in "\r\n":
-            emitter.consume()
-        emitter.cut()
-        emitter.codes.pop()
-        if emitter.position < len(text):
-            emitter.codes.append("unparsed-break")
-            carriage_return = text[emitter.position] == "\r"
-            emitter.consume()
-            if carriage_return and emitter.position < len(text) and text[emitter.position] == "\n":
-                emitter.consume()  # a CR LF pair is one break, and so one token
-            emitter.cut()
-            emitter.codes.pop()
+def _fail(emitter, grammar, message):
+    """Emit the error where the parse stopped — `message`, or bare when empty — then the rest of the input as unparsed.
+
+    The emitter is already at the end of what cleanly matched: at the last cut for a committed failure, at the start for
+    an uncommitted one. Whatever did not cleanly parse — everything from here — comes back as the unparsed recovery,
+    which is the grammar's own `l-unparsed`, matched with the `c-forbidden` guard cleared so it consumes past document
+    markers rather than stopping at them.
+    """
+    emitter.codes[:] = ["unparsed"]  # a raise skips the token frames' cleanup; from here on the input is unparsed
+    emitter.forbidden = ()
+    emitter.error(message)
+    match(ir.Ref(UNPARSED, ()), emitter, grammar, _accept)
 
 
 def match(node, emitter, grammar, k):
@@ -639,11 +642,14 @@ def run(grammar, production, data, parameters=None):
     try:
         matched = match(grammar[production].body, emitter, grammar, _accept)
     except CommitFailure as failure:
-        emitter.codes[:] = ["unparsed"]  # a raise skips the token frames' cleanup; the rest of the input is unparsed
-        emitter.error(MESSAGES[failure.code])
-        _recover_unparsed(emitter)
+        _fail(emitter, grammar, MESSAGES[failure.code])  # committed: the error names what the cut expected
         return emitter.tokens
-    if not matched:
-        return None
-    emitter.cut()
+    if matched:
+        emitter.cut()
+        return emitter.tokens
+    # A root parse is total — it recovers rather than fails — so its failing without committing is a grammar bug, not
+    # an input we accept; an isolated non-root production may fail, and reports what matched and where it stopped.
+    if production == ROOT:
+        raise AssertionError(f"{ROOT} failed without committing: the root production must be total")
+    _fail(emitter, grammar, "")  # uncommitted: a bare error where what matched ends, no expectation to name
     return emitter.tokens

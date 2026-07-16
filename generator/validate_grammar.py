@@ -38,7 +38,7 @@ def walk_value(value):
 # grammar defines but never uses. The indicator characters (§5.3) each have a production too, and those *are*
 # referenced: libyeast reaches an indicator through the production that names it, so a token annotation has somewhere
 # to attach.
-UNREFERENCED = frozenset({"l-yaml-stream", "c-reserved"})
+UNREFERENCED = frozenset({"l-yaml-stream", "c-reserved", "l-unparsed"})
 
 
 def consumed(node, is_annotated, references):

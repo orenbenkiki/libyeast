@@ -17,7 +17,7 @@ MAX_CODEPOINT = 0x10FFFF
 # without the generated tables moving with them.
 LIT_BITS = 6  # the named-literal id, in bits 0..5
 SET_SHIFT = 6  # the set bits, one per tested set, from bit 6 up
-LEN_SHIFT = 25  # the UTF-8 length, in bits 25..27
+LEN_SHIFT = 26  # the UTF-8 length, in bits 26..28
 
 LIT_NONE = 0  # not one of the grammar's named characters; the named characters take the ids above it
 
