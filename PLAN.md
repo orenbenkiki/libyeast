@@ -212,14 +212,35 @@ auto-detect indentation rules. The matcher backtracks in the continuation-passin
 when a later element fails, as the reference does. It reproduces every fixture — `l-yeast-stream` and the malformed
 inputs included — token for token, and nothing is pending.
 
-What is left is the resume policy. `ys_options.resume` says what the parser does with the input after a malformed
-document, and the interpreter knows only the default: the error ends the parse and the rest of the input comes back
-unparsed. `YS_RESUME_DOCUMENT` — carry on at the next document — is left, and so is the `YS_RESUME_INDENT` of §6 if it
-is ever wanted. A fixture will name the policy it runs under the way its filename already names `n`, `c` and `t`.
+**What is left is the resume policy — the grammar's fifth parameter.** `ys_options.resume` says what the parser does
+with the input after a malformed document, and the interpreter knows only the default: the error ends the parse and the
+rest of the input comes back unparsed. `YS_RESUME_DOCUMENT` — carry on at the next document — is left.
 
-**Exit** — the interpreter matches every vendored fixture it covers, `l-yeast-stream` and the error cases included;
-libyeast's grammar is proven against the reference token-for-token, with a slow executor ready to judge every pipeline
-step.
+`r` is finite, so it takes `c`'s and `t`'s fate, not `n`'s: three rules are parameterized on it and it is specialized
+away at generation time, never reaching the runtime, so the emitted C is one automaton per policy and
+`ys_options.resume` picks the start state. Only `YS_RESUME_NONE` (`n`) and `YS_RESUME_DOCUMENT` (`d`) are built;
+`YS_RESUME_INDENT` stays reserved in the enum and in §6, and the fixture validator does not name a value nothing
+implements.
+
+- **`l-unparsed(r)`** guards its own run: `(exclude): c-forbidden` for `d`, nothing for `n`. The guard is scoped to the
+  rule that declares it, so the run stops at the next `---`/`...` line and the guard does not leak onto what recovery
+  does next. This is the whole of the skip — no new rule, and none of the reference's cross-line lookahead.
+- **`l-recover(r)`** is what the parser does with input it cannot parse: `l-unparsed(r)`, and then, for `d`,
+  `l-yeast-stream(r)` again. It cannot be folded into `l-unparsed`, whose `(exclude)` would forbid the resumed document
+  from starting at the very marker it stopped for. It and `l-yeast-stream(r)` are mutually recursive, which is what
+  makes a second error inside a resumed document need no second mechanism.
+- **`l-yeast-stream(r)`**'s trailing branch hands to `l-recover(r)` rather than `l-unparsed`, so the failed cut and the
+  input that was never a stream recover through one rule. `run()` keeps only where the unwind lands: catch, reset, emit
+  the cut's message, hand to `l-recover(r)`, and go round again if that raises too. `_fail` folds into that loop.
+
+Two obligations, neither to be hand-waved. **`.r=n` is byte-identical to today** — 639 fixtures say so, and a filename
+that names no `r` means `n`, the default a zeroed `ys_options` already selects, so none of them is renamed.
+**Termination**: recovery landing exactly on a boundary consumes nothing, so progress rests on the resumed stream
+consuming the marker; the loop asserts the position advanced rather than trusting that it does.
+
+**Exit** — the interpreter matches every vendored fixture it covers, `l-yeast-stream` and the error cases included,
+under both resume policies; libyeast's grammar is proven against the reference token-for-token, with a slow executor
+ready to judge every pipeline step.
 
 ### Phase 02 — Differential oracles · The broader nets around the token fixtures
 
