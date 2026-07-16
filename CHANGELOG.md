@@ -75,11 +75,14 @@ All notable changes to this project are documented here. The format follows
 
 - A reference interpreter of the grammar, `generator/interpreter.py`: a slow, obviously-correct backtracking matcher
   that runs a production against an input and emits its yeast tokens, checked fixture by fixture against the conformance
-  suite so libyeast's grammar is proved to produce the reference's tokens before any C runs. It matches the
-  character-level nodes — a literal, a range, a subtraction, a sequence, an alternation, a reference — and produces
-  tokens from the annotation nodes, giving a run its code, bracketing a match in `begin`/`end` markers, and emitting a
-  marker on its own. It reproduces every fixture that rests on only those; its coverage grows a node family at a time,
-  toward running `l-yaml-stream` on the whole suite.
+  suite so libyeast's grammar is proved to produce the reference's tokens before any C runs. It matches every node
+  family — the character-level nodes, the repetitions, the parameter machinery that threads `n`/`m`/`c`/`t` and detects
+  indentation, and the assertions and lookahead, including the ongoing `(exclude)` guard that stops a plain scalar at a
+  document boundary — and produces tokens from the annotation nodes, giving a run its code, bracketing a match in
+  `begin`/`end` markers, and emitting a marker on its own. It backtracks in the success-continuation style, re-entering
+  an alternation when a later element fails as the reference does, and reproduces every fixture that rests on a clean
+  match, `l-yaml-stream` included, token for token. What it does not yet emit is an error or the recovery `unparsed`, so
+  the fixtures that need those wait for the error-handling piece.
 
 ### Changed
 

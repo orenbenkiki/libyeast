@@ -3486,15 +3486,20 @@ ns-l-compact-sequence:
 #   ( s-indent(n+m)
 #   ns-l-block-map-entry(n+m) )+
 #   <for_some_fixed_auto-detected_m_>_0>
+#
+# Emits: begin-mapping, end-mapping
 
 l+block-mapping:
   (...): n
   (all):
   - (set): [ m, <auto-detect-indent> ]
-  - (+++):
-      (all):
-      - s-indent: { (+): [ n, m ] }
-      - ns-l-block-map-entry: { (+): [ n, m ] }
+  - (wrap):
+    - begin-mapping
+    - end-mapping
+    - (+++):
+        (all):
+        - s-indent: { (+): [ n, m ] }
+        - ns-l-block-map-entry: { (+): [ n, m ] }
 
 
 

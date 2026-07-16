@@ -15,6 +15,21 @@ import interpreter
 import spec_tests
 import wire
 
+# The reference tokenizes an invalid input to these productions through its `recovery`/`unparsed` machinery (rules 185,
+# 194, 208, 210 in Reference.bnf) — emitting the parsed prefix and mopping the rest up as unparsed. The spec-faithful
+# base grammar has no such machinery, so their invalid fixtures await the error-handling piece, as the error-token ones
+# do; a valid input to these productions matches cleanly and is reproduced.
+RECOVERY_PRODUCTIONS = frozenset(
+    {"s-l+block-indented", "c-l-block-map-implicit-value", "l-explicit-document", "l-any-document"}
+)
+
+
+def _is_pending(fixture):
+    """Whether `fixture` awaits the error-handling piece — an error token, or a recovery production's unparsed."""
+    if any(token.code == wire.ERROR for token in wire.parse(fixture.expected)):
+        return True
+    return fixture.is_invalid and fixture.production in RECOVERY_PRODUCTIONS
+
 
 def main():
     grammar = annotated2ir.load()
@@ -23,13 +38,17 @@ def main():
     pending = 0
     errors = []
     for fixture in fixtures:
-        if any(token.code == wire.ERROR for token in wire.parse(fixture.expected)):
-            pending += 1  # its output carries an error token, and emitting errors awaits the error-handling piece
+        if _is_pending(fixture):
+            pending += 1
             continue
-        tokens = interpreter.run(grammar, fixture.production, fixture.input)
-        actual = wire.serialize(tokens) if tokens is not None else "(no match)"
+        try:
+            tokens = interpreter.run(grammar, fixture.production, fixture.input, fixture.parameters)
+            actual = wire.serialize(tokens) if tokens is not None else "(no match)"
+        except Exception as error:  # noqa: BLE001 — a crash is a divergence to report, not to abort the gate on
+            actual = f"(crash: {type(error).__name__}: {error})"
         if actual != fixture.expected:
-            errors.append(f"{os.path.basename(fixture.input_path)}: interpreter output differs from the fixture")
+            reason = actual if actual.startswith("(") else "output differs from the fixture"
+            errors.append(f"{os.path.basename(fixture.input_path)}: {reason}")
 
     gate.report(
         errors,

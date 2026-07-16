@@ -203,22 +203,21 @@ and diffing — never by compiling or running Haskell. And because the fixtures 
 bottom-up build order for free: char-class leaves before token leaves before composites, and `l-yaml-stream` only once
 everything under it is green.
 
-Built piece by piece, each a commit gated by the productions it newly covers. The character-level nodes
-(`Char`/`Range`/`Diff`/`Empty`/`Seq`/`Alt`/`Ref`) and the annotation nodes (`Token`/`Wrap`/`Emit`) are done — the
-interpreter reproduces every fixture resting on only those. What is left, in order (one convention still to pin from the
-fixtures: a value-detecting production run alone emits a `Detected` token, which the interpreter's isolated-production
-mode must reproduce):
+Built piece by piece, each a commit gated by the productions it newly covers. Every node family is done — the
+character-level nodes (`Char`/`Range`/`Diff`/`Empty`/`Seq`/`Alt`/`Ref`), the annotation nodes (`Token`/`Wrap`/`Emit`),
+the repetitions (`Star`/`Plus`/`Opt`/`Rep`), the parameters (`Case`/`Flip`/`Bind`/`SetVar`, the arithmetic, and the
+`Lt`/`Le`/`Max`/`Bound` predicates threading `n`/`m`/`c`/`t`), the assertions and lookahead
+(`StartOfLine`/`EndOfStream`/`Look`/`NegLook`/`LookBehind`/`ExcludeAt`), and the two auto-detect indentation rules. The
+matcher backtracks in the continuation-passing style, so an alternation is re-entered when a later element fails, as the
+reference does. It reproduces every fixture that rests on a clean match — `l-yaml-stream` included — token for token.
 
-1. Repetition — `Star`/`Plus`/`Opt`/`Rep`.
-1. Parameters — thread `n`/`m`/`c`/`t`; `Case`/`Flip`/`Bind`/`SetVar`; the arithmetic; the `Lt`/`Le`/`Max`/`Bound`
-   predicates. Verified on the indentation and context productions.
-1. Assertions and lookahead — `StartOfLine`/`EndOfStream`/`Look`/`NegLook`/`LookBehind`/`ExcludeAt`.
-1. Auto-detect — the two indentation special rules.
-1. Root and triage — run `l-yaml-stream` on the whole corpus; classify each divergence as an interpreter bug or a
-   genuine grammar/semantic gap, the latter feeding Phase 04's decisions.
+What is left is error handling. 177 fixtures await it: those whose output carries an error token, and the reference's
+`recovery`/`unparsed` productions (rules 185, 194, 208, 210) that emit a parsed prefix and mop the rest up as unparsed.
+The interpreter emits neither yet, so `check_interpreter.py` counts these as pending rather than running them.
 
-**Exit** — the interpreter matches every vendored fixture it covers, `l-yaml-stream` included; libyeast's grammar is
-proven against the reference token-for-token, with a slow executor ready to judge every pipeline step.
+**Exit** — the interpreter matches every vendored fixture it covers, `l-yaml-stream` and the error cases included;
+libyeast's grammar is proven against the reference token-for-token, with a slow executor ready to judge every pipeline
+step.
 
 ### Phase 02 — Differential oracles · The broader nets around the token fixtures
 
