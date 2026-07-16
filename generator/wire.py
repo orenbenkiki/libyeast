@@ -62,6 +62,7 @@ CODE_CHAR = {
     "begin-stream": "Y",
     "end-stream": "y",
     "unparsed": "-",
+    "unparsed-break": ".",
     "detected": "$",
 }
 

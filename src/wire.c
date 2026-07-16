@@ -11,8 +11,8 @@
 #include <yeast.h>
 
 // The yeast wire format: a token is two lines, the first its position and the second its code character followed by its
-// escaped text. It is what a token stream is compared against the reference parser in, and what lets one be piped
-// between tools.
+// escaped text. It lets a token stream be piped between tools, stored, or compared against another parser's, byte for
+// byte.
 
 // The character each code is written as. The three failures share '!': a consumer of the wire has no choice to make
 // between them, since either unparsed tokens follow or the stream ends, and the message says which it was.
@@ -62,6 +62,7 @@ static const char YS_WIRE[] = {
     [YS_CODE_ERROR_MEMORY] = '!',
     [YS_CODE_ERROR_READER] = '!',
     [YS_CODE_UNPARSED] = '-',
+    [YS_CODE_UNPARSED_BREAK] = '.',
     [YS_CODE_DETECTED] = '$',
 };
 
@@ -141,8 +142,8 @@ bool ys_write_token(ys_writer *writer, ys_token token) {
     }
 
     // The text is escaped by codepoint: printable ASCII other than a backslash stands for itself, and everything else
-    // becomes \xXX, \uXXXX or \UXXXXXXXX with lower-case hex, as the reference parser writes it, so the two token
-    // streams compare byte for byte. An error's text is its message, which is not in the input and so spans none of it:
+    // becomes \xXX, \uXXXX or \UXXXXXXXX with lower-case hex, a fixed convention, so token streams compare byte for
+    // byte. An error's text is its message, which is not in the input and so spans none of it:
     // its length is its own, and the marks would say zero.
     const unsigned char *text = (const unsigned char *)token.text;
     size_t size = token.text == NULL             ? 0

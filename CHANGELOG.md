@@ -53,7 +53,9 @@ All notable changes to this project are documented here. The format follows
   `ys_options.resume`: by default the error ends the parse and the rest of the input comes back as `YS_CODE_UNPARSED`
   tokens, which is what the reference parser does, so the two token streams stay comparable on every input, valid or
   not. `YS_RESUME_DOCUMENT` instead carries on at the next document, so that one malformed document in a stream does not
-  cost the caller the others — at the price that only the input before the first error can be compared.
+  cost the caller the others — at the price that only the input before the first error can be compared. A skipped line
+  is two tokens, its content a `YS_CODE_UNPARSED` and its break a `YS_CODE_UNPARSED_BREAK` — the break its own code,
+  since it is not a structural break the parser found.
 
 - Parser state: the window over the input, the stack of productions the parser is inside, the queue of tokens it has
   built but not handed back, and the state it is in — the whole of it in one struct, none of it in the C call stack,

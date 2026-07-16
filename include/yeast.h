@@ -122,15 +122,14 @@ typedef struct ys_mark {
 /// Token classification — the yeast model. Zero-width `BEGIN_*`/`END_*` markers bracket productions; every other code
 /// classifies a span of consumed input, and every byte of the input falls under exactly one of them.
 ///
-/// The yeast wire format writes a token as one character and its text, and it is that mapping — not this enum's order,
-/// which is ours — that the reference parser shares, so that the two token streams can be compared token for token.
-/// `YS_CODE_TEXT` is `T`, `YS_CODE_META` is `t`, `YS_CODE_INDICATOR` is `I`, a `BEGIN_`/`END_` pair is an upper- and a
-/// lower-case letter, and so on; `grammar/yeast-spec-1.2.yaml` lists them all.
+/// The yeast wire format writes a token as one character and its text; it is that character mapping, not this enum's
+/// order, that is the stable contract. `YS_CODE_TEXT` is `T`, `YS_CODE_META` is `t`, `YS_CODE_INDICATOR` is `I`, a
+/// `BEGIN_`/`END_` pair is an upper- and a lower-case letter, and so on; `grammar/yeast-spec-1.2.yaml` lists them all.
 ///
-/// libyeast adds three things to that vocabulary. `YS_CODE_BEGIN_STREAM` and `YS_CODE_END_STREAM` bracket the whole
-/// stream, which nothing else does — the reference declares them and emits them nowhere. And the two failures that are
-/// not the document's fault get codes of their own, so that a caller can tell whether to keep pulling; on the wire all
-/// three failures are the same `!`, since a consumer of the wire has no choice to make either way.
+/// `YS_CODE_BEGIN_STREAM` and `YS_CODE_END_STREAM` bracket the whole stream. `YS_CODE_UNPARSED_BREAK` gives a skipped
+/// line's break its own code. And the two failures that are not the document's fault get codes of their own, so that a
+/// caller can tell whether to keep pulling; on the wire all three failures are the same `!`, since a consumer of the
+/// wire has no choice to make either way.
 typedef enum ys_code {
     YS_CODE_BOM,              ///< A byte-order mark.
     YS_CODE_TEXT,             ///< Content text characters.
@@ -177,16 +176,17 @@ typedef enum ys_code {
     YS_CODE_ERROR_MEMORY,     ///< The parser reached @ref ys_options::max_bytes, or its allocator refused. It halts.
     YS_CODE_ERROR_READER,     ///< The reader failed; @ref ys_token::text holds the message. The parser halts.
     YS_CODE_UNPARSED,         ///< Input skipped after a malformed document, classified rather than lost. Like every
-                              ///< token it stays within one line, so a skipped line is two of these: content, break.
-    YS_CODE_DETECTED,         ///< Kept for compatibility with the reference parser's `Code` set, and for future use
-                              ///< once libyeast emits its own detection tokens (see the token-emission levels in
-                              ///< `PLAN.md`). No parse emits it yet; the wire round-trips it.
-    YS_CODE_WIRE_ERROR        ///< The yeast wire being read is not the wire format. ys_read_token() alone produces it —
-                              ///< no parse does, no writer emits it, and no valid wire carries it — so it is never one
-                              ///< of the error tokens a wire legitimately replays. @ref ys_token::text is what was
-                              ///< wrong, and @ref ys_token::start locates it: @ref ys_mark::line (1-based) and
-                              ///< @ref ys_mark::column (0-based) are where in the wire, and the byte and codepoint
-                              ///< offsets are 0. Nothing follows it.
+                      ///< token it stays within one line; a skipped line's break is a @ref YS_CODE_UNPARSED_BREAK.
+    YS_CODE_UNPARSED_BREAK, ///< The line break of skipped input. Unparsed like the content it follows, but its own code
+                            ///< so it is not taken for a structural break the parser never found.
+    YS_CODE_DETECTED,       ///< Reserved for libyeast's own detection tokens (see the token-emission levels in
+                            ///< `PLAN.md`). No parse emits it yet; the wire round-trips it.
+    YS_CODE_WIRE_ERROR      ///< The yeast wire being read is not the wire format. ys_read_token() alone produces it —
+                            ///< no parse does, no writer emits it, and no valid wire carries it — so it is never one
+                            ///< of the error tokens a wire legitimately replays. @ref ys_token::text is what was
+                            ///< wrong, and @ref ys_token::start locates it: @ref ys_mark::line (1-based) and
+                            ///< @ref ys_mark::column (0-based) are where in the wire, and the byte and codepoint
+                            ///< offsets are 0. Nothing follows it.
 } ys_code;
 
 /// The character the yeast wire format writes for a code.
@@ -216,8 +216,8 @@ YS_API bool ys_code_of_char(char character, ys_code *code);
 /// **No token spans a line.** Every leaf token lies within one line, so `start.line` equals `end.line` for all of them,
 /// and a line break is always a token of its own. The input skipped after a malformed document obeys this like
 /// everything else, rather than coming back as one token holding the lot: each skipped line yields a
-/// @ref YS_CODE_UNPARSED token for its content and another for its break. The break is unparsed as well, since calling
-/// it a @ref YS_CODE_BREAK would claim a structure the parser never found.
+/// @ref YS_CODE_UNPARSED token for its content and a @ref YS_CODE_UNPARSED_BREAK for its break. The break is unparsed
+/// as well, but its own code, since calling it a @ref YS_CODE_BREAK would claim a structure the parser never found.
 typedef struct ys_token {
     ys_code code;     ///< The token's classification.
     ys_mark start;    ///< Position of the token's first character.
@@ -324,14 +324,12 @@ typedef struct ys_allocator {
 /// What the parser does with the input after a malformed document.
 typedef enum ys_resume {
     /// The error ends the parse. The rest of the input comes back as @ref YS_CODE_UNPARSED tokens, and nothing in it is
-    /// parsed. This is what the reference parser does, so the two token streams stay comparable on every input, valid
-    /// or not — which is why it is the default.
+    /// parsed — so nothing is silently lost, which is why it is the default.
     YS_RESUME_NONE,
     /// Skip to the next document and carry on parsing there, so that one malformed document in a stream does not cost
-    /// the caller the others. The lines skipped to reach it come back as @ref YS_CODE_UNPARSED tokens. Under this
-    /// setting the token stream departs from the reference's at the first error, and only the input before it can be
-    /// compared. A finer-grained resumption — at the next less-indented line, bounding the error by the document's own
-    /// indentation — may be added later.
+    /// the caller the others. The lines skipped to reach it come back as @ref YS_CODE_UNPARSED tokens. A finer-grained
+    /// resumption — at the next less-indented line, bounding the error by the document's own indentation — may be added
+    /// later.
     YS_RESUME_DOCUMENT
 } ys_resume;
 
@@ -430,9 +428,8 @@ YS_API bool ys_are_tokens_stable(const ys_parser *parser);
 ///
 /// A **syntax error** yields a @ref YS_CODE_ERROR_FORMAT token whose @ref ys_token::text is the message. What the
 /// parser does next is what @ref ys_options::resume says. By default the error ends the parse, and the rest of the
-/// input comes back as @ref YS_CODE_UNPARSED tokens — so nothing is silently lost, and the token stream stays
-/// comparable to the reference parser's. Set @ref YS_RESUME_DOCUMENT and the parse carries on at the next document, so
-/// malformed document in a stream does not cost the caller the others.
+/// input comes back as @ref YS_CODE_UNPARSED tokens — so nothing is silently lost. Set @ref YS_RESUME_DOCUMENT and the
+/// parse carries on at the next document, so a malformed document in a stream does not cost the caller the others.
 ///
 /// The message names the production the parser was inside and what it expected there. It does not name what it found,
 /// which it does not have to: the first @ref YS_CODE_UNPARSED token behind the error begins at exactly the byte that
