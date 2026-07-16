@@ -126,11 +126,27 @@ All notable changes to this project are documented here. The format follows
   rebuilds the production tree stand on an errored stream at all.
 
 - A grammar-coverage gate, `make verify-grammar-base-coverage` via `generator/check_grammar_coverage.py`: every
-  production must be exercised by the fixtures. Coverage is dynamic, not by name — a production counts when running a
-  reproducible fixture actually matches its body or evaluates it as a value, so a production with no fixture of its own
-  is covered by the fixtures that reach it, and one nothing reaches is a gap. It takes the grammar as an argument, so it
-  re-runs on each structurally-transformed grammar as those arrive. The suite gained an empty stripped literal (`|-`) so
-  the scalar-closing `end-block-scalar` is exercised by a clean fixture rather than only an error one.
+  production must be exercised by the fixtures, both ways. Coverage is dynamic, not by name — a production counts when
+  running a reproducible fixture actually reaches it, so a production with no fixture of its own is covered by the
+  fixtures that reach it, and one nothing reaches is a gap. It takes the grammar as an argument, so it re-runs on each
+  structurally-transformed grammar as those arrive. The suite gained an empty stripped literal (`|-`) so the
+  scalar-closing `end-block-scalar` is exercised by a clean fixture rather than only an error one.
+
+  Reaching a rule is half of exercising it. A rule is a decision, and a fixture that only ever watches it say yes leaves
+  the other answer untested, so each must also be seen to reject an input — by failing to match, or by a `(cut)` inside
+  it raising, a rule holding a cut never returning "no". The exception is a rule that *cannot* say no, and those are
+  computed rather than listed: totality is proved from the body's shape, so nothing asks for the fixture where
+  `l-yaml-stream` fails, which every part of being optional makes impossible. That a rule can never say no is worth
+  knowing anyway — it is exactly what let `l-yaml-stream` swallow a whole input before `l-yeast-stream` was written to
+  say so. A `(cut)` is a decision too: one that never fires is a commit point nothing shows is reachable and a message
+  nothing shows is right, so each must appear in some fixture's expected output — checked against the suite rather than
+  by watching the interpreter, which is stricter, proving the error survived to be handed back where a cut raising
+  inside a lookahead would prove only that it can raise. Ten fixtures close what this found: seven cuts that had never
+  fired, and `c-reserved`/`ns-tag-prefix`/`ns-global-tag-prefix`, which no input had ever made refuse.
+
+  The interpreter enters the top production as a reference to it, the way every other rule is entered, rather than by
+  matching its body — a rule run at the top is still a rule, and the gate that watches references could not see it
+  otherwise. That is what had hidden five of these: their fixtures existed and rejected all along.
 
 ### Changed
 

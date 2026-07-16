@@ -655,19 +655,23 @@ def match(node, emitter, grammar, k):
 
 
 def run(grammar, production, data, parameters=None):
-    """Run `production` on the UTF-8 `data`, returning the yeast tokens it emits, or None if it does not match.
+    """Run `production` on the UTF-8 `data`, returning the yeast tokens it emits — a rejection among them if it rejects.
 
     `parameters` binds the production's parameters from the fixture's filename — `n`/`m` are integers, `c`/`t`/`r`
     strings. A production that declares `r` and is run without one resumes the way a zeroed `ys_options` does.
+
+    The production is entered as a reference to it, the way every other rule is entered, rather than by matching its
+    body: a rule run at the top is still a rule, and whatever watches references — the coverage gate — must see it.
     """
     emitter = Emitter(data.decode("utf-8"))
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in (parameters or {}).items()}
     resume = emitter.env.get("r", "n")
+    entry = ir.Ref(production, tuple(ir.Lit(emitter.env.get(name)) for name in grammar[production].params))
 
     # A cut says where the unwind lands and nothing else; what to do about the input from there is `l-recover`'s, which
     # under a resuming policy parses the rest of the stream — and that may commit and fail again. So recovery is a loop
     # rather than one handoff, and a second error inside a resumed document needs no mechanism of its own.
-    node = grammar[production].body
+    node = entry
     failed_at = None
     while True:
         try:

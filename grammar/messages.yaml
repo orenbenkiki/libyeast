@@ -5,9 +5,12 @@
 # file is the single source: the interpreter reads it, and the C parser's message table is generated from it (gated
 # against drift), so the mapping is never hand-duplicated.
 #
-# Every code here is named by a `(cut)` or an `(error)` in `yeast-spec-1.2.yaml`. The character-level errors — a byte
-# that is not a YAML character, or not a codepoint at all — are grammar-independent, emitted below the grammar, and
-# live with the other hand-written messages, not here.
+# Every code here is named by a `(cut)` or an `(error)` in `yeast-spec-1.2.yaml`, and every one is shown to fire by a
+# fixture whose expected output carries its text — a commit point nothing reaches is a message nothing has checked.
+#
+# A byte that is no codepoint at all belongs to none of this: it is the decoder's, below the grammar, and its message
+# will be a hand-written one in `src/messages.c` rather than an entry here. There is no such message yet, the parser
+# core that would emit it being unbuilt; `PLAN.md` §4 says what deciding it decides.
 
 # A required construct is absent.
 MISSING_VALUE: "A mapping value is required after ':'"

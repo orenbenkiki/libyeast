@@ -1,0 +1,10 @@
+# B: 0, C: 0, L: 1, c: 0
+S
+# B: 0, C: 0, L: 1, c: 0
+I'
+# B: 1, C: 1, L: 1, c: 1
+!Unterminated single-quoted scalar
+# B: 1, C: 1, L: 1, c: 1
+s
+# B: 1, C: 1, L: 1, c: 1
+-abc

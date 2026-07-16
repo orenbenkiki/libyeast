@@ -191,7 +191,7 @@ yaml-grammar harness against our IR, and the hand-off into `grammar2parser.py`. 
 **Done.** `generator/interpreter.py` runs a production against an input and emits its yeast tokens, and every node
 family is matched — the character-level nodes, the annotations, the repetitions, the parameters threading
 `n`/`m`/`c`/`t` and now `r`, and the assertions and lookahead. It backtracks in the continuation-passing style, so an
-alternation is re-entered when a later element fails, as the reference does. `tests/spec/` holds 640 input/output pairs,
+alternation is re-entered when a later element fails, as the reference does. `tests/spec/` holds 650 input/output pairs,
 each named `production[.n=N][.c=C][.t=T][.r=R].case`, and the interpreter reproduces every one of them —
 `l-yeast-stream`, both resume policies, and the malformed inputs included — token for token, with nothing pending. It is
 checked by *reading* fixtures and diffing, never by compiling or running Haskell; and being per-production they gave a
@@ -319,9 +319,24 @@ alongside the pipeline rather than strictly after it. This is where bugs get smu
 1. **Encoding — a conformance gap, open today.** libyeast reads UTF-8 and only UTF-8. YAML 1.2 asks a conformant parser
    to read UTF-16 as well, and UTF-32 where it accepts JSON. Nothing detects an encoding, and `c-byte-order-mark` emits
    the mark it matched and no more, where the reference gives that token the *name* of the encoding it detected — a
-   divergence the differential oracle will find. Deciding this decides three things at once: whether the decoder grows a
-   transcoding front end or stays UTF-8 and rejects the rest, what a `bom` token's text is, and whether libyeast may
-   call itself conformant.
+   divergence the differential oracle will find. Deciding this decides four things at once: whether the decoder grows a
+   transcoding front end or stays UTF-8 and rejects the rest, what a `bom` token's text is, whether libyeast may call
+   itself conformant, and what the resume policy does with a byte that is no character at all.
+1. **A byte that is no character, and what resuming does about it — the C parser's alone to answer.** A codepoint that
+   is merely not a YAML character needs nothing: `nb-unparsed` is every codepoint but a break, so the recovery consumes
+   it and `YS_RESUME_DOCUMENT` carries on at the next marker, which the fixtures show. A byte that is not a codepoint is
+   a different thing. It is a fact about the input rather than about the parser's resources, so it is a format error and
+   the resume policy should mean the same there as anywhere: bring the rest back unparsed, or resynchronise at the next
+   document. Resynchronising is the *easier* half — a document marker is found by scanning bytes for a break and three
+   hyphens, and UTF-8 is self-synchronising, so nothing needs to have understood the bad bytes to find the boundary.
+   Nothing in the grammar has to change either: `nb-unparsed`'s `[x00-x10FFFF]` is notation for "any character key", and
+   the decoder already classifies every byte into one, so a byte that is no character is consumed by a rule that never
+   asks why. <br>**But the interpreter cannot judge any of it, and no fixture can be written for it.** It decodes the
+   input up front and matches over codepoints, so an ill-formed input dies before a production runs; the suite is
+   defined over what the interpreter can reproduce, and this is outside it. The C parser is the only thing that will
+   ever run this path, which makes it the one place in the token layer where the fixtures are not the oracle — it needs
+   its own tests in `tests/`, against the decoder, and the differential oracles of phase 02 rather than `tests/spec/`.
+   Deciding the encoding question decides whether that path exists at all.
 1. **Indentation detection — defined; implement it.** The grammar now says what the official grammar would not:
    `<auto-detect-indent>` is the indentation of the next line holding a character other than a space, less `n`, the
    current line counting only if the parse is at its start; `<auto-detect-in-line-indent>` is the spaces that follow on
