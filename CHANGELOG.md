@@ -33,9 +33,9 @@ All notable changes to this project are documented here. The format follows
   what each emits and why. Four gates keep it honest. Erasing libyeast's additions recovers the official grammar
   exactly, so the grammar is hand-authored where it must be and machine-proved where it can be. Every character the
   parser consumes must lie within a token action, so a forgotten one fails the build rather than emitting an `unparsed`
-  token years later. Every `begin-` marker must be closed by its own `end-`, on every path and for every context and
-  chomping. And every rule that emits tokens must say which, checked against the grammar itself, so a note that is wrong
-  fails as surely as one that is missing.
+  token years later. Every `begin-` marker must be closed by its own `end-`, on every path and for every context,
+  chomping and resume policy. And every rule that emits tokens must say which, checked against the grammar itself, so a
+  note that is wrong fails as surely as one that is missing.
 
 - Indentation detection, which the official grammar declares a "special rule" and never defines, and which it elsewhere
   leaves as an integer added to the string `"auto-detect"`. libyeast defines it, and its two departures from the
@@ -78,15 +78,17 @@ All notable changes to this project are documented here. The format follows
 - A reference interpreter of the grammar, `generator/interpreter.py`: a slow, obviously-correct backtracking matcher
   that runs a production against an input and emits its yeast tokens, checked fixture by fixture against the conformance
   suite so libyeast's grammar is proved to produce the reference's tokens before any C runs. It matches every node
-  family — the character-level nodes, the repetitions, the parameter machinery that threads `n`/`m`/`c`/`t` and detects
-  indentation, and the assertions and lookahead, including the ongoing `(exclude)` guard that stops a plain scalar at a
-  document boundary — and produces tokens from the annotation nodes, giving a run its code, bracketing a match in
-  `begin`/`end` markers, and emitting a marker on its own. It backtracks in the success-continuation style, re-entering
-  an alternation when a later element fails as the reference does, and reproduces every fixture, `l-yeast-stream` and
-  the malformed inputs included, token for token. A malformed input is where the grammar's `(cut)` earns its keep: a cut
-  commits, and if the parse then fails, the interpreter emits an error token naming what the cut expected, and hands the
-  rest of the input to `l-unparsed` — the grammar's own recovery rule — which brings it back as unparsed. A failure that
-  passed no cut is not an error but a production simply rejecting its input, reported where what matched ends.
+  family — the character-level nodes, the repetitions, the parameter machinery that threads `n`/`m`/`c`/`t`/`r` and
+  detects indentation, and the assertions and lookahead, including the ongoing `(exclude)` guard that stops a plain
+  scalar at a document boundary — and produces tokens from the annotation nodes, giving a run its code, bracketing a
+  match in `begin`/`end` markers, emitting a marker on its own, and writing an error token that names what was expected.
+  It backtracks in the success-continuation style, re-entering an alternation when a later element fails as the
+  reference does, and reproduces every fixture, `l-yeast-stream` and the malformed inputs included, token for token. A
+  malformed input is where the grammar's `(cut)` earns its keep: a cut commits, and if the parse then fails, the
+  interpreter emits an error token naming what the cut expected, closes the markers the abandoned parse left open, and
+  hands the rest of the input to `l-recover` — the grammar's own recovery rule — which brings it back as unparsed. A
+  failure that passed no cut is not an error but a production simply rejecting its input, reported where what matched
+  ends.
 
 - Error reporting lives in the grammar. Eighteen `(cut)` points mark where a parse commits, and an `(error)` is an error
   token the grammar writes where it already knows the parse cannot go on; each names a message in
@@ -103,6 +105,25 @@ All notable changes to this project are documented here. The format follows
   every byte reaches the caller whatever it holds. Its second alternative always matches, so the first way
   `l-yaml-stream` finds is the one taken and nothing backtracks into it. It is libyeast's own, as `l-unparsed` is, and
   the spec's rule 211 is untouched — the official grammar still comes back from libyeast's rule for rule.
+
+- The resume policy is the grammar's fifth parameter. `ys_options.resume` chooses what the parser does with input it
+  cannot parse, and the grammar says what each choice means: `l-unparsed(r)` guards its own run, so under
+  `YS_RESUME_DOCUMENT` it stops at the next `---` or `...` instead of eating the rest of the input, and `l-recover(r)`
+  brings that run back and then parses the stream again from the marker. The two are mutually recursive, so a second
+  error inside a resumed document needs no mechanism of its own, and a failed cut arrives at the same rule the root does
+  — a cut says where the unwind lands and nothing more. `r` is finite, so it takes `c`'s and `t`'s fate rather than
+  `n`'s: it specializes away at generation time, and the emitted C will be one automaton per policy with
+  `ys_options.resume` choosing the start state. A fixture names the policy it runs under, `.r=d` beside the `.n`/`.c`/
+  `.t` its filename already carries, and one that names none runs under the default a zeroed `ys_options` selects.
+
+- An error closes the markers it opened. A raise skipped the frames that would have emitted them, so a malformed
+  document used to end with its `begin-` markers hanging: harmless while everything after an error was unparsed, and
+  wrong the moment the parse resumes, because the next document then parses as a child of the one that failed rather
+  than its sibling — and a caller reaching for the documents an error did not cost it would find them nested inside the
+  wreck of the one that did. They are closed at the error now, after the error token and before the first `unparsed`:
+  all three are zero-width at the byte that failed, so only their order says that the error is inside what failed and
+  that the unparsed run is inside nothing. A `begin-` gets its `end-` on every path, which is what lets the fold that
+  rebuilds the production tree stand on an errored stream at all.
 
 - A grammar-coverage gate, `make verify-grammar-base-coverage` via `generator/check_grammar_coverage.py`: every
   production must be exercised by the fixtures. Coverage is dynamic, not by name — a production counts when running a

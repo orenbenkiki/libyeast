@@ -10,7 +10,8 @@ which consume nothing at all; and a marker that is never emitted looks exactly l
 
 The chomping decides where a block scalar ends — `b-chomped-last` closes it when there is content to close, and
 `l-keep-empty` when the content was empty and kept — so the markers balance per value of `t` rather than per branch.
-The check therefore specializes: it fixes `c` and `t` to each of their values in turn, and requires balance for each.
+The check therefore specializes: it fixes each finite parameter — `c`, `t` and the resume policy `r` — to each of its
+values in turn, and requires balance for each.
 """
 
 import annotated2ir
@@ -19,6 +20,7 @@ import ir
 
 CONTEXTS = ("block-in", "block-out", "block-key", "flow-in", "flow-out", "flow-key")
 CHOMPINGS = ("strip", "clip", "keep")
+RESUMES = ("n", "d")
 BALANCED = ((), ())  # no marker left open, and none closed that was not opened here
 
 
@@ -121,15 +123,17 @@ def main():
     complaints = {}
     for context in CONTEXTS:
         for chomping in CHOMPINGS:
-            values = {"c": context, "t": chomping}
-            known, errors = settle(grammar, values)
-            for name, reason in errors.items():
-                complaints.setdefault((name, reason), []).append(f"c={context}, t={chomping}")
-            if known[ir.ROOT] != BALANCED:
-                left = ", ".join(known[ir.ROOT][1]) or "none"
-                closed = ", ".join(known[ir.ROOT][0]) or "none"
-                reason = f"the stream leaves open: {left}; and closes what it never opened: {closed}"
-                complaints.setdefault((ir.ROOT, reason), []).append(f"c={context}, t={chomping}")
+            for resume in RESUMES:
+                values = {"c": context, "t": chomping, "r": resume}
+                where = f"c={context}, t={chomping}, r={resume}"
+                known, errors = settle(grammar, values)
+                for name, reason in errors.items():
+                    complaints.setdefault((name, reason), []).append(where)
+                if known[ir.ROOT] != BALANCED:
+                    left = ", ".join(known[ir.ROOT][1]) or "none"
+                    closed = ", ".join(known[ir.ROOT][0]) or "none"
+                    reason = f"the stream leaves open: {left}; and closes what it never opened: {closed}"
+                    complaints.setdefault((ir.ROOT, reason), []).append(where)
 
     errors = []
     for (name, reason), wheres in sorted(complaints.items()):
@@ -138,7 +142,7 @@ def main():
     gate.report(
         errors,
         "rule(s) whose markers do not balance",
-        f"markers balance: {len(grammar)} rules, for every context and chomping",
+        f"markers balance: {len(grammar)} rules, for every context, chomping and resume policy",
     )
 
 

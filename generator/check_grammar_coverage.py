@@ -46,7 +46,8 @@ def exercised(grammar):
                 continue
             # a crashing fixture simply leaves its productions unexercised, for the gate to report
             try:
-                if interpreter.run(grammar, fixture.production, fixture.input, fixture.parameters) is not None:
+                arguments = spec_tests.arguments(fixture, grammar)
+                if interpreter.run(grammar, fixture.production, fixture.input, arguments) is not None:
                     reached.add(fixture.production)  # matched as the top production
             except Exception:  # noqa: BLE001
                 pass

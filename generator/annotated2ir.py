@@ -20,7 +20,9 @@ import yaml
 TREE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GRAMMAR = os.path.join(TREE, "grammar", "yeast-spec-1.2.yaml")
 
-PARAMS = frozenset({"n", "c", "m", "t"})
+# The grammar's parameters: `n`/`m` are indentations, `c` a context, `t` a chomping mode, `r` the resume policy. A bare
+# name among these is that parameter; any other bare name is the value it spells.
+PARAMS = frozenset({"n", "c", "m", "t", "r"})
 HEX = re.compile(r"^x[0-9A-Fa-f]+$")
 REP = re.compile(r"^\(\{(.+)\}\)$")  # ({2}) / ({n})
 INT = re.compile(r"^-?[0-9]+$")

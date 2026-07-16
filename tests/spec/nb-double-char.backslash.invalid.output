@@ -4,3 +4,5 @@ E
 I\x5c
 # B: 1, C: 1, L: 1, c: 1
 !Invalid escape sequence
+# B: 1, C: 1, L: 1, c: 1
+e

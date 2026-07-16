@@ -38,9 +38,10 @@ sys.setrecursionlimit(20000)
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "grammar", "messages.yaml")) as _f:
     MESSAGES = yaml.safe_load(_f)
 
-# The production a failed cut hands off to: it consumes the rest of the input as unparsed tokens. Matching it, rather
-# than emitting the tokens by hand, keeps the recovery in the grammar, where the C parser generates it from.
-UNPARSED = "l-unparsed"
+# The production a failed cut hands off to: it brings the input back unparsed and, where the resume policy says so,
+# carries on at the next document. Matching it, rather than emitting the tokens by hand, keeps recovery in the grammar,
+# where the C parser generates it from — a cut says only where the unwind lands, never what to do about it.
+RECOVER = "l-recover"
 
 
 class CommitFailure(Exception):
@@ -120,10 +121,11 @@ class Emitter:
         self.tokens = []
         self.run = None  # (code character, start mark, start position) of the open run, or None
         self.codes = ["unparsed"]  # the stack of token codes; the top is the one the next character carries
-        self.env = {}  # the current production's parameters (n/m/c/t) and their values
+        self.env = {}  # the current production's parameters (n/m/c/t/r) and their values
         self.match_start = 0  # where the enclosing Match() scope began, for Match() and Len(Match())
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
         self.forbidden = ()  # patterns that must not match at a start of line — the ongoing `(exclude)` guards in scope
+        self.pending = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
 
     def checkpoint(self):
         return (
@@ -136,6 +138,7 @@ class Emitter:
             self.match_start,
             self.is_sol,
             self.forbidden,
+            self.pending,
         )
 
     def rewind(self, checkpoint):
@@ -149,6 +152,7 @@ class Emitter:
             self.match_start,
             self.is_sol,
             self.forbidden,
+            self.pending,
         ) = checkpoint
         del self.tokens[token_count:]
         del self.codes[code_count:]
@@ -362,18 +366,29 @@ def _forbidden_here(emitter, grammar):
         emitter.forbidden = patterns
 
 
-def _fail(emitter, grammar, message):
-    """Emit the error where the parse stopped — `message`, or bare when empty — then the rest of the input as unparsed.
+def _fail(emitter, message):
+    """Emit the error where the parse stopped — `message`, or bare when empty — and close what it left open.
 
     The emitter is already at the end of what cleanly matched: at the last cut for a committed failure, at the start for
-    an uncommitted one. Whatever did not cleanly parse — everything from here — comes back as the unparsed recovery,
-    which is the grammar's own `l-unparsed`, matched with the `c-forbidden` guard cleared so it consumes past document
-    markers rather than stopping at them.
+    an uncommitted one. A raise skips the frames that would have closed the `(wrap)`s the parse was inside, so they are
+    closed here instead: a `begin` marker gets its `end` on every path, which is what lets the fold that rebuilds the
+    production tree stand on an errored stream at all — and, once the parse resumes, is what keeps the next document a
+    sibling of the failed one rather than a child of it.
+
+    The three land in the one order that keeps their positions meaning what they say. All are zero-width and here, so
+    only their order distinguishes them: the error is *inside* what failed, so it comes first; the unparsed run the
+    recovery brings back is inside *nothing*, so the markers close before it.
+
+    What the parser does about the input from there is not decided here: that is the grammar's `l-recover`, which the
+    caller matches. The guard is cleared because an `(exclude)` the abandoned parse had in scope never got to unwind,
+    and the recovery is entitled to the guards its own rules declare and no others.
     """
     emitter.codes[:] = ["unparsed"]  # a raise skips the token frames' cleanup; from here on the input is unparsed
     emitter.forbidden = ()
     emitter.error(message)
-    match(ir.Ref(UNPARSED, ()), emitter, grammar, _accept)
+    for code in reversed(emitter.pending):
+        emitter.marker(code)
+    emitter.pending = ()
 
 
 def match(node, emitter, grammar, k):
@@ -603,9 +618,11 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.Wrap):
         entry = emitter.checkpoint()
         emitter.marker(node.begin)
+        emitter.pending += (node.end,)  # what an abandoned parse would have to close from here
 
         def close_wrap():
             middle = emitter.checkpoint()
+            emitter.pending = emitter.pending[:-1]
             emitter.marker(node.end)
             if k():
                 return True
@@ -640,21 +657,36 @@ def match(node, emitter, grammar, k):
 def run(grammar, production, data, parameters=None):
     """Run `production` on the UTF-8 `data`, returning the yeast tokens it emits, or None if it does not match.
 
-    `parameters` binds the production's parameters from the fixture's filename — `n`/`m` are integers, `c`/`t` strings.
+    `parameters` binds the production's parameters from the fixture's filename — `n`/`m` are integers, `c`/`t`/`r`
+    strings. A production that declares `r` and is run without one resumes the way a zeroed `ys_options` does.
     """
     emitter = Emitter(data.decode("utf-8"))
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in (parameters or {}).items()}
-    try:
-        matched = match(grammar[production].body, emitter, grammar, _accept)
-    except CommitFailure as failure:
-        _fail(emitter, grammar, MESSAGES[failure.code])  # committed: the error names what the cut expected
-        return emitter.tokens
-    if matched:
-        emitter.cut()
-        return emitter.tokens
-    # A root parse is total — it recovers rather than fails — so its failing without committing is a grammar bug, not
-    # an input we accept; an isolated non-root production may fail, and reports what matched and where it stopped.
-    if production == ir.ROOT:
-        raise AssertionError(f"{ir.ROOT} failed without committing: the root production must be total")
-    _fail(emitter, grammar, "")  # uncommitted: a bare error where what matched ends, no expectation to name
-    return emitter.tokens
+    resume = emitter.env.get("r", "n")
+
+    # A cut says where the unwind lands and nothing else; what to do about the input from there is `l-recover`'s, which
+    # under a resuming policy parses the rest of the stream — and that may commit and fail again. So recovery is a loop
+    # rather than one handoff, and a second error inside a resumed document needs no mechanism of its own.
+    node = grammar[production].body
+    failed_at = None
+    while True:
+        try:
+            matched = match(node, emitter, grammar, _accept)
+        except CommitFailure as failure:
+            _fail(emitter, MESSAGES[failure.code])  # committed: the error names what the cut expected
+        else:
+            if matched:
+                emitter.cut()
+                return emitter.tokens
+            # A root parse is total — it recovers rather than fails — so its failing without committing is a grammar
+            # bug, not an input we accept; an isolated non-root production may fail, and reports what matched and where
+            # it stopped.
+            if production == ir.ROOT:
+                raise AssertionError(f"{ir.ROOT} failed without committing: the root production must be total")
+            _fail(emitter, "")  # uncommitted: a bare error where what matched ends, no expectation to name
+        # Recovering to where we already recovered from would go round for ever: a failed cut on a document boundary
+        # leaves `l-unparsed` nothing to consume, so what resumes there has to be what makes the progress.
+        if failed_at == emitter.position:
+            raise AssertionError(f"recovery at byte {failed_at} consumed nothing: the parse cannot go on")
+        failed_at = emitter.position
+        node = ir.Ref(RECOVER, (ir.Lit(resume),))

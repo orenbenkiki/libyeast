@@ -9,9 +9,9 @@ proof, not luck, says it's the right language.
 - API: **pull** · `next_token()`
 - Stream: **yeast** · reference-identical codes
 
-Throughout, the grammar's parameters split by two fates and it matters everywhere: **`c`** (context) and **`t`**
-(chomping) are finite, so they are resolved at generation time (static); **`n`** (indentation) and **`m`** (the
-auto-detected indent) are unbounded, so they are threaded into the runtime automaton.
+Throughout, the grammar's parameters split by two fates and it matters everywhere: **`c`** (context), **`t`** (chomping)
+and **`r`** (the resume policy) are finite, so they are resolved at generation time (static); **`n`** (indentation) and
+**`m`** (the auto-detected indent) are unbounded, so they are threaded into the runtime automaton.
 
 ## §0 — Why this, and why it's hard
 
@@ -54,10 +54,10 @@ emit that marker, and without it an empty stripped block scalar opens a scalar i
 `max_token_bytes` bounds it, being the same guard a single enormous token needs: the bytes the parser may buffer before
 it can hand a token back. Past the cap it is an error, not an out-of-memory.
 
-## §1 — The central principle: two parameters, two fates
+## §1 — The central principle: five parameters, two fates
 
-The productions are indexed by two parameters. The generator's core intellectual move — a binding-time analysis — is to
-treat them completely differently.
+The productions are indexed by five parameters, and the generator's core intellectual move — a binding-time analysis —
+is to sort them into two fates and treat those completely differently. `c` and `n` are the exemplars.
 
 - **`c` — context · STATIC.** `c` ranges over a **finite** set (block-in, block-out, flow-in, flow-out, block-key,
   flow-key). Specialize it away at generation time: each `c`-parameterized production monomorphizes into ≤6 concrete
@@ -66,9 +66,10 @@ treat them completely differently.
   `s-indent(≤n)`. It cannot be specialized away; it must survive into the emitted automaton, carried on the indentation
   stack.
 
-The other two follow the same two fates: **`t`** (chomping — strip, clip, keep) is finite, so it is specialized away
-like `c`; **`m`** (the auto-detected indent) is an unbounded integer, so it is threaded like `n`. So the runtime carries
-`n` and `m`, and never sees `c` or `t`.
+The other three follow the same two fates: **`t`** (chomping — strip, clip, keep) and **`r`** (the resume policy — what
+`ys_options.resume` chooses) are finite, so they are specialized away like `c`; **`m`** (the auto-detected indent) is an
+unbounded integer, so it is threaded like `n`. So the runtime carries `n` and `m`, and never sees `c`, `t` or `r` — the
+emitted C is one automaton per resume policy, and `ys_options.resume` picks the start state.
 
 Getting this split right is the crux: partial-evaluate over `c` while *preserving* `n`.
 
@@ -187,60 +188,27 @@ yaml-grammar harness against our IR, and the hand-off into `grammar2parser.py`. 
 
 ### Phase 01 — The reference interpreter · the grammar's executor, and the project's oracle
 
-*Risk: High — the first real leap.* Before a single transformation, build a **backtracking interpreter of the grammar as
-it is** — a slow, obviously-correct Python executor that runs a production on an input and emits the yeast token stream.
-Two things fall out of it at once: it proves libyeast's own grammar (`grammar/yeast-spec-1.2.yaml`) produces the
-reference's tokens, before any C exists to be wrong; and it becomes the verification net for the whole normalization
-pipeline (Phase 03) — the backtracking mode built here, the committed mode added there.
+**Done.** `generator/interpreter.py` runs a production against an input and emits its yeast tokens, and every node
+family is matched — the character-level nodes, the annotations, the repetitions, the parameters threading
+`n`/`m`/`c`/`t` and now `r`, and the assertions and lookahead. It backtracks in the continuation-passing style, so an
+alternation is re-entered when a later element fails, as the reference does. `tests/spec/` holds 640 input/output pairs,
+each named `production[.n=N][.c=C][.t=T][.r=R].case`, and the interpreter reproduces every one of them —
+`l-yeast-stream`, both resume policies, and the malformed inputs included — token for token, with nothing pending. It is
+checked by *reading* fixtures and diffing, never by compiling or running Haskell; and being per-production they gave a
+bottom-up build order for free. `DESIGN.md` says where each piece lives; `CHANGELOG.md` records what it is.
 
-**The oracle is static, and libyeast's own.** `tests/spec/` holds 639 input/output pairs, each named
-`production[.n=N][.c=C][.t=T].case`, the outputs in the yeast format `ys_read_token` already parses. It was built once
-from the reference parser's per-production fixtures — those that align with libyeast's grammar, each output rewritten
-into what libyeast emits, not what the reference does (see the differences in `DESIGN.md`); the reference's internal
-helpers, `m`-based parameterization, non-UTF-8 inputs, and isolated-run commit artifacts are left out, and the one-time
-build is not kept. `check_spec_tests.py` keeps the suite intact. The interpreter is thus checked by *reading* fixtures
-and diffing — never by compiling or running Haskell. And because the fixtures are per-production, they hand us a
-bottom-up build order for free: char-class leaves before token leaves before composites, and `l-yeast-stream` only once
-everything under it is green.
+What that phase taught, which the rest of this plan is written against: **a rule that cannot fail is not the same as a
+rule that is total.** Every part of the spec's `l-yaml-stream` is optional, so on input that is no stream at all it
+matched nothing, reported nothing, and lost the input — and no gate saw it, because matching nothing is still matching.
+Totality had to be said out loud, in a rule of libyeast's own. The same lesson twice over: an error must close the
+markers it opened, or the fold has nothing to stand on and a resumed document parses as a child of the one that failed
+rather than its sibling. Neither the marker gate nor the fixtures caught either, both being about the clean path — what
+a parser does when it is *wrong* needs its own rules and its own fixtures.
 
-Built piece by piece, each a commit gated by the productions it newly covers. Every node family is done — the
-character-level nodes (`Char`/`Range`/`Diff`/`Empty`/`Seq`/`Alt`/`Ref`), the annotation nodes
-(`Token`/`Wrap`/`Emit`/`Cut`/`Error`), the repetitions (`Star`/`Plus`/`Opt`/`Rep`), the parameters
-(`Case`/`Flip`/`Bind`/`SetVar`, the arithmetic, and the `Lt`/`Le`/`Max`/`Bound` predicates threading `n`/`m`/`c`/`t`),
-the assertions and lookahead (`StartOfLine`/`EndOfStream`/`Look`/`NegLook`/`LookBehind`/`ExcludeAt`), and the two
-auto-detect indentation rules. The matcher backtracks in the continuation-passing style, so an alternation is re-entered
-when a later element fails, as the reference does. It reproduces every fixture — `l-yeast-stream` and the malformed
-inputs included — token for token, and nothing is pending.
-
-**What is left is the resume policy — the grammar's fifth parameter.** `ys_options.resume` says what the parser does
-with the input after a malformed document, and the interpreter knows only the default: the error ends the parse and the
-rest of the input comes back unparsed. `YS_RESUME_DOCUMENT` — carry on at the next document — is left.
-
-`r` is finite, so it takes `c`'s and `t`'s fate, not `n`'s: three rules are parameterized on it and it is specialized
-away at generation time, never reaching the runtime, so the emitted C is one automaton per policy and
-`ys_options.resume` picks the start state. Only `YS_RESUME_NONE` (`n`) and `YS_RESUME_DOCUMENT` (`d`) are built;
-`YS_RESUME_INDENT` stays reserved in the enum and in §6, and the fixture validator does not name a value nothing
-implements.
-
-- **`l-unparsed(r)`** guards its own run: `(exclude): c-forbidden` for `d`, nothing for `n`. The guard is scoped to the
-  rule that declares it, so the run stops at the next `---`/`...` line and the guard does not leak onto what recovery
-  does next. This is the whole of the skip — no new rule, and none of the reference's cross-line lookahead.
-- **`l-recover(r)`** is what the parser does with input it cannot parse: `l-unparsed(r)`, and then, for `d`,
-  `l-yeast-stream(r)` again. It cannot be folded into `l-unparsed`, whose `(exclude)` would forbid the resumed document
-  from starting at the very marker it stopped for. It and `l-yeast-stream(r)` are mutually recursive, which is what
-  makes a second error inside a resumed document need no second mechanism.
-- **`l-yeast-stream(r)`**'s trailing branch hands to `l-recover(r)` rather than `l-unparsed`, so the failed cut and the
-  input that was never a stream recover through one rule. `run()` keeps only where the unwind lands: catch, reset, emit
-  the cut's message, hand to `l-recover(r)`, and go round again if that raises too. `_fail` folds into that loop.
-
-Two obligations, neither to be hand-waved. **`.r=n` is byte-identical to today** — 639 fixtures say so, and a filename
-that names no `r` means `n`, the default a zeroed `ys_options` already selects, so none of them is renamed.
-**Termination**: recovery landing exactly on a boundary consumes nothing, so progress rests on the resumed stream
-consuming the marker; the loop asserts the position advanced rather than trusting that it does.
-
-**Exit** — the interpreter matches every vendored fixture it covers, `l-yeast-stream` and the error cases included,
-under both resume policies; libyeast's grammar is proven against the reference token-for-token, with a slow executor
-ready to judge every pipeline step.
+Still to be scoped, when something needs it: `YS_RESUME_INDENT` (§6), the third resume policy, which is the reason the
+close-what-you-opened mechanism is worth having rather than merely correct — resuming at a less-indented line means
+closing *some* of what is open rather than all of it, and the machinery is the same. The interpreter's committed mode is
+phase 03's, where the grammar it judges is the one that has been transformed.
 
 ### Phase 02 — Differential oracles · The broader nets around the token fixtures
 

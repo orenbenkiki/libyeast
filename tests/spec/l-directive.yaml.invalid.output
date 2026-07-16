@@ -7,6 +7,8 @@ tYAML
 # B: 5, C: 5, L: 1, c: 5
 !The %YAML directive requires a version, e.g. %YAML 1.2
 # B: 5, C: 5, L: 1, c: 5
+d
+# B: 5, C: 5, L: 1, c: 5
 - a
 # B: 7, C: 7, L: 1, c: 7
 .\x0a

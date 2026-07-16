@@ -23,7 +23,8 @@ def main():
     errors = []
     for fixture in fixtures:
         try:
-            tokens = interpreter.run(grammar, fixture.production, fixture.input, fixture.parameters)
+            arguments = spec_tests.arguments(fixture, grammar)
+            tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments)
             actual = wire.serialize(tokens) if tokens is not None else "(no match)"
         except Exception as error:  # noqa: BLE001 — a crash is a divergence to report, not to abort the gate on
             actual = f"(crash: {type(error).__name__}: {error})"

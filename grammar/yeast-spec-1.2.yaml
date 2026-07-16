@@ -3968,23 +3968,34 @@ nb-unparsed:
 
 
 :214: l-unparsed
-# l-unparsed ::=
+# l-unparsed(r) ::=
+#   ( <empty> | <excluding_c-forbidden_content> )
 #   ( nb-unparsed+ | b-break )*
+#
+# The run of input the parser could not parse, bounded by the resume policy: everything that is left when nothing is to
+# be resumed, and only as far as the next document marker when the parse carries on there. The guard is in scope until
+# this rule returns and no further, so it stops the run without forbidding the marker to whatever resumes at it.
 #
 # Emits: unparsed, unparsed-break
 
 l-unparsed:
-  (***):
-    (any):
-    - (token): [ unparsed, { (+++): nb-unparsed } ]
-    - (token): [ unparsed-break, b-break ]
+  (...): r
+  (all):
+  - (case):
+      var: r
+      "n": <empty>
+      "d": { (exclude): c-forbidden }
+  - (***):
+      (any):
+      - (token): [ unparsed, { (+++): nb-unparsed } ]
+      - (token): [ unparsed-break, b-break ]
 
 
 
 :215: l-yeast-stream
-# l-yeast-stream ::=
+# l-yeast-stream(r) ::=
 #   l-yaml-stream
-#   ( <end_of_file> | <error> l-unparsed )
+#   ( <end_of_file> | <error> l-recover(r) )
 #
 # The root the parser runs. Every part of l-yaml-stream is optional, so on input that is not a stream it matches
 # nothing at all and would leave the whole of it unaccounted for; here that is an error, and the input comes back
@@ -3992,13 +4003,36 @@ l-unparsed:
 # backtracking reaches back into it.
 
 l-yeast-stream:
+  (...): r
   (all):
   - l-yaml-stream
   - (any):
     - <end-of-stream>
     - (all):
       - (error): TRAILING_CONTENT
-      - l-unparsed
+      - l-recover: r
+
+
+
+:216: l-recover
+# l-recover(r) ::=
+#   l-unparsed(r)
+#   ( <empty> | l-yeast-stream(r) )
+#
+# What the parser does with input it cannot parse, which is what ys_options.resume chooses between: bring it back
+# unparsed and stop, or bring back only what stands between here and the next document and carry on parsing there, so
+# that one malformed document does not cost the caller the others. A failed cut arrives here too — it is the same
+# question — and this and l-yeast-stream being mutually recursive is what lets a resumed document fail again without a
+# second mechanism for it.
+
+l-recover:
+  (...): r
+  (all):
+  - l-unparsed: r
+  - (case):
+      var: r
+      "n": <empty>
+      "d": { l-yeast-stream: r }
 
 
 # vim: iskeyword=@,+,- sw=2:

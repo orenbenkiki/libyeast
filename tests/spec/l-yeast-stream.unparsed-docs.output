@@ -15,6 +15,18 @@ I{
 # B: 1, C: 1, L: 1, c: 1
 !Unterminated flow mapping
 # B: 1, C: 1, L: 1, c: 1
+m
+# B: 1, C: 1, L: 1, c: 1
+n
+# B: 1, C: 1, L: 1, c: 1
+x
+# B: 1, C: 1, L: 1, c: 1
+m
+# B: 1, C: 1, L: 1, c: 1
+n
+# B: 1, C: 1, L: 1, c: 1
+o
+# B: 1, C: 1, L: 1, c: 1
 - a
 # B: 3, C: 3, L: 1, c: 3
 .\x0a

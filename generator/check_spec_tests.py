@@ -35,6 +35,8 @@ def main():
         if reason is not None:
             errors.append(f"{name}: {reason}")
             continue
+        if not os.path.exists(fixture.output_path):
+            continue  # already reported as unpaired above; there is nothing to read a token stream out of
         fault = wire.chain_fault(wire.parse(fixture.expected))
         if fault is not None:
             errors.append(f"{name}: {fault}")

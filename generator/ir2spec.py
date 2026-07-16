@@ -26,7 +26,7 @@ MARKER_ONLY = frozenset({"end-block-scalar"})
 # The rules libyeast adds around the official grammar: the root the parser runs, and the unparsed recovery it and a
 # failed cut hand off to. They consume, so they are not marker-only, and the official grammar has no counterpart to
 # compare them against, so recovering it just leaves them out.
-OWN = frozenset({"l-yeast-stream", "l-unparsed", "nb-unparsed"})
+OWN = frozenset({"l-yeast-stream", "l-recover", "l-unparsed", "nb-unparsed"})
 
 # The character each indicator production names. The official grammar writes the character; libyeast writes the
 # production, so that the token annotation has somewhere to go.

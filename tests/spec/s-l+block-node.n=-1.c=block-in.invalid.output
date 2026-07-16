@@ -19,6 +19,12 @@ I:
 # B: 2, C: 2, L: 1, c: 2
 !A mapping value is required after ':'
 # B: 2, C: 2, L: 1, c: 2
+x
+# B: 2, C: 2, L: 1, c: 2
+m
+# B: 2, C: 2, L: 1, c: 2
+n
+# B: 2, C: 2, L: 1, c: 2
 - b:
 # B: 5, C: 5, L: 1, c: 5
 .\x0a
