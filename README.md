@@ -83,8 +83,9 @@ each: `test`, `verify`, `vet`, `gh-pages`.
   - `make verify-decoder` — `src/decoder_tables.h` is exactly what the grammar produces (not stale)
   - `make verify-wire` — `wire.py`'s code map matches `src/wire.c`'s
   - `make verify-fixtures` — the conformance fixtures in `tests/spec/` are intact
-  - `make verify-grammar` — every grammar reproduces `tests/spec/`, bottom-up:
-    - `make verify-grammar-base` — the base grammar, via the interpreter
+  - `make verify-grammar` — every grammar reproduces `tests/spec/` and is wholly exercised by it, bottom-up:
+    - `make verify-grammar-base` — the base grammar reproduces its fixtures, via the interpreter
+    - `make verify-grammar-base-coverage` — the fixtures exercise every production of the base grammar
 - **`make vet`** — static code quality:
   - `make vet-format` — every formatter, check-only:
     - `make vet-format-c` / `-md` / `-py` / `-cmake` / `-sh` — clang-format / mdformat / black / gersemi / shfmt

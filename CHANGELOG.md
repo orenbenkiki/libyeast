@@ -84,6 +84,13 @@ All notable changes to this project are documented here. The format follows
   match, `l-yaml-stream` included, token for token. What it does not yet emit is an error or the recovery `unparsed`, so
   the fixtures that need those wait for the error-handling piece.
 
+- A grammar-coverage gate, `make verify-grammar-base-coverage` via `generator/check_grammar_coverage.py`: every
+  production must be exercised by the fixtures. Coverage is dynamic, not by name — a production counts when running a
+  reproducible fixture actually matches its body or evaluates it as a value, so a production with no fixture of its own
+  is covered by the fixtures that reach it, and one nothing reaches is a gap. It takes the grammar as an argument, so it
+  re-runs on each structurally-transformed grammar as those arrive. The suite gained an empty stripped literal (`|-`) so
+  the scalar-closing `end-block-scalar` is exercised by a clean fixture rather than only an error one.
+
 ### Changed
 
 - `ys_options.max_token_bytes` becomes `max_bytes`, and caps the memory the parser allocates rather than the bytes it

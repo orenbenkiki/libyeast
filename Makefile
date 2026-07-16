@@ -96,7 +96,7 @@ DEV_DEP_TOOLS   := python3 python3:yaml $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK
 
 .PHONY: all package install test test-debug test-release regen \
         verify verify-roundtrip verify-references verify-spec verify-markers verify-emits verify-decoder \
-        verify-wire verify-fixtures verify-grammar verify-grammar-base \
+        verify-wire verify-fixtures verify-grammar verify-grammar-base verify-grammar-base-coverage \
         vet vet-format vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh \
         vet-comments vet-lint vet-version vet-packaging vet-$(TODO_X) \
         gh-pages gh-pages-docs gh-pages-coverage \
@@ -293,6 +293,13 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	python3 generator/check_interpreter.py
 	@touch $@
 
+# The fixtures exercise every production the grammar has: running the reproducible ones matches or evaluates each. A
+# production no fixture reaches is a coverage gap, whichever grammar this runs against — the base now, a transformed one
+# later, whose reshaped productions the same suite must still exercise.
+.stamps/verify-grammar-base-coverage: $(FIXTURES) $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_grammar_coverage.py
+	@touch $@
+
 # Mode #3 — regenerate the committed generated files. `src/decoder_tables.h` is the only one so far, so this is the whole
 # of it; the parser's tables will be the second, and one more line.
 regen:
@@ -340,8 +347,10 @@ verify-decoder: .stamps/verify-decoder
 verify-wire: .stamps/verify-wire
 verify-fixtures: .stamps/verify-fixtures
 verify-grammar-base: .stamps/verify-grammar-base
-# Every grammar reproduces the fixtures, bottom-up: the base grammar now, the structural grammar once it exists.
-verify-grammar: verify-grammar-base
+verify-grammar-base-coverage: .stamps/verify-grammar-base-coverage
+# Every grammar reproduces the fixtures and is wholly exercised by them, bottom-up: the base grammar now, the structural
+# grammar once it exists.
+verify-grammar: verify-grammar-base verify-grammar-base-coverage
 verify: verify-roundtrip verify-references verify-spec verify-markers verify-emits verify-decoder \
         verify-wire verify-fixtures verify-grammar
 

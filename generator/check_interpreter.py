@@ -24,7 +24,7 @@ RECOVERY_PRODUCTIONS = frozenset(
 )
 
 
-def _is_pending(fixture):
+def is_pending(fixture):
     """Whether `fixture` awaits the error-handling piece — an error token, or a recovery production's unparsed."""
     if any(token.code == wire.ERROR for token in wire.parse(fixture.expected)):
         return True
@@ -38,7 +38,7 @@ def main():
     pending = 0
     errors = []
     for fixture in fixtures:
-        if _is_pending(fixture):
+        if is_pending(fixture):
             pending += 1
             continue
         try:
