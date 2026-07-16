@@ -82,19 +82,27 @@ All notable changes to this project are documented here. The format follows
   indentation, and the assertions and lookahead, including the ongoing `(exclude)` guard that stops a plain scalar at a
   document boundary — and produces tokens from the annotation nodes, giving a run its code, bracketing a match in
   `begin`/`end` markers, and emitting a marker on its own. It backtracks in the success-continuation style, re-entering
-  an alternation when a later element fails as the reference does, and reproduces every fixture, `l-yaml-stream` and the
-  malformed inputs included, token for token. A malformed input is where the grammar's `(cut)` earns its keep: a cut
+  an alternation when a later element fails as the reference does, and reproduces every fixture, `l-yeast-stream` and
+  the malformed inputs included, token for token. A malformed input is where the grammar's `(cut)` earns its keep: a cut
   commits, and if the parse then fails, the interpreter emits an error token naming what the cut expected, and hands the
   rest of the input to `l-unparsed` — the grammar's own recovery rule — which brings it back as unparsed. A failure that
   passed no cut is not an error but a production simply rejecting its input, reported where what matched ends.
 
-- Error reporting lives in the grammar. Eighteen `(cut)` points mark where a parse commits, each naming a message in
+- Error reporting lives in the grammar. Eighteen `(cut)` points mark where a parse commits, and an `(error)` is an error
+  token the grammar writes where it already knows the parse cannot go on; each names a message in
   `grammar/messages.yaml` — the one source the interpreter reads and the C message table generates from, gated so the
-  two cannot drift. `l-unparsed` is the recovery rule a failed cut hands the rest of the input to, bringing it back a
-  line at a time as `YS_CODE_UNPARSED` content and `YS_CODE_UNPARSED_BREAK` breaks; it consumes anything, so it earns
-  the decoder's twentieth character set, freed by moving the key's length field up into spare bits. The block header
-  gained a lookahead so its two orderings no longer need the backtracking a cut would block — a declared deviation, the
+  two cannot drift. `l-unparsed` is the recovery rule they hand the rest of the input to, bringing it back a line at a
+  time as `YS_CODE_UNPARSED` content and `YS_CODE_UNPARSED_BREAK` breaks; it consumes anything, so it earns the
+  decoder's twentieth character set, freed by moving the key's length field up into spare bits. The block header gained
+  a lookahead so its two orderings no longer need the backtracking a cut would block — a declared deviation, the
   official header being ambiguous there.
+
+- `l-yeast-stream` is the root the parser runs: a YAML stream, and then the end of the input. Every part of the spec's
+  `l-yaml-stream` is optional, so on input that is no stream at all — a `]`, say — it matches nothing and would leave
+  the whole of the input unaccounted for, silently; the root makes that an error and the input comes back unparsed, so
+  every byte reaches the caller whatever it holds. Its second alternative always matches, so the first way
+  `l-yaml-stream` finds is the one taken and nothing backtracks into it. It is libyeast's own, as `l-unparsed` is, and
+  the spec's rule 211 is untouched — the official grammar still comes back from libyeast's rule for rule.
 
 - A grammar-coverage gate, `make verify-grammar-base-coverage` via `generator/check_grammar_coverage.py`: every
   production must be exercised by the fixtures. Coverage is dynamic, not by name — a production counts when running a

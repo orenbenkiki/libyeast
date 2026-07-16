@@ -34,11 +34,11 @@ def walk_value(value):
             yield from walk_value(item)
 
 
-# The productions nothing references: the stream root, and c-reserved — the reserved characters (§5.4), which the
-# grammar defines but never uses. The indicator characters (§5.3) each have a production too, and those *are*
+# The productions nothing references: the root the parser runs, and c-reserved — the reserved characters (§5.4), which
+# the grammar defines but never uses. The indicator characters (§5.3) each have a production too, and those *are*
 # referenced: libyeast reaches an indicator through the production that names it, so a token annotation has somewhere
 # to attach.
-UNREFERENCED = frozenset({"l-yaml-stream", "c-reserved", "l-unparsed"})
+UNREFERENCED = frozenset({"l-yeast-stream", "c-reserved"})
 
 
 def consumed(node, is_annotated, references):

@@ -13,8 +13,8 @@ a `(case)` branch is a node rather than a bare pair, so nothing has to special-c
 
 from dataclasses import dataclass
 
-# The production the whole grammar hangs off.
-ROOT = "l-yaml-stream"
+# The production the whole grammar hangs off: a YAML stream, and then the end of the input.
+ROOT = "l-yeast-stream"
 
 # --- value / parameter expressions ---
 
@@ -324,6 +324,18 @@ class Cut:
     """`(cut)`: a zero-width commit past which the parse does not backtrack; on a later failure it is the error, and
 
     `message` names the expectation to report — a key into `grammar/messages.yaml`.
+    """
+
+    message: str
+
+
+@dataclass(frozen=True)
+class Error:
+    """`(error)`: a zero-width error token at this point, which also cuts the run of characters around it.
+
+    `message` names the expectation to report — a key into `grammar/messages.yaml`, as a `(cut)`'s does. Unlike a
+    `(cut)` it is a match rather than a commit: it emits and succeeds, so what the parser does about the input from
+    here is the grammar's to say, in the rule that holds it.
     """
 
     message: str

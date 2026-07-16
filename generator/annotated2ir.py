@@ -156,6 +156,8 @@ def node(x):
             return ir.Emit(value)
         if op == "(cut)":
             return ir.Cut(value)
+        if op == "(error)":
+            return ir.Error(value)
         rep = REP.match(op)
         if rep:
             return ir.Rep(count(rep.group(1)), node(value))

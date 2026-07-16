@@ -12,7 +12,8 @@ asked to reproduce. It matches the character-level nodes (`Char`, `Range`, `Diff
 repetitions (`Star`, `Plus`, `Opt`, `Rep`), the parameter machinery (`Case`, `Bind`, `SetVar`, the arithmetic, and the
 `Lt`/`Le`/`Max`/`Bound` predicates), and the assertions and lookahead (`StartOfLine`, `EndOfStream`, `Look`, `NegLook`,
 `LookBehind`, `ExcludeAt`). It produces tokens from the annotation nodes: `Token` gives its characters a code and cuts
-the run at both edges, `Wrap` brackets its match in `begin`/`end` markers, and `Emit` is a marker on its own.
+the run at both edges, `Wrap` brackets its match in `begin`/`end` markers, `Emit` is a marker on its own, and `Error` is
+an error token naming what was expected.
 
 Matching is success-continuation style: `match` calls a continuation for each way a node matches, in greedy order, and
 the continuation reports whether the rest of the parse succeeded — so an alternation is re-entered when a later element
@@ -36,10 +37,6 @@ sys.setrecursionlimit(20000)
 # generated C table both read, so the error text the interpreter emits is the error text the parser will.
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "grammar", "messages.yaml")) as _f:
     MESSAGES = yaml.safe_load(_f)
-
-# The root production of a whole parse, which is total: it recovers from anything rather than failing. A failure without
-# a commit is expected only when a run starts at some other, non-root production, as the per-production fixtures do.
-ROOT = "l-yaml-stream"
 
 # The production a failed cut hands off to: it consumes the rest of the input as unparsed tokens. Matching it, rather
 # than emitting the tokens by hand, keeps the recovery in the grammar, where the C parser generates it from.
@@ -74,6 +71,7 @@ SUPPORTED_NODES = (
     ir.Wrap,
     ir.Emit,
     ir.Cut,
+    ir.Error,
     ir.Star,
     ir.Plus,
     ir.Opt,
@@ -629,6 +627,13 @@ def match(node, emitter, grammar, k):
         if k():
             return True
         raise CommitFailure(node.message)  # committed: unwind past the backtracking, this is the error
+    if isinstance(node, ir.Error):
+        checkpoint = emitter.checkpoint()
+        emitter.error(MESSAGES[node.message])
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     raise NotImplementedError(f"interpreter does not support {type(node).__name__}")
 
 
@@ -649,7 +654,7 @@ def run(grammar, production, data, parameters=None):
         return emitter.tokens
     # A root parse is total — it recovers rather than fails — so its failing without committing is a grammar bug, not
     # an input we accept; an isolated non-root production may fail, and reports what matched and where it stopped.
-    if production == ROOT:
-        raise AssertionError(f"{ROOT} failed without committing: the root production must be total")
+    if production == ir.ROOT:
+        raise AssertionError(f"{ir.ROOT} failed without committing: the root production must be total")
     _fail(emitter, grammar, "")  # uncommitted: a bare error where what matched ends, no expectation to name
     return emitter.tokens

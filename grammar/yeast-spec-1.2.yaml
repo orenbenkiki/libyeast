@@ -3947,9 +3947,11 @@ l-yaml-stream:
             (wrap): [ begin-document, end-document, l-explicit-document ]
 
 #===============================================================================
-# When a commit fails there is no more parsing to do here: the error is emitted and the rest of the input — whatever it
-# is — comes back unparsed, a line's content and its break each its own token so that no token spans a line. These are
-# libyeast's own, matched where a failed cut gives up, and are not rules of the official grammar.
+# Where the parse cannot go on there is no more parsing to do: the error is emitted and the rest of the input —
+# whatever it is — comes back unparsed, a line's content and its break each its own token so that no token spans a
+# line. It gives up there for one of two reasons: a commit failed, or the input was never a stream to begin with, which
+# is what l-yeast-stream — the root the parser runs — is here to say. These are libyeast's own, and are not rules of
+# the official grammar.
 #===============================================================================
 
 :213: nb-unparsed
@@ -3976,6 +3978,27 @@ l-unparsed:
     (any):
     - (token): [ unparsed, { (+++): nb-unparsed } ]
     - (token): [ unparsed-break, b-break ]
+
+
+
+:215: l-yeast-stream
+# l-yeast-stream ::=
+#   l-yaml-stream
+#   ( <end_of_file> | <error> l-unparsed )
+#
+# The root the parser runs. Every part of l-yaml-stream is optional, so on input that is not a stream it matches
+# nothing at all and would leave the whole of it unaccounted for; here that is an error, and the input comes back
+# unparsed. The second alternative always matches, so the first way l-yaml-stream finds is the one taken and no
+# backtracking reaches back into it.
+
+l-yeast-stream:
+  (all):
+  - l-yaml-stream
+  - (any):
+    - <end-of-stream>
+    - (all):
+      - (error): TRAILING_CONTENT
+      - l-unparsed
 
 
 # vim: iskeyword=@,+,- sw=2:

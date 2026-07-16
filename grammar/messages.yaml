@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: MIT
 #
-# The error messages libyeast emits, keyed by the code a grammar `(cut)` names. Each says what was expected, never what
-# was found — the byte that failed comes back as the first unparsed token behind the error. This file is the single
-# source: the interpreter reads it, and the C parser's message table is generated from it (gated against drift), so the
-# mapping is never hand-duplicated.
+# The error messages libyeast emits, keyed by the code a grammar `(cut)` or `(error)` names. Each says what was
+# expected, never what was found — the byte that failed comes back as the first unparsed token behind the error. This
+# file is the single source: the interpreter reads it, and the C parser's message table is generated from it (gated
+# against drift), so the mapping is never hand-duplicated.
 #
-# Every code here is named by a `(cut)` in `yeast-spec-1.2.yaml`. The character-level errors — a byte that is not a YAML
-# character, or not a codepoint at all — are grammar-independent, emitted below the grammar, and live with the other
-# hand-written messages, not here.
+# Every code here is named by a `(cut)` or an `(error)` in `yeast-spec-1.2.yaml`. The character-level errors — a byte
+# that is not a YAML character, or not a codepoint at all — are grammar-independent, emitted below the grammar, and
+# live with the other hand-written messages, not here.
 
 # A required construct is absent.
 MISSING_VALUE: "A mapping value is required after ':'"
@@ -36,3 +36,6 @@ TAG_DIRECTIVE: "The %TAG directive requires a handle and a prefix"
 
 # A block scalar header carries trailing junk.
 BLOCK_HEADER: "A block scalar header requires a comment or line break"
+
+# The input holds something a stream cannot.
+TRAILING_CONTENT: "A stream holds only documents, directives and comments"

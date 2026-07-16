@@ -193,29 +193,31 @@ Two things fall out of it at once: it proves libyeast's own grammar (`grammar/ye
 reference's tokens, before any C exists to be wrong; and it becomes the verification net for the whole normalization
 pipeline (Phase 03) — the backtracking mode built here, the committed mode added there.
 
-**The oracle is static, and libyeast's own.** `tests/spec/` holds 637 input/output pairs, each named
+**The oracle is static, and libyeast's own.** `tests/spec/` holds 639 input/output pairs, each named
 `production[.n=N][.c=C][.t=T].case`, the outputs in the yeast format `ys_read_token` already parses. It was built once
 from the reference parser's per-production fixtures — those that align with libyeast's grammar, each output rewritten
 into what libyeast emits, not what the reference does (see the differences in `DESIGN.md`); the reference's internal
 helpers, `m`-based parameterization, non-UTF-8 inputs, and isolated-run commit artifacts are left out, and the one-time
 build is not kept. `check_spec_tests.py` keeps the suite intact. The interpreter is thus checked by *reading* fixtures
 and diffing — never by compiling or running Haskell. And because the fixtures are per-production, they hand us a
-bottom-up build order for free: char-class leaves before token leaves before composites, and `l-yaml-stream` only once
+bottom-up build order for free: char-class leaves before token leaves before composites, and `l-yeast-stream` only once
 everything under it is green.
 
 Built piece by piece, each a commit gated by the productions it newly covers. Every node family is done — the
-character-level nodes (`Char`/`Range`/`Diff`/`Empty`/`Seq`/`Alt`/`Ref`), the annotation nodes (`Token`/`Wrap`/`Emit`),
-the repetitions (`Star`/`Plus`/`Opt`/`Rep`), the parameters (`Case`/`Flip`/`Bind`/`SetVar`, the arithmetic, and the
-`Lt`/`Le`/`Max`/`Bound` predicates threading `n`/`m`/`c`/`t`), the assertions and lookahead
-(`StartOfLine`/`EndOfStream`/`Look`/`NegLook`/`LookBehind`/`ExcludeAt`), and the two auto-detect indentation rules. The
-matcher backtracks in the continuation-passing style, so an alternation is re-entered when a later element fails, as the
-reference does. It reproduces every fixture that rests on a clean match — `l-yaml-stream` included — token for token.
+character-level nodes (`Char`/`Range`/`Diff`/`Empty`/`Seq`/`Alt`/`Ref`), the annotation nodes
+(`Token`/`Wrap`/`Emit`/`Cut`/`Error`), the repetitions (`Star`/`Plus`/`Opt`/`Rep`), the parameters
+(`Case`/`Flip`/`Bind`/`SetVar`, the arithmetic, and the `Lt`/`Le`/`Max`/`Bound` predicates threading `n`/`m`/`c`/`t`),
+the assertions and lookahead (`StartOfLine`/`EndOfStream`/`Look`/`NegLook`/`LookBehind`/`ExcludeAt`), and the two
+auto-detect indentation rules. The matcher backtracks in the continuation-passing style, so an alternation is re-entered
+when a later element fails, as the reference does. It reproduces every fixture — `l-yeast-stream` and the malformed
+inputs included — token for token, and nothing is pending.
 
-What is left is error handling. 177 fixtures await it: those whose output carries an error token, and the reference's
-`recovery`/`unparsed` productions (rules 185, 194, 208, 210) that emit a parsed prefix and mop the rest up as unparsed.
-The interpreter emits neither yet, so `check_interpreter.py` counts these as pending rather than running them.
+What is left is the resume policy. `ys_options.resume` says what the parser does with the input after a malformed
+document, and the interpreter knows only the default: the error ends the parse and the rest of the input comes back
+unparsed. `YS_RESUME_DOCUMENT` — carry on at the next document — is left, and so is the `YS_RESUME_INDENT` of §6 if it
+is ever wanted. A fixture will name the policy it runs under the way its filename already names `n`, `c` and `t`.
 
-**Exit** — the interpreter matches every vendored fixture it covers, `l-yaml-stream` and the error cases included;
+**Exit** — the interpreter matches every vendored fixture it covers, `l-yeast-stream` and the error cases included;
 libyeast's grammar is proven against the reference token-for-token, with a slow executor ready to judge every pipeline
 step.
 
