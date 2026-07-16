@@ -29,6 +29,12 @@ DEVIATIONS = {
         "<auto-detect-in-line-indent>: the spaces that follow on this line, which is what a compact collection is "
         "indented by"
     ),
+    "c-b-block-header": (
+        "the official grammar's header is two orderings, indent-then-chomp or chomp-then-indent, that begin the same "
+        "way, so it can only tell them apart by backtracking and can never call a header malformed. libyeast guards "
+        "the first ordering with a lookahead, so the second is reached without backtracking and a junk header commits "
+        "to a BLOCK_HEADER error instead of silently failing to match"
+    ),
 }
 
 

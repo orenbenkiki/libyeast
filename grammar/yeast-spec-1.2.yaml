@@ -3006,6 +3006,7 @@ c-b-block-header:
     - (all):
       - c-indentation-indicator: m
       - c-chomping-indicator: t
+      - (!==): ns-char
     - (all):
       - c-chomping-indicator: t
       - c-indentation-indicator: m

@@ -16,18 +16,39 @@ the run at both edges, `Wrap` brackets its match in `begin`/`end` markers, and `
 
 Matching is success-continuation style: `match` calls a continuation for each way a node matches, in greedy order, and
 the continuation reports whether the rest of the parse succeeded — so an alternation is re-entered when a later element
-fails, and nothing commits until the whole parse accepts, the way the reference backtracks. What it cannot yet emit is
-an error or the recovery `unparsed`, so the fixtures that need those are left for the error-handling piece.
+fails, the way the reference backtracks. A `(cut)` is where that stops: past it the parse does not backtrack, and if the
+rest then fails it becomes an error token naming what was expected, after which the input from there comes back as
+unparsed, each line split into its content and its break.
 """
 
+import os
 import sys
 
 import ir
 import wire
+import yaml
 
 # The continuation-passing matcher recurses once per grammar step and once per repetition, so a match nests far deeper
 # than Python's default limit allows even for the small conformance inputs.
 sys.setrecursionlimit(20000)
+
+# The text of every message a `(cut)` names, from the grammar's companion table — the one source the interpreter and the
+# generated C table both read, so the error text the interpreter emits is the error text the parser will.
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "grammar", "messages.yaml")) as _f:
+    MESSAGES = yaml.safe_load(_f)
+
+
+class CommitFailure(Exception):
+    """Raised when the parse fails after passing a `(cut)`.
+
+    It carries the cut's message `code`, and unwinds past the backtracking frames — which is what a commit is: none of
+    them gets to try another way — to the handler that turns it into an error token and the unparsed recovery.
+    """
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+
 
 BYTE_ORDER_MARK = 0xFEFF  # consumed without ending the start of a line, unlike any other character
 
@@ -163,6 +184,11 @@ class Emitter:
         self.cut()
         self.tokens.append(wire.Token(wire.CODE_CHAR[code], self.mark, ""))
 
+    def error(self, message):
+        """Emit an error token: `message` as its text, at the position, spanning no input. Cuts the open run first."""
+        self.cut()
+        self.tokens.append(wire.Token(wire.ERROR, self.mark, wire.escape(message.encode("utf-8"))))
+
 
 def coverable(production, grammar):
     """Whether every node reachable from `production` is one the interpreter supports."""
@@ -280,9 +306,16 @@ def _accept():
 
 
 def _probe(pattern, emitter, grammar):
-    """Whether `pattern` matches at the position, leaving the emitter untouched — a lookahead that keeps no effect."""
+    """Whether `pattern` matches at the position, leaving the emitter untouched — a lookahead that keeps no effect.
+
+    A `(cut)` inside a lookahead is speculative, not a commit of the whole parse, so a `CommitFailure` here is caught
+    and read as "did not match" rather than allowed to escape.
+    """
     checkpoint = emitter.checkpoint()
-    matched = match(pattern, emitter, grammar, _accept)
+    try:
+        matched = match(pattern, emitter, grammar, _accept)
+    except CommitFailure:
+        matched = False
     emitter.rewind(checkpoint)
     return matched
 
@@ -321,6 +354,25 @@ def _forbidden_here(emitter, grammar):
         return any(_probe(pattern, emitter, grammar) for pattern in patterns)
     finally:
         emitter.forbidden = patterns
+
+
+def _recover_unparsed(emitter):
+    """Emit the input from the position to the end as unparsed tokens: each line's content and its break, apart."""
+    text = emitter.text
+    while emitter.position < len(text):
+        emitter.codes.append("unparsed")
+        while emitter.position < len(text) and text[emitter.position] not in "\r\n":
+            emitter.consume()
+        emitter.cut()
+        emitter.codes.pop()
+        if emitter.position < len(text):
+            emitter.codes.append("unparsed-break")
+            carriage_return = text[emitter.position] == "\r"
+            emitter.consume()
+            if carriage_return and emitter.position < len(text) and text[emitter.position] == "\n":
+                emitter.consume()  # a CR LF pair is one break, and so one token
+            emitter.cut()
+            emitter.codes.pop()
 
 
 def match(node, emitter, grammar, k):
@@ -571,7 +623,9 @@ def match(node, emitter, grammar, k):
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Cut):
-        return k()  # inert until error handling: a commit that neither stops backtracking nor emits an error yet
+        if k():
+            return True
+        raise CommitFailure(node.message)  # committed: unwind past the backtracking, this is the error
     raise NotImplementedError(f"interpreter does not support {type(node).__name__}")
 
 
@@ -582,7 +636,14 @@ def run(grammar, production, data, parameters=None):
     """
     emitter = Emitter(data.decode("utf-8"))
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in (parameters or {}).items()}
-    if not match(grammar[production].body, emitter, grammar, _accept):
+    try:
+        matched = match(grammar[production].body, emitter, grammar, _accept)
+    except CommitFailure as failure:
+        emitter.codes[:] = ["unparsed"]  # a raise skips the token frames' cleanup; the rest of the input is unparsed
+        emitter.error(MESSAGES[failure.code])
+        _recover_unparsed(emitter)
+        return emitter.tokens
+    if not matched:
         return None
     emitter.cut()
     return emitter.tokens
