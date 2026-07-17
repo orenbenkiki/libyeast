@@ -16,9 +16,9 @@
 MISSING_VALUE: "A mapping value is required after ':'"
 MISSING_KEY: "A mapping key is required after '?'"
 MISSING_ENTRY: "A sequence entry is required after '-'"
-MISSING_ANCHOR_NAME: "An anchor name is required after '*'"
+MISSING_ANCHOR_NAME: "An anchor name is required after '&'"
+MISSING_ALIAS_NAME: "An anchor name is required after '*'"
 MISSING_DIRECTIVE: "A directive name is required after '%'"
-MISSING_DOCUMENT: "A new document is required after '...'"
 
 # A construct was opened and never closed.
 UNTERMINATED_DOUBLE_QUOTE: "Unterminated double-quoted scalar"
@@ -37,8 +37,9 @@ INVALID_ESCAPE: "Invalid escape sequence"
 YAML_DIRECTIVE: "The %YAML directive requires a version, e.g. %YAML 1.2"
 TAG_DIRECTIVE: "The %TAG directive requires a handle and a prefix"
 
-# A block scalar header carries trailing junk.
+# A marker or a header carries trailing junk, where only a comment or the end of the line may follow.
 BLOCK_HEADER: "A block scalar header requires a comment or line break"
+DOCUMENT_END: "A '...' document-end marker requires a comment or line break"
 
 # The input holds something a stream cannot.
 TRAILING_CONTENT: "A stream holds only documents, directives and comments"

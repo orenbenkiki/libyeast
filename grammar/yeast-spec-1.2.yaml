@@ -1938,6 +1938,7 @@ c-ns-anchor-property:
   - end-anchor
   - (all):
     - c-anchor
+    - (cut): MISSING_ANCHOR_NAME
     - ns-anchor-name
 
 
@@ -1981,7 +1982,7 @@ c-ns-alias-node:
   - end-alias
   - (all):
     - c-alias
-    - (cut): MISSING_ANCHOR_NAME
+    - (cut): MISSING_ALIAS_NAME
     - ns-anchor-name
 
 
@@ -3824,7 +3825,7 @@ c-document-end:
 l-document-suffix:
   (all):
   - c-document-end
-  - (cut): MISSING_DOCUMENT
+  - (cut): DOCUMENT_END
   - s-l-comments
 
 

@@ -123,14 +123,18 @@ All notable changes to this project are documented here. The format follows
   to `l-recover` — the grammar's own recovery rule — which brings it back as unparsed. A failure that passed no cut is
   not an error but a production simply rejecting its input, reported where what matched ends.
 
-- Error reporting lives in the grammar. Eighteen `(cut)` points mark where a parse commits, and an `(error)` is an error
+- Error reporting lives in the grammar. Nineteen `(cut)` points mark where a parse commits, and an `(error)` is an error
   token the grammar writes where it already knows the parse cannot go on; each names a message in
   `grammar/messages.yaml` — the one source the interpreter reads and the C message table generates from, gated so the
   two cannot drift. `l-unparsed` is the recovery rule they hand the rest of the input to, bringing it back a line at a
   time as `YS_CODE_UNPARSED` content and `YS_CODE_UNPARSED_BREAK` breaks; it consumes anything, so it earns the
   decoder's twentieth character set, freed by moving the key's length field up into spare bits. The block header gained
   a lookahead so its two orderings no longer need the backtracking a cut would block — a declared deviation, the
-  official header being ambiguous there.
+  official header being ambiguous there. An anchor commits after its `&` as an alias does after its `*`: both are
+  indicators, so neither can begin anything else where a node's properties may start, and `&` with no name is a mistake
+  rather than a rule declining to match. A message says what its own cut expects and no more — a `...` marker requires a
+  comment or a line break, which is what its cut guards, where it had claimed a new document was required after it and a
+  stream of nothing but `...` has always been valid.
 
 - `l-yeast-stream` is the root the parser runs: a YAML stream, and then the end of the input. Every part of the spec's
   `l-yaml-stream` is optional, so on input that is no stream at all — a `]`, say — it matches nothing and would leave
