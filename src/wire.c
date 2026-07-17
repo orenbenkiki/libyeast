@@ -184,6 +184,7 @@ struct ys_token_reader {
     ys_memory memory;
     ys_source source;     // the wire's bytes, and the buffer they land in
     size_t consumed;      // how many of them the lines handed back have taken
+    size_t scanned;       // how far the search for the current line's break has looked; never before `consumed`
     size_t wire_line;     // how many lines of the wire have been handed back; the current one is one past it
     char *text;           // the text of the token last read, unescaped
     size_t text_size;     // how many bytes of it there are
@@ -234,19 +235,25 @@ void ys_free_token_reader(ys_token_reader *reader) {
 // read, which sets ys_token_reader::has_fault. The line stays valid until the next call, and is NUL-terminated: the
 // newline is overwritten with one, and a last line without a newline gets one written past its end, which is the byte
 // the source keeps spare. Callers scan it with the string functions, and those read until a NUL, not until a length.
+// The next line of the wire, or NULL at its end or on a fault. The search resumes where the last one gave up rather
+// than starting over: a line arriving in pieces is filled for once per piece, and rescanning the pieces already looked
+// at would cost a long line its length squared — which a wire read from a pipe, the thing the format is for, is made
+// of.
 static char *ys_next_line(ys_token_reader *reader, size_t *size) {
     for (;;) {
         char *bytes = (char *)reader->source.bytes;
-        for (size_t index = reader->consumed; index < reader->source.size; index++) {
-            if (bytes[index] == '\n') {
-                char *line = bytes + reader->consumed;
-                *size = index - reader->consumed;
-                bytes[index] = '\0';
-                reader->consumed = index + 1;
-                reader->wire_line += 1;
-                return line;
-            }
+        char *found = memchr(bytes + reader->scanned, '\n', reader->source.size - reader->scanned);
+        if (found != NULL) {
+            size_t index = (size_t)(found - bytes);
+            char *line = bytes + reader->consumed;
+            *size = index - reader->consumed;
+            bytes[index] = '\0';
+            reader->consumed = index + 1;
+            reader->scanned = reader->consumed;
+            reader->wire_line += 1;
+            return line;
         }
+        reader->scanned = reader->source.size; // every byte here has been looked at, and none of them is the break
         if (reader->source.is_at_end) {
             if (reader->consumed == reader->source.size) {
                 return NULL;
@@ -255,12 +262,15 @@ static char *ys_next_line(ys_token_reader *reader, size_t *size) {
             *size = reader->source.size - reader->consumed;
             bytes[reader->source.size] = '\0'; // the byte the source keeps spare
             reader->consumed = reader->source.size;
+            reader->scanned = reader->consumed;
             reader->wire_line += 1;
             return line;
         }
 
-        // No whole line to hand back: drop the lines already handed back, and read more.
+        // No whole line to hand back: drop the lines already handed back, and read more. Compacting slides everything
+        // left by what was dropped, so how far the search has looked slides with it.
         ys_fill filled = ys_source_fill(&reader->source, &reader->memory, reader->consumed, 1);
+        reader->scanned -= reader->consumed;
         reader->consumed = 0;
         if (filled == YS_FILL_OUT_OF_MEMORY) {
             reader->fault = YS_MESSAGE_OUT_OF_MEMORY;
