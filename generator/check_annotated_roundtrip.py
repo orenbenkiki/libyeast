@@ -2,41 +2,32 @@
 """Round-trip check: `annotated2ir` then `ir2annotated` must reproduce the vendored grammar exactly.
 
 Loads the vendored yaml-grammar, translates it to the IR and back, and asserts the regenerated data equals the source
-(compared as parsed data, not text). Reports the first differing production and exits non-zero on any mismatch.
+(compared as parsed data, not text). So a translation that loses a production, or quietly rewrites one, fails here
+rather than in whatever is generated from the IR afterwards.
 """
 
-import sys
-
-import ir2annotated
 import annotated2ir
+import gate
+import ir2annotated
 
 import yaml
 
 
 def main():
-    source = annotated2ir.DEFAULT_GRAMMAR
-    with open(source) as handle:
+    with open(annotated2ir.DEFAULT_GRAMMAR) as handle:
         original = yaml.safe_load(handle)
     regenerated = ir2annotated.regenerate(annotated2ir.translate(original))
 
-    if regenerated == original:
-        rules = sum(1 for key in original if not key.startswith(":"))
-        print(f"grammar round-trip OK: {rules} productions")
-        return
-
+    # A production the round-trip lost reads as one that differs, its regenerated side being nothing at all.
+    errors = []
     for key in original:
         if original[key] != regenerated.get(key):
-            print(f"round-trip mismatch at {key!r}:", file=sys.stderr)
-            print(f"  source:      {original[key]!r}", file=sys.stderr)
-            print(f"  regenerated: {regenerated.get(key)!r}", file=sys.stderr)
-            break
-    missing = sorted(set(original) - set(regenerated))
-    extra = sorted(set(regenerated) - set(original))
-    if missing:
-        print(f"  missing keys: {missing[:5]}", file=sys.stderr)
-    if extra:
-        print(f"  extra keys: {extra[:5]}", file=sys.stderr)
-    sys.exit(1)
+            errors.append(f"{key}:\n  source:      {original[key]!r}\n  regenerated: {regenerated.get(key)!r}")
+    for key in sorted(set(regenerated) - set(original)):
+        errors.append(f"{key}: regenerated, but the source has no such production")
+
+    rules = sum(1 for key in original if not key.startswith(":"))
+    gate.report(errors, "production(s) that do not round-trip", f"grammar round-trip OK: {rules} productions")
 
 
 if __name__ == "__main__":

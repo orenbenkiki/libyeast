@@ -2,7 +2,7 @@
 """How a gate says what it found.
 
 Every gate reports the same way, so that a failure reads the same wherever it came from — and so that reporting one
-cannot be got subtly wrong in one place and right in the other four.
+cannot be got subtly wrong in one place and right in the other eleven.
 """
 
 import sys

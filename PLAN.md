@@ -51,8 +51,9 @@ become content and the scalar's end arrives later, or `end-scalar` is **injected
 breaks that were chomped away — the marker's position is what says they were never content. `end-block-scalar` exists to
 emit that marker, and without it an empty stripped block scalar opens a scalar it never closes.
 
-`max_token_bytes` bounds it, being the same guard a single enormous token needs: the bytes the parser may buffer before
-it can hand a token back. Past the cap it is an error, not an out-of-memory.
+`max_bytes` bounds it, being the same guard a single enormous token needs. The buffered input, the tokens held back with
+it, and the stack that deep nesting grows are capped together, since a run that is never resolved grows all three; past
+the cap the parse halts on `YS_CODE_ERROR_MEMORY`, which is the caller's sizing to fix and says so.
 
 ## §1 — The central principle: five parameters, two fates
 
@@ -164,46 +165,11 @@ fourth, orthogonal leg for safety:
 
 ## §4 — Implementation phases
 
-Phases are ordered by dependency. The first real leap is **phase 01** — the backtracking interpreter, which proves the
-grammar and becomes the oracle — and it is the biggest single jump before the pipeline. The deepest research risk lives
-in **phase 03** (the normalization pipeline, where determinization happens), with **phase 04** (semantics) close behind.
-The rest — grammar IR, codegen, and the ABI layer — is well-trodden compiler work.
-
-### Phase 00 — Grammar IR · Ingest the productions into a typed IR
-
-**Done.** `grammar/yeast-spec-1.2.yaml` is the generator's source and `generator/ir.py` the typed IR, and five gates
-hold them: the grammar round-trips through the IR losslessly; every reference resolves with a matching arity; every
-character the parser consumes lies within a token action; every rule that emits tokens says which, in the order it emits
-them; and erasing libyeast's additions recovers the vendored official grammar, rule for rule. The decoder is generated
-from it. `DESIGN.md` says where each piece lives; `CHANGELOG.md` records what it is.
-
-What that phase taught, which the rest of this plan is written against: **the vendored grammar cannot be the source of
-truth.** It inlines the indicator characters, so it cannot say that a quotation mark opens a scalar as an indicator but
-is meta inside an escape, and it names no token at all. libyeast's grammar restores that structure and annotates it, and
-the erasure gate is what keeps the addition from becoming a change.
-
-Still to be scoped, when the parser needs them: an independent correctness leg running the yaml-test-suite through the
-yaml-grammar harness against our IR, and the hand-off into `grammar2parser.py`. (The grammar is version-stable — 1.2 and
-1.2.2 share productions — so it also matches the `yamlreference` token oracle of phase 02.)
+Phases are ordered by dependency. The deepest research risk lives in **phase 03** (the normalization pipeline, where
+determinization happens), with **phase 04** (semantics) close behind. The rest — codegen and the ABI layer — is
+well-trodden compiler work.
 
 ### Phase 01 — The reference interpreter · the grammar's executor, and the project's oracle
-
-`generator/interpreter.py` runs a production against an input and emits its yeast tokens, and every node family is
-matched — the character-level nodes, the annotations, the repetitions, the parameters threading `n`/`m`/`c`/`t` and now
-`r`, and the assertions and lookahead. It backtracks in the continuation-passing style, so an alternation is re-entered
-when a later element fails, as the reference does. `tests/spec/` holds 654 input/output pairs, each named
-`production[.n=N][.c=C][.t=T][.r=R].case`, and the interpreter reproduces every one of them — `l-yeast-stream`, both
-resume policies, and the malformed inputs included — token for token, with nothing pending. It is checked by *reading*
-fixtures and diffing, never by compiling or running Haskell; and being per-production they gave a bottom-up build order
-for free. `DESIGN.md` says where each piece lives; `CHANGELOG.md` records what it is.
-
-What that phase taught, which the rest of this plan is written against: **a rule that cannot fail is not the same as a
-rule that is total.** Every part of the spec's `l-yaml-stream` is optional, so on input that is no stream at all it
-matched nothing, reported nothing, and lost the input — and no gate saw it, because matching nothing is still matching.
-Totality had to be said out loud, in a rule of libyeast's own. The same lesson twice over: an error must close the
-markers it opened, or the fold has nothing to stand on and a resumed document parses as a child of the one that failed
-rather than its sibling. Neither the marker gate nor the fixtures caught either, both being about the clean path — what
-a parser does when it is *wrong* needs its own rules and its own fixtures.
 
 **What is left is the interpreter's input: bytes, not codepoints.** `Emitter` takes `data.decode("utf-8")` and matches
 over the codepoints it gets, so an input that is not UTF-8 raises before a production is ever entered, and no fixture
@@ -229,6 +195,9 @@ stands up the rest: the *value* layer, the debug view, and the CI that runs them
 
 1. Vendor the YAML Test Suite; build a runner that consumes its event-stream expectations — the value layer the token
    fixtures do not cover.
+1. Run the suite through the `yaml-grammar` harness against the IR — a correctness leg for the grammar itself rather
+   than for anything generated from it, and independent of the fixtures, which libyeast wrote. The grammar is
+   version-stable, 1.2 and 1.2.2 sharing productions, so it matches the `yamlreference` token oracle here too.
 1. Wire the Clojure reference as the value-level (load/event) differential oracle, behind a stable diff interface.
 1. Bootstrap the yeast→HTML debug view on the Haskell reference's `yaml2html` as the divergence microscope; it later
    serves as the reference oracle for the package's own port (phase 06).
@@ -497,8 +466,8 @@ Wanted, but not planned, and not on the way to anything else:
 For one very strong engineer who deeply knows both YAML and parser generation, this is a **many-months to
 low-single-digit-years** project. The difficulty is lumpy, not uniform:
 
-- **The easy ~70%** — grammar IR, the structural steps of the normalization pipeline, C codegen, the ABI layer.
-  Well-trodden compiler work; high effort, low research risk.
+- **The easy ~70%** — the structural steps of the normalization pipeline, C codegen, the ABI layer. Well-trodden
+  compiler work; high effort, low research risk.
 - **The hard ~20%** — the determinize steps of the pipeline (phase 03): reducing each decision to a commit-safe one-char
   gate, faithful-by-construction. This is the part that determines whether the result is worth more than libyaml, and it
   touches formal methods.

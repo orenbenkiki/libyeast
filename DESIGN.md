@@ -43,7 +43,14 @@ its comments). The full public API surface is declared, but the parser core is n
   on the grammar live in `grammar/messages.yaml`, keyed by the code a `(cut)` or an `(error)` names — the one source the
   interpreter reads and the C table will be generated from, gated so the two cannot drift. Each says what was expected
   and never what was found, the byte that failed being the first unparsed token behind the error. That table is not
-  generated into `src/parser_tables.h` yet.
+  generated into `src/parser_tables.h` yet. The messages `src/messages.c` keeps for itself are the ones no grammar can
+  reach: the wire reader's, which answer for a broken wire rather than for a parse, and the two the parser halts on —
+  running out of memory, and a reader that failed. Those two are why `tests/spec/` pins `YS_CODE_ERROR_FORMAT` and no
+  other error code. A fixture is a grammar and an input, and neither error is a property of either: when a cap trips
+  depends on how `ys_memory_grow` grows a buffer, and a reader fails for reasons the input cannot express. So they are
+  the C parser's alone, and `tests/test_parser.c` covers them there with a refusing allocator and a drip reader. Unlike
+  a malformed document, neither leaves anything unparsed behind it, and neither has markers to close: the parser halts,
+  and every pull from then on returns the same error.
 - **Decoder** — `src/decoder.h`, `src/decoder.c` and the generated `src/decoder_tables.h`: the bottom layer, which turns
   input bytes into characters the parser can branch on. A character becomes a 32-bit key holding the id of the character
   if the grammar names it, one bit per character set the grammar tests, and the bytes it consumed — so a test is one
@@ -85,14 +92,15 @@ its comments). The full public API surface is declared, but the parser core is n
   and the coverage option. No list of files is kept by hand, here or in the `Makefile`: the sources and the tests are
   globbed, with `CONFIGURE_DEPENDS` to reconfigure when the set changes, so a new file cannot be left out of the build
   or slip past the gate — which a hand-kept list is exactly what allows.
-- **Gate** — `Makefile` wraps CMake as the incremental pre-commit gate `make pc`, a pure aggregator of three sub-gates:
-  `vet` (formatting, lint, comment rule, marker scan, version-drift, grammar round-trip, packaging), `test-c` (Debug +
-  Release tests and the `// UNTESTED` coverage gate), and `gh-pages` (Doxygen docs + gcovr coverage report). Stamp-file
-  targets keep it incremental.
-- **CI** — `.github/workflows/`: one workflow per sub-gate (`vet.yml`, `test-c.yml`, `gh-pages.yml`) plus `codeql.yml`,
-  each producing an independent status badge. `gh-pages.yml` publishes the Doxygen docs and the coverage report to
-  GitHub Pages; the coverage-percentage badge reads a JSON published there. `dependabot.yml` keeps the pinned GitHub
-  Actions current.
+- **Gate** — `Makefile` wraps CMake as the incremental pre-commit gate `make pc`, a pure aggregator of five sub-gates:
+  `all` (the build), `test` (Debug + Release tests and the `// UNTESTED` coverage gate), `verify` (the eleven generator
+  gates, `verify-roundtrip` through `verify-grammar`), `vet` (formatting, lint, comment rule, marker scan,
+  version-drift, packaging), and `gh-pages` (Doxygen docs + gcovr coverage report). Stamp-file targets keep it
+  incremental.
+- **CI** — `.github/workflows/`: one workflow per sub-gate (`vet.yml`, `test.yml`, `verify.yml`, `gh-pages.yml`) plus
+  `codeql.yml`, each producing an independent status badge. `gh-pages.yml` publishes the Doxygen docs and the coverage
+  report to GitHub Pages; the coverage-percentage badge reads a JSON published there. `dependabot.yml` keeps the pinned
+  GitHub Actions current.
 - **Quality scripts** — `scripts/`: `check_comments.py` (comment-style rule), `coverage_gate.py` (the `// UNTESTED`
   contract), `coverage_badge.py` (coverage-percentage badge JSON), `check-deps.sh` (tool presence), and the
   `install-*-deps.sh` dependency installers. Every generator gate reports through `generator/gate.py`, so that a failure
