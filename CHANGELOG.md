@@ -79,8 +79,10 @@ All notable changes to this project are documented here. The format follows
   of the root being a whole parse, which must balance exactly, where one of a rule run by itself may close what its
   caller would have opened but may still not leave a marker open. That last is what `check_markers` cannot reach: it
   settles the grammar's clean paths and says nothing about what an error leaves behind, which is where both of the
-  imbalances found so far have been. The bytes are held verbatim, CR and CRLF included, out of line-ending
-  normalization.
+  imbalances found so far have been. A fixture whose name calls its input invalid must have one: the production either
+  refuses it or stops short of its end, never matching the whole of it cleanly — the name being a claim, and an
+  unchecked claim being how `c-printable.invalid` came to hold a character `c-printable` accepts. The bytes are held
+  verbatim, CR and CRLF included, out of line-ending normalization.
 
 - A reference interpreter of the grammar, `generator/interpreter.py`: a slow, obviously-correct backtracking matcher
   that runs a production against an input and emits its yeast tokens, checked fixture by fixture against the conformance

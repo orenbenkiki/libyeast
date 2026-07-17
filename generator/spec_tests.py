@@ -40,7 +40,7 @@ class Fixture:
     production: str
     parameters: dict  # {"n": "2", "c": "flow-in", ...}, values verbatim from the filename
     case: str  # the arbitrary testcase name, e.g. "a" or "empty.invalid"
-    is_invalid: bool  # whether the expected output is a parse error rather than a clean token stream
+    is_invalid: bool  # whether the name claims the production does not cleanly match the whole input
     input_path: str
     output_path: str
 

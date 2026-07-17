@@ -44,6 +44,8 @@ def main():
             continue  # already reported as unpaired above; there is nothing to read a token stream out of
         tokens = wire.parse(fixture.expected)
         fault = wire.chain_fault(tokens) or wire.marker_fault(tokens, fixture.production == ir.ROOT)
+        if fault is None and fixture.is_invalid and wire.is_clean(tokens, len(fixture.input)):
+            fault = "is named invalid, but the production matches the whole of it, cleanly"
         if fault is not None:
             errors.append(f"{name}: {fault}")
 

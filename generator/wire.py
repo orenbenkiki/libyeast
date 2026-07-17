@@ -139,6 +139,20 @@ def chain_fault(tokens):
     return None
 
 
+def is_clean(tokens, size):
+    """Whether `tokens` are a clean match of all `size` bytes: no error, and every byte accounted for.
+
+    A production that rejects its input says so with an error token; one that stops early says so by leaving the last
+    byte it consumed short of the end. Either way it did not cleanly match the whole of what it was given, which is
+    what a fixture's `invalid` claims.
+    """
+    consumed = [token for token in tokens if token.code != ERROR]
+    if len(consumed) != len(tokens):
+        return False
+    end = advance(consumed[-1].start, consumed[-1].text) if consumed else Mark(0, 0, 1, 0)
+    return end.byte == size
+
+
 def marker_fault(tokens, is_whole):
     """Return a one-line reason the tokens' markers do not balance, or None.
 
