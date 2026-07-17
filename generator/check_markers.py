@@ -19,6 +19,26 @@ import gate
 import ir
 
 CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
+
+# The nodes that emit no marker: a character, a guard, a commit point, an error token, and the `(flip)` a value
+# production is made of. Named rather than assumed, because assuming it is how a `(recover)` once hid every marker
+# inside it — a node this does not know is a node whose markers nothing has looked at, and the gate says so rather than
+# passing it.
+SILENT = (
+    ir.Char,
+    ir.Range,
+    ir.Diff,
+    ir.Empty,
+    ir.StartOfLine,
+    ir.EndOfStream,
+    ir.Lt,
+    ir.Le,
+    ir.Max,
+    ir.SetVar,
+    ir.Cut,
+    ir.Error,
+    ir.Flip,
+)
 BALANCED = ((), ())  # no marker left open, and none closed that was not opened here
 
 
@@ -90,9 +110,15 @@ def effect(node, values, known):
         return agreed([effect(node.item, values, known), BALANCED], "a repeated rule")
     if isinstance(node, ir.Bind):
         return effect(node.cond, values, known)
+    if isinstance(node, ir.Recover):
+        # Both ways through must balance the same way. Recovering closes what the item left open, down to here, so that
+        # path leaves only what the recovery itself emits — and the item's own way has to agree with it.
+        return agreed([effect(node.item, values, known), effect(node.recovery, values, known)], "a recovery")
     if isinstance(node, ir.Ref):
         return known.get(node.name, BALANCED)
-    return BALANCED  # a character, a range, a difference, a marker of position: none of them emit
+    if isinstance(node, SILENT):
+        return BALANCED
+    raise TypeError(f"cannot tell what markers {type(node).__name__} leaves: it is not known to emit, or not to")
 
 
 def settle(grammar, values):

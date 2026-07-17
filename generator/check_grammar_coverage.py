@@ -84,6 +84,9 @@ def is_total(node, grammar, seen=frozenset()):
         return is_total(node.item, grammar, seen)
     if isinstance(node, ir.Bind):
         return is_total(node.cond, grammar, seen)
+    if isinstance(node, ir.Recover):
+        # A recovery answers a cut and nothing else, so what says no here is the item saying it.
+        return is_total(node.item, grammar, seen)
     if isinstance(node, ir.Seq):
         return all(is_total(item, grammar, seen) for item in node.items)
     if isinstance(node, ir.Alt):

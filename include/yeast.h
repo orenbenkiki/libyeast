@@ -321,16 +321,23 @@ typedef struct ys_allocator {
     void *context;                                                  ///< Opaque state passed to the callbacks.
 } ys_allocator;
 
-/// What the parser does with the input after a malformed document.
+/// What the parser does with the input it could not parse.
+///
+/// Each gives up less of the input than the one before it, and none of them loses a byte: whatever is skipped comes
+/// back as @ref YS_CODE_UNPARSED content and @ref YS_CODE_UNPARSED_BREAK breaks, so a caller can always see what was
+/// passed over. Where a policy has nothing to resume at it behaves as the one before it.
 typedef enum ys_resume {
     /// The error ends the parse. The rest of the input comes back as @ref YS_CODE_UNPARSED tokens, and nothing in it is
     /// parsed — so nothing is silently lost, which is why it is the default.
     YS_RESUME_NONE,
     /// Skip to the next document and carry on parsing there, so that one malformed document in a stream does not cost
-    /// the caller the others. The lines skipped to reach it come back as @ref YS_CODE_UNPARSED tokens. A finer-grained
-    /// resumption — at the next less-indented line, bounding the error by the document's own indentation — may be added
-    /// later.
-    YS_RESUME_DOCUMENT
+    /// the caller the others. The lines skipped to reach it come back as @ref YS_CODE_UNPARSED tokens.
+    YS_RESUME_DOCUMENT,
+    /// Skip to the next line no more indented than the entry that failed, and carry on parsing *inside* the document,
+    /// so that a malformed entry does not cost the caller the rest of its container. What is recovered is a sibling of
+    /// what failed rather than a child of it — the markers of the abandoned entry are closed before it. Where nothing
+    /// encloses the failure there is no indentation to bound it by, and this is @ref YS_RESUME_DOCUMENT.
+    YS_RESUME_INDENT
 } ys_resume;
 
 /// Parser construction options. A zeroed struct selects all defaults.
@@ -429,7 +436,9 @@ YS_API bool ys_are_tokens_stable(const ys_parser *parser);
 /// A **syntax error** yields a @ref YS_CODE_ERROR_FORMAT token whose @ref ys_token::text is the message. What the
 /// parser does next is what @ref ys_options::resume says. By default the error ends the parse, and the rest of the
 /// input comes back as @ref YS_CODE_UNPARSED tokens — so nothing is silently lost. Set @ref YS_RESUME_DOCUMENT and the
-/// parse carries on at the next document, so a malformed document in a stream does not cost the caller the others.
+/// parse carries on at the next document, so a malformed document in a stream does not cost the caller the others; set
+/// @ref YS_RESUME_INDENT and it carries on at the next line no more indented than the entry that failed, so a malformed
+/// entry does not cost the caller the rest of its container either.
 ///
 /// The message names the production the parser was inside and what it expected there. It does not name what it found,
 /// which it does not have to: the first @ref YS_CODE_UNPARSED token behind the error begins at exactly the byte that
