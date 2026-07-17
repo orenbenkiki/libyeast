@@ -42,6 +42,15 @@ typedef struct ys_run {
 // Classify the character at the head of the window, which begins with a byte of 0x80 or above.
 ys_char ys_next_char_slow(const uint8_t *bytes, size_t size);
 
+// How many bytes the well-formed UTF-8 sequence at the head of the window takes, or 0 where there is not one: a byte
+// that begins nothing, a sequence the window is too short for, an overlong encoding, a surrogate, or anything past
+// U+10FFFF.
+//
+// This is what classifying a character settles on the way past, offered on its own for the one caller that has bytes
+// whose well-formedness nothing has established yet — the wire format, which writes text a caller handed it. Everything
+// else reaches these bytes through `ys_next_char`, which has already decided.
+size_t ys_utf8_length(const uint8_t *bytes, size_t size);
+
 // Advance while the character is in `set`, stopping at the first character that is not — or at the end of the window.
 //
 // A run never crosses a line, so the parser's line number is unchanged by one and its column simply advances by the

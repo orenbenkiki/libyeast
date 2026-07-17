@@ -44,11 +44,19 @@ All notable changes to this project are documented here. The format follows
 
 - The yeast wire format: `ys_write_token` writes a token stream — a character and its escaped text per token — and
   `ys_read_token` reads one back, so a stream can be piped between tools, stored, or compared against another parser's.
-  `ys_writer` mirrors `ys_reader`, with the same file-descriptor and `FILE *` adapters. The reader's search for a line's
-  break resumes where the last one gave up rather than starting over, so a line arriving in pieces costs its length and
-  not its length squared — 16MB on one line took 2.17s and takes 0.09s. A wire read from a pipe is what the format is
-  for and is exactly what arrives in pieces, and `max_bytes` is unlimited by default, so the cost was a denial of
-  service against the format's own purpose.
+  `ys_writer` mirrors `ys_reader`, with the same file-descriptor and `FILE *` adapters. An escape spells a codepoint
+  under every code but `YS_CODE_UNPARSED_INVALID`, and a byte under that one, so each holds the other's text to being
+  what it claims: writing `\x80` for a raw `0x80` under a code that means codepoints says U+0080 and reads back as two
+  bytes that were never given, and `YS_CODE_UNPARSED_INVALID` exists to carry exactly the bytes that encode no character
+  — so its text must encode none of them, every byte of it a place where none begins, and every other code's must encode
+  them all. `ys_write_token` holds both halves and answers `EINVAL`, which the errno policy already promised it would
+  for a bad argument and which it had never once checked. The validation is `decoder.c`'s, which had it all along:
+  `ys_codepoint` assembled continuation bits without ever asking whether they were continuation bytes, and silently
+  turned `"\xE0ab"` into different bytes. `YS_CODE_UNPARSED` is `YS_CODE_UNPARSED_TEXT` now, so the three say what they
+  are together. The reader's search for a line's break resumes where the last one gave up rather than starting over, so
+  a line arriving in pieces costs its length and not its length squared — 16MB on one line took 2.17s and takes 0.09s. A
+  wire read from a pipe is what the format is for and is exactly what arrives in pieces, and `max_bytes` is unlimited by
+  default, so the cost was a denial of service against the format's own purpose.
 
 - Errors tell the caller what to do about them. A malformed document is `YS_CODE_ERROR_FORMAT`, running out of memory is
   `YS_CODE_ERROR_MEMORY`, and a reader that fails is `YS_CODE_ERROR_READER`; the last two end the parse for good — the

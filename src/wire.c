@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+#include "decoder.h"
 #include "memory.h"
 #include "messages.h"
 #include "source.h"
@@ -61,8 +62,9 @@ static const char YS_WIRE[] = {
     [YS_CODE_ERROR_FORMAT] = '!',
     [YS_CODE_ERROR_MEMORY] = '!',
     [YS_CODE_ERROR_READER] = '!',
-    [YS_CODE_UNPARSED] = '-',
+    [YS_CODE_UNPARSED_TEXT] = '-',
     [YS_CODE_UNPARSED_BREAK] = '.',
+    [YS_CODE_UNPARSED_INVALID] = '~',
     [YS_CODE_DETECTED] = '$',
 };
 
@@ -103,30 +105,19 @@ static bool ys_put(ys_writer *writer, const char *bytes, size_t size) {
     return true;
 }
 
-// The codepoint the UTF-8 sequence at `bytes` encodes, and how many bytes it took. Writing is the one place libyeast
-// needs a codepoint at all: the wire escapes by codepoint, not by byte. An ill-formed byte is passed through as itself,
-// so that a token holding one still writes something a reader can read back.
+// The codepoint the UTF-8 sequence at `bytes` encodes, and how many bytes it took — or a length of 0 where the text is
+// not UTF-8 there. Writing is the one place libyeast needs a codepoint at all: the wire escapes by codepoint, not by
+// byte, so it is also the one place that must know the bytes it was handed encode one.
 static unsigned long ys_codepoint(const unsigned char *bytes, size_t size, size_t *length) {
-    unsigned long codepoint = bytes[0];
-    size_t wanted = 1;
-    if (bytes[0] >= 0xF0u) {
-        codepoint = bytes[0] & 0x07u;
-        wanted = 4;
-    } else if (bytes[0] >= 0xE0u) {
-        codepoint = bytes[0] & 0x0Fu;
-        wanted = 3;
-    } else if (bytes[0] >= 0xC0u) {
-        codepoint = bytes[0] & 0x1Fu;
-        wanted = 2;
+    static const unsigned char YS_LEAD_MASK[5] = {0, 0x7Fu, 0x1Fu, 0x0Fu, 0x07u}; // the lead byte's payload bits
+    *length = ys_utf8_length(bytes, size);
+    if (*length == 0) {
+        return 0;
     }
-    if (wanted > size) {
-        *length = 1;     // UNTESTED
-        return bytes[0]; // UNTESTED
-    }
-    for (size_t index = 1; index < wanted; index++) {
+    unsigned long codepoint = bytes[0] & YS_LEAD_MASK[*length];
+    for (size_t index = 1; index < *length; index++) {
         codepoint = (codepoint << 6) | (bytes[index] & 0x3Fu);
     }
-    *length = wanted;
     return codepoint;
 }
 
@@ -149,9 +140,28 @@ bool ys_write_token(ys_writer *writer, ys_token token) {
     size_t size = token.text == NULL             ? 0
                   : ys_is_error_code(token.code) ? strlen(token.text)
                                                  : token.end.byte_offset - token.start.byte_offset;
+    // An escape means a codepoint under every code but one, and a byte under YS_CODE_UNPARSED_INVALID, so each holds
+    // the other's text to being what it is not. Writing `\x80` for a raw 0x80 under a code that means codepoints says
+    // U+0080, and a reader hands back two bytes that were never given — so the text of every other code must encode
+    // characters throughout. A run of bytes that encode none is what YS_CODE_UNPARSED_INVALID exists to carry, so its
+    // text must encode none of them, or the code is a lie about what the escapes in it mean.
+    const bool wants_characters = token.code != YS_CODE_UNPARSED_INVALID;
     for (size_t index = 0; index < size;) {
         size_t length = 1;
         unsigned long codepoint = ys_codepoint(text + index, size - index, &length);
+        if ((length == 0) == wants_characters) {
+            errno = EINVAL;
+            return false;
+        }
+        if (length == 0) {
+            // A byte that begins no character: write the byte itself, which is what an escape says under this code.
+            int escaped = snprintf(buffer, sizeof(buffer), "\\x%02x", text[index]);
+            if (escaped < 0 || !ys_put(writer, buffer, (size_t)escaped)) {
+                return false; // UNTESTED
+            }
+            index += 1;
+            continue;
+        }
         index += length;
         if (codepoint >= ' ' && codepoint <= '~' && codepoint != '\\') {
             char character = (char)codepoint;
@@ -400,10 +410,17 @@ static bool ys_scan(const char **at, const char *label, size_t *value) {
     if (digits[0] < '0' || digits[0] > '9') {
         return false; // strtoul takes a sign and skips white space; a position on the wire is neither
     }
+    // `strtoul` reports a range error through `errno` and cannot be asked any other way, so it must be cleared first —
+    // and put back after, because reading a token is a function that reports its failures through the token it returns
+    // and leaves `errno` to whatever callback set one. Clobbering a caller's `errno` on the way to succeeding is the
+    // one thing this must not do.
     char *after = NULL;
+    const int saved = errno;
     errno = 0;
     unsigned long parsed = strtoul(digits, &after, 10);
-    if (after == digits || errno != 0) {
+    const bool ranged = errno != 0;
+    errno = saved;
+    if (after == digits || ranged) {
         return false;
     }
     *at = after;

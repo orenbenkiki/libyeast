@@ -45,6 +45,28 @@ static bool is_continuation(uint8_t byte) {
     return (byte & 0xC0u) == 0x80u;
 }
 
+size_t ys_utf8_length(const uint8_t *bytes, size_t size) {
+    if (size == 0) {
+        return 0;
+    }
+    if (bytes[0] < 0x80u) {
+        return 1;
+    }
+    const ys_lead lead = lead_of(bytes[0]);
+    if (lead.length == 0 || size < (size_t)lead.length) {
+        return 0;
+    }
+    if (bytes[1] < lead.first_min || bytes[1] > lead.first_max) {
+        return 0;
+    }
+    for (size_t index = 2; index < (size_t)lead.length; index++) {
+        if (!is_continuation(bytes[index])) {
+            return 0;
+        }
+    }
+    return lead.length;
+}
+
 // Classify the character at the head of the window, which begins with a byte of 0x80 or above.
 //
 // A sequence running past the end of the window is invalid, which is the right answer at the true end of the input. A

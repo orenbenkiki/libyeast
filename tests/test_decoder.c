@@ -116,6 +116,37 @@ static void test_malformed_utf8(void) {
         TEST_MSG("%s: key 0x%08X", cases[index].name, (unsigned)character);
         TEST_CHECK(YS_LEN(character) == 1);
         TEST_CHECK((character & YS_SET_BIT_C_PRINTABLE) == 0);
+
+        // The same question, asked of the one caller that has bytes nothing has classified yet.
+        TEST_CHECK(ys_utf8_length((const uint8_t *)cases[index].bytes, cases[index].size) == 0);
+        TEST_MSG("%s: ys_utf8_length called it well-formed", cases[index].name);
+    }
+}
+
+// `ys_utf8_length` answers for the bytes the wire format is handed, which nothing has classified. It agrees with
+// `ys_next_char` on every ill-formed shape above; here it is on the well-formed ones, and on the empty window that
+// only it can be asked about — `ys_next_char` reads the end of the input as a character, where a length of no bytes
+// is simply no sequence.
+static void test_utf8_length(void) {
+    static const struct {
+        const char *name;
+        const char *bytes;
+        size_t size;
+        size_t length;
+    } cases[] = {
+        {"no bytes at all", "", 0, 0},
+        {"ASCII", "a", 1, 1},
+        {"the nul byte", "\0", 1, 1},
+        {"two bytes", "\xC3\xA9", 2, 2},                     // U+00E9
+        {"three bytes", "\xE4\xB8\x80", 3, 3},               // U+4E00
+        {"four bytes", "\xF0\x9F\x98\x80", 4, 4},            // U+1F600
+        {"a sequence and what follows", "\xC3\xA9zz", 4, 2}, // it measures the first, not the window
+    };
+
+    for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        size_t length = ys_utf8_length((const uint8_t *)cases[index].bytes, cases[index].size);
+        TEST_CHECK(length == cases[index].length);
+        TEST_MSG("%s: got %zu, wanted %zu", cases[index].name, length, cases[index].length);
     }
 }
 
@@ -195,6 +226,7 @@ TEST_LIST = {
     {"content_non_ascii", test_content_non_ascii},
     {"not_printable_non_ascii", test_not_printable_non_ascii},
     {"malformed_utf8", test_malformed_utf8},
+    {"utf8_length", test_utf8_length},
     {"every_codepoint", test_every_codepoint},
     {"scan_set", test_scan_set},
     {NULL, NULL},

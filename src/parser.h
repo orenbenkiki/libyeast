@@ -158,7 +158,7 @@ ys_frame ys_stack_pop(ys_stack *stack);
 // on the failure path, which the failure that runs out of memory could not do anyway; nothing is freed; and there is no
 // lifetime to explain, a token's text being either the input's or a static string's, so that ys_are_tokens_stable() is
 // true of every code alike. What the parser found is not in the message, and does not need to be: the first
-// YS_CODE_UNPARSED token behind the error begins at exactly the byte that failed.
+// YS_CODE_UNPARSED_TEXT token behind the error begins at exactly the byte that failed.
 //
 // The error token, like the injected marker, is a token of its own and not one of the queue's — it always follows every
 // token in it — so queueing it needs no room either, and reporting a malformed document cannot fail for want of memory.

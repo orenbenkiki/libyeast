@@ -61,8 +61,9 @@ CODE_CHAR = {
     "end-document": "o",
     "begin-stream": "Y",
     "end-stream": "y",
-    "unparsed": "-",
+    "unparsed-text": "-",
     "unparsed-break": ".",
+    "unparsed-invalid": "~",
     "detected": "$",
 }
 

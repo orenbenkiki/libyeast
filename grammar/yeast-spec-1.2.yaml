@@ -300,9 +300,9 @@
 # nested action overrides the one around it for its own extent, and splits the
 # outer run in two.
 #
-# A character consumed under no action at all is `unparsed` — what the parser
-# says about input it could not parse. On the success path that is always an
-# action someone forgot, so every rule that consumes a character is held to
+# A character consumed under no action at all is `unparsed-text` — what the
+# parser says about input it could not parse. On the success path that is always
+# an action someone forgot, so every rule that consumes a character is held to
 # lying within one.
 #
 #   * (token)
@@ -350,8 +350,11 @@
 #   * begin-comment / end-comment, begin-directive / end-directive
 #   * begin-escape / end-escape
 #
-# with directives-end and document-end for the `---` and `...` markers, and
-# error, unparsed and detected for what the parser says when it cannot go on.
+# with directives-end and document-end for the `---` and `...` markers; error,
+# unparsed-text and unparsed-break for what the parser says when it cannot go
+# on, and unparsed-invalid for the bytes among them that encode no character at
+# all; and detected, which no parse emits yet, for what a detection rule worked
+# out (see the token-emission levels in `PLAN.md`).
 #
 #===============================================================================
 
@@ -3987,7 +3990,7 @@ nb-unparsed:
 # c-forbidden is not redundant in the third: s-indent-le-line cannot hold below an indentation of 0, so a run bounded
 # by nothing would go straight past a document marker.
 #
-# Emits: unparsed, unparsed-break
+# Emits: unparsed-text, unparsed-break
 
 l-unparsed:
   (...): [ n, r ]
@@ -3999,7 +4002,7 @@ l-unparsed:
       "i": { (exclude): { (any): [ c-forbidden, { s-indent-le-line: n } ] } }
   - (***):
       (any):
-      - (token): [ unparsed, { (+++): nb-unparsed } ]
+      - (token): [ unparsed-text, { (+++): nb-unparsed } ]
       - (token): [ unparsed-break, b-break ]
 
 

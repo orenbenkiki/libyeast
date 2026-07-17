@@ -121,7 +121,7 @@ class Emitter:
         self.mark = wire.Mark(0, 0, 1, 0)
         self.tokens = []
         self.run = None  # (code character, start mark, start position) of the open run, or None
-        self.codes = ["unparsed"]  # the stack of token codes; the top is the one the next character carries
+        self.codes = ["unparsed-text"]  # the stack of token codes; the top is the one the next character carries
         self.env = {}  # the current production's parameters (n/m/c/t/r) and their values
         self.match_start = 0  # where the enclosing Match() scope began, for Match() and Len(Match())
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
@@ -394,7 +394,7 @@ def _fail(emitter, message):
     caller matches. The guard is cleared because an `(exclude)` the abandoned parse had in scope never got to unwind,
     and the recovery is entitled to the guards its own rules declare and no others.
     """
-    emitter.codes[:] = ["unparsed"]  # a raise skips the token frames' cleanup; from here on the input is unparsed
+    emitter.codes[:] = ["unparsed-text"]  # a raise skips the token frames' cleanup; from here on the input is unparsed
     emitter.forbidden = ()
     emitter.error(message)
     while emitter.pending:

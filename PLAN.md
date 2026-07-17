@@ -188,14 +188,14 @@ yaml-grammar harness against our IR, and the hand-off into `grammar2parser.py`. 
 
 ### Phase 01 — The reference interpreter · the grammar's executor, and the project's oracle
 
-**Done.** `generator/interpreter.py` runs a production against an input and emits its yeast tokens, and every node
-family is matched — the character-level nodes, the annotations, the repetitions, the parameters threading
-`n`/`m`/`c`/`t` and now `r`, and the assertions and lookahead. It backtracks in the continuation-passing style, so an
-alternation is re-entered when a later element fails, as the reference does. `tests/spec/` holds 654 input/output pairs,
-each named `production[.n=N][.c=C][.t=T][.r=R].case`, and the interpreter reproduces every one of them —
-`l-yeast-stream`, both resume policies, and the malformed inputs included — token for token, with nothing pending. It is
-checked by *reading* fixtures and diffing, never by compiling or running Haskell; and being per-production they gave a
-bottom-up build order for free. `DESIGN.md` says where each piece lives; `CHANGELOG.md` records what it is.
+`generator/interpreter.py` runs a production against an input and emits its yeast tokens, and every node family is
+matched — the character-level nodes, the annotations, the repetitions, the parameters threading `n`/`m`/`c`/`t` and now
+`r`, and the assertions and lookahead. It backtracks in the continuation-passing style, so an alternation is re-entered
+when a later element fails, as the reference does. `tests/spec/` holds 654 input/output pairs, each named
+`production[.n=N][.c=C][.t=T][.r=R].case`, and the interpreter reproduces every one of them — `l-yeast-stream`, both
+resume policies, and the malformed inputs included — token for token, with nothing pending. It is checked by *reading*
+fixtures and diffing, never by compiling or running Haskell; and being per-production they gave a bottom-up build order
+for free. `DESIGN.md` says where each piece lives; `CHANGELOG.md` records what it is.
 
 What that phase taught, which the rest of this plan is written against: **a rule that cannot fail is not the same as a
 rule that is total.** Every part of the spec's `l-yaml-stream` is optional, so on input that is no stream at all it
@@ -205,9 +205,22 @@ markers it opened, or the fold has nothing to stand on and a resumed document pa
 rather than its sibling. Neither the marker gate nor the fixtures caught either, both being about the clean path — what
 a parser does when it is *wrong* needs its own rules and its own fixtures.
 
+**What is left is the interpreter's input: bytes, not codepoints.** `Emitter` takes `data.decode("utf-8")` and matches
+over the codepoints it gets, so an input that is not UTF-8 raises before a production is ever entered, and no fixture
+can be written for one. The suite is therefore silent about the whole layer the decoder exists for, and the C parser
+would be the only thing that ever ran that path — the one place in the token layer where the fixtures are not the
+oracle. That is a hole in the argument this phase is here to make: the grammar is supposed to be proved against the
+fixtures *before any C exists to be wrong*, and on ill-formed input it would not be.
+
+So the interpreter reads the input the way the decoder does — a character at a time, out of the bytes, with a byte that
+is no character a value in its own right rather than an exception thrown before the parse starts. It is a slow executor
+by design and this makes it slower; performance is a non-issue here, and correctness of the argument is the whole point.
+What it buys is that §4's encoding questions — what covers an ill-formed byte, under what code, whether an error
+accompanies it, what the wire writes for it — are settled against fixtures the interpreter reproduces, in the grammar,
+before the C parser is generated from it. Everything downstream then has one oracle instead of two.
+
 Still to be scoped, when something needs it: the interpreter's committed mode is phase 03's, where the grammar it judges
-is the one that has been transformed. What resuming does with a byte that is no codepoint is §4's, and the C parser's
-alone.
+is the one that has been transformed.
 
 ### Phase 02 — Differential oracles · The broader nets around the token fixtures
 
@@ -324,18 +337,45 @@ alongside the pipeline rather than strictly after it. This is where bugs get smu
 1. **A byte that is no character, and what resuming does about it — the C parser's alone to answer.** A codepoint that
    is merely not a YAML character needs nothing: `nb-unparsed` is every codepoint but a break, so the recovery consumes
    it and `YS_RESUME_DOCUMENT` carries on at the next marker, which the fixtures show. A byte that is not a codepoint is
-   a different thing. It is a fact about the input rather than about the parser's resources, so it is a format error and
-   the resume policy should mean the same there as anywhere: bring the rest back unparsed, or resynchronise at the next
-   document. Resynchronising is the *easier* half — a document marker is found by scanning bytes for a break and three
-   hyphens, and UTF-8 is self-synchronising, so nothing needs to have understood the bad bytes to find the boundary.
-   Nothing in the grammar has to change either: `nb-unparsed`'s `[x00-x10FFFF]` is notation for "any character key", and
-   the decoder already classifies every byte into one, so a byte that is no character is consumed by a rule that never
-   asks why. <br>**But the interpreter cannot judge any of it, and no fixture can be written for it.** It decodes the
-   input up front and matches over codepoints, so an ill-formed input dies before a production runs; the suite is
-   defined over what the interpreter can reproduce, and this is outside it. The C parser is the only thing that will
-   ever run this path, which makes it the one place in the token layer where the fixtures are not the oracle — it needs
-   its own tests in `tests/`, against the decoder, and the differential oracles of phase 02 rather than `tests/spec/`.
-   Deciding the encoding question decides whether that path exists at all.
+   a different thing, and two settled facts collide over it. The decoder gives `YS_LIT_KEY_INVALID` no set bits at all,
+   as it gives `YS_LIT_KEY_EOF` none — deliberately, so that "every membership test fails at them without being asked" —
+   and `nb-unparsed` is a set, so **no rule can match an ill-formed byte**, the recovery included. Yet every byte of the
+   input is accounted for by exactly one token, the ill-formed ones included, and an error token is zero-width and
+   accounts for nothing. Something must carry those bytes and no rule can be what does. <br>**What is missing is
+   notation, not a bit.** The decoder already tells an ill-formed byte apart from every other thing:
+   `YS_LIT_KEY_INVALID` is id 59 where `YS_LIT_KEY_EOF` is id 58, and a literal is tested by one comparison as a set is
+   by one AND. Carrying no set bits is not a gap in it — it is the encoding, and the reason every membership test fails
+   at it without being asked. What the grammar cannot do is *write* the thing: its vocabulary is codepoints, and a byte
+   that is no codepoint has none to name. So the rule that covers such bytes needs a marker of libyeast's own — a
+   `<not-a-character>` beside `<end-of-stream>`, lowering to the comparison the key already answers — and no set bit, no
+   layout change, and no walking back of what the decoder was built on. The rule itself is then ordinary: a maximal run
+   of them, ending where valid UTF-8 resumes or at the end of the input, which states the resynchronisation
+   declaratively rather than burying it in the decoder. It also settles the wire, whose escapes cannot tell a raw `0x80`
+   from U+0080 today: once the token's *code* says its text is bytes rather than codepoints, `\x80` means one thing
+   again — and that code is `unparsed-invalid`, third of the family beside `unparsed` and `unparsed-break`, earning a
+   code of its own by the argument `unparsed-break` already won: so that its text is not taken for a thing it is not.
+   There it is codepoints rather than a structural break, but it is the same argument and the same family, since bytes
+   that are no character are only ever reached where the parse has already given up. <br>Nothing new is needed to write
+   it: the escapes stay as they are and the code disambiguates them, `\x80` being U+0080 under a code that claims
+   codepoints and the byte `0x80` under this one. That works only because the run is maximal — such a token is
+   ill-formed bytes throughout and never a mixture, so one code answers for the whole of its text. Which makes the rule
+   symmetric rather than special: every other code requires its text to be well-formed UTF-8, and this one requires the
+   opposite, every byte of it a place where no valid sequence begins. `ys_write_token` can hold both halves, and does
+   hold the first already — it refuses ill-formed bytes today because every code that exists claims codepoints, and
+   gains the other branch with the code. Two consequences to carry: the wire needs a character for it, which
+   `check_wire` gates against `src/wire.c`; and once `<not-a-character>` lets the grammar name the byte, the error
+   naming it is a `(cut)`-or-`(error)` message in `messages.yaml` like any other, where the header of that file
+   currently says such a message would be hand-written in `src/messages.c` because the grammar could not reach it.
+   <br>**An ill-formed byte inside an unparsed run is an error there too**, and not swallowed into the run around it.
+   The recovery has already given the input up, so it is tempting to let the bytes go by unremarked as more of the junk
+   they sit in; but `YS_RESUME_NONE` brings the rest back unparsed *so that nothing is silently lost*, and a caller who
+   cannot tell malformed YAML from bytes that are not YAML at all has lost something — inside a region where the bytes
+   are precisely what it would be reaching for. So: the error, then the run of ill-formed bytes under its own code, then
+   unparsed as before. That the run is its own token rather than more `unparsed` is the same argument `unparsed-break`
+   already won — a run that would otherwise be taken for something it is not earns a code of its own. <br>All of it is
+   answered in the grammar and proved by fixtures, once the interpreter reads bytes rather than codepoints — which is
+   phase 01's remaining work and the reason it comes first. Until it does, nothing here can be written down as a rule
+   and checked; after it, this is an ordinary grammar question with an ordinary oracle.
 1. **Indentation detection — defined; implement it.** The grammar now says what the official grammar would not:
    `<auto-detect-indent>` is the indentation of the next line holding a character other than a space, less `n`, the
    current line counting only if the parse is at its start; `<auto-detect-in-line-indent>` is the spaces that follow on

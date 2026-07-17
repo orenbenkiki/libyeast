@@ -212,7 +212,7 @@ static void test_wire_codes(void) {
         }
     }
     ys_code code;
-    TEST_CHECK(!ys_code_of_char('~', &code)); // not a wire character
+    TEST_CHECK(!ys_code_of_char('@', &code)); // not a wire character
 }
 
 // A sink and a source over one buffer, so that the wire tests need no file — and so that they exercise the ys_writer
@@ -310,6 +310,82 @@ static void test_wire_round_trip(void) {
     ys_token token;
     TEST_CHECK(!ys_read_token(tokens, &token)); // the stream is exhausted
     ys_free_token_reader(tokens);
+}
+
+// The wire escapes by codepoint and has no spelling for a byte that is not one, so writing a token holding such a byte
+// is refused rather than answered with something that reads back as different bytes.
+static void test_wire_refuses_ill_formed_text(void) {
+    static const struct {
+        const char *name;
+        const char *text;
+        size_t size;
+        bool throughout; // whether every byte of it begins no character, which is what UNPARSED_INVALID may carry
+    } cases[] = {
+        {"a lone continuation byte", "\x80", 1, true},
+        {"an overlong encoding of '/'", "\xC0\xAF", 2, true},
+        {"a surrogate, which UTF-8 cannot encode", "\xED\xA0\x80", 3, true},
+        {"a codepoint past U+10FFFF", "\xF7\xBF\xBF\xBF", 4, true},
+        {"a good lead and a bad second continuation", "\xE1\x80\xC0", 3, true},
+        {"a lead byte whose continuation is ASCII",
+         "\xE0"
+         "ab",
+         3, false}, // the lead begins nothing, but the 'a' and 'b' are characters
+    };
+
+    for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        wire_buffer wire = {{0}, 0, 0};
+        ys_writer writer = {wire_write, NULL, &wire};
+        ys_token token = {.code = YS_CODE_TEXT, .text = cases[index].text};
+        token.start = (ys_mark){0, 0, 1, 0};
+        token.end = token.start;
+        token.end.byte_offset = cases[index].size;
+
+        errno = 0;
+        TEST_CHECK(!ys_write_token(&writer, token));
+        TEST_MSG("%s: was written rather than refused", cases[index].name);
+        TEST_CHECK(errno == EINVAL);
+        TEST_MSG("%s: errno is %d, not EINVAL", cases[index].name, errno);
+        ys_close_writer(&writer);
+
+        // What YS_CODE_UNPARSED_INVALID exists to carry, it carries — and only if every byte of it qualifies.
+        wire_buffer carried = {{0}, 0, 0};
+        ys_writer to_carried = {wire_write, NULL, &carried};
+        token.code = YS_CODE_UNPARSED_INVALID;
+        TEST_CHECK(ys_write_token(&to_carried, token) == cases[index].throughout);
+        TEST_MSG("%s: under UNPARSED_INVALID it should have been %s", cases[index].name,
+                 cases[index].throughout ? "written" : "refused");
+        ys_close_writer(&to_carried);
+    }
+}
+
+// The other half of the same rule: an escape under YS_CODE_UNPARSED_INVALID spells a byte, so text that does encode
+// characters is refused there — the code would be a lie about what its escapes mean.
+static void test_wire_refuses_well_formed_invalid_text(void) {
+    static const struct {
+        const char *name;
+        const char *text;
+        size_t size;
+    } cases[] = {
+        {"plain ASCII", "ab", 2},
+        {"a two-byte character", "\xC3\xA9", 2},       // U+00E9
+        {"ASCII before ill-formed bytes", "a\x80", 2}, // the run must be ill-formed throughout, not merely somewhere
+    };
+
+    for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        wire_buffer wire = {{0}, 0, 0};
+        ys_writer writer = {wire_write, NULL, &wire};
+        ys_token token = {.code = YS_CODE_UNPARSED_INVALID, .text = cases[index].text};
+        token.start = (ys_mark){0, 0, 1, 0};
+        token.end = token.start;
+        token.end.byte_offset = cases[index].size;
+
+        errno = 0;
+        TEST_CHECK(!ys_write_token(&writer, token));
+        TEST_MSG("%s: was written under YS_CODE_UNPARSED_INVALID rather than refused", cases[index].name);
+        TEST_CHECK(errno == EINVAL);
+        TEST_MSG("%s: errno is %d, not EINVAL", cases[index].name, errno);
+        ys_close_writer(&writer);
+    }
 }
 
 // A source that hands out so many bytes and then reports a failure, rather than an end.
@@ -767,6 +843,8 @@ TEST_LIST = {
     {"wire_error_is_located", test_wire_error_is_located},
     {"wire_error_text_is_terminated", test_wire_error_text_is_terminated},
     {"wire_empty_error_text", test_wire_empty_error_text},
+    {"wire_refuses_ill_formed_text", test_wire_refuses_ill_formed_text},
+    {"wire_refuses_well_formed_invalid_text", test_wire_refuses_well_formed_invalid_text},
     {"wire_rejects_rubbish", test_wire_rejects_rubbish},
     {"wire_odds_and_ends", test_wire_odds_and_ends},
     {"wire_memory_cap", test_wire_memory_cap},
