@@ -1,0 +1,6 @@
+a: 1
+b: { oops
+  deep: lost
+# a comment
+
+c: 3

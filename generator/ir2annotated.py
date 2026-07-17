@@ -123,6 +123,8 @@ def node_yaml(n):
         return {"(cut)": n.message}
     if isinstance(n, ir.Error):
         return {"(error)": n.message}
+    if isinstance(n, ir.Recover):
+        return {"(recover)": [node_yaml(n.recovery), node_yaml(n.item)]}
     raise TypeError(f"not a grammar node: {n!r}")
 
 

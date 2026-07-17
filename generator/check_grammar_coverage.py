@@ -34,6 +34,11 @@ import spec_tests
 import wire
 import yaml
 
+# The parameters every rule is reached under every value of, and how many values that is. The resume policy is the only
+# one: the caller chooses it once and it is threaded down unchanged, where a context is chosen by the rule that descends
+# into one and can leave a rule out of reach of a value entirely.
+AMBIENT = {"r": len(annotated2ir.RESUMES)}
+
 # The nodes that match wherever they are asked to, and the ones that may always refuse. A `(cut)` counts as matching: it
 # never returns "no", it raises instead, which is a different thing that `rejected` accounts for separately.
 ALWAYS = (ir.Empty, ir.Emit, ir.Error, ir.SetVar, ir.ExcludeAt, ir.Cut, ir.Flip)
@@ -60,9 +65,14 @@ def is_total(node, grammar, seen=frozenset()):
     and every zero-width guard, may say no. Recursion assumes total and lets the rest of the body decide, so a rule is
     total only when some path through it does not depend on the recursion.
 
-    A `(case)` is read the way `check_markers` reads one: a rule reached only in some contexts lists only those, so a
-    branch that is not there is a path that cannot be taken rather than one that says no. Counting a missing branch as a
-    refusal would ask for a fixture running `nb-single-text` at `block-in`, which nothing reaches it with.
+    A `(case)` on `c` or `t` is read the way `check_markers` reads one: a rule reached only in some contexts lists only
+    those, so a branch that is not there is a path that cannot be taken rather than one that says no. Counting a missing
+    branch as a refusal would ask for a fixture running `nb-single-text` at `block-in`, which nothing reaches it with.
+
+    `r` is not like them and `AMBIENT` says so. A context is chosen by the rule that descends into one, so a rule can be
+    out of reach of a value; the resume policy is chosen once by the caller and threaded to everything unchanged, so
+    every rule is reached under every value of it. A `(case)` on `r` with a value missing is therefore a path that is
+    taken and says no — which is exactly how `l-recover-entry` declines to answer for a policy that recovers elsewhere.
     """
     if isinstance(node, ALWAYS):
         return True
@@ -79,6 +89,8 @@ def is_total(node, grammar, seen=frozenset()):
     if isinstance(node, ir.Alt):
         return any(is_total(item, grammar, seen) for item in node.items)
     if isinstance(node, ir.Case):
+        if len(node.branches) < AMBIENT.get(node.var, 0):
+            return False  # a value of an ambient parameter with no branch is a path that is taken, and says no
         return all(is_total(branch.item, grammar, seen) for branch in node.branches)
     if isinstance(node, ir.Ref):
         if node.name in seen:

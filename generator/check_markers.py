@@ -18,9 +18,7 @@ import annotated2ir
 import gate
 import ir
 
-CONTEXTS = ("block-in", "block-out", "block-key", "flow-in", "flow-out", "flow-key")
-CHOMPINGS = ("strip", "clip", "keep")
-RESUMES = ("n", "d")
+CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
 BALANCED = ((), ())  # no marker left open, and none closed that was not opened here
 
 

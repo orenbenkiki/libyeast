@@ -72,8 +72,12 @@ All notable changes to this project are documented here. The format follows
   the spec (the plain-scalar `:`/`#` factoring) libyeast follows the spec. Fixtures in encodings libyeast does not read,
   or for the reference's own internal productions, are left out. From there the suite is libyeast's to own — the
   one-time build is not kept; `generator/check_spec_tests.py` keeps the suite intact, every input paired, every name a
-  production the grammar still has, every output a token stream whose marks chain. The bytes are held verbatim, CR and
-  CRLF included, out of line-ending normalization.
+  production the grammar still has, every output a token stream whose marks chain and whose markers balance — a fixture
+  of the root being a whole parse, which must balance exactly, where one of a rule run by itself may close what its
+  caller would have opened but may still not leave a marker open. That last is what `check_markers` cannot reach: it
+  settles the grammar's clean paths and says nothing about what an error leaves behind, which is where both of the
+  imbalances found so far have been. The bytes are held verbatim, CR and CRLF included, out of line-ending
+  normalization.
 
 - A reference interpreter of the grammar, `generator/interpreter.py`: a slow, obviously-correct backtracking matcher
   that runs a production against an input and emits its yeast tokens, checked fixture by fixture against the conformance
@@ -107,14 +111,39 @@ All notable changes to this project are documented here. The format follows
   the spec's rule 211 is untouched — the official grammar still comes back from libyeast's rule for rule.
 
 - The resume policy is the grammar's fifth parameter. `ys_options.resume` chooses what the parser does with input it
-  cannot parse, and the grammar says what each choice means: `l-unparsed(r)` guards its own run, so under
-  `YS_RESUME_DOCUMENT` it stops at the next `---` or `...` instead of eating the rest of the input, and `l-recover(r)`
+  cannot parse, and the grammar says what each choice means: `l-unparsed(n,r)` guards its own run, so under
+  `YS_RESUME_DOCUMENT` it stops at the next `---` or `...` instead of eating the rest of the input, and `l-recover(n,r)`
   brings that run back and then parses the stream again from the marker. The two are mutually recursive, so a second
   error inside a resumed document needs no mechanism of its own, and a failed cut arrives at the same rule the root does
   — a cut says where the unwind lands and nothing more. `r` is finite, so it takes `c`'s and `t`'s fate rather than
   `n`'s: it specializes away at generation time, and the emitted C will be one automaton per policy with
   `ys_options.resume` choosing the start state. A fixture names the policy it runs under, `.r=d` beside the `.n`/`.c`/
   `.t` its filename already carries, and one that names none runs under the default a zeroed `ys_options` selects.
+
+  The three policies are one hierarchy, each adding a place the run stops, so none gives up more of the input than the
+  one before it: nothing, then `c-forbidden`, then `c-forbidden` or `s-indent-le-line(n)`. That last is
+  `YS_RESUME_INDENT`, which carries on *inside* the document rather than at the next one: a malformed entry costs its
+  container that entry and not the rest of them, and what is recovered is a sibling of what failed rather than a child
+  of it. `c-forbidden` is not redundant there — `s-indent-le-line` cannot hold below an indentation of 0, so a run
+  bounded by nothing would go straight past a document marker — and where nothing encloses the failure the indent guard
+  is dead and the policy is exactly `YS_RESUME_DOCUMENT`. `le`, not `lt`: a sibling entry sits at exactly the
+  container's indentation, so `lt` would skip the entries the policy exists to keep; and not `eq` either, since a
+  container whose last entry is malformed would then eat the rest of the document hunting a sibling that never comes.
+  `s-indent-le-line` is pinned by a lookahead for content, which forces the line's whole indentation to be measured and
+  keeps a blank line and a comment line from being boundaries — neither has an indentation of its own to speak of. It is
+  two lookaheads rather than the one character class `ns-char - c-comment` because a difference is a character set, and
+  the decoder's key has twenty of those and no room for a twenty-first.
+
+- `(recover)` says where a failed cut stops unwinding. A cut unwinds past every frame between it and whatever answers
+  for it; this is a rule saying "that is me". The block collections wrap their entry in one, naming the `n+m` they have
+  already computed, so no indentation is recovered from the runtime and the recovery reads the parameters of the rule
+  that declares it rather than of whatever failed below it. The error is emitted, the markers the entry opened are
+  closed down to that depth and no further, the run is given up, and the parse carries on as though the entry had
+  matched — so the collection's own repetition takes its next turn, `s-indent(n+m)` matching where the next entry begins
+  and failing where the collection ends, and nothing has to know which of the two the run stopped at. The node holds no
+  policy: a rule reached under one that recovers elsewhere has no branch to take, so it does not match and the cut goes
+  on unwinding, which is why the other two policies are byte-identical to what they were. Flow collections get none —
+  recovery is by indentation and a flow node is one level of it, so there is nothing inside one to resume at.
 
 - An error closes the markers it opened. A raise skipped the frames that would have emitted them, so a malformed
   document used to end with its `begin-` markers hanging: harmless while everything after an error was unparsed, and

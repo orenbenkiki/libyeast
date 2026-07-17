@@ -23,6 +23,13 @@ DEFAULT_GRAMMAR = os.path.join(TREE, "grammar", "yeast-spec-1.2.yaml")
 # The grammar's parameters: `n`/`m` are indentations, `c` a context, `t` a chomping mode, `r` the resume policy. A bare
 # name among these is that parameter; any other bare name is the value it spells.
 PARAMS = frozenset({"n", "c", "m", "t", "r"})
+
+# The values of the finite parameters — the ones specialized away at generation time, so that a gate wanting to hold the
+# grammar to every one of them can enumerate them. `n` and `m` are indentations and have no such list. `r` reaching only
+# as far as the policies that are built is what keeps a fixture from naming one that is not.
+CONTEXTS = ("block-in", "block-out", "block-key", "flow-in", "flow-out", "flow-key")
+CHOMPINGS = ("strip", "clip", "keep")
+RESUMES = ("n", "d", "i")
 HEX = re.compile(r"^x[0-9A-Fa-f]+$")
 REP = re.compile(r"^\(\{(.+)\}\)$")  # ({2}) / ({n})
 INT = re.compile(r"^-?[0-9]+$")
@@ -160,6 +167,8 @@ def node(x):
             return ir.Cut(value)
         if op == "(error)":
             return ir.Error(value)
+        if op == "(recover)":
+            return ir.Recover(node(value[0]), node(value[1]))
         rep = REP.match(op)
         if rep:
             return ir.Rep(count(rep.group(1)), node(value))

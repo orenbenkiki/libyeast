@@ -18,7 +18,7 @@ from dataclasses import dataclass
 ERROR = "!"  # the code all three failures share on the wire
 
 # The wire character each token code is written as — the grammar names the code, `src/wire.c`'s YS_WIRE table gives the
-# character, and `check_wire.py` gates this copy against it so the two cannot drift.
+# character, and `check_wire.py` gates this copy against it so the two cannot drift. `CHAR_CODE` reads a wire back.
 CODE_CHAR = {
     "bom": "U",
     "text": "T",
@@ -65,6 +65,8 @@ CODE_CHAR = {
     "unparsed-break": ".",
     "detected": "$",
 }
+
+CHAR_CODE = {character: code for code, character in CODE_CHAR.items()}
 
 CARRIAGE_RETURN = 0x0D
 LINE_FEED = 0x0A
@@ -134,6 +136,36 @@ def chain_fault(tokens):
             if token.start.byte != end.byte or token.start.char != end.char:
                 return f"token at {token.start} does not follow the previous token's end {end}"
         previous = token
+    return None
+
+
+def marker_fault(tokens, is_whole):
+    """Return a one-line reason the tokens' markers do not balance, or None.
+
+    A `begin-` marker must get its `end-`, on the paths where the parse went wrong as much as on the ones where it did
+    not: the fold that rebuilds the production tree has nothing to stand on otherwise, and a resumed parse would nest
+    what follows inside what failed rather than beside it. Markers pair by their code, which is how the grammar's own
+    marker gate reads them, and is the only way a block scalar is paired at all — it opens with a marker of its own
+    because the position of its close depends on the chomping.
+
+    `is_whole` says these are a whole parse, whose markers must balance exactly. A rule run by itself is not one: it may
+    be the very rule that closes what its caller opened, `b-chomped-last` alone being exactly that, so it may close a
+    marker these tokens never opened. Leaving one open is a fault either way.
+    """
+    open_markers = []
+    for token in tokens:
+        code = CHAR_CODE.get(token.code)
+        if code is None or not code.startswith(("begin-", "end-")):
+            continue
+        name = code.split("-", 1)[1]
+        if code.startswith("begin-"):
+            open_markers.append(name)
+        elif open_markers and open_markers[-1] == name:
+            open_markers.pop()
+        elif is_whole:
+            return f"closes {name}, which it never opened"
+    if open_markers:
+        return f"leaves open: {', '.join(reversed(open_markers))}"
     return None
 
 

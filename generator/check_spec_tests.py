@@ -3,15 +3,20 @@
 
 Every `.input` in `tests/spec/` must pair with an `.output` and every `.output` with an `.input`; every filename must
 decode to a production the grammar still has, with the parameters it declares and well-formed values; and every output
-must parse as the wire format with marks that chain. This guards the migrated suite against a fixture orphaned by a
-grammar change, a hand-edit that broke a name, and an output that is not a token stream — before the interpreter is ever
-asked to reproduce one.
+must parse as the wire format, with marks that chain and markers that balance. This guards the migrated suite against a
+fixture orphaned by a grammar change, a hand-edit that broke a name, and an output that is not a token stream — before
+the interpreter is ever asked to reproduce one.
+
+The marker rule is what `check_markers` cannot reach: that gate settles the grammar's clean paths, and says nothing
+about what an error leaves behind. A fixture of the root is a whole parse and must balance exactly; one of a rule run by
+itself may close what its caller would have opened, but neither may leave a marker open.
 """
 
 import os
 
 import annotated2ir
 import gate
+import ir
 import spec_tests
 import wire
 
@@ -37,7 +42,8 @@ def main():
             continue
         if not os.path.exists(fixture.output_path):
             continue  # already reported as unpaired above; there is nothing to read a token stream out of
-        fault = wire.chain_fault(wire.parse(fixture.expected))
+        tokens = wire.parse(fixture.expected)
+        fault = wire.chain_fault(tokens) or wire.marker_fault(tokens, fixture.production == ir.ROOT)
         if fault is not None:
             errors.append(f"{name}: {fault}")
 

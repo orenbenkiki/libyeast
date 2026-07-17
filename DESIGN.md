@@ -55,11 +55,11 @@ its comments). The full public API surface is declared, but the parser core is n
 - **Grammar** — `grammar/yeast-spec-1.2.yaml`: libyeast's grammar, and the source everything else is generated from. It
   is the YAML 1.2 productions with three additions: each indicator character is reached through the production that
   names it; 98 of the 211 productions carry the yeast token codes — which productions bracket their match in
-  `Begin`/`End` markers, and what code each consumed character is given; and four rules are libyeast's own — the root
-  the parser runs, `l-yeast-stream` (a YAML stream, and then the end of the input), and the
-  `l-recover`/`l-unparsed`/`nb-unparsed` the root and a failed cut hand input they cannot parse to. All but the last
-  carry `r`, the resume policy, which is `ys_options.resume` and the grammar's fifth parameter: finite like `c` and `t`,
-  so it specializes away at generation time rather than being threaded like `n`. The vendored
+  `Begin`/`End` markers, and what code each consumed character is given; and six rules are libyeast's own — the root the
+  parser runs, `l-yeast-stream` (a YAML stream, and then the end of the input), and the
+  `l-recover`/`l-recover-entry`/`l-unparsed`/`nb-unparsed`/`s-indent-le-line` that answer for input it cannot parse.
+  Four of them carry `r`, the resume policy, which is `ys_options.resume` and the grammar's fifth parameter: finite like
+  `c` and `t`, so it specializes away at generation time rather than being threaded like `n`. The vendored
   `third_party/yaml-grammar/yaml-spec-1.2.yaml` cannot serve as the source: it inlines the indicator characters, so it
   cannot say that a quotation mark opens a scalar as an indicator but is meta inside an escape, and it names no token at
   all. `make verify-spec` erases the annotations and the indicator productions, sets libyeast's own rules aside, and
@@ -127,17 +127,24 @@ fixtures go on testing libyeast rather than a parser it is not.
   `YS_RESUME_DOCUMENT`, skips to the next document and parses that, the skipped lines coming back unparsed. It restarts
   *at* the `---` or `...`, which the resumed document then parses as its own: that marker is the only thing the recovery
   stops for, being where the grammar's `c-forbidden` says a document may begin, so a `---` mid-line or without white or
-  a break after it is not a boundary and stays unparsed. The reference instead keeps tokenizing past the error,
-  recovering into structured tokens of its own. So the two streams agree only up to the first error, and that is where
-  the suite stops comparing. The message differs too: libyeast's names the production it was in and what it expected,
-  not the reference's wording, and what carries the meaning is the position — the first `unparsed` token behind the
-  error begins at the byte that failed.
+  a break after it is not a boundary and stays unparsed. `YS_RESUME_INDENT` stops at the next line no more indented than
+  the entry that failed as well, and carries on *inside* the document: a malformed entry costs its container that entry
+  and not the rest of them, and the recovered entries are its siblings rather than children of the one that failed. The
+  three are one hierarchy — nothing, then a document marker, then a marker or a less-indented line — so each gives up
+  less of the input than the one before it, and where nothing encloses the failure the indent policy *is* the document
+  one. The reference instead keeps tokenizing past the error, recovering into structured tokens of its own. So the two
+  streams agree only up to the first error, and that is where the suite stops comparing. The message differs too:
+  libyeast's names the production it was in and what it expected, not the reference's wording, and what carries the
+  meaning is the position — the first `unparsed` token behind the error begins at the byte that failed.
 - **An error closes what it opened.** A `begin-` marker gets its `end-` on every path, the errored ones included: the
   abandoned parse's open markers are closed at the error, after the error token and before the first `unparsed` — all
   three are zero-width and at the byte that failed, so only their order says that the error is inside what failed and
   the unparsed run is inside nothing. Without this the fold that rebuilds the production tree has nothing to stand on
   once a document is malformed, and `YS_RESUME_DOCUMENT` could not keep its promise: the documents after the error would
-  parse as children of the one that failed rather than as its siblings, and a caller could not reach them.
+  parse as children of the one that failed rather than as its siblings, and a caller could not reach them. What is open
+  is read off the marker codes and never off the rule that emitted them, which is the only way a block scalar is read at
+  all: it opens with a marker of its own rather than a bracketing rule, the position of its close depending on the
+  chomping. Every fixture's output is held to this, `check_markers` having nothing to say about a path that failed.
 
 Some further differences never reach the token stream a caller sees, so they are not in the list above — they are helper
 productions that diverge only when run alone, and agree once composed into a document:

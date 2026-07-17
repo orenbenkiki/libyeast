@@ -342,6 +342,24 @@ class Error:
 
 
 @dataclass(frozen=True)
+class Recover:
+    """`(recover)`: where a `(cut)` inside `item` stops unwinding, when `recovery` says it stops here.
+
+    A cut unwinds past every frame between it and whatever will answer for it. This is a rule saying "that is me": the
+    error is emitted, the markers `item` opened are closed down to this point and no further, and `recovery` matches
+    whatever of the input this rule is willing to give up — after which the parse carries on from here as though `item`
+    had matched, so a repetition around it takes its next turn.
+
+    `recovery` decides whether that happens at all: a rule reached under a resume policy that does not recover here has
+    no branch to take, so it does not match, and the cut goes on unwinding to whoever does answer for it. That is what
+    keeps a policy that recovers elsewhere from noticing this rule exists.
+    """
+
+    recovery: object
+    item: object
+
+
+@dataclass(frozen=True)
 class Prod:
     """A named production: its spec number, name, parameter list, and body node."""
 

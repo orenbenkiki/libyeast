@@ -14,16 +14,15 @@ import os
 import re
 from dataclasses import dataclass
 
+import annotated2ir
+
 _TREE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS_DIR = os.path.join(_TREE, "tests", "spec")
 
-# The parameter values the grammar understands: the six contexts of `c`, the three chomping modes of `t`, and the two
-# resume policies of `r` — `YS_RESUME_INDENT` is not built, so naming it here would let a fixture past this check only
-# to fail obscurely against a grammar that has no branch for it. `n` is an indentation, any integer (-1 is the
-# auto-detect base). A fixture whose value falls outside these is malformed, not merely foreign.
-CONTEXTS = ("block-in", "block-out", "block-key", "flow-in", "flow-out", "flow-key")
-CHOMPINGS = ("strip", "clip", "keep")
-RESUMES = ("n", "d")
+# The parameter values the grammar understands, from the grammar's own reader rather than a second list of them here.
+# `n` is an indentation, any integer (-1 is the auto-detect base), so it has none. A fixture whose value falls outside
+# these is malformed, not merely foreign.
+CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
 
 # `r` is the resume policy, and the only parameter a caller chooses rather than the grammar threads: a fixture that does
 # not name it runs under the default a zeroed `ys_options` already selects, `YS_RESUME_NONE`. Every other parameter must

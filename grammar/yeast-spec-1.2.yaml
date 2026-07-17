@@ -3423,7 +3423,9 @@ l+block-sequence:
     - (+++):
         (all):
         - s-indent: { (+): [ n, m ] }
-        - c-l-block-seq-entry: { (+): [ n, m ] }
+        - (recover):
+          - { l-recover-entry: [ { (+): [ n, m ] }, r ] }
+          - { c-l-block-seq-entry: { (+): [ n, m ] } }
 
 
 
@@ -3515,7 +3517,9 @@ l+block-mapping:
     - (+++):
         (all):
         - s-indent: { (+): [ n, m ] }
-        - ns-l-block-map-entry: { (+): [ n, m ] }
+        - (recover):
+          - { l-recover-entry: [ { (+): [ n, m ] }, r ] }
+          - { ns-l-block-map-entry: { (+): [ n, m ] } }
 
 
 
@@ -3968,23 +3972,31 @@ nb-unparsed:
 
 
 :214: l-unparsed
-# l-unparsed(r) ::=
-#   ( <empty> | <excluding_c-forbidden_content> )
+# l-unparsed(n,r) ::=
+#   ( <empty>
+#   | <excluding_c-forbidden_content>
+#   | <excluding_c-forbidden_or_s-indent-le-line(n)_content> )
 #   ( nb-unparsed+ | b-break )*
 #
 # The run of input the parser could not parse, bounded by the resume policy: everything that is left when nothing is to
-# be resumed, and only as far as the next document marker when the parse carries on there. The guard is in scope until
-# this rule returns and no further, so it stops the run without forbidding the marker to whatever resumes at it.
+# be resumed; only as far as the next document marker when the parse carries on there; and, when it carries on at the
+# next line no more indented than n, as far as whichever of the two comes first. Each policy adds a place the run
+# stops, so none of them gives up more input than the one before it. The guards are in scope until this rule returns
+# and no further, so they stop the run without forbidding the line to whatever resumes at it.
+#
+# c-forbidden is not redundant in the third: s-indent-le-line cannot hold below an indentation of 0, so a run bounded
+# by nothing would go straight past a document marker.
 #
 # Emits: unparsed, unparsed-break
 
 l-unparsed:
-  (...): r
+  (...): [ n, r ]
   (all):
   - (case):
       var: r
       "n": <empty>
       "d": { (exclude): c-forbidden }
+      "i": { (exclude): { (any): [ c-forbidden, { s-indent-le-line: n } ] } }
   - (***):
       (any):
       - (token): [ unparsed, { (+++): nb-unparsed } ]
@@ -4010,29 +4022,80 @@ l-yeast-stream:
     - <end-of-stream>
     - (all):
       - (error): TRAILING_CONTENT
-      - l-recover: r
+      - l-recover: [ -1, r ]
 
 
 
 :216: l-recover
-# l-recover(r) ::=
-#   l-unparsed(r)
+# l-recover(n,r) ::=
+#   l-unparsed(n,r)
 #   ( <empty> | l-yeast-stream(r) )
 #
-# What the parser does with input it cannot parse, which is what ys_options.resume chooses between: bring it back
-# unparsed and stop, or bring back only what stands between here and the next document and carry on parsing there, so
-# that one malformed document does not cost the caller the others. A failed cut arrives here too — it is the same
-# question — and this and l-yeast-stream being mutually recursive is what lets a resumed document fail again without a
-# second mechanism for it.
+# What the parser does with input it cannot parse once nothing narrower has answered for it, which is what
+# ys_options.resume chooses between: bring it back unparsed and stop, or bring back only what stands between here and
+# the next document and carry on parsing there, so that one malformed document does not cost the caller the others. A
+# failed cut arrives here too — it is the same question — and this and l-yeast-stream being mutually recursive is what
+# lets a resumed document fail again without a second mechanism for it.
+#
+# The parse is at the stream's own level by the time it reaches here, having unwound past every rule that might have
+# answered for it, so there is no indentation left to be bounded by and a resuming policy carries on at the next
+# document however fine-grained it would rather be.
 
 l-recover:
-  (...): r
+  (...): [ n, r ]
   (all):
-  - l-unparsed: r
+  - l-unparsed: [ n, r ]
   - (case):
       var: r
       "n": <empty>
       "d": { l-yeast-stream: r }
+      "i": { l-yeast-stream: r }
+
+
+
+:217: l-recover-entry
+# l-recover-entry(n,r) ::=
+#   l-unparsed(n,r)
+#
+# What a block collection gives up when one of its entries is malformed: the entry, and the lines indented past n that
+# belonged to it — no more. The collection's own repetition takes it from there, s-indent(n) matching where the next
+# entry begins and failing where the collection ends, so nothing here has to know which of the two the run stopped at.
+#
+# Only an indentation-bounded policy recovers here. Under any other there is no branch to take, so this does not match,
+# and the cut that asked goes on unwinding to l-recover, which answers for the stream — which is how a policy that
+# recovers elsewhere never notices that this rule exists.
+
+l-recover-entry:
+  (...): [ n, r ]
+  (case):
+    var: r
+    "i": { l-unparsed: [ n, r ] }
+
+
+
+:218: s-indent-le-line
+# s-indent-le-line(n) ::=
+#   <start_of_line> s-indent-le(n) <lookahead:_ns-char> <not_followed_by_c-comment>
+#
+# Whether the line beginning here is indented no more than n — where an indentation-bounded recovery gives up skipping.
+#
+# The lookaheads are what make this the *line's* indentation rather than some of it: s-indent-le is a bound over a
+# repetition and will match one space of four and be satisfied, so requiring content immediately after forces it to
+# have measured all of it. They are also what keep two kinds of line from being boundaries. An empty line, or one of
+# spaces alone, has no indentation of its own to compare. Neither has a comment line: a `#` may sit at any column and
+# says nothing about the structure around it.
+#
+# They are two rather than the one character class `ns-char - c-comment` because a difference is a character set, and
+# the decoder's key has twenty of those and no room for another. Two lookaheads cost none: `ns-char` is a set it
+# already has, and `c-comment` is a literal.
+
+s-indent-le-line:
+  (...): n
+  (all):
+  - <start-of-line>
+  - s-indent-le: n
+  - (===): ns-char
+  - (!==): c-comment
 
 
 # vim: iskeyword=@,+,- sw=2:

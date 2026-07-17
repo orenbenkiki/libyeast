@@ -73,6 +73,7 @@ SUPPORTED_NODES = (
     ir.Emit,
     ir.Cut,
     ir.Error,
+    ir.Recover,
     ir.Star,
     ir.Plus,
     ir.Opt,
@@ -190,9 +191,19 @@ class Emitter:
             self.run = None
 
     def marker(self, code):
-        """Emit a zero-width marker of `code`, cutting the open run before it."""
+        """Emit a zero-width marker of `code`, cutting the open run before it, and track what it leaves open.
+
+        A marker is paired by its code and never by the node that emitted it, which is how `check_markers` reads one
+        too. A `(wrap)` is not the only thing that opens one: a block scalar opens with an `(emit)` because the position
+        of its `end-scalar` depends on the chomping and is sometimes injected ahead of the breaks it holds, which a
+        `(wrap)` cannot say. Pairing by node would leave those invisible to a parse that has to close what it opened.
+        """
         self.cut()
         self.tokens.append(wire.Token(wire.CODE_CHAR[code], self.mark, ""))
+        if code.startswith("begin-"):
+            self.pending += ("end-" + code[len("begin-") :],)
+        elif self.pending and self.pending[-1] == code:
+            self.pending = self.pending[:-1]
 
     def error(self, message):
         """Emit an error token: `message` as its text, at the position, spanning no input. Cuts the open run first."""
@@ -386,9 +397,8 @@ def _fail(emitter, message):
     emitter.codes[:] = ["unparsed"]  # a raise skips the token frames' cleanup; from here on the input is unparsed
     emitter.forbidden = ()
     emitter.error(message)
-    for code in reversed(emitter.pending):
-        emitter.marker(code)
-    emitter.pending = ()
+    while emitter.pending:
+        emitter.marker(emitter.pending[-1])
 
 
 def match(node, emitter, grammar, k):
@@ -618,11 +628,9 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.Wrap):
         entry = emitter.checkpoint()
         emitter.marker(node.begin)
-        emitter.pending += (node.end,)  # what an abandoned parse would have to close from here
 
         def close_wrap():
             middle = emitter.checkpoint()
-            emitter.pending = emitter.pending[:-1]
             emitter.marker(node.end)
             if k():
                 return True
@@ -651,6 +659,25 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.Recover):
+        depth, codes, forbidden, env = len(emitter.pending), len(emitter.codes), emitter.forbidden, dict(emitter.env)
+        try:
+            return match(node.item, emitter, grammar, k)
+        except CommitFailure as failure:
+            # The cut asks whether this rule answers for it. Undo what the abandoned parse left of the scopes it was
+            # inside — those frames never got to — and put this rule's own back: the recovery is this rule's to name,
+            # so it reads this rule's parameters and not those of whatever failed somewhere below it.
+            stopped = emitter.checkpoint()
+            del emitter.codes[codes:]
+            emitter.forbidden = forbidden
+            emitter.env = env
+            emitter.error(MESSAGES[failure.code])
+            while len(emitter.pending) > depth:
+                emitter.marker(emitter.pending[-1])  # close what `item` opened, down to here and no further
+            if match(node.recovery, emitter, grammar, _accept):
+                return k()  # recovered: carry on as though `item` had matched, so a repetition takes its next turn
+            emitter.rewind(stopped)  # this rule does not answer for it after all: leave no trace and let it go on up
+            raise
     raise NotImplementedError(f"interpreter does not support {type(node).__name__}")
 
 
@@ -693,4 +720,6 @@ def run(grammar, production, data, parameters=None):
         if failed_at == emitter.position:
             raise AssertionError(f"recovery at byte {failed_at} consumed nothing: the parse cannot go on")
         failed_at = emitter.position
-        node = ir.Ref(RECOVER, (ir.Lit(resume),))
+        # The parse has unwound past every rule that might have answered for it, so it is at the stream's own level and
+        # there is no indentation left to bound the recovery by.
+        node = ir.Ref(RECOVER, (ir.Lit(-1), ir.Lit(resume)))
