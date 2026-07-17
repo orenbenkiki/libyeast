@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "source.h"
 
+#include <errno.h>
 #include <string.h>
 
 ys_fill ys_source_fill(ys_source *source, ys_memory *memory, size_t used, size_t spare) {
@@ -28,6 +29,14 @@ ys_fill ys_source_fill(ys_source *source, ys_memory *memory, size_t used, size_t
     }
     source->size += (size_t)read_count;
     return YS_FILL_READ;
+}
+
+void ys_close_reader(ys_reader reader) {
+    if (reader.close != NULL) {
+        int saved_errno = errno;
+        reader.close(reader.context);
+        errno = saved_errno;
+    }
 }
 
 void ys_source_free(ys_source *source, const ys_allocator *allocator) {

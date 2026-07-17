@@ -224,7 +224,12 @@ All notable changes to this project are documented here. The format follows
 - `src/yeast.c` is gone, split by topic: the version query and its load-time sanity check, the counting allocator, the
   stream adapters, and the yeast wire format each have a file of their own. Allocation and the `max_bytes` accounting
   are one place, `src/memory.c`, rather than one copy in the parser and another in the wire-format reader; a reader held
-  under a cap it cannot even be built in is now refused outright, as the parser already was.
+  under a cap it cannot even be built in is now refused outright, as the parser already was. What a NULL `ys_options`
+  means is `ys_resolved_options`, so the defaults are named where the struct is read and not again at each field. The
+  reader hand-over is `ys_close_reader`, once, rather than six copies of the same two lines and four of the errno dance
+  around them: a reader is handed over whether or not the object that would read through it can be built, so a
+  constructor that fails closes it rather than leaking it — and the close, which can fail and set its own `errno`, must
+  leave the reason for the failure standing. The destructors preserve it now too, which they had not.
 
 - The reader of the yeast wire format tells a broken wire from the tokens a wire carries. Every token code, the three
   error codes included, is content the wire legitimately replays, so the reader cannot signal its own trouble with one

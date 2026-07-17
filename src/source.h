@@ -36,6 +36,13 @@ typedef enum ys_fill {
 // The `used` bytes are discarded whatever the outcome, so the caller advances past them either way.
 ys_fill ys_source_fill(ys_source *source, ys_memory *memory, size_t used, size_t spare);
 
+// Close the reader, if it owns what it reads from. A reader is handed over whether or not the object that would read
+// through it can be built, so a constructor that fails closes it here rather than leaking it, and so does a destructor.
+//
+// errno survives the close: a close can fail and set its own, and the reason the caller is unwinding — the EINVAL for a
+// reader with nothing to read from, the allocator's own errno — is what it must still be holding afterwards.
+void ys_close_reader(ys_reader reader);
+
 // Free the buffer, if the source ever had one.
 void ys_source_free(ys_source *source, const ys_allocator *allocator);
 

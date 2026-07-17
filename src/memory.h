@@ -49,6 +49,11 @@ typedef struct ys_memory {
     size_t allocated_bytes; // what has been allocated, the owning struct included
 } ys_memory;
 
+// The options to build an object with: the caller's, or the defaults where it gave none. A NULL ys_options means a
+// zeroed one, which every default is: an allocator of NULL callbacks falls back to C's, a `max_bytes` of 0 is no cap,
+// and YS_RESUME_NONE is 0. So what NULL means is decided here, and nowhere else.
+ys_options ys_resolved_options(const ys_options *options);
+
 // Build an object of `size` bytes, zeroed, and say in `memory` what it may allocate from here on. Its own size is
 // charged to the cap first, so a cap it could not even live under refuses it here rather than leaving it to fail at its
 // first allocation. NULL if the cap or the allocator refuses. The caller plants `memory` inside the object it gets.

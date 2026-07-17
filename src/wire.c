@@ -216,23 +216,15 @@ struct ys_token_reader {
 };
 
 ys_token_reader *ys_new_token_reader(ys_reader reader, const ys_options *options) {
-    // The reader is handed over whether or not the token reader can be built, so an owned one is closed here rather
-    // than leaked. errno is set after the close and preserved across it, so the close cannot overwrite the reason.
     if (reader.read == NULL) {
-        if (reader.close != NULL) {
-            reader.close(reader.context);
-        }
         errno = EINVAL; // a reader with nothing to read from
+        ys_close_reader(reader);
         return NULL;
     }
     ys_memory memory;
     ys_token_reader *token_reader = ys_memory_new(&memory, options, sizeof(ys_token_reader)); // sets errno on failure
     if (token_reader == NULL) {
-        if (reader.close != NULL) {
-            int saved_errno = errno; // the close must not overwrite the reason ys_memory_new gave
-            reader.close(reader.context);
-            errno = saved_errno;
-        }
+        ys_close_reader(reader);
         return NULL;
     }
     token_reader->memory = memory;
@@ -242,9 +234,7 @@ ys_token_reader *ys_new_token_reader(ys_reader reader, const ys_options *options
 
 void ys_free_token_reader(ys_token_reader *reader) {
     if (reader != NULL) {
-        if (reader->source.reader.close != NULL) {
-            reader->source.reader.close(reader->source.reader.context);
-        }
+        ys_close_reader(reader->source.reader);
         ys_allocator allocator = reader->memory.allocator;
         ys_source_free(&reader->source, &allocator);
         ys_deallocate(&allocator, reader->text);

@@ -195,7 +195,7 @@ static ys_parser *ys_new_parser(const ys_options *options) {
     if (parser != NULL) {
         parser->memory = memory;
         parser->window.bytes = YS_NO_BYTES;
-        parser->error.resume = options != NULL ? options->resume : YS_RESUME_NONE;
+        parser->error.resume = ys_resolved_options(options).resume;
         parser->state = YS_STATE_START;
     }
     return parser;
@@ -220,22 +220,14 @@ ys_parser *ys_new_string_parser(const char *input, size_t length, const ys_optio
 }
 
 ys_parser *ys_new_stream_parser(ys_reader reader, const ys_options *options) {
-    // The reader is handed over whether or not the parser can be built, so an owned one is closed here rather than
-    // leaked. errno is set after the close and preserved across it, so the close cannot overwrite the reason.
     if (reader.read == NULL) {
-        if (reader.close != NULL) {
-            reader.close(reader.context);
-        }
         errno = EINVAL; // a reader with nothing to read from
+        ys_close_reader(reader);
         return NULL;
     }
     ys_parser *parser = ys_new_parser(options); // sets errno on failure
     if (parser == NULL) {
-        if (reader.close != NULL) {
-            int saved_errno = errno; // the close must not overwrite the reason ys_new_parser gave
-            reader.close(reader.context);
-            errno = saved_errno;
-        }
+        ys_close_reader(reader);
         return NULL;
     }
     parser->window.source.reader = reader;
@@ -269,9 +261,7 @@ ys_token ys_next_token(ys_parser *parser) {
 
 void ys_free_parser(ys_parser *parser) {
     if (parser != NULL) {
-        if (parser->window.source.reader.close != NULL) {
-            parser->window.source.reader.close(parser->window.source.reader.context);
-        }
+        ys_close_reader(parser->window.source.reader);
         // The messages are static and the window may be the caller's; what is the parser's own is what it grew.
         ys_allocator allocator = parser->memory.allocator;
         ys_source_free(&parser->window.source, &allocator);

@@ -12,8 +12,12 @@ static void ys_memory_release(ys_memory *memory, size_t bytes) {
     memory->allocated_bytes -= bytes;
 }
 
+ys_options ys_resolved_options(const ys_options *options) {
+    return options != NULL ? *options : (ys_options){0};
+}
+
 void *ys_memory_new(ys_memory *memory, const ys_options *options, size_t size) {
-    ys_options resolved = options != NULL ? *options : (ys_options){0};
+    ys_options resolved = ys_resolved_options(options);
     memory->allocator = resolved.allocator;
     memory->max_bytes = resolved.max_bytes;
     memory->allocated_bytes = 0;
