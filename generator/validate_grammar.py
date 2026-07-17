@@ -9,9 +9,6 @@ Loads libyeast's grammar (via `annotated2ir`) and checks that:
 Reports every problem found and exits non-zero if there are any.
 """
 
-import dataclasses
-
-
 import chars
 import ir
 import annotated2ir
@@ -21,17 +18,8 @@ import gate
 def walk(node):
     """Yield `node` and every IR node nested within it."""
     yield node
-    if dataclasses.is_dataclass(node):
-        for field in dataclasses.fields(node):
-            yield from walk_value(getattr(node, field.name))
-
-
-def walk_value(value):
-    if dataclasses.is_dataclass(value):
-        yield from walk(value)
-    elif isinstance(value, tuple):
-        for item in value:
-            yield from walk_value(item)
+    for child in chars.children(node):
+        yield from walk(child)
 
 
 # The productions nothing references: the root the parser runs, and c-reserved — the reserved characters (§5.4), which

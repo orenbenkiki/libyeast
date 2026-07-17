@@ -18,14 +18,14 @@ import wire
 
 def main():
     grammar = annotated2ir.load()
-    fixtures = [fixture for fixture in spec_tests.load() if interpreter.coverable(fixture.production, grammar)]
+    fixtures = spec_tests.load()
 
     errors = []
     for fixture in fixtures:
         try:
             arguments = spec_tests.arguments(fixture, grammar)
             tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments)
-            actual = wire.serialize(tokens) if tokens is not None else "(no match)"
+            actual = wire.serialize(tokens)
         except Exception as error:  # noqa: BLE001 — a crash is a divergence to report, not to abort the gate on
             actual = f"(crash: {type(error).__name__}: {error})"
         if actual != fixture.expected:

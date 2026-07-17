@@ -7,13 +7,14 @@ tokens before any C exists to be wrong, and so that, taught the canonical form l
 normalization step is checked against. It takes the grammar as an argument, so the same interpreter and the same
 fixtures judge the grammar as it is now and the structurally-simplified grammar later.
 
-`SUPPORTED` says which nodes it knows; `coverable` says which fixtures rest on only those, and so are the ones it is
-asked to reproduce. It matches the character-level nodes (`Char`, `Range`, `Diff`, `Empty`, `Seq`, `Alt`, `Ref`), the
-repetitions (`Star`, `Plus`, `Opt`, `Rep`), the parameter machinery (`Case`, `Bind`, `SetVar`, the arithmetic, and the
-`Lt`/`Le`/`Max`/`Bound` predicates), and the assertions and lookahead (`StartOfLine`, `EndOfStream`, `Look`, `NegLook`,
-`LookBehind`, `ExcludeAt`). It produces tokens from the annotation nodes: `Token` gives its characters a code and cuts
-the run at both edges, `Wrap` brackets its match in `begin`/`end` markers, `Emit` is a marker on its own, and `Error` is
-an error token naming what was expected.
+It matches every node the IR defines, and a node it does not know raises rather than passing quietly — the fixture that
+reached one is reported as the crash it is. The character-level nodes (`Char`, `Range`, `Diff`, `Empty`, `Seq`, `Alt`,
+`Ref`), the repetitions (`Star`, `Plus`, `Opt`, `Rep`), the parameter machinery (`Case`, `Bind`, `SetVar`, the
+arithmetic, and the `Lt`/`Le`/`Max`/`Bound` predicates), and the assertions and lookahead (`StartOfLine`,
+`EndOfStream`, `Look`, `NegLook`, `LookBehind`, `ExcludeAt`). It produces tokens from the annotation nodes: `Token`
+gives its characters a code and cuts the run at both edges, `Wrap` brackets its match in `begin`/`end` markers, `Emit`
+is a marker on its own, and `Error` is an error token naming what was expected. `Recover` says where a failed `(cut)`
+stops unwinding.
 
 Matching is success-continuation style: `match` calls a continuation for each way a node matches, in greedy order, and
 the continuation reports whether the rest of the parse succeeded — so an alternation is re-entered when a later element
@@ -57,54 +58,6 @@ class CommitFailure(Exception):
 
 
 BYTE_ORDER_MARK = 0xFEFF  # consumed without ending the start of a line, unlike any other character
-
-# The grammar nodes the interpreter matches, and the value expressions it evaluates. Both grow a family at a time, and
-# with them the fixtures the interpreter can reproduce. `Branch` is structural, shared by `Case` and `Flip`.
-SUPPORTED_NODES = (
-    ir.Char,
-    ir.Range,
-    ir.Diff,
-    ir.Empty,
-    ir.Seq,
-    ir.Alt,
-    ir.Ref,
-    ir.Token,
-    ir.Wrap,
-    ir.Emit,
-    ir.Cut,
-    ir.Error,
-    ir.Recover,
-    ir.Star,
-    ir.Plus,
-    ir.Opt,
-    ir.Rep,
-    ir.Case,
-    ir.Bind,
-    ir.SetVar,
-    ir.Lt,
-    ir.Le,
-    ir.Max,
-    ir.Bound,
-    ir.StartOfLine,
-    ir.EndOfStream,
-    ir.Look,
-    ir.NegLook,
-    ir.LookBehind,
-    ir.ExcludeAt,
-)
-SUPPORTED_VALUES = (
-    ir.Param,
-    ir.Lit,
-    ir.Match,
-    ir.Ord,
-    ir.Len,
-    ir.Add,
-    ir.Sub,
-    ir.Flip,
-    ir.AutoDetectIndent,
-    ir.AutoDetectInLineIndent,
-)
-SUPPORTED = SUPPORTED_NODES + SUPPORTED_VALUES + (ir.Branch,)
 
 
 class Emitter:
@@ -213,35 +166,6 @@ class Emitter:
         """Emit an error token: `message` as its text, at the position, spanning no input. Cuts the open run first."""
         self.cut()
         self.tokens.append(wire.Token(wire.ERROR, self.mark, wire.escape(message.encode("utf-8"))))
-
-
-def coverable(production, grammar):
-    """Whether every node reachable from `production` is one the interpreter supports."""
-    seen = set()
-    frontier = [production]
-    while frontier:
-        name = frontier.pop()
-        if name in seen:
-            continue
-        seen.add(name)
-        node = grammar.get(name)
-        if node is None:
-            return False
-        stack = [node.body]
-        while stack:
-            current = stack.pop()
-            if isinstance(current, ir.Ref):
-                frontier.append(current.name)
-                stack.extend(current.args)  # the argument expressions must be supported too
-                continue
-            if not isinstance(current, SUPPORTED):
-                return False
-            for field in current.__dataclass_fields__:
-                value = getattr(current, field)
-                for child in value if isinstance(value, tuple) else (value,):
-                    if hasattr(child, "__dataclass_fields__"):
-                        stack.append(child)
-    return True
 
 
 def _leading_spaces(emitter):

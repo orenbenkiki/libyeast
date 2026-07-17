@@ -3,8 +3,8 @@
 
 Coverage is dynamic, not by name: a production counts when running a fixture actually reaches it — so a production with
 no fixture of its own (a `seq-spaces`, an `in-flow`) is covered by the fixtures that reach it, and one that nothing
-reaches is a gap the suite must fill. Only the fixtures the interpreter can reproduce are run, so what the gate proves
-is coverage by the validated suite.
+reaches is a gap the suite must fill. What the gate proves is coverage by the suite the interpreter reproduces, since a
+fixture it crashes on leaves its productions unexercised and is reported as the gap it is.
 
 Reaching a production is half of exercising it. A rule is a decision, and a fixture that only ever watches it say yes
 leaves the other answer untested — so each must also be seen to **reject** an input, by failing to match or by a `(cut)`
@@ -138,8 +138,6 @@ def exercised(grammar):
     interpreter.match, interpreter.evaluate = match, evaluate
     try:
         for fixture in spec_tests.load():
-            if not interpreter.coverable(fixture.production, grammar):
-                continue
             # a crashing fixture simply leaves its productions unexercised, for the gate to report
             try:
                 interpreter.run(grammar, fixture.production, fixture.input, spec_tests.arguments(fixture, grammar))

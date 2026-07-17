@@ -72,30 +72,27 @@ def children(node):
                 yield item
 
 
-def literals(grammar):
-    """Every codepoint the grammar names as a literal character, ordered by codepoint."""
+def gathered(grammar, kind, of):
+    """What `of` takes from every node of `kind` anywhere in `grammar`, without repeats and in order."""
     found = set()
     for production in grammar.values():
         pending = [production.body]
         while pending:
             node = pending.pop()
-            if isinstance(node, ir.Char):
-                found.add(node.cp)
+            if isinstance(node, kind):
+                found.add(of(node))
             pending.extend(children(node))
     return sorted(found)
+
+
+def literals(grammar):
+    """Every codepoint the grammar names as a literal character, ordered by codepoint."""
+    return gathered(grammar, ir.Char, lambda node: node.cp)
 
 
 def ranges(grammar):
     """Every codepoint range the grammar names, as an ordered `[(low, high)]`."""
-    found = set()
-    for production in grammar.values():
-        pending = [production.body]
-        while pending:
-            node = pending.pop()
-            if isinstance(node, ir.Range):
-                found.add((node.lo, node.hi))
-            pending.extend(children(node))
-    return sorted(found)
+    return gathered(grammar, ir.Range, lambda node: (node.lo, node.hi))
 
 
 def representatives(grammar):

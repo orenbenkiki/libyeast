@@ -10,6 +10,7 @@ live elsewhere; they are not in this table.
 import os
 
 import annotated2ir
+import chars
 import gate
 import ir
 import yaml
@@ -19,20 +20,7 @@ MESSAGES = os.path.join(os.path.dirname(annotated2ir.DEFAULT_GRAMMAR), "messages
 
 def named_codes(grammar):
     """The set of message codes named by a `(cut)` or an `(error)` anywhere in `grammar`."""
-    codes = set()
-    for production in grammar.values():
-        stack = [production.body]
-        while stack:
-            node = stack.pop()
-            if isinstance(node, (ir.Cut, ir.Error)):
-                codes.add(node.message)
-                continue
-            for field in getattr(node, "__dataclass_fields__", ()):
-                value = getattr(node, field)
-                for child in value if isinstance(value, tuple) else (value,):
-                    if hasattr(child, "__dataclass_fields__"):
-                        stack.append(child)
-    return codes
+    return set(chars.gathered(grammar, (ir.Cut, ir.Error), lambda node: node.message))
 
 
 def main():
