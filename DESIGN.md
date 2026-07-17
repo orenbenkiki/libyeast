@@ -72,8 +72,8 @@ its comments). The full public API surface is declared, but the parser core is n
   fixtures), `interpreter.py` (a backtracking interpreter of the grammar, run against those fixtures), and the gate
   checks `check_annotated_roundtrip.py`, `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`,
   `check_grammar_docs.py`, `check_messages.py`, `check_decoder.py`, `check_spec_tests.py`, `check_wire.py`,
-  `check_interpreter.py` and `check_grammar_coverage.py`, which report through `gate.py`. This is where the
-  grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
+  `check_emitter.py`, `check_interpreter.py` and `check_grammar_coverage.py`, which report through `gate.py`. This is
+  where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
 - **Reference** — `third_party/yamlreference/`: the Haskell YAML reference parser, vendored to be read. Its grammar
   carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code` comes
   from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of it is

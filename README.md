@@ -82,6 +82,8 @@ each: `test`, `verify`, `vet`, `gh-pages`.
   - `make verify-emits` — every rule documents the tokens it emits, checked against the grammar
   - `make verify-decoder` — `src/decoder_tables.h` is exactly what the grammar produces (not stale)
   - `make verify-wire` — `wire.py`'s code map matches `src/wire.c`'s
+  - `make verify-emitter` — the interpreter's state can be undone, which its backtracking rests on
+  - `make verify-messages` — every `(cut)` and `(error)` names a message, and every message is named
   - `make verify-fixtures` — the conformance fixtures in `tests/spec/` are intact
   - `make verify-grammar` — every grammar reproduces `tests/spec/` and is wholly exercised by it, bottom-up:
     - `make verify-grammar-base` — the base grammar reproduces its fixtures, via the interpreter

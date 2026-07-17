@@ -149,12 +149,16 @@ class Emitter:
             token_count,
             self.run,
             code_count,
-            self.env,
+            env,
             self.match_start,
             self.is_sol,
             self.forbidden,
             self.pending,
         ) = checkpoint
+        # The parameters are copied out rather than adopted: an alternation rewinds to the same checkpoint once per
+        # branch, so handing a branch the checkpoint's own dictionary would let its `(set)` reach back into what the
+        # branch after it rewinds to. Everything else here is either a value or a length, and cannot be written through.
+        self.env = dict(env)
         del self.tokens[token_count:]
         del self.codes[code_count:]
 

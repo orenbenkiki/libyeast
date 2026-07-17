@@ -104,12 +104,17 @@ All notable changes to this project are documented here. The format follows
   scalar at a document boundary — and produces tokens from the annotation nodes, giving a run its code, bracketing a
   match in `begin`/`end` markers, emitting a marker on its own, and writing an error token that names what was expected.
   It backtracks in the success-continuation style, re-entering an alternation when a later element fails as the
-  reference does, and reproduces every fixture, `l-yeast-stream` and the malformed inputs included, token for token. A
-  malformed input is where the grammar's `(cut)` earns its keep: a cut commits, and if the parse then fails, the
-  interpreter emits an error token naming what the cut expected, closes the markers the abandoned parse left open, and
-  hands the rest of the input to `l-recover` — the grammar's own recovery rule — which brings it back as unparsed. A
-  failure that passed no cut is not an error but a production simply rejecting its input, reported where what matched
-  ends.
+  reference does, and reproduces every fixture, `l-yeast-stream` and the malformed inputs included, token for token. All
+  of that rests on one promise the emitter makes and nothing checked — that a checkpoint captures the whole of the
+  state, so an alternative that fails can be undone — and `make verify-emitter` now checks it: every field is restored,
+  and restored the same way twice, an alternation rewinding to one checkpoint once per branch. It was not true. A
+  checkpoint handed out its parameters rather than a copy of them, so a discarded branch's `(set)` reached into what the
+  branch after it rewound to; no fixture could see it, the grammar's only three sites setting the same parameter in
+  every branch of the alternation, so whatever leaked was overwritten by the branch that matched. A malformed input is
+  where the grammar's `(cut)` earns its keep: a cut commits, and if the parse then fails, the interpreter emits an error
+  token naming what the cut expected, closes the markers the abandoned parse left open, and hands the rest of the input
+  to `l-recover` — the grammar's own recovery rule — which brings it back as unparsed. A failure that passed no cut is
+  not an error but a production simply rejecting its input, reported where what matched ends.
 
 - Error reporting lives in the grammar. Eighteen `(cut)` points mark where a parse commits, and an `(error)` is an error
   token the grammar writes where it already knows the parse cannot go on; each names a message in
