@@ -222,12 +222,12 @@ ys_parser *ys_new_string_parser(const char *input, size_t length, const ys_optio
 ys_parser *ys_new_stream_parser(ys_reader reader, const ys_options *options) {
     if (reader.read == NULL) {
         errno = EINVAL; // a reader with nothing to read from
-        ys_close_reader(reader);
+        ys_discard_reader(reader);
         return NULL;
     }
     ys_parser *parser = ys_new_parser(options); // sets errno on failure
     if (parser == NULL) {
-        ys_close_reader(reader);
+        ys_discard_reader(reader);
         return NULL;
     }
     parser->window.source.reader = reader;
@@ -259,14 +259,13 @@ ys_token ys_next_token(ys_parser *parser) {
     return token;
 }
 
-void ys_free_parser(ys_parser *parser) {
-    if (parser != NULL) {
-        ys_close_reader(parser->window.source.reader);
-        // The messages are static and the window may be the caller's; what is the parser's own is what it grew.
-        ys_allocator allocator = parser->memory.allocator;
-        ys_source_free(&parser->window.source, &allocator);
-        ys_deallocate(&allocator, parser->queue.tokens);
-        ys_deallocate(&allocator, parser->stack.frames);
-        ys_deallocate(&allocator, parser);
+int ys_free_parser(ys_parser *parser) {
+    if (parser == NULL) {
+        return 0; // freeing nothing cannot fail
     }
+
+    // The messages are static and the window may be the caller's; what is the parser's own is what it grew.
+    void *buffers[] = {parser->window.source.bytes, parser->queue.tokens, parser->stack.frames, parser};
+    return ys_teardown(parser->window.source.reader, parser->memory.allocator, buffers,
+                       sizeof(buffers) / sizeof(buffers[0]));
 }

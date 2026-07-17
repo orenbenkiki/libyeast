@@ -58,10 +58,12 @@
 ///
 /// A function that returns a token reports every failure through that token and leaves `errno` for the callback that
 /// set it — so a reader's or allocator's `errno` survives beside the error token it became. A function that can fail
-/// without a token to carry the reason — the constructors, ys_write_token() — sets `errno`: `EINVAL` for a bad
-/// argument, `ENOMEM` for insufficient memory, or the value a failing callback set, passed through untouched. Every
-/// other function cannot fail and does not touch `errno`. libyeast requires an allocator or reader callback to set
-/// `errno` on failure, and passes that value through rather than overriding it.
+/// without a token to carry the reason — the constructors, ys_write_token(), and the closers ys_close_writer(),
+/// ys_free_parser() and ys_free_token_reader() — sets `errno`: `EINVAL` for a bad argument, `ENOMEM` for insufficient
+/// memory, or the value a failing callback set, passed through untouched. The closers still release everything whatever
+/// fails, and return which callback's close failed while `errno` holds the first one's reason. Every other function
+/// cannot fail and does not touch `errno`. libyeast requires an allocator or reader callback to set `errno` on failure,
+/// and passes that value through rather than overriding it.
 ///
 /// For the architecture, see the
 /// [design document](https://github.com/orenbenkiki/libyeast/blob/main/DESIGN.md); for what is left to build, see the
@@ -246,10 +248,14 @@ typedef struct ys_reader {
     /// alongside the @ref YS_CODE_ERROR_READER or @ref YS_CODE_WIRE_ERROR token the failure becomes. The `context`
     /// argument is @ref context.
     ptrdiff_t (*read)(void *context, char *buffer, size_t size);
-    /// Release @ref context, if it needs releasing. May be NULL. Whatever the reader is handed to calls it exactly
-    /// once: ys_free_parser() or ys_free_token_reader() when it was built, and the constructor itself when it was not.
-    /// Either way the caller never calls it, having handed the reader over.
-    void (*close)(void *context);
+    /// Release @ref context, if it needs releasing, returning 0 or -1 with `errno` set — `close(2)`'s contract, as
+    /// @ref read is `read(2)`'s. May be NULL. Whatever the reader is handed to calls it exactly once: ys_free_parser()
+    /// or ys_free_token_reader() when it was built, and the constructor itself when it was not. Either way the caller
+    /// never calls it, having handed the reader over.
+    ///
+    /// A constructor that is already failing discards the result: it has a reason to report of its own, and `errno`
+    /// still holds it afterwards.
+    int (*close)(void *context);
     void *context; ///< Opaque state passed to @ref read and @ref close.
 } ys_reader;
 
@@ -279,8 +285,11 @@ typedef struct ys_writer {
     /// set `errno`; ys_write_token() passes that value through, so it is what the caller reads after ys_write_token()
     /// returns false. The `context` argument is @ref context.
     ptrdiff_t (*write)(void *context, const char *buffer, size_t size);
-    /// Release @ref context, if it needs releasing. May be NULL.
-    void (*close)(void *context);
+    /// Release @ref context, if it needs releasing, returning 0 or -1 with `errno` set — `close(2)`'s contract, as
+    /// @ref write is `write(2)`'s. May be NULL. ys_close_writer() calls it and reports what it said, which is the whole
+    /// reason it says anything: a buffered write does not reach the disk until the flush a close performs, so this is
+    /// where a full disk is discovered, long after every ys_write_token() has returned true.
+    int (*close)(void *context);
     void *context; ///< Opaque state passed to @ref write and @ref close.
 } ys_writer;
 
@@ -298,10 +307,14 @@ YS_API ys_writer ys_fd_writer(int fd, ys_ownership ownership);
 /// @return a writer to hand to ys_write_token().
 YS_API ys_writer ys_fp_writer(FILE *file, ys_ownership ownership);
 
-/// Release whatever a writer owns. Calls its `close` callback, if it has one.
+/// Release whatever a writer owns, and say whether that succeeded: it calls the writer's `close` callback, if it has
+/// one, and a buffered stream does not reach its destination until this flushes it. So a token stream written without a
+/// fault can still fail here, at the last, and this is where a full disk or a broken pipe is finally seen — the return
+/// of the last ys_write_token() is not the whole story, and this is the rest of it. Call it exactly once.
 ///
 /// @param writer the writer to close.
-YS_API void ys_close_writer(ys_writer *writer);
+/// @return 0 on success, or -1 with `errno` set to what the `close` callback reported.
+YS_API int ys_close_writer(ys_writer *writer);
 
 /// Write a token to a writer, in the yeast wire format.
 ///
@@ -331,7 +344,12 @@ typedef struct ys_allocator {
     void *(*allocate)(void *context, size_t size);                  ///< Allocate `size` bytes, or NULL (set `errno`).
     void *(*reallocate)(void *context, void *pointer, size_t size); ///< Resize `pointer` to `size` bytes, or NULL.
     void (*deallocate)(void *context, void *pointer);               ///< Free `pointer`.
-    void *context;                                                  ///< Opaque state passed to the callbacks.
+    /// Release @ref context, if it needs releasing, returning 0 or -1 with `errno` set — `close(2)`'s contract, as the
+    /// reader's and the writer's closes are. May be NULL, which is the common case: an allocator that is only a set of
+    /// functions has nothing to release. Whatever was built with it calls this once, when it is freed, after the last
+    /// @ref deallocate — so an arena or a pool can be torn down with the thing that was built out of it.
+    int (*close)(void *context);
+    void *context; ///< Opaque state passed to the callbacks.
 } ys_allocator;
 
 /// What the parser does with the input it could not parse.
@@ -390,11 +408,27 @@ typedef struct ys_counting_allocator ys_counting_allocator;
 /// `errno` set to `ENOMEM` by the underlying `malloc`.
 YS_API ys_counting_allocator *ys_new_counting_allocator(void);
 
-/// The allocator functions to place in @ref ys_options::allocator so allocations route through the counter.
+/// The allocator functions to place in @ref ys_options::allocator so allocations route through the counter. Its
+/// @ref ys_allocator::close is ys_counting_allocator_check(), so whatever is built with it checks itself when it is
+/// freed and there is nothing to remember to do.
+///
+/// That makes the @ref ys_options single-use, as it does for any allocator carrying a `close`: the object being freed
+/// closes the allocator, so a second object built from the same options would find it already closed. To hand one
+/// counter to several objects, set `allocator.close` to NULL and call ys_counting_allocator_check() yourself once they
+/// are all freed — which is the only moment the count means anything anyway.
 ///
 /// @param counter the counting allocator.
 /// @return a ys_allocator backed by @p counter.
 YS_API ys_allocator ys_counting_allocator_functions(ys_counting_allocator *counter);
+
+/// Check that nothing allocated through the counter is still live — the @ref ys_allocator::close
+/// ys_counting_allocator_functions() installs, and callable directly with the same meaning. A debug build asserts,
+/// since a leak is a bug in the code being counted and a stack trace is worth more than a return value; a release build
+/// reports it.
+///
+/// @param counter the counting allocator, as a `void *` so that this is a @ref ys_allocator::close.
+/// @return 0 if nothing is live, or -1 with `errno` set to `EBUSY` if anything is.
+YS_API int ys_counting_allocator_check(void *counter);
 
 /// The number of allocations made through the counter that are still live. It is positive while a parser is in use;
 /// check that it is back to 0 after you free everything (e.g. the parser) to confirm there was no leak.
@@ -519,16 +553,26 @@ YS_API ys_token_reader *ys_new_token_reader(ys_reader reader, const ys_options *
 /// @return true if a token was read; false at the end of the wire.
 YS_API bool ys_read_token(ys_token_reader *reader, ys_token *token);
 
-/// Free a token reader and everything it owns. Its reader's `close` callback is called, if it has one.
+/// Free a token reader and everything it owns, and say whether the two closeable things it holds closed cleanly: the
+/// reader it reads bytes from (if its @ref ys_reader::close is not NULL) and its allocator (if @ref ys_allocator::close
+/// is not NULL). Both are closed, and everything is freed, whichever of them fails — so a close that fails leaks
+/// nothing. This is ys_free_parser() for a token reader, with the same return.
 ///
-/// @param reader the token reader to free; may be NULL, in which case this is a no-op.
-YS_API void ys_free_token_reader(ys_token_reader *reader);
+/// @param reader the token reader to free; may be NULL, in which case this is a no-op returning 0.
+/// @return 0 if every close succeeded; -1 if the reader's failed, -2 if the allocator's did, -3 if both did. `errno`
+/// holds the first failure's reason — the reader's, where both failed.
+YS_API int ys_free_token_reader(ys_token_reader *reader);
 
-/// Free a parser and everything it owns. If it was created with ys_new_stream_parser() and the reader has a `close`
-/// callback, that callback is invoked.
+/// Free a parser and everything it owns, and say whether the two closeable things it holds closed cleanly: the reader
+/// it was built over (if from ys_new_stream_parser() and its @ref ys_reader::close is not NULL), and its allocator (if
+/// @ref ys_allocator::close is not NULL). Both are closed, and everything is freed, whichever of them fails — so a
+/// close that fails still leaks nothing.
 ///
-/// @param parser the parser to free; may be NULL, in which case this is a no-op.
-YS_API void ys_free_parser(ys_parser *parser);
+/// @param parser the parser to free; may be NULL, in which case this is a no-op returning 0.
+/// @return 0 if every close succeeded; -1 if the reader's failed, -2 if the allocator's did, -3 if both did. `errno`
+/// holds the first failure's reason — the reader's, where both failed, the second being the documented limit of what
+/// one `errno` can say. A caller needing both must record them in its own callbacks' @ref context.
+YS_API int ys_free_parser(ys_parser *parser);
 
 #ifdef __cplusplus
 }

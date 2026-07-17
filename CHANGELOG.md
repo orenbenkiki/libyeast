@@ -226,10 +226,11 @@ All notable changes to this project are documented here. The format follows
   are one place, `src/memory.c`, rather than one copy in the parser and another in the wire-format reader; a reader held
   under a cap it cannot even be built in is now refused outright, as the parser already was. What a NULL `ys_options`
   means is `ys_resolved_options`, so the defaults are named where the struct is read and not again at each field. The
-  reader hand-over is `ys_close_reader`, once, rather than six copies of the same two lines and four of the errno dance
-  around them: a reader is handed over whether or not the object that would read through it can be built, so a
-  constructor that fails closes it rather than leaking it — and the close, which can fail and set its own `errno`, must
-  leave the reason for the failure standing. The destructors preserve it now too, which they had not.
+  reader hand-over and the teardown of everything an object owns are each one place — `ys_discard_reader` for a
+  constructor that is already failing, `ys_teardown` for a destructor — rather than copies of the same close and the
+  same errno care around each. A reader is handed over whether or not the object that would read through it can be
+  built, so a constructor that fails closes it rather than leaking it, discarding a close failure it has no channel to
+  report and holding on to the reason it is already returning `NULL` for.
 
 - The reader of the yeast wire format tells a broken wire from the tokens a wire carries. Every token code, the three
   error codes included, is content the wire legitimately replays, so the reader cannot signal its own trouble with one
@@ -243,10 +244,22 @@ All notable changes to this project are documented here. The format follows
 
 - An `errno` policy across the API. A function that returns a token reports through the token and leaves `errno` for the
   callback that set it, so a reader's or allocator's `errno` survives beside the error token it became. A function that
-  fails without a token — a constructor, `ys_write_token` — sets `errno`: `EINVAL` for a bad argument (a stream parser
-  or token reader with no `read` callback, a string parser given a NULL buffer with a length), `ENOMEM` for insufficient
-  memory, or the value a failing callback set, passed through. An allocator or reader callback must set `errno` when it
-  fails; a debug build asserts a failing allocator did.
+  fails without a token — a constructor, `ys_write_token`, or one of the closers — sets `errno`: `EINVAL` for a bad
+  argument (a stream parser or token reader with no `read` callback, a string parser given a NULL buffer with a length),
+  `ENOMEM` for insufficient memory, or the value a failing callback set, passed through. An allocator or reader callback
+  must set `errno` when it fails; a debug build asserts a failing allocator did.
+
+- Closing reports, because a buffered close is where a write finally reaches its destination and so where a full disk or
+  a broken pipe is first seen — long after the last `ys_write_token` returned true. A `ys_reader`'s, `ys_writer`'s and
+  `ys_allocator`'s `close` each answer `close(2)`'s contract, 0 or -1 with `errno` set, as their `read` and `write`
+  already answer `read(2)`'s and `write(2)`'s; and `ys_close_writer`, `ys_free_parser` and `ys_free_token_reader` return
+  it rather than swallow it. A free closes the reader and then, once everything is given back, the allocator — the order
+  that lets the allocator be what the memory lived in — and runs the whole of it whatever fails, so a close that fails
+  leaks nothing: 0 for a clean teardown, -1 if the reader's close failed, -2 the allocator's, -3 both, with `errno` the
+  first one's. That one `errno` cannot name two failures is the documented limit; a caller needing both records them in
+  its own callbacks. The `ys_allocator` gains the `close` for an arena or pool to be torn down with what was built out
+  of it, and the `ys_counting_allocator` installs one that checks nothing leaked — asserting in a build that has
+  assertions, so the leak points at the code that caused it, and `EBUSY` in one that does not.
 
 ### Fixed
 

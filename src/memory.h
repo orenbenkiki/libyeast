@@ -34,6 +34,12 @@ static inline void ys_deallocate(const ys_allocator *allocator, void *pointer) {
     }
 }
 
+// Close the allocator, if it has anything to release, and say whether that failed: 0, or -1 with errno set. Called once
+// everything allocated through it has been given back, since that memory may be what it releases.
+static inline int ys_close_allocator(const ys_allocator *allocator) {
+    return allocator->close != NULL ? allocator->close(allocator->context) : 0;
+}
+
 // What a buffer holds the first time it grows. A buffer that a read fills gets a page; an array of items gets a few of
 // them, most documents never reaching past that.
 #define YS_MEMORY_BYTES 4096

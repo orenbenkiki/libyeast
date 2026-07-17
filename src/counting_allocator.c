@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT
+#include <assert.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <yeast.h>
 
@@ -51,8 +53,21 @@ ys_allocator ys_counting_allocator_functions(ys_counting_allocator *counter) {
     allocator.allocate = ys_counting_allocate;
     allocator.reallocate = ys_counting_reallocate;
     allocator.deallocate = ys_counting_deallocate;
+    allocator.close = ys_counting_allocator_check;
     allocator.context = counter;
     return allocator;
+}
+
+int ys_counting_allocator_check(void *counter) {
+    size_t live = ((const ys_counting_allocator *)counter)->live_buffers;
+    // A leak is a bug in whatever was counted, so a build with assertions stops at it, where the stack still says who
+    // allocated what. Only a build without them reaches the return, which is why the gated builds never do.
+    assert(live == 0 && "a leak: something allocated through the counting allocator was never freed");
+    if (live > 0) {
+        errno = EBUSY; // UNTESTED
+        return -1;     // UNTESTED
+    }
+    return 0;
 }
 
 size_t ys_counting_allocator_live_buffers(const ys_counting_allocator *counter) {

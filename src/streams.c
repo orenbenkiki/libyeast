@@ -29,9 +29,10 @@ static ptrdiff_t ys_fd_read(void *context, char *buffer, size_t size) {
 }
 
 // Closing a descriptor is the same act whether it was read from or written to, so the readers and the writers share it,
-// and sharing it is why they share a file.
-static void ys_fd_close(void *context) {
-    YS_OS_CLOSE((int)(intptr_t)context);
+// and sharing it is why they share a file. close() already answers 0 or -1 with errno set, which is what a ys_reader's
+// and a ys_writer's close must answer, so there is nothing to translate.
+static int ys_fd_close(void *context) {
+    return YS_OS_CLOSE((int)(intptr_t)context);
 }
 
 ys_reader ys_fd_reader(int fd, ys_ownership ownership) {
@@ -52,11 +53,12 @@ static ptrdiff_t ys_fp_read(void *context, char *buffer, size_t size) {
     }
 }
 
-// And closing a FILE * likewise, so the readers and the writers share that too. A write stream's close error would be
-// actionable, being where a buffered write finally fails — but neither ys_free_parser() nor ys_close_writer() has
-// anywhere to report it, so it goes the way of the reader's.
-static void ys_fp_close(void *context) {
-    (void)fclose(context);
+// And closing a FILE * likewise, so the readers and the writers share that too. fclose answers 0 or EOF rather than 0
+// or -1, and EOF is only some negative value, so the two are not the same answer and this says so. It matters most for
+// a writer: fwrite buffers, so the bytes reach the disk at the flush a close performs, and a full disk is discovered
+// here — long after every ys_write_token() has returned true.
+static int ys_fp_close(void *context) {
+    return fclose(context) == 0 ? 0 : -1;
 }
 
 ys_reader ys_fp_reader(FILE *file, ys_ownership ownership) {
@@ -98,9 +100,7 @@ ys_writer ys_fp_writer(FILE *file, ys_ownership ownership) {
     return writer;
 }
 
-void ys_close_writer(ys_writer *writer) {
-    if (writer->close != NULL) {
-        writer->close(writer->context);
-        writer->close = NULL;
-    }
+int ys_close_writer(ys_writer *writer) {
+    // A writer that borrows what it writes to has nothing to close, and cannot fail here.
+    return writer->close != NULL ? writer->close(writer->context) : 0;
 }

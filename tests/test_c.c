@@ -64,10 +64,11 @@ static void test_stream_parser(void) {
 
 static bool is_closed;
 
-static void note_close(void *context) {
+static int note_close(void *context) {
     (void)context;
     is_closed = true;
     errno = EIO; // a close can fail, and its errno must not overwrite the reason construction failed
+    return -1;
 }
 
 static void *failing_allocate(void *context, size_t size) {
@@ -79,7 +80,7 @@ static void *failing_allocate(void *context, size_t size) {
 
 // An allocator that refuses reports ENOMEM, and the constructor passes it through rather than inventing its own.
 static void test_alloc_failure(void) {
-    ys_allocator allocator = {failing_allocate, NULL, NULL, NULL};
+    ys_allocator allocator = {failing_allocate, NULL, NULL, NULL, NULL};
     ys_options options = {allocator, YS_RESUME_NONE, 0};
 
     errno = 0;
@@ -128,6 +129,80 @@ static void test_free_null(void) {
     ys_free_parser(NULL);             // no-op
     ys_free_counting_allocator(NULL); // no-op
     TEST_CHECK(true);
+}
+
+static ptrdiff_t read_nothing(void *context, char *buffer, size_t size) {
+    (void)context;
+    (void)buffer;
+    (void)size;
+    return 0; // an empty input, which is a valid one
+}
+
+// Freeing reports its reader's close: a buffered close is where a failure surfaces, so a free returns -1 with the
+// close's errno rather than swallowing it. The default allocator has no close, so the reader is the only thing that can
+// fail, and -1 is its -1.
+static void test_free_reports_close_failure(void) {
+    ys_reader owned = {read_nothing, note_close, NULL}; // its close fails with EIO
+
+    ys_parser *parser = ys_new_stream_parser(owned, NULL);
+    TEST_ASSERT(parser != NULL);
+    is_closed = false;
+    errno = 0;
+    TEST_CHECK(ys_free_parser(parser) == -1); // the reader's close failed
+    TEST_CHECK(is_closed);
+    TEST_CHECK(errno == EIO); // and its reason is what stands
+    TEST_MSG("freeing a parser left errno at %d, not EIO", errno);
+
+    ys_token_reader *tokens = ys_new_token_reader(owned, NULL);
+    TEST_ASSERT(tokens != NULL);
+    ys_token token;
+    TEST_CHECK(!ys_read_token(tokens, &token)); // an empty wire ends at once; the read is what reaches the reader
+    is_closed = false;
+    errno = 0;
+    TEST_CHECK(ys_free_token_reader(tokens) == -1);
+    TEST_CHECK(is_closed);
+    TEST_CHECK(errno == EIO);
+    TEST_MSG("freeing a token reader left errno at %d, not EIO", errno);
+}
+
+static int allocator_close_fails(void *context) {
+    (void)context;
+    errno = ENOSPC;
+    return -1;
+}
+
+// The two failures a free can carry beyond the reader's: the allocator's close alone is -2, and both together are -3,
+// where errno holds the reader's — the first — and the return says the allocator's happened as well. The allocator is
+// the counting one with its close swapped for a failing one, so the memory is really given back before the close fails.
+static void test_free_reports_both_closes(void) {
+    ys_counting_allocator *counter = ys_new_counting_allocator();
+    TEST_ASSERT(counter != NULL);
+    ys_allocator allocator = ys_counting_allocator_functions(counter);
+    allocator.close = allocator_close_fails;
+    ys_options options = {allocator, YS_RESUME_NONE, 0};
+
+    // A string parser has no reader to close, so only the allocator's close can fail: -2, and its errno stands.
+    ys_parser *string = ys_new_string_parser("a: 1\n", 5, &options);
+    TEST_ASSERT(string != NULL);
+    errno = 0;
+    TEST_CHECK(ys_free_parser(string) == -2);
+    TEST_CHECK(errno == ENOSPC);
+    TEST_MSG("the allocator's close alone left errno at %d, not ENOSPC", errno);
+
+    // A stream parser with a failing reader close and this allocator fails both ways: -3, errno the reader's, the
+    // first.
+    ys_reader owned = {read_nothing, note_close, NULL}; // its close fails with EIO
+    ys_parser *stream = ys_new_stream_parser(owned, &options);
+    TEST_ASSERT(stream != NULL);
+    is_closed = false;
+    errno = 0;
+    TEST_CHECK(ys_free_parser(stream) == -3);
+    TEST_CHECK(is_closed);
+    TEST_CHECK(errno == EIO); // the reader's, since both failed and it is the first
+    TEST_MSG("both closes failing left errno at %d, not EIO", errno);
+
+    TEST_CHECK(ys_counting_allocator_live_buffers(counter) == 0); // both frees gave everything back
+    ys_free_counting_allocator(counter);
 }
 
 static void test_fp_reader(void) {
@@ -190,6 +265,32 @@ static void test_counting_allocator(void) {
     allocator.deallocate(allocator.context, first);
     TEST_CHECK(ys_counting_allocator_live_buffers(counter) == 0);
 
+    // The close ys_counting_allocator_functions() installs, called directly: nothing is live, so it is content.
+    TEST_CHECK(ys_counting_allocator_check(counter) == 0);
+
+    ys_free_counting_allocator(counter);
+}
+
+// One counter serving more than one parser: the installed close would fire when the first is freed, while the second's
+// buffers are still legitimately live. So a shared counter sets close to NULL and is checked by hand once all of them
+// are gone — the count means nothing until then anyway.
+static void test_counting_allocator_shared(void) {
+    ys_counting_allocator *counter = ys_new_counting_allocator();
+    TEST_ASSERT(counter != NULL);
+    ys_allocator allocator = ys_counting_allocator_functions(counter);
+    allocator.close = NULL; // reused, so it is not the freeing of any one parser that checks it
+    ys_options options = {allocator, YS_RESUME_NONE, 0};
+
+    ys_parser *first = ys_new_string_parser("a: 1\n", 5, &options);
+    ys_parser *second = ys_new_string_parser("b: 2\n", 5, &options);
+    TEST_ASSERT(first != NULL && second != NULL);
+    TEST_CHECK(ys_counting_allocator_live_buffers(counter) == 2); // both live at once
+
+    TEST_CHECK(ys_free_parser(first) == 0); // no close fired, so nothing asserted the other's buffers were a leak
+    TEST_CHECK(ys_counting_allocator_live_buffers(counter) == 1);
+    TEST_CHECK(ys_free_parser(second) == 0);
+
+    TEST_CHECK(ys_counting_allocator_check(counter) == 0); // now, and only now, the count is meant to be zero
     ys_free_counting_allocator(counter);
 }
 
@@ -437,7 +538,7 @@ static ptrdiff_t drip_source_read(void *context, char *bytes, size_t size) {
 // the caller is left with nothing to free it with — so the constructor closes it itself. And the memory failure's
 // ENOMEM survives the close, which set its own errno.
 static void test_owned_reader_is_closed_when_construction_fails(void) {
-    ys_options tiny = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 8}; // smaller than either object
+    ys_options tiny = {{0}, YS_RESUME_NONE, 8}; // smaller than either object
     wire_buffer wire = {{0}, 0, 0};
     ys_reader reader = {wire_read, note_close, &wire}; // it is never read from: there is nothing to read it into
 
@@ -653,9 +754,7 @@ static void test_fp_writer(void) {
         char buffer[8];
         TEST_CHECK(fread(buffer, 1, sizeof(buffer), file) == 2);
         TEST_CHECK(memcmp(buffer, "hi", 2) == 0);
-        ys_close_writer(&writer);
-        TEST_CHECK(writer.close == NULL); // closing twice is not closing twice
-        ys_close_writer(&writer);
+        TEST_CHECK(ys_close_writer(&writer) == 0); // the flush succeeded, so the close did
     }
 
     ys_writer borrowed = ys_fp_writer(stdout, YS_BORROW);
@@ -714,10 +813,10 @@ static void test_wire_memory_cap(void) {
     memcpy(wire.bytes, line, wire.size);
     ys_reader reader = {wire_read, NULL, &wire};
 
-    ys_options tiny = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 8}; // smaller than the reader itself
+    ys_options tiny = {{0}, YS_RESUME_NONE, 8}; // smaller than the reader itself
     TEST_CHECK(ys_new_token_reader(reader, &tiny) == NULL);
 
-    ys_options capped = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 512}; // room for the reader, none for a buffer
+    ys_options capped = {{0}, YS_RESUME_NONE, 512}; // room for the reader, none for a buffer
     ys_token_reader *tokens = ys_new_token_reader(reader, &capped);
     TEST_ASSERT(tokens != NULL);
 
@@ -753,7 +852,7 @@ static void test_wire_text_out_of_memory(void) {
     memcpy(wire.bytes, written, wire.size);
 
     buffers_left = 1; // enough for the line buffer, and nothing left for the text
-    ys_allocator allocator = {NULL, counted_reallocate, NULL, NULL};
+    ys_allocator allocator = {NULL, counted_reallocate, NULL, NULL, NULL};
     ys_options options = {allocator, YS_RESUME_NONE, 0};
     ys_reader reader = {wire_read, NULL, &wire};
     ys_token_reader *tokens = ys_new_token_reader(reader, &options);
@@ -777,7 +876,7 @@ static void test_wire_terminator_out_of_memory(void) {
     memcpy(wire.bytes, written, wire.size);
 
     buffers_left = 1; // enough for the line buffer, and nothing left for the terminator
-    ys_allocator allocator = {NULL, counted_reallocate, NULL, NULL};
+    ys_allocator allocator = {NULL, counted_reallocate, NULL, NULL, NULL};
     ys_options options = {allocator, YS_RESUME_NONE, 0};
     ys_reader reader = {wire_read, NULL, &wire};
     ys_token_reader *tokens = ys_new_token_reader(reader, &options);
@@ -824,7 +923,7 @@ static ptrdiff_t wire_stream_read(void *context, char *bytes, size_t size) {
 // would pass in a moment — and it is a stream, so the cap is the whole point.
 static void test_wire_long_stream(void) {
     wire_stream stream = {2000, {0}, 0, 0};
-    ys_options options = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 16384};
+    ys_options options = {{0}, YS_RESUME_NONE, 16384};
     ys_reader reader = {wire_stream_read, NULL, &stream};
     ys_token_reader *tokens = ys_new_token_reader(reader, &options);
     TEST_ASSERT(tokens != NULL);
@@ -887,6 +986,8 @@ TEST_LIST = {
     {"bad_arguments", test_bad_arguments},
     {"owned_reader_is_closed_when_construction_fails", test_owned_reader_is_closed_when_construction_fails},
     {"free_null", test_free_null},
+    {"free_reports_close_failure", test_free_reports_close_failure},
+    {"free_reports_both_closes", test_free_reports_both_closes},
     {"fp_reader", test_fp_reader},
     {"fp_writer", test_fp_writer},
 #ifndef _WIN32
@@ -894,5 +995,6 @@ TEST_LIST = {
     {"fd_writer", test_fd_writer},
 #endif
     {"counting_allocator", test_counting_allocator},
+    {"counting_allocator_shared", test_counting_allocator_shared},
     {NULL, NULL},
 };

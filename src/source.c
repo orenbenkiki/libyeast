@@ -31,14 +31,35 @@ ys_fill ys_source_fill(ys_source *source, ys_memory *memory, size_t used, size_t
     return YS_FILL_READ;
 }
 
-void ys_close_reader(ys_reader reader) {
-    if (reader.close != NULL) {
-        int saved_errno = errno;
-        reader.close(reader.context);
-        errno = saved_errno;
-    }
+int ys_close_reader(ys_reader reader) {
+    return reader.close != NULL ? reader.close(reader.context) : 0;
 }
 
-void ys_source_free(ys_source *source, const ys_allocator *allocator) {
-    ys_deallocate(allocator, source->bytes);
+void ys_discard_reader(ys_reader reader) {
+    int saved_errno = errno;
+    (void)ys_close_reader(reader);
+    errno = saved_errno;
+}
+
+int ys_teardown(ys_reader reader, ys_allocator allocator, void *const *buffers, size_t count) {
+    int saved_errno = errno;
+    int result = 0;
+    if (ys_close_reader(reader) != 0) {
+        result = -1;
+        saved_errno = errno;
+    }
+
+    // A deallocation cannot fail, but may set errno all the same, so the reason for the failure is carried across them.
+    for (size_t index = 0; index < count; index++) {
+        ys_deallocate(&allocator, buffers[index]);
+    }
+
+    if (ys_close_allocator(&allocator) != 0) {
+        if (result == 0) {
+            saved_errno = errno;
+        }
+        result -= 2;
+    }
+    errno = saved_errno;
+    return result;
 }

@@ -25,7 +25,7 @@ static void test_deallocate(void *context, void *pointer) {
 }
 
 static ys_allocator ungrowable_allocator(void) {
-    ys_allocator allocator = {test_allocate, test_refuse_to_grow, test_deallocate, NULL};
+    ys_allocator allocator = {test_allocate, test_refuse_to_grow, test_deallocate, NULL, NULL};
     return allocator;
 }
 
@@ -37,17 +37,17 @@ static ys_mark mark_of(size_t byte_offset, size_t column) {
 // The cap counts what an object allocates for itself, and refuses what would pass it. A cap it cannot even be built
 // under refuses it outright, rather than leaving it to fail at its first allocation.
 static void test_memory_cap(void) {
-    ys_memory memory = {{NULL, NULL, NULL, NULL}, 100, 0};
+    ys_memory memory = {{0}, 100, 0};
     TEST_CHECK(ys_memory_reserve(&memory, 60));
     TEST_CHECK(memory.allocated_bytes == 60);
     TEST_CHECK(!ys_memory_reserve(&memory, 41)); // one byte past the cap
     TEST_CHECK(memory.allocated_bytes == 60);    // and a refusal charges nothing
     TEST_CHECK(ys_memory_reserve(&memory, 40));  // exactly the cap is within it
 
-    ys_memory uncapped = {{NULL, NULL, NULL, NULL}, 0, 0};
+    ys_memory uncapped = {{0}, 0, 0};
     TEST_CHECK(ys_memory_reserve(&uncapped, SIZE_MAX / 2)); // 0 is no cap at all
 
-    ys_options tight = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 4};
+    ys_options tight = {{0}, YS_RESUME_NONE, 4};
     ys_memory built;
     TEST_CHECK(ys_memory_new(&built, &tight, 64) == NULL); // no room for the object itself
 
@@ -60,7 +60,7 @@ static void test_memory_cap(void) {
 
 // Growing doubles, never falls below the first block, charges the cap, and leaves the array alone when it cannot.
 static void test_memory_grow(void) {
-    ys_memory memory = {{NULL, NULL, NULL, NULL}, 0, 0};
+    ys_memory memory = {{0}, 0, 0};
     size_t capacity = 0;
 
     int *items = ys_memory_grow(&memory, NULL, &capacity, 1, 4, sizeof(int)); // the first block, not the one wanted
@@ -83,7 +83,7 @@ static void test_memory_grow(void) {
     TEST_ASSERT(items != NULL);
     TEST_CHECK(capacity == 100);
 
-    ys_memory capped = {{NULL, NULL, NULL, NULL}, 8, 0};
+    ys_memory capped = {{0}, 8, 0};
     size_t narrow = 0;
     TEST_CHECK(ys_memory_grow(&capped, NULL, &narrow, 100, 4, sizeof(int)) == NULL); // the cap refuses
     TEST_CHECK(narrow == 0);
@@ -242,7 +242,7 @@ static void test_window_out_of_memory_halts(void) {
 // given something valid to read, since a constructor rejects a bad argument before it ever consults the cap, and a
 // refusal for that reason would prove nothing about this one: `errno` is what tells the two apart.
 static void test_cap_below_the_parser(void) {
-    ys_options options = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 1};
+    ys_options options = {{0}, YS_RESUME_NONE, 1};
 
     errno = 0;
     TEST_CHECK(ys_new_string_parser("x", 1, &options) == NULL);
