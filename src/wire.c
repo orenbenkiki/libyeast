@@ -17,6 +17,10 @@
 
 // The character each code is written as. The three failures share '!': a consumer of the wire has no choice to make
 // between them, since either unparsed tokens follow or the stream ends, and the message says which it was.
+//
+// Every one of them is printable, which is what lets '\0' mean "the wire spells nothing for this" without the two ever
+// being confused: a line is NUL-terminated, so a code written as one would read back as an empty line rather than as
+// that code. `check_wire.py` holds the table to it, so the answer cannot quietly become a character somebody uses.
 static const char YS_WIRE[] = {
     [YS_CODE_BOM] = 'U',
     [YS_CODE_TEXT] = 'T',
@@ -70,7 +74,7 @@ static const char YS_WIRE[] = {
 
 char ys_code_char(ys_code code) {
     if ((size_t)code >= sizeof(YS_WIRE) / sizeof(YS_WIRE[0])) {
-        return '?'; // UNTESTED
+        return '\0';
     }
     return YS_WIRE[code];
 }
@@ -122,9 +126,16 @@ static unsigned long ys_codepoint(const unsigned char *bytes, size_t size, size_
 }
 
 bool ys_write_token(ys_writer *writer, ys_token token) {
+    // A code the wire spells nothing for is a bad argument, not a token to write: there is no character to say it with.
+    const char code_character = ys_code_char(token.code);
+    if (code_character == '\0') {
+        errno = EINVAL;
+        return false;
+    }
+
     char buffer[128];
     int written = snprintf(buffer, sizeof(buffer), "# B: %zu, C: %zu, L: %zu, c: %zu\n%c", token.start.byte_offset,
-                           token.start.char_offset, token.start.line, token.start.column, ys_code_char(token.code));
+                           token.start.char_offset, token.start.line, token.start.column, code_character);
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
         return false; // UNTESTED
     }

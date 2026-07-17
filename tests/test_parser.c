@@ -2,6 +2,7 @@
 #include "acutest.h"
 #include "messages.h"
 #include "parser.h"
+#include <errno.h>
 #include <string.h>
 
 // An allocator that hands out memory but refuses to grow it, so that every ys_memory_grow() failure path is reachable
@@ -237,11 +238,22 @@ static void test_window_out_of_memory_halts(void) {
     ys_free_parser(parser);
 }
 
-// A cap smaller than the parser itself refuses to build one at all.
+// A cap smaller than the parser itself refuses to build one at all — for either kind, and because of the cap. Both are
+// given something valid to read, since a constructor rejects a bad argument before it ever consults the cap, and a
+// refusal for that reason would prove nothing about this one: `errno` is what tells the two apart.
 static void test_cap_below_the_parser(void) {
     ys_options options = {{NULL, NULL, NULL, NULL}, YS_RESUME_NONE, 1};
+
+    errno = 0;
     TEST_CHECK(ys_new_string_parser("x", 1, &options) == NULL);
-    TEST_CHECK(ys_new_stream_parser((ys_reader){0}, &options) == NULL);
+    TEST_CHECK(errno == ENOMEM);
+    TEST_MSG("a string parser under a cap of one byte: errno is %d, not ENOMEM", errno);
+
+    drip source = {"x", 1, 0, false};
+    errno = 0;
+    TEST_CHECK(ys_new_stream_parser(drip_reader(&source), &options) == NULL);
+    TEST_CHECK(errno == ENOMEM);
+    TEST_MSG("a stream parser under a cap of one byte: errno is %d, not ENOMEM", errno);
 }
 
 // Tokens come back in the order they were emitted, and each carries the bytes it spans. A zero-width marker carries

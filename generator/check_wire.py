@@ -34,6 +34,11 @@ def main():
         in_python = wire.CODE_CHAR.get(code)
         if in_c != in_python:
             errors.append(f"{code}: wire.c says {in_c!r}, wire.py says {in_python!r}")
+        # `ys_code_char` answers '\0' where the wire spells nothing, and a line is NUL-terminated, so a code written as
+        # one would read back as an empty line. Every character being printable is what keeps the two apart, and is
+        # what a wire being text means in the first place.
+        if in_c is not None and not 0x21 <= ord(in_c) <= 0x7E:
+            errors.append(f"{code}: is written {in_c!r}, which is not a printable character a wire can carry")
 
     gate.report(
         errors, "code(s) that differ between wire.c and wire.py", f"wire code map: {len(wire.CODE_CHAR)} codes agree"

@@ -63,7 +63,12 @@ All notable changes to this project are documented here. The format follows
   default, so the cost was a denial of service against the format's own purpose. The reader also refuses a position a
   token cannot start at — one it can read, but whose own text carries the end of it past where counting stops and back
   around, so that a caller comparing or slicing the two marks would be handed a span running backwards. It is the same
-  fault as a position too large to read at all, found one step later, and says so.
+  fault as a position too large to read at all, found one step later, and says so. A code the wire spells nothing for is
+  the last of the bad arguments it took: it wrote the code character out unchecked, so `YS_CODE_WIRE_ERROR` — a code no
+  wire carries — wrote a line no reader could read back, and `EINVAL` covers it now. `ys_code_char` answers `'\0'` there
+  rather than `'?'`, which was safe only for as long as nothing claimed `?` as a code. Nothing can claim `'\0'`: a line
+  is NUL-terminated, so a code written as one would read back as an empty line, and `check_wire.py` holds every
+  character in the table to being printable, which is what a wire being text meant all along.
 
 - Errors tell the caller what to do about them. A malformed document is `YS_CODE_ERROR_FORMAT`, running out of memory is
   `YS_CODE_ERROR_MEMORY`, and a reader that fails is `YS_CODE_ERROR_READER`; the last two end the parse for good — the

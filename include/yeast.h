@@ -203,7 +203,10 @@ typedef enum ys_code {
 /// @ref YS_CODE_UNPARSED_TEXT tokens follow or the stream ends. The message says which it was.
 ///
 /// @param code the token code.
-/// @return its wire character, or `?` if @p code is not a code.
+/// @return its wire character, or `'\0'` where the wire spells nothing: a value that is not a code at all, and
+/// @ref YS_CODE_WIRE_ERROR, which is one but which no wire carries and no writer emits. Every character a wire does
+/// carry is printable, so `'\0'` can never be one of them — a line is NUL-terminated, and a code written as one would
+/// read back as an empty line.
 YS_API char ys_code_char(ys_code code);
 
 /// The code a yeast wire character stands for — the inverse of ys_code_char(), as far as it has one.
@@ -314,7 +317,8 @@ YS_API void ys_close_writer(ys_writer *writer);
 /// @param writer where to write.
 /// @param token the token to write.
 /// @return true if it was written; false if the writer failed, in which case `errno` is what the writer's `write`
-/// callback set.
+/// callback set, or `EINVAL` if the token cannot be written at all: a code the wire spells nothing for, or text whose
+/// bytes are not what @p token's code says they are.
 YS_API bool ys_write_token(ys_writer *writer, ys_token token);
 
 /// A custom allocator. Each callback that is NULL falls back individually to its C counterpart, so a zeroed struct

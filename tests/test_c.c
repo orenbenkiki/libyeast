@@ -198,7 +198,7 @@ static void test_counting_allocator(void) {
 static void test_wire_codes(void) {
     for (int code = YS_CODE_BOM; code <= YS_CODE_DETECTED; code++) {
         char character = ys_code_char((ys_code)code);
-        TEST_CHECK(character != '?');
+        TEST_CHECK(character != '\0');
         TEST_MSG("code %d has no wire character", code);
 
         ys_code read_back;
@@ -213,6 +213,12 @@ static void test_wire_codes(void) {
     }
     ys_code code;
     TEST_CHECK(!ys_code_of_char('@', &code)); // not a wire character
+
+    // '\0' is the answer where the wire spells nothing, and the loop above leans on it as its sentinel — so it has to
+    // be shown to be produced, or the loop proves nothing by never seeing it. YS_CODE_WIRE_ERROR is the one code that
+    // asks for it: a value ys_code holds, so asking is defined, but one no wire carries and no writer emits.
+    TEST_CHECK(ys_code_char(YS_CODE_WIRE_ERROR) == '\0');
+    TEST_CHECK(!ys_code_of_char('\0', &code)); // and nothing reads it back
 }
 
 // A sink and a source over one buffer, so that the wire tests need no file — and so that they exercise the ys_writer
@@ -386,6 +392,26 @@ static void test_wire_refuses_well_formed_invalid_text(void) {
         TEST_MSG("%s: errno is %d, not EINVAL", cases[index].name, errno);
         ys_close_writer(&writer);
     }
+}
+
+// A code the wire spells nothing for cannot be written, and saying so is the whole use of '\0': there is no character
+// to write the token with, so the writer refuses rather than emitting a line no reader could read back.
+static void test_wire_refuses_a_code_it_cannot_spell(void) {
+    // YS_CODE_WIRE_ERROR is the only code that asks this of a writer. A value ys_code does not hold would too, but
+    // handing one over is undefined, so a test that did could not tell what it proved.
+    wire_buffer wire = {{0}, 0, 0};
+    ys_writer writer = {wire_write, NULL, &wire};
+    ys_token token = {.code = YS_CODE_WIRE_ERROR, .text = ""};
+    token.start = (ys_mark){0, 0, 1, 0};
+    token.end = token.start;
+
+    errno = 0;
+    TEST_CHECK(!ys_write_token(&writer, token));
+    TEST_CHECK(errno == EINVAL);
+    TEST_MSG("errno is %d, not EINVAL", errno);
+    TEST_CHECK(wire.size == 0); // and nothing of it reached the wire
+    TEST_MSG("wrote %zu byte(s) of a token it refused", wire.size);
+    ys_close_writer(&writer);
 }
 
 // A source that hands out so many bytes and then reports a failure, rather than an end.
@@ -849,6 +875,7 @@ TEST_LIST = {
     {"wire_empty_error_text", test_wire_empty_error_text},
     {"wire_refuses_ill_formed_text", test_wire_refuses_ill_formed_text},
     {"wire_refuses_well_formed_invalid_text", test_wire_refuses_well_formed_invalid_text},
+    {"wire_refuses_a_code_it_cannot_spell", test_wire_refuses_a_code_it_cannot_spell},
     {"wire_rejects_rubbish", test_wire_rejects_rubbish},
     {"wire_odds_and_ends", test_wire_odds_and_ends},
     {"wire_memory_cap", test_wire_memory_cap},
