@@ -188,14 +188,14 @@ yaml-grammar harness against our IR, and the hand-off into `grammar2parser.py`. 
 
 ### Phase 01 — The reference interpreter · the grammar's executor, and the project's oracle
 
-**Done.** `generator/interpreter.py` runs a production against an input and emits its yeast tokens, and every node
-family is matched — the character-level nodes, the annotations, the repetitions, the parameters threading
-`n`/`m`/`c`/`t` and now `r`, and the assertions and lookahead. It backtracks in the continuation-passing style, so an
-alternation is re-entered when a later element fails, as the reference does. `tests/spec/` holds 650 input/output pairs,
-each named `production[.n=N][.c=C][.t=T][.r=R].case`, and the interpreter reproduces every one of them —
-`l-yeast-stream`, both resume policies, and the malformed inputs included — token for token, with nothing pending. It is
-checked by *reading* fixtures and diffing, never by compiling or running Haskell; and being per-production they gave a
-bottom-up build order for free. `DESIGN.md` says where each piece lives; `CHANGELOG.md` records what it is.
+`generator/interpreter.py` runs a production against an input and emits its yeast tokens, and every node family is
+matched — the character-level nodes, the annotations, the repetitions, the parameters threading `n`/`m`/`c`/`t` and now
+`r`, and the assertions and lookahead. It backtracks in the continuation-passing style, so an alternation is re-entered
+when a later element fails, as the reference does. `tests/spec/` holds 650 input/output pairs, each named
+`production[.n=N][.c=C][.t=T][.r=R].case`, and the interpreter reproduces every one of them — `l-yeast-stream`, both
+resume policies, and the malformed inputs included — token for token, with nothing pending. It is checked by *reading*
+fixtures and diffing, never by compiling or running Haskell; and being per-production they gave a bottom-up build order
+for free. `DESIGN.md` says where each piece lives; `CHANGELOG.md` records what it is.
 
 What that phase taught, which the rest of this plan is written against: **a rule that cannot fail is not the same as a
 rule that is total.** Every part of the spec's `l-yaml-stream` is optional, so on input that is no stream at all it
@@ -205,10 +205,51 @@ markers it opened, or the fold has nothing to stand on and a resumed document pa
 rather than its sibling. Neither the marker gate nor the fixtures caught either, both being about the clean path — what
 a parser does when it is *wrong* needs its own rules and its own fixtures.
 
-Still to be scoped, when something needs it: `YS_RESUME_INDENT` (§6), the third resume policy, which is the reason the
-close-what-you-opened mechanism is worth having rather than merely correct — resuming at a less-indented line means
-closing *some* of what is open rather than all of it, and the machinery is the same. The interpreter's committed mode is
-phase 03's, where the grammar it judges is the one that has been transformed.
+**What is left is the last resume policy, `r=i` — `YS_RESUME_INDENT`.** `r=d` says a malformed document does not cost
+the caller the others; `r=i` says a malformed *node* does not cost the caller the rest of its own document. A container
+whose entry is malformed loses that entry and keeps the rest, which is what makes it worth having and what decides every
+question below.
+
+The three policies are one hierarchy, each adding a place the skip stops, so `r=i` can never do worse than `r=d`:
+
+```
+r=n   nothing                                -> the rest of the input comes back unparsed
+r=d   c-forbidden                            -> ...or stop at the next --- or ...
+r=i   c-forbidden | s-indent-le-line(n)      -> ...or at the next line not indented past n
+```
+
+- **`l-unparsed` gains the indentation it is bounded by** — `l-unparsed(n, r)` — and its `(case)` on `r` gains an `"i"`
+  branch excluding both guards at once. `c-forbidden` is not redundant there: `s-indent-le` cannot fire at `n < 0`, so
+  without it a skip bounded by nothing would run straight past a document marker. Where nothing encloses the failure the
+  indent guard is dead and `r=i` *is* `r=d`, which is the right degeneration.
+- **`s-indent-le-line(n)`** is the new predicate: `<start-of-line>`, `s-indent-le(n)`, and a lookahead for
+  `ns-char - c-comment`. That lookahead does three jobs and none is optional. It pins the backtracking — `s-indent-le`
+  is a bound over `(***) s-space`, so on a four-space line it will happily match one space and succeed; requiring
+  content immediately after forces it to have measured the line's *whole* indentation. It keeps a blank or spaces-only
+  line from being a boundary, such a line having no indentation of its own. And it keeps a comment line from being one,
+  `#` being an `ns-char` that may sit at any column and says nothing about structure.
+- **`le`, not `lt` and not `eq`.** A sibling entry sits at exactly the container's indentation, so `lt` skips it — the
+  one thing `r=i` exists to prevent. `eq` stops at the sibling but sails past the line that *ends* the container, so a
+  container whose last entry is malformed would eat the rest of the document hunting for a sibling that never comes.
+  `le` stops at both and lets the container's own `(+++)` say which it was: `s-indent(n+m)` matches and the loop takes
+  the next entry, or fails and the loop ends, `end-mapping` is emitted, and whatever encloses it carries on.
+- **`(recover)` is the node this needs**, and the first thing to. `l+block-mapping` and `l+block-sequence` wrap their
+  entry in one, naming the level it is bounded by — the `n+m` they already computed — so nothing has to recover an
+  indentation from the runtime. A failure inside emits the error, closes the markers the entry opened **down to the
+  recovery point's depth and no further**, skips, and matches: the `(+++)` then takes its next turn, in the same
+  container, under the same `begin-mapping`. This is what "closing some of what is open" was for, and why closing
+  everything had to exist first.
+- **Flow collections get no recovery point.** Recovery is by indentation and a flow node is one level of it, so there is
+  nothing inside one to resume at: a malformed flow node dies whole and the container holding it recovers at its own
+  entry. Not an exception — the principle.
+- **The root keeps its own recovery**, for a cut that unwinds past every container: `l-recover(-1, r)`, no enclosing
+  indentation, nothing to bound by.
+
+Two obligations. `r=n` and `r=d` stay byte-identical — 650 fixtures say so. And every rule this adds is a decision like
+any other, so the coverage gate holds it to being matched *and* rejected, and `s-indent-le-line`'s own boundary cases —
+sibling, nested, container-ending, comment, blank — are what its fixtures are for.
+
+The interpreter's committed mode is phase 03's, where the grammar it judges is the one that has been transformed.
 
 ### Phase 02 — Differential oracles · The broader nets around the token fixtures
 
@@ -434,10 +475,6 @@ robustness under hostile input.
 ## §6 — Future work
 
 Wanted, but not planned, and not on the way to anything else:
-
-- **`YS_RESUME_INDENT`** — resume after a malformed document at the next less-indented line, bounding the error by the
-  document's own indentation rather than skipping to the next document wholesale. Finer-grained than
-  `YS_RESUME_DOCUMENT`, and harder: it needs the indentation stack to survive an error, which nothing else asks of it.
 
 - **Lenient wire positions** — treat a `#` line in the wire as a comment, not a required field. Where it carries a token
   position (`# B: …, C: …, L: …, c: …`), use it; where it does not, estimate the position from the tokens themselves
