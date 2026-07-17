@@ -12,8 +12,12 @@ All notable changes to this project are documented here. The format follows
   `make` gate, tests (acutest), coverage with a `// UNTESTED` contract, Doxygen docs with a completeness gate, and a
   package-consumption test.
 
-- Continuous integration: per-sub-gate GitHub Actions workflows (static quality, C tests, docs) with independent status
-  badges and CodeQL analysis, and published API docs plus an HTML coverage report on GitHub Pages.
+- Continuous integration: per-sub-gate GitHub Actions workflows — static quality, C tests, the generator pipeline, and
+  the docs — with independent status badges and CodeQL analysis, and published API docs plus an HTML coverage report on
+  GitHub Pages. Every one of them runs on a pull request as well as on `main`, so what `make pc` refuses locally cannot
+  land remotely. The docs workflow did not, and it is where the `// UNTESTED` coverage contract and the docs
+  completeness check live: a public symbol left undocumented, or an uncovered line left unannotated, failed only after
+  it had merged. Its build runs on a pull request now and only its deploy is `main`'s.
 
 - Version API: `ys_version`, `ys_major`, `ys_minor`, `ys_patch`.
 

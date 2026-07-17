@@ -68,7 +68,8 @@ work — build and test the C library (pure C, no Python), verify the generator 
 
 `make pc` is the incremental pre-commit gate: it runs `make all`, `make test`, `make verify`, `make vet`, and
 `make gh-pages` in that order, re-running only what changed. Four of those map to one CI workflow and one status badge
-each: `test`, `verify`, `vet`, `gh-pages`.
+each: `test`, `verify`, `vet`, `gh-pages`. Each runs on a pull request as well as on `main`, so the gate that refuses a
+change here refuses it there; only the publishing of the docs is `main`'s alone.
 
 - **`make all`** (the default) — build the shared + static libraries. Pure C, no Python.
 - **`make test`** — build and run the C parser tests. Pure C.

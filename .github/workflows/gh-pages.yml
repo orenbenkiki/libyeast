@@ -1,29 +1,31 @@
 name: gh-pages
 
-# Build the Doxygen API docs + gcovr coverage report and publish them to GitHub Pages on every push to main. Nothing
-# generated is committed to the repository.
+# Build the Doxygen API docs + gcovr coverage report, and publish them to GitHub Pages from main. Nothing generated is
+# committed to the repository.
+#
+# The build runs on a pull request too, because this sub-gate is where the `// UNTESTED` coverage contract and the docs
+# completeness check live: a change that leaves a public symbol undocumented, or an uncovered line unannotated, has to
+# fail before it lands rather than after. Only the deploy is main's.
 #
 # One-time repo setting: Settings -> Pages -> Source = GitHub Actions.
 
 on:
   push:
     branches: [main]
+  pull_request:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# One run per branch or pull request; a superseded one is cancelled. The deploy has a group of its own, since Pages
+# takes one deployment at a time whatever it came from.
 concurrency:
-  group: pages
+  group: gh-pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Update apt index
@@ -33,9 +35,25 @@ jobs:
       - name: Build docs + coverage report
         run: make gh-pages
       - name: Upload Pages artifact
+        if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v3
         with:
           path: build-gh-pages
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v4
