@@ -587,6 +587,10 @@ static void test_wire_rejects_rubbish(void) {
         {"# B: 0, C: 0, L: 0, c: 0\nT\xC3\xA9\n", "printable"},                 // a raw byte outside printable ASCII
         {"# B: -1, C: 0, L: 0, c: 0\nThello\n", "position"},                    // a position that is not a position
         {"# B: 99999999999999999999999999, C: 0, L: 0, c: 0\nT\n", "position"}, // a position too large to be one
+        // A position a token cannot start at: readable, but its own text carries the end of it past where counting
+        // stops and back around, so the marks would hand a caller a span running backwards.
+        {"# B: 18446744073709551615, C: 0, L: 1, c: 0\nThi\n", "position"},
+        {"# B: 0, C: 18446744073709551615, L: 1, c: 0\nThi\n", "position"},
     };
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {

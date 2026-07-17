@@ -56,7 +56,10 @@ All notable changes to this project are documented here. The format follows
   are together. The reader's search for a line's break resumes where the last one gave up rather than starting over, so
   a line arriving in pieces costs its length and not its length squared — 16MB on one line took 2.17s and takes 0.09s. A
   wire read from a pipe is what the format is for and is exactly what arrives in pieces, and `max_bytes` is unlimited by
-  default, so the cost was a denial of service against the format's own purpose.
+  default, so the cost was a denial of service against the format's own purpose. The reader also refuses a position a
+  token cannot start at — one it can read, but whose own text carries the end of it past where counting stops and back
+  around, so that a caller comparing or slicing the two marks would be handed a span running backwards. It is the same
+  fault as a position too large to read at all, found one step later, and says so.
 
 - Errors tell the caller what to do about them. A malformed document is `YS_CODE_ERROR_FORMAT`, running out of memory is
   `YS_CODE_ERROR_MEMORY`, and a reader that fails is `YS_CODE_ERROR_READER`; the last two end the parse for good — the

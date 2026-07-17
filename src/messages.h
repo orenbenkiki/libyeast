@@ -10,8 +10,9 @@
 // language.
 //
 // These are the messages that do not depend on the grammar. The ones that do — the production the parser was inside and
-// what it expected there — are a table of their own, generated into parser_tables.h and indexed by the automaton's
-// state. A translation replaces both, and nothing else.
+// what it expected there — are `grammar/messages.yaml`'s, named by the `(cut)` or `(error)` that reports them, and will
+// be a table of their own once there is an automaton to index it by state. A translation replaces both, and nothing
+// else.
 typedef enum ys_message_id {
     YS_MESSAGE_NOT_IMPLEMENTED,
     YS_MESSAGE_OUT_OF_MEMORY,

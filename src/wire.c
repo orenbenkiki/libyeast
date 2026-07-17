@@ -488,6 +488,13 @@ bool ys_read_token(ys_token_reader *reader, ys_token *token) {
         // The code character is column 0 of this line, so the text — where the fault is — begins at column 1.
         return ys_wire_fault(reader, token, reader->wire_line, 1 + fault_at, why);
     }
+    if (end.byte_offset < start.byte_offset || end.char_offset < start.char_offset || end.line < start.line) {
+        // The position was a number `strtoul` could read but not one a token can start at: its own text carries the end
+        // of it past where counting stops and back around. A caller told the two marks would hand out a span of nothing
+        // or of everything, so this is the position line being wrong rather than the text — the same fault `ys_scan`
+        // reports when the number will not fit at all, found one step later.
+        return ys_wire_fault(reader, token, reader->wire_line - 1, 0, YS_MESSAGE_WIRE_BAD_POSITION);
+    }
 
     // Leave the text NUL-terminated. A leaf token's text is handed out as a span, but an error's is handed out as a
     // string — ys_write_token() takes its length with strlen — so the terminator must be there, and the buffer must
