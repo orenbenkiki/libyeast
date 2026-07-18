@@ -159,8 +159,8 @@ static ptrdiff_t drip_read(void *context, char *buffer, size_t size) {
     return 1;
 }
 
-static ys_reader drip_reader(drip *source) {
-    ys_reader reader = {drip_read, NULL, source};
+static ys_bytes_reader drip_reader(drip *source) {
+    ys_bytes_reader reader = {drip_read, NULL, source};
     return reader;
 }
 
@@ -212,7 +212,7 @@ static void test_window_compacts_to_the_queue(void) {
 }
 
 // A reader that fails ends the source: the fill records YS_FAILED_STREAM, ys_read_token() reports it once as a status
-// rather than a token, and the source answers YS_FAILED_EOF from then on.
+// rather than a token, and the source answers YS_FAILED_ACTION from then on.
 static void test_reader_failure_ends_the_source(void) {
     drip source = {"hello", 5, 0, true};
     ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), NULL);
@@ -226,7 +226,7 @@ static void test_reader_failure_ends_the_source(void) {
     ys_token token;
     TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_STREAM); // reported once
     TEST_CHECK(parser->is_done);
-    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_EOF); // and the source is spent thereafter
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_ACTION); // and the source is spent thereafter
 
     ys_delete_token_source(src);
 }
@@ -246,7 +246,7 @@ static void test_window_out_of_memory_ends_the_source(void) {
 
     ys_token token;
     TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_MEMORY);
-    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_EOF);
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_ACTION);
 
     ys_delete_token_source(src);
 }
@@ -425,7 +425,7 @@ static void test_error_behind_the_queue(void) {
     ys_delete_token_source(src);
 }
 
-// Handing back the end-of-stream token ends the source: the next read is YS_FAILED_EOF, the stream having closed.
+// Handing back the end-of-stream token ends the source: the next read is YS_FAILED_ACTION, the stream having closed.
 static void test_end_stream_ends_the_source(void) {
     ys_token_source *src = ys_new_yaml_memory_parser("", 0, NULL);
     TEST_ASSERT(src != NULL);
@@ -436,7 +436,7 @@ static void test_end_stream_ends_the_source(void) {
     TEST_CHECK(ys_read_token(src, &token) == YS_OK);
     TEST_CHECK(token.code == YS_CODE_END_STREAM);
     TEST_CHECK(parser->is_done); // the stream closed, so the source is spent
-    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_EOF);
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_ACTION);
 
     ys_delete_token_source(src);
 }

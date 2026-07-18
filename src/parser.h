@@ -188,8 +188,9 @@ typedef struct ys_parser {
 // The window's bytes and reader are the constructor's to set, string or stream.
 void ys_parser_init(ys_parser *parser, ys_memory memory, const ys_options *options);
 
-// Read the next token into `token`: 0 with it filled, -1 the reader failed, -2 the allocator did (with `errno` the
-// callback's), YS_FAILED_EOF with `errno` ENODATA once the stream has ended and been read past.
+// Read the next token into `token`: YS_OK with it filled, YS_FAILED_STREAM the reader failed, YS_FAILED_MEMORY the
+// allocator did (with `errno` the callback's), YS_FAILED_ACTION with `errno` ENODATA once the stream has ended and been
+// read past.
 int ys_parser_read(ys_parser *parser, ys_token *token);
 
 // Make at least `wanted` bytes readable, reading from the source if need be — so that the decoder never sees a

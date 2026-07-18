@@ -8,16 +8,16 @@
 #include <stdint.h>
 #include <yeast.h>
 
-// Bytes read from a ys_reader, and the buffer they land in. The parser reads its input through one of these, and so
-// does the reader of the yeast wire format. They had a buffer each, compacted and grown the same way — and one of them
-// had a check the other did not, which is why they now have it once.
+// Bytes read from a ys_bytes_reader, and the buffer they land in. The parser reads its input through one of these, and
+// so does the reader of the yeast wire format. They had a buffer each, compacted and grown the same way — and one of
+// them had a check the other did not, which is why they now have it once.
 typedef struct ys_source {
-    ys_reader reader; // where the bytes come from; its `read` is NULL when no more are coming
-    uint8_t *bytes;   // the buffer, which is the source's own; NULL until the first fill
-    size_t size;      // the readable bytes there are. They are in `bytes`, unless there is no reader — a string parser
-                      // reads the caller's buffer, which the source neither owns nor copies, and this is its length
-    size_t capacity;  // how many bytes `bytes` holds
-    bool is_at_end;   // the source has given everything it has
+    ys_bytes_reader reader; // where the bytes come from; its `read` is NULL when no more are coming
+    uint8_t *bytes;         // the buffer, which is the source's own; NULL until the first fill
+    size_t size;     // the readable bytes there are. They are in `bytes`, unless there is no reader — a string parser
+                     // reads the caller's buffer, which the source neither owns nor copies, and this is its length
+    size_t capacity; // how many bytes `bytes` holds
+    bool is_at_end;  // the source has given everything it has
 } ys_source;
 
 // How a fill went.
@@ -36,8 +36,8 @@ typedef enum ys_fill {
 // The `used` bytes are discarded whatever the outcome, so the caller advances past them either way.
 ys_fill ys_source_fill(ys_source *source, ys_memory *memory, size_t used, size_t spare);
 
-// Close a byte transport — a `ys_reader`'s or a `ys_writer`'s `close` callback and its `context` — if it has one: 0, or
-// -1 with errno set, which is what the callback answers. A transport with no close cannot fail.
+// Close a byte transport — a `ys_bytes_reader`'s or a `ys_bytes_writer`'s `close` callback and its `context` — if it
+// has one: 0, or -1 with errno set, which is what the callback answers. A transport with no close cannot fail.
 int ys_close_transport(int (*close)(void *), void *context);
 
 // Close a transport and discard whatever it says, preserving errno. For a constructor that is already failing: it has a

@@ -78,25 +78,21 @@ char ys_code_char(ys_code code) {
     return YS_WIRE[code];
 }
 
-bool ys_code_of_char(char character, ys_code *code) {
-    // '!' is the one error a wire carries, a malformed document, and reads back as YS_CODE_ERROR.
-    if (character == '!') {
-        *code = YS_CODE_ERROR;
-        return true;
-    }
+int ys_code_of_char(char character, ys_code *code) {
     for (size_t index = 0; index < sizeof(YS_WIRE) / sizeof(YS_WIRE[0]); index++) {
         if (YS_WIRE[index] == character && YS_WIRE[index] != '\0') {
             *code = (ys_code)index;
-            return true;
+            return YS_OK;
         }
     }
-    return false;
+    errno = EINVAL; // the character stands for no code
+    return YS_FAILED_ACTION;
 }
 
 // --- Writing a token. ---
 
 // Whether a whole buffer reached the writer. A short write is a failure: a half-written token is not a token.
-static bool ys_put(ys_writer *writer, const char *bytes, size_t size) {
+bool ys_put(ys_bytes_writer *writer, const char *bytes, size_t size) {
     while (size > 0) {
         ptrdiff_t written = writer->write(writer->context, bytes, size);
         if (written <= 0) {
@@ -124,24 +120,24 @@ static unsigned long ys_codepoint(const unsigned char *bytes, size_t size, size_
     return codepoint;
 }
 
-bool ys_wire_write(ys_writer *writer, ys_token token) {
+int ys_wire_write(ys_bytes_writer *writer, ys_token token) {
     // A code the wire spells nothing for is a bad argument, not a token to write: there is no character to say it with.
     // Every code the enum names has one, so this answers only an out-of-range code — which a test cannot hand over
     // without undefined behavior, and so which nothing here covers.
     const char code_character = ys_code_char(token.code);
     if (code_character == '\0') {
-        errno = EINVAL; // UNTESTED
-        return false;   // UNTESTED
+        errno = EINVAL;          // UNTESTED
+        return YS_FAILED_ACTION; // UNTESTED
     }
 
     char buffer[128];
     int written = snprintf(buffer, sizeof(buffer), "# B: %zu, C: %zu, L: %zu, c: %zu\n%c", token.start.byte_offset,
                            token.start.char_offset, token.start.line, token.start.column, code_character);
     if (written < 0 || (size_t)written >= sizeof(buffer)) {
-        return false; // UNTESTED
+        return YS_FAILED_STREAM; // UNTESTED
     }
     if (!ys_put(writer, buffer, (size_t)written)) {
-        return false; // UNTESTED
+        return YS_FAILED_STREAM; // UNTESTED
     }
 
     // The text is escaped by codepoint: printable ASCII other than a backslash stands for itself, and everything else
@@ -163,13 +159,13 @@ bool ys_wire_write(ys_writer *writer, ys_token token) {
         unsigned long codepoint = ys_codepoint(text + index, size - index, &length);
         if ((length == 0) == wants_characters) {
             errno = EINVAL;
-            return false;
+            return YS_FAILED_ACTION;
         }
         if (length == 0) {
             // A byte that begins no character: write the byte itself, which is what an escape says under this code.
             int escaped = snprintf(buffer, sizeof(buffer), "\\x%02x", text[index]);
             if (escaped < 0 || !ys_put(writer, buffer, (size_t)escaped)) {
-                return false; // UNTESTED
+                return YS_FAILED_STREAM; // UNTESTED
             }
             index += 1;
             continue;
@@ -178,7 +174,7 @@ bool ys_wire_write(ys_writer *writer, ys_token token) {
         if (codepoint >= ' ' && codepoint <= '~' && codepoint != '\\') {
             char character = (char)codepoint;
             if (!ys_put(writer, &character, 1)) {
-                return false; // UNTESTED
+                return YS_FAILED_STREAM; // UNTESTED
             }
         } else {
             int escaped;
@@ -190,11 +186,11 @@ bool ys_wire_write(ys_writer *writer, ys_token token) {
                 escaped = snprintf(buffer, sizeof(buffer), "\\U%08lx", codepoint);
             }
             if (escaped < 0 || !ys_put(writer, buffer, (size_t)escaped)) {
-                return false; // UNTESTED
+                return YS_FAILED_STREAM; // UNTESTED
             }
         }
     }
-    return ys_put(writer, "\n", 1);
+    return ys_put(writer, "\n", 1) ? YS_OK : YS_FAILED_STREAM;
 }
 
 // --- Reading a token back. ---
@@ -418,7 +414,7 @@ static int ys_wire_resource(ys_wire *reader) {
 int ys_wire_read(ys_wire *reader, ys_token *token) {
     if (reader->is_done) {
         errno = ENODATA; // the wire ended, or faulted, and is being read past
-        return YS_FAILED_EOF;
+        return YS_FAILED_ACTION;
     }
 
     size_t size = 0;
@@ -428,7 +424,7 @@ int ys_wire_read(ys_wire *reader, ys_token *token) {
             return ys_wire_resource(reader);
         }
         reader->is_done = true;
-        return YS_FAILED_EOF; // the wire simply ended
+        return YS_FAILED_ACTION; // the wire simply ended
     }
 
     // The first line holds the four marks; the second the code character and the escaped text.
@@ -447,7 +443,7 @@ int ys_wire_read(ys_wire *reader, ys_token *token) {
     if (size < 1) {
         return ys_wire_error(reader, token, reader->wire_line, 0, YS_MESSAGE_WIRE_TRUNCATED);
     }
-    if (!ys_code_of_char(line[0], &token->code)) {
+    if (ys_code_of_char(line[0], &token->code) != YS_OK) {
         return ys_wire_error(reader, token, reader->wire_line, 0, YS_MESSAGE_WIRE_BAD_CODE);
     }
 

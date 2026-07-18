@@ -10,19 +10,21 @@ its comments). The full public API surface is declared, but the parser core is n
 - **Public API** — `include/yeast.h`: the API surface and its behavioral contract, documented inline as Doxygen comments
   (published to GitHub Pages). The version query; the token-source surface — `ys_new_yaml_memory_parser` /
   `ys_new_yaml_stream_parser` / `ys_new_yeast_stream_reader` make a `ys_token_source`, `ys_read_token` pulls from it,
-  and `ys_delete_token_source` releases it — with `ys_fd_reader`/`ys_fp_reader` adapters; the yeast wire writer; a
-  pluggable allocator; and the `ys_counting_allocator` leak counter. An `int`-returning function reports a `ys_status`:
-  `YS_OK`, or a negative host failure with `errno` set.
+  and `ys_delete_token_source` releases it — with `ys_fd_reader`/`ys_fp_reader` adapters; the yeast wire writer and YAML
+  emitter; a pluggable allocator; and the `ys_counting_allocator` leak counter. An `int`-returning function reports a
+  `ys_status`: `YS_OK`, or a negative failure with `errno` set — `YS_FAILED_ACTION` where the call fails on its own
+  terms (nothing left to read, nothing writable), the others where a delegate under it does.
 - **Token source** — `src/token_source.h` and `src/token_source.c`: one `ys_token_source` over tokens however they are
   made — YAML parsed from memory or a stream, or a yeast wire replayed from a stream — so code over tokens runs the same
   whichever it is. It is a tagged union: the parser's arm and the wire's arm hold genuinely different state (a window,
   queue, stack and automaton against a line buffer), so only the kind is above them. `ys_read_token`,
   `ys_are_tokens_stable` and `ys_delete_token_source` dispatch on it.
 - **Token sink** — `src/token_sink.h` and `src/token_sink.c`: the mirror, a `ys_token_sink` over tokens however they are
-  consumed. One arm today — the yeast writer, which serializes tokens to a wire through a `ys_writer`; a YAML emitter
-  will add another, and code writing tokens will not know which took them. `ys_write_token` feeds it and
-  `ys_delete_token_sink` releases it, the delete flushing the byte transport — where a buffered write finally reaches
-  its destination, and so where a full disk is first seen.
+  consumed. Two arms — the yeast writer, which serializes tokens to a wire through a `ys_bytes_writer`, and the YAML
+  emitter, which writes the bytes each token spans so a wire replayed through it reconstructs the input the tokens came
+  from — and code writing tokens does not know which took them. `ys_write_token` feeds it and `ys_delete_token_sink`
+  releases it, the delete flushing the byte transport — where a buffered write finally reaches its destination, and so
+  where a full disk is first seen.
 - **Wire format** — `src/wire.c` and `src/wire.h`: the yeast wire format, one character and its escaped text per token,
   which the writer arm writes and a yeast-wire token source reads back with `ys_read_token` — together with the table
   that says which character each code is. That format is what a token stream is compared against the reference parser
@@ -32,15 +34,15 @@ its comments). The full public API surface is declared, but the parser core is n
 - **Memory** — `src/memory.h` and `src/memory.c`: allocation through a `ys_allocator`, and `ys_memory` — what an object
   may allocate and what it has. Everything that grows goes through it, so `ys_options::max_bytes` has exactly one door,
   and the parser and the wire-format reader are held to their cap by the same code rather than by two copies of it.
-- **Source** — `src/source.h` and `src/source.c`: bytes read from a `ys_reader`, and the buffer they land in. Compact to
-  what is still needed, grow only if that left no room, read into the tail. The parser reads its input through one of
-  these and so does the wire-format reader; they had one each, and the two drifted — one grew a buffer the size of the
-  whole stream and the other did not, one told a reader's failure from the end of the input and the other did not. That
-  is the argument for their having one.
+- **Source** — `src/source.h` and `src/source.c`: bytes read from a `ys_bytes_reader`, and the buffer they land in.
+  Compact to what is still needed, grow only if that left no room, read into the tail. The parser reads its input
+  through one of these and so does the wire-format reader; they had one each, and the two drifted — one grew a buffer
+  the size of the whole stream and the other did not, one told a reader's failure from the end of the input and the
+  other did not. That is the argument for their having one.
 - **Version** — `src/version.c`: the version query, and the load-time constructor that refuses a library built without a
   version at all. **Counting allocator** — `src/counting_allocator.c`: the leak counter. **Stream adapters** —
-  `src/streams.c`: the file-descriptor and `FILE *` adapters for `ys_reader` and `ys_writer`, which share a file because
-  they share the act of closing.
+  `src/streams.c`: the file-descriptor and `FILE *` adapters for `ys_bytes_reader` and `ys_bytes_writer`, which share a
+  file because they share the act of closing.
 - **Parser** — `src/parser.h` and `src/parser.c`: the parsing arm of a token source — its whole execution state, and the
   runtime that keeps it. A window over the input, a stack of the productions the parser is inside, a queue of the tokens
   it has built but not yet handed back, and the state it is in — none of it in the C call stack, which is what lets

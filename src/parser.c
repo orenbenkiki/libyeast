@@ -198,7 +198,7 @@ void ys_parser_init(ys_parser *parser, ys_memory memory, const ys_options *optio
 int ys_parser_read(ys_parser *parser, ys_token *token) {
     if (parser->is_done) {
         errno = ENODATA; // the stream ended, or the source faulted, and is being read past
-        return YS_FAILED_EOF;
+        return YS_FAILED_ACTION;
     }
 
     // The automaton is not generated yet, so there is nothing to step and every call fails the same way: a format

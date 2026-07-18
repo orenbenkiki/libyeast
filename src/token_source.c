@@ -41,7 +41,7 @@ ys_token_source *ys_new_yaml_memory_parser(const char *input, size_t length, con
     return source;
 }
 
-ys_token_source *ys_new_yaml_stream_parser(ys_reader reader, const ys_options *options) {
+ys_token_source *ys_new_yaml_stream_parser(ys_bytes_reader reader, const ys_options *options) {
     if (reader.read == NULL) {
         errno = EINVAL; // a reader with nothing to read from
         ys_discard_transport(reader.close, reader.context);
@@ -58,7 +58,7 @@ ys_token_source *ys_new_yaml_stream_parser(ys_reader reader, const ys_options *o
     return source;
 }
 
-ys_token_source *ys_new_yeast_stream_reader(ys_reader reader, const ys_options *options) {
+ys_token_source *ys_new_yeast_stream_reader(ys_bytes_reader reader, const ys_options *options) {
     if (reader.read == NULL) {
         errno = EINVAL; // a reader with nothing to read from
         ys_discard_transport(reader.close, reader.context);

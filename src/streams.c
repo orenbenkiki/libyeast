@@ -16,8 +16,8 @@
 #define YS_OS_CLOSE close
 #endif
 
-// The adapters that make a file descriptor or a FILE * into a ys_reader or a ys_writer. The descriptor or the stream is
-// stashed in the context, and the ownership picks whether the close callback is wired up at all.
+// The adapters that make a file descriptor or a FILE * into a ys_bytes_reader or a ys_bytes_writer. The descriptor or
+// the stream is stashed in the context, and the ownership picks whether the close callback is wired up at all.
 
 // --- Reading. ---
 
@@ -29,14 +29,14 @@ static ptrdiff_t ys_fd_read(void *context, char *buffer, size_t size) {
 }
 
 // Closing a descriptor is the same act whether it was read from or written to, so the readers and the writers share it,
-// and sharing it is why they share a file. close() already answers 0 or -1 with errno set, which is what a ys_reader's
-// and a ys_writer's close must answer, so there is nothing to translate.
+// and sharing it is why they share a file. close() already answers 0 or -1 with errno set, which is what a
+// ys_bytes_reader's and a ys_bytes_writer's close must answer, so there is nothing to translate.
 static int ys_fd_close(void *context) {
     return YS_OS_CLOSE((int)(intptr_t)context);
 }
 
-ys_reader ys_fd_reader(int fd, ys_ownership ownership) {
-    ys_reader reader;
+ys_bytes_reader ys_fd_reader(int fd, ys_ownership ownership) {
+    ys_bytes_reader reader;
     reader.read = ys_fd_read;
     reader.close = ownership == YS_OWN ? ys_fd_close : NULL;
     reader.context = (void *)(intptr_t)fd;
@@ -56,13 +56,13 @@ static ptrdiff_t ys_fp_read(void *context, char *buffer, size_t size) {
 // And closing a FILE * likewise, so the readers and the writers share that too. fclose answers 0 or EOF rather than 0
 // or -1, and EOF is only some negative value, so the two are not the same answer and this says so. It matters most for
 // a writer: fwrite buffers, so the bytes reach the disk at the flush a close performs, and a full disk is discovered
-// here — long after every ys_write_token() has returned true.
+// here — long after every ys_write_token() has returned YS_OK.
 static int ys_fp_close(void *context) {
     return fclose(context) == 0 ? 0 : -1;
 }
 
-ys_reader ys_fp_reader(FILE *file, ys_ownership ownership) {
-    ys_reader reader;
+ys_bytes_reader ys_fp_reader(FILE *file, ys_ownership ownership) {
+    ys_bytes_reader reader;
     reader.read = ys_fp_read;
     reader.close = ownership == YS_OWN ? ys_fp_close : NULL;
     reader.context = file;
@@ -76,8 +76,8 @@ static ptrdiff_t ys_fd_write(void *context, const char *buffer, size_t size) {
     return (ptrdiff_t)YS_OS_WRITE((int)(intptr_t)context, buffer, capped);
 }
 
-ys_writer ys_fd_writer(int fd, ys_ownership ownership) {
-    ys_writer writer;
+ys_bytes_writer ys_fd_writer(int fd, ys_ownership ownership) {
+    ys_bytes_writer writer;
     writer.write = ys_fd_write;
     writer.close = ownership == YS_OWN ? ys_fd_close : NULL;
     writer.context = (void *)(intptr_t)fd;
@@ -92,8 +92,8 @@ static ptrdiff_t ys_fp_write(void *context, const char *buffer, size_t size) {
     return (ptrdiff_t)written;
 }
 
-ys_writer ys_fp_writer(FILE *file, ys_ownership ownership) {
-    ys_writer writer;
+ys_bytes_writer ys_fp_writer(FILE *file, ys_ownership ownership) {
+    ys_bytes_writer writer;
     writer.write = ys_fp_write;
     writer.close = ownership == YS_OWN ? ys_fp_close : NULL;
     writer.context = file;

@@ -19,7 +19,7 @@ typedef struct ys_wire {
     char *text;           // the text of the token last read, unescaped
     size_t text_size;     // how many bytes of it there are
     size_t text_capacity; // how many the text buffer holds
-    int fault;            // the resource failure ys_next_line hit: 0 none, -1 the reader failed, -2 the allocator did
+    int fault;            // resource failure ys_next_line hit: 0 none, YS_FAILED_STREAM reader, YS_FAILED_MEMORY alloc
     bool is_done;         // the wire is spent — it ended, a malformed token was handed back, or it faulted — no more
 } ys_wire;
 
@@ -27,13 +27,18 @@ typedef struct ys_wire {
 // caller sets ys_wire::source's reader after.
 void ys_wire_init(ys_wire *wire, ys_memory memory);
 
-// Read the next token off the wire into `token`. Returns 0 with `token` filled — a malformed wire is a YS_CODE_ERROR
-// token like a malformed document, and the wire is spent after it; -1 if the reader failed, -2 if the allocator did,
-// with `errno` the callback's; YS_FAILED_EOF with `errno` ENODATA once the wire has ended and been read past.
+// Read the next token off the wire into `token`. Returns YS_OK with `token` filled — a malformed wire is a
+// YS_CODE_ERROR token like a malformed document, and the wire is spent after it; YS_FAILED_STREAM if the reader failed,
+// YS_FAILED_MEMORY if the allocator did, with `errno` the callback's; YS_FAILED_ACTION with `errno` ENODATA once the
+// wire has ended and been read past.
 int ys_wire_read(ys_wire *wire, ys_token *token);
 
-// Write `token` to `writer` in the yeast wire format — the wire-writer arm of a token sink. True if it was written;
-// false with `errno` set — the writer's, or EINVAL if the token cannot be written at all.
-bool ys_wire_write(ys_writer *writer, ys_token token);
+// Write `token` to `writer` in the yeast wire format — the wire-writer arm of a token sink. YS_OK if it was written;
+// YS_FAILED_STREAM with `errno` the writer's, or YS_FAILED_ACTION with `errno` EINVAL if the token cannot be written.
+int ys_wire_write(ys_bytes_writer *writer, ys_token token);
+
+// Write a whole buffer to a writer, handling short writes: true if all of it reached the writer, false with `errno` set
+// if the write callback failed. Shared by the wire writer and the YAML emitter.
+bool ys_put(ys_bytes_writer *writer, const char *bytes, size_t size);
 
 #endif // YEAST_WIRE_H

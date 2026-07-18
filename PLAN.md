@@ -13,24 +13,6 @@ Throughout, the grammar's parameters split by two fates and it matters everywher
 and **`r`** (the resume policy) are finite, so they are resolved at generation time (static); **`n`** (indentation) and
 **`m`** (the auto-detected indent) are unbounded, so they are threaded into the runtime automaton.
 
-## Task — a YAML emitter, to close the pipeline
-
-The `ys_token_sink` and its yeast-writer arm are built: a token stream is sent onward the same way whatever its
-destination, and `ys_write_token` feeds it. What is left is the sink's second arm, a YAML emitter, and the round-trip
-tests it makes possible.
-
-```c
-ys_token_sink *ys_new_yaml_stream_emitter(ys_writer writer, const ys_options *options); // renders tokens as YAML
-```
-
-`ys_new_yaml_stream_emitter` is a second `YS_SINK_*` kind alongside the wire writer, so `ys_write_token` gains a
-dispatch it does not have while there is one arm. It ignores errors — a token stream is what it is, and an emitter
-renders it rather than judging it — and takes options to strip comments (false by default) and strip unparsed tokens
-(true by default).
-
-With it the pipeline closes, and the round-trip tests fall out: YAML → yeast → YAML (parse, write, read, emit) and yeast
-→ YAML → yeast, each a fixture checked against itself.
-
 ## §0 — Why this, and why it's hard
 
 Every YAML parser to date sits on one horn of a dilemma.

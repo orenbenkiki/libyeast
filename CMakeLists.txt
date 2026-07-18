@@ -150,6 +150,8 @@ if(YEAST_BUILD_TESTS)
     enable_testing()
     add_executable(test_c tests/test_c.c)
     target_include_directories(test_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/acutest)
+    # The fixture round-trip reads the .output wires and .input fragments in tests/spec/.
+    target_compile_definitions(test_c PRIVATE YS_SPEC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/spec")
     target_link_libraries(test_c PRIVATE yeast)
     # The test TU includes vendored acutest.h, not held to the full strict set.
     if(NOT MSVC)
