@@ -18,8 +18,13 @@ its comments). The full public API surface is declared, but the parser core is n
   whichever it is. It is a tagged union: the parser's arm and the wire's arm hold genuinely different state (a window,
   queue, stack and automaton against a line buffer), so only the kind is above them. `ys_read_token`,
   `ys_are_tokens_stable` and `ys_delete_token_source` dispatch on it.
+- **Token sink** — `src/token_sink.h` and `src/token_sink.c`: the mirror, a `ys_token_sink` over tokens however they are
+  consumed. One arm today — the yeast writer, which serializes tokens to a wire through a `ys_writer`; a YAML emitter
+  will add another, and code writing tokens will not know which took them. `ys_write_token` feeds it and
+  `ys_delete_token_sink` releases it, the delete flushing the byte transport — where a buffered write finally reaches
+  its destination, and so where a full disk is first seen.
 - **Wire format** — `src/wire.c` and `src/wire.h`: the yeast wire format, one character and its escaped text per token,
-  which `ys_write_token` writes and a yeast-wire token source reads back with `ys_read_token` — together with the table
+  which the writer arm writes and a yeast-wire token source reads back with `ys_read_token` — together with the table
   that says which character each code is. That format is what a token stream is compared against the reference parser
   in, and what lets one be piped between tools; it is complete and works. The reader treats the wire as untrusted: a
   malformed wire is a `YS_CODE_ERROR` token, bad data like a bad document, with a located message; a host failure while

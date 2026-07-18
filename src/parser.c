@@ -48,12 +48,12 @@ bool ys_parser_fill(ys_parser *parser, size_t wanted) {
         // A failed fill records the fault; ys_read_token() reports it and marks the source done, so the reader is not
         // reached again. The allocator's failure is ENOMEM; the reader's is whatever it left, passed through.
         if (filled == YS_FILL_OUT_OF_MEMORY) {
-            parser->fault = YS_FAILED_ALLOCATOR;
+            parser->fault = YS_FAILED_MEMORY;
             errno = ENOMEM;
             return false;
         }
         if (filled == YS_FILL_READER_FAILED) {
-            parser->fault = YS_FAILED_READER;
+            parser->fault = YS_FAILED_STREAM;
             return false;
         }
     }

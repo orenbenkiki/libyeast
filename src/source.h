@@ -36,26 +36,26 @@ typedef enum ys_fill {
 // The `used` bytes are discarded whatever the outcome, so the caller advances past them either way.
 ys_fill ys_source_fill(ys_source *source, ys_memory *memory, size_t used, size_t spare);
 
-// Close the reader, if it owns what it reads from, and say whether that failed: 0, or -1 with errno set, which is what
-// the reader's own close answers. A reader with nothing to close cannot fail.
-int ys_close_reader(ys_reader reader);
+// Close a byte transport — a `ys_reader`'s or a `ys_writer`'s `close` callback and its `context` — if it has one: 0, or
+// -1 with errno set, which is what the callback answers. A transport with no close cannot fail.
+int ys_close_transport(int (*close)(void *), void *context);
 
-// Close the reader and discard whatever it says. For a constructor that is already failing: it has a reason of its own
-// to report — the EINVAL for a reader with nothing to read from, the allocator's errno — and errno still holds it
-// afterwards, since a close that fails sets its own. A reader is handed over whether or not the object that would read
-// through it can be built, so the constructor closes it rather than leaking it, and has nowhere to report a failure to
-// anyway: it is already returning NULL for a different reason, and that reason is the more useful one.
-void ys_discard_reader(ys_reader reader);
+// Close a transport and discard whatever it says, preserving errno. For a constructor that is already failing: it has a
+// reason of its own to report — the EINVAL for a transport with no callback, the allocator's errno — and errno still
+// holds it afterwards, since a close that fails sets its own. A transport is handed over whether or not the object that
+// would use it can be built, so the constructor closes it rather than leaking it, and has nowhere to report a failure
+// to anyway: it is already returning NULL for a different reason, and that reason is the more useful one.
+void ys_discard_transport(int (*close)(void *), void *context);
 
-// Close the reader, give the `count` buffers back, and close the allocator: the teardown of anything built on a
-// ys_reader and a ys_memory, which is the parser and the wire's token reader. The order is the only one that works —
-// the allocator closes last, since what it releases may be the very memory being given back to it, and the object
-// itself is the last buffer, being what the others hang off. A NULL buffer is nothing to give back, so a source that
-// never read has nothing there.
+// Close the transport, give the `count` buffers back, and close the allocator: the teardown of anything built on a byte
+// transport and a ys_memory — a token source over a reader, a token sink over a writer. The order is the only one that
+// works — the allocator closes last, since what it releases may be the very memory being given back to it, and the
+// object itself is the last buffer, being what the others hang off. A NULL buffer is nothing to give back.
 //
 // The whole of it runs whatever fails in it, so a close that fails still leaves nothing leaked. What answers is which
-// failed: 0, -1 for the reader's close, -2 for the allocator's, -3 for both. errno is the first failure's reason —
-// which is the limit of it, both failing leaving the second's unsaid — and is left as it was found where none failed.
-int ys_teardown(ys_reader reader, ys_allocator allocator, void *const *buffers, size_t count);
+// failed: `YS_OK`, `YS_FAILED_STREAM` for the transport's close, `YS_FAILED_MEMORY` for the allocator's,
+// `YS_FAILED_BOTH` for both. errno is the first failure's reason — the transport's, where both failed — and is left as
+// it was found where none failed.
+int ys_teardown(int (*close)(void *), void *close_context, ys_allocator allocator, void *const *buffers, size_t count);
 
 #endif // YEAST_SOURCE_H

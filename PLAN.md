@@ -13,31 +13,23 @@ Throughout, the grammar's parameters split by two fates and it matters everywher
 and **`r`** (the resume policy) are finite, so they are resolved at generation time (static); **`n`** (indentation) and
 **`m`** (the auto-detected indent) are unbounded, so they are threaded into the runtime automaton.
 
-## Task — one token sink, mirroring the source
+## Task — a YAML emitter, to close the pipeline
 
-A `ys_token_source` produces yeast tokens; the mirror is a `ys_token_sink` that consumes them, so a token stream can be
-sent onward the same way whatever its destination — and, with both, the pipeline closes into round-trip tests. The sink
-has the two arms the source's kinds mirror: a yeast writer, which serializes tokens to the wire, and — later — a YAML
-emitter, which renders them back to YAML. The writer folds in from the value-based `ys_write_token`/`ys_close_writer`.
+The `ys_token_sink` and its yeast-writer arm are built: a token stream is sent onward the same way whatever its
+destination, and `ys_write_token` feeds it. What is left is the sink's second arm, a YAML emitter, and the round-trip
+tests it makes possible.
 
 ```c
-typedef struct ys_token_sink ys_token_sink; // internally a wire writer or a YAML emitter; a caller cannot tell which
-
-ys_token_sink *ys_new_yeast_stream_writer(ys_writer writer, const ys_options *options); // serializes to the wire
-
-int ys_write_token(ys_token_sink *sink, ys_token token); // YS_OK, or a negative ys_status
-int ys_delete_token_sink(ys_token_sink *sink);           // the close contract: flushes, then reports
+ys_token_sink *ys_new_yaml_stream_emitter(ys_writer writer, const ys_options *options); // renders tokens as YAML
 ```
 
-`ys_write_token` moves from taking a `ys_writer` to taking a `ys_token_sink`; the byte-level `ys_writer` stays the
-transport underneath, as `ys_reader` does for a source. `ys_delete_token_sink` replaces `ys_close_writer`, and the flush
-a close performs is where a full disk or a broken pipe is finally seen. The `ys_status` enum gains what a writer's own
-close and write failures are, the way the source's reader failures are `YS_FAILED_READER`.
-
-Then a YAML emitter arm, `ys_new_yaml_stream_emitter`: it ignores errors — a token stream is what it is, and an emitter
+`ys_new_yaml_stream_emitter` is a second `YS_SINK_*` kind alongside the wire writer, so `ys_write_token` gains a
+dispatch it does not have while there is one arm. It ignores errors — a token stream is what it is, and an emitter
 renders it rather than judging it — and takes options to strip comments (false by default) and strip unparsed tokens
-(true by default). With it the pipeline closes, and the round-trip tests fall out: YAML → yeast → YAML (parse, write,
-read, emit) and yeast → YAML → yeast, each a fixture checked against itself.
+(true by default).
+
+With it the pipeline closes, and the round-trip tests fall out: YAML → yeast → YAML (parse, write, read, emit) and yeast
+→ YAML → yeast, each a fixture checked against itself.
 
 ## §0 — Why this, and why it's hard
 
@@ -79,7 +71,7 @@ emit that marker, and without it an empty stripped block scalar opens a scalar i
 
 `max_bytes` bounds it, being the same guard a single enormous token needs. The buffered input, the tokens held back with
 it, and the stack that deep nesting grows are capped together, since a run that is never resolved grows all three; past
-the cap the parse halts on `YS_CODE_ERROR_MEMORY`, which is the caller's sizing to fix and says so.
+the cap `ys_read_token` returns `YS_FAILED_MEMORY`, the caller's sizing to fix.
 
 ## §1 — The central principle: five parameters, two fates
 

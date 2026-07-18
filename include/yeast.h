@@ -42,15 +42,16 @@
 /// while (ys_read_token(source, &token) == YS_OK) {
 ///     // use token.code, token.start, token.end, token.text; a clean parse ends on YS_CODE_END_STREAM
 /// }
-/// ys_delete_token_source(source); // the loop ended on YS_FAILED_EOF, or YS_FAILED_READER/ALLOCATOR (errno set)
+/// ys_delete_token_source(source); // the loop ended on YS_FAILED_EOF, or YS_FAILED_STREAM/ALLOCATOR (errno set)
 /// @endcode
 ///
 /// @section wire The yeast wire format
 ///
 /// A token stream can be serialized — to pipe it between tools, store it, or compare it against another parser's — as
-/// the yeast wire format, a character and its escaped text per token. ys_write_token() writes one token to a
-/// @ref ys_writer (build one with ys_fd_writer() or ys_fp_writer(), the mirror of the reader adapters), and
-/// ys_new_yeast_stream_reader() makes a source that reads them back with ys_read_token().
+/// the yeast wire format, a character and its escaped text per token. ys_new_yeast_stream_writer() makes a
+/// @ref ys_token_sink over a @ref ys_writer (build one with ys_fd_writer() or ys_fp_writer(), the mirror of the reader
+/// adapters); ys_write_token() feeds it, and ys_new_yeast_stream_reader() makes a source that reads them back with
+/// ys_read_token().
 ///
 /// @section options Options and memory
 ///
@@ -61,13 +62,13 @@
 /// @section errno The `errno` policy
 ///
 /// Malformed data is never an `errno`: a syntax error or a wire that is not the wire format is a @ref YS_CODE_ERROR
-/// token, part of the stream. A host failure is: ys_read_token() returns -1/-2/-3 with `errno` the reader's, `ENOMEM`,
-/// or `ENODATA`; and the constructors, ys_write_token(), and the closers ys_close_writer() and ys_delete_token_source()
-/// set `errno` on failure — `EINVAL` for a bad argument, `ENOMEM` for insufficient memory, or the value a failing
-/// callback set, passed through untouched. The closers still release everything whatever fails, and return which
-/// callback's close failed while `errno` holds the first one's reason. Every other function cannot fail and does not
-/// touch `errno`. libyeast requires an allocator or reader callback to set `errno` on failure, and passes that value
-/// through rather than overriding it.
+/// token, part of the stream. A host failure is: ys_read_token() returns a negative @ref ys_status with `errno` the
+/// callback's, `ENOMEM`, or `ENODATA`; and the constructors, ys_write_token(), and the closers ys_delete_token_source()
+/// and ys_delete_token_sink() set `errno` on failure — `EINVAL` for a bad argument, `ENOMEM` for insufficient memory,
+/// or the value a failing callback set, passed through untouched. The closers still release everything whatever fails,
+/// and return which callback's close failed while `errno` holds the first one's reason. Every other function cannot
+/// fail and does not touch `errno`. libyeast requires an allocator, reader or writer callback to set `errno` on
+/// failure, and passes that value through rather than overriding it.
 ///
 /// For the architecture, see the
 /// [design document](https://github.com/orenbenkiki/libyeast/blob/main/DESIGN.md); for what is left to build, see the
@@ -130,11 +131,11 @@ typedef struct ys_mark {
 /// of them: ys_read_token() reads one source, so it never reports `YS_FAILED_BOTH`, and the closers close things rather
 /// than read, so they never report `YS_FAILED_EOF`.
 typedef enum ys_status {
-    YS_OK = 0,                ///< Success: a token was filled, or a closer closed everything cleanly.
-    YS_FAILED_READER = -1,    ///< A reader callback failed; `errno` is what it set.
-    YS_FAILED_ALLOCATOR = -2, ///< An allocator refused, or the cap was reached; `errno` is `ENOMEM`.
-    YS_FAILED_BOTH = -3,      ///< A closer's reader and allocator both failed; `errno` is the reader's.
-    YS_FAILED_EOF = -4        ///< A source was read past its end (ys_read_token() only); `errno` is `ENODATA`.
+    YS_OK = 0,             ///< Success: a token was filled, or a closer closed everything cleanly.
+    YS_FAILED_STREAM = -1, ///< A byte transport failed — a reader or a writer callback; `errno` is what it set.
+    YS_FAILED_MEMORY = -2, ///< An allocator refused, or the cap was reached; `errno` is `ENOMEM`.
+    YS_FAILED_BOTH = -3,   ///< A closer's stream and allocator both failed; `errno` is the stream's.
+    YS_FAILED_EOF = -4     ///< A source was read past its end (ys_read_token() only); `errno` is `ENODATA`.
 } ys_status;
 
 /// Token classification — the yeast model. Zero-width `BEGIN_*`/`END_*` markers bracket productions; every other code
@@ -296,9 +297,9 @@ typedef struct ys_writer {
     /// returns false. The `context` argument is @ref context.
     ptrdiff_t (*write)(void *context, const char *buffer, size_t size);
     /// Release @ref context, if it needs releasing, returning 0 or -1 with `errno` set — `close(2)`'s contract, as
-    /// @ref write is `write(2)`'s. May be NULL. ys_close_writer() calls it and reports what it said, which is the whole
-    /// reason it says anything: a buffered write does not reach the disk until the flush a close performs, so this is
-    /// where a full disk is discovered, long after every ys_write_token() has returned true.
+    /// @ref write is `write(2)`'s. May be NULL. ys_delete_token_sink() calls it and reports what it said, which is the
+    /// whole reason it says anything: a buffered write does not reach the disk until the flush a close performs, so
+    /// this is where a full disk is discovered, long after every ys_write_token() has returned true.
     int (*close)(void *context);
     void *context; ///< Opaque state passed to @ref write and @ref close.
 } ys_writer;
@@ -306,43 +307,18 @@ typedef struct ys_writer {
 /// Build a writer that pushes to a file descriptor.
 ///
 /// @param fd the file descriptor to write to.
-/// @param ownership @ref YS_OWN to close `fd` when ys_close_writer() is called, or @ref YS_BORROW to leave it open.
-/// @return a writer to hand to ys_write_token().
+/// @param ownership @ref YS_OWN to close `fd` when ys_delete_token_sink() is called, or @ref YS_BORROW to leave it
+/// open.
+/// @return a writer to hand to ys_new_yeast_stream_writer().
 YS_API ys_writer ys_fd_writer(int fd, ys_ownership ownership);
 
 /// Build a writer that pushes to a `FILE *` stream.
 ///
 /// @param file the stream to write to.
-/// @param ownership @ref YS_OWN to `fclose(file)` when ys_close_writer() is called, or @ref YS_BORROW to leave it open.
-/// @return a writer to hand to ys_write_token().
+/// @param ownership @ref YS_OWN to `fclose(file)` when ys_delete_token_sink() is called, or @ref YS_BORROW to leave it
+/// open.
+/// @return a writer to hand to ys_new_yeast_stream_writer().
 YS_API ys_writer ys_fp_writer(FILE *file, ys_ownership ownership);
-
-/// Release whatever a writer owns, and say whether that succeeded: it calls the writer's `close` callback, if it has
-/// one, and a buffered stream does not reach its destination until this flushes it. So a token stream written without a
-/// fault can still fail here, at the last, and this is where a full disk or a broken pipe is finally seen — the return
-/// of the last ys_write_token() is not the whole story, and this is the rest of it. Call it exactly once.
-///
-/// @param writer the writer to close.
-/// @return 0 on success, or -1 with `errno` set to what the `close` callback reported.
-YS_API int ys_close_writer(ys_writer *writer);
-
-/// Write a token to a writer, in the yeast wire format.
-///
-/// A token is two lines, the first its position and the second its code character followed by its text:
-///
-///     # B: 12, C: 12, L: 1, c: 4
-///     I-
-///
-/// The text is escaped: a printable ASCII character other than a backslash is written as itself, and every other
-/// character as `\xXX`, `\uXXXX` or `\UXXXXXXXX`. A zero-width marker has no text, so its second line is its code
-/// character alone.
-///
-/// @param writer where to write.
-/// @param token the token to write.
-/// @return true if it was written; false if the writer failed, in which case `errno` is what the writer's `write`
-/// callback set, or `EINVAL` if the token cannot be written at all: a code the wire spells nothing for, or text whose
-/// bytes are not what @p token's code says they are.
-YS_API bool ys_write_token(ys_writer *writer, ys_token token);
 
 /// A custom allocator. Each callback that is NULL falls back individually to its C counterpart, so a zeroed struct
 /// uses `malloc`/`realloc`/`free`, and setting only some callbacks mixes custom and standard behavior.
@@ -516,7 +492,7 @@ YS_API bool ys_are_tokens_stable(const ys_token_source *source);
 /// @ref YS_CODE_UNPARSED_TEXT token behind the error begins at exactly the byte that failed.
 ///
 /// A **host failure** is not a token but the return value, so the token model stays about the data and not about the
-/// machine running on it. @ref YS_FAILED_READER is the reader failing, @ref YS_FAILED_ALLOCATOR the allocator refusing
+/// machine running on it. @ref YS_FAILED_STREAM is the reader failing, @ref YS_FAILED_MEMORY the allocator refusing
 /// (or @ref ys_options::max_bytes reached) — each with `errno` the callback's — and @ref YS_FAILED_EOF, with `errno`
 /// `ENODATA`, once the stream has ended and been read past. A resource failure ends the source for good: there is no
 /// `end-stream` to close the `begin-stream`, the missing close being the sign it did not finish, and every later call
@@ -530,7 +506,7 @@ YS_API bool ys_are_tokens_stable(const ys_token_source *source);
 ///
 /// @param source the source to advance.
 /// @param token where to put the token read; left untouched on a negative return.
-/// @return @ref YS_OK with @p token filled, or @ref YS_FAILED_READER, @ref YS_FAILED_ALLOCATOR or @ref YS_FAILED_EOF.
+/// @return @ref YS_OK with @p token filled, or @ref YS_FAILED_STREAM, @ref YS_FAILED_MEMORY or @ref YS_FAILED_EOF.
 YS_API int ys_read_token(ys_token_source *source, ys_token *token);
 
 /// Delete a token source and everything it owns, and say whether the two closeable things it holds closed cleanly: the
@@ -539,11 +515,58 @@ YS_API int ys_read_token(ys_token_source *source, ys_token *token);
 /// fails — so a close that fails leaks nothing.
 ///
 /// @param source the source to delete; may be NULL, in which case this is a no-op returning @ref YS_OK.
-/// @return @ref YS_OK if every close succeeded; @ref YS_FAILED_READER if the reader's close failed,
-/// @ref YS_FAILED_ALLOCATOR if the allocator's did, @ref YS_FAILED_BOTH if both did. `errno` holds the first failure's
+/// @return @ref YS_OK if every close succeeded; @ref YS_FAILED_STREAM if the reader's close failed,
+/// @ref YS_FAILED_MEMORY if the allocator's did, @ref YS_FAILED_BOTH if both did. `errno` holds the first failure's
 /// reason — the reader's, where both failed, the second being the documented limit of what one `errno` can say. A
 /// caller needing both must record them in its own callbacks' @ref context.
 YS_API int ys_delete_token_source(ys_token_source *source);
+
+/// An opaque sink of yeast tokens — the mirror of @ref ys_token_source. ys_new_yeast_stream_writer() makes one that
+/// serializes tokens to a yeast wire; ys_write_token() feeds it, and ys_delete_token_sink() releases it. Code writing
+/// tokens does not know or care where they go.
+typedef struct ys_token_sink ys_token_sink;
+
+/// Create a sink that serializes tokens to a yeast wire pushed to @p writer — the inverse of
+/// ys_new_yeast_stream_reader().
+///
+/// **The sink takes @p writer, whether or not it can be built.** If it cannot, it closes @p writer before returning
+/// NULL, exactly as ys_delete_token_sink() would have.
+///
+/// @param writer the byte sink; its `write` callback must be non-NULL. Owned by the sink from this call onwards.
+/// @param options construction options, or NULL for defaults. Only @ref ys_options::allocator and
+/// @ref ys_options::max_bytes are consulted.
+/// @return a new sink, or NULL on failure — in which case @p writer has been closed — with `errno` set: `EINVAL` if
+/// @p writer has no `write` callback; otherwise `ENOMEM`.
+YS_API ys_token_sink *ys_new_yeast_stream_writer(ys_writer writer, const ys_options *options);
+
+/// Write a token to a sink. For a yeast writer, a token is two lines — the first its position, the second its code
+/// character followed by its text:
+///
+///     # B: 12, C: 12, L: 1, c: 4
+///     I-
+///
+/// The text is escaped: a printable ASCII character other than a backslash is written as itself, and every other
+/// character as `\xXX`, `\uXXXX` or `\UXXXXXXXX`. A zero-width marker has no text, so its second line is its code
+/// character alone.
+///
+/// @param sink the sink to write to.
+/// @param token the token to write.
+/// @return true if it was written; false with `errno` set — what the byte transport's `write` callback set, or `EINVAL`
+/// if the token cannot be written at all: a code the wire spells nothing for, or text whose bytes are not what
+/// @p token's code says they are.
+YS_API bool ys_write_token(ys_token_sink *sink, ys_token token);
+
+/// Delete a token sink and everything it owns, and say whether its two closeable things closed cleanly: the byte
+/// transport it was built over (if its @ref ys_writer::close is not NULL) and its allocator. The transport's close is
+/// where a buffered write finally reaches its destination, so a stream written without a fault can still fail here, at
+/// the last — a full disk or a broken pipe, seen after the last ys_write_token() returned true. Both are closed, and
+/// everything freed, whichever fails.
+///
+/// @param sink the sink to delete; may be NULL, in which case this is a no-op returning @ref YS_OK.
+/// @return @ref YS_OK if every close succeeded; @ref YS_FAILED_STREAM if the transport's close failed,
+/// @ref YS_FAILED_MEMORY if the allocator's did, @ref YS_FAILED_BOTH if both did. `errno` holds the first failure's
+/// reason — the transport's, where both failed.
+YS_API int ys_delete_token_sink(ys_token_sink *sink);
 
 #ifdef __cplusplus
 }

@@ -31,21 +31,21 @@ ys_fill ys_source_fill(ys_source *source, ys_memory *memory, size_t used, size_t
     return YS_FILL_READ;
 }
 
-int ys_close_reader(ys_reader reader) {
-    return reader.close != NULL ? reader.close(reader.context) : 0;
+int ys_close_transport(int (*close)(void *), void *context) {
+    return close != NULL ? close(context) : 0;
 }
 
-void ys_discard_reader(ys_reader reader) {
+void ys_discard_transport(int (*close)(void *), void *context) {
     int saved_errno = errno;
-    (void)ys_close_reader(reader);
+    (void)ys_close_transport(close, context);
     errno = saved_errno;
 }
 
-int ys_teardown(ys_reader reader, ys_allocator allocator, void *const *buffers, size_t count) {
+int ys_teardown(int (*close)(void *), void *close_context, ys_allocator allocator, void *const *buffers, size_t count) {
     int saved_errno = errno;
     int result = YS_OK;
-    if (ys_close_reader(reader) != 0) {
-        result = YS_FAILED_READER;
+    if (ys_close_transport(close, close_context) != 0) {
+        result = YS_FAILED_STREAM;
         saved_errno = errno; // the reader's, kept whatever the allocator's close does next
     }
 
@@ -56,7 +56,7 @@ int ys_teardown(ys_reader reader, ys_allocator allocator, void *const *buffers, 
 
     if (ys_close_allocator(&allocator) != 0) {
         if (result == YS_OK) {
-            result = YS_FAILED_ALLOCATOR;
+            result = YS_FAILED_MEMORY;
             saved_errno = errno; // only the allocator failed, so its reason is the one to keep
         } else {
             result = YS_FAILED_BOTH; // both failed; errno stays the reader's, the first

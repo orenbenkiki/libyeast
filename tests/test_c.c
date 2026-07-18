@@ -375,7 +375,7 @@ static void test_wire_round_trip(void) {
     const size_t count = sizeof(cases) / sizeof(cases[0]);
 
     wire_buffer wire = {{0}, 0, 0};
-    ys_writer writer = {wire_write, NULL, &wire};
+    ys_token_sink *writer = ys_new_yeast_stream_writer((ys_writer){wire_write, NULL, &wire}, NULL);
     for (size_t index = 0; index < count; index++) {
         ys_token token;
         token.code = cases[index].code;
@@ -383,10 +383,10 @@ static void test_wire_round_trip(void) {
         token.end = token.start;
         token.end.byte_offset += cases[index].size;
         token.text = cases[index].text;
-        TEST_CHECK(ys_write_token(&writer, token));
+        TEST_CHECK(ys_write_token(writer, token));
         TEST_MSG("%s: could not be written", cases[index].name);
     }
-    ys_close_writer(&writer);
+    ys_delete_token_sink(writer);
 
     ys_reader reader = {wire_read, NULL, &wire};
     ys_token_source *tokens = ys_new_yeast_stream_reader(reader, NULL);
@@ -440,27 +440,27 @@ static void test_wire_refuses_ill_formed_text(void) {
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
         wire_buffer wire = {{0}, 0, 0};
-        ys_writer writer = {wire_write, NULL, &wire};
+        ys_token_sink *writer = ys_new_yeast_stream_writer((ys_writer){wire_write, NULL, &wire}, NULL);
         ys_token token = {.code = YS_CODE_TEXT, .text = cases[index].text};
         token.start = (ys_mark){0, 0, 1, 0};
         token.end = token.start;
         token.end.byte_offset = cases[index].size;
 
         errno = 0;
-        TEST_CHECK(!ys_write_token(&writer, token));
+        TEST_CHECK(!ys_write_token(writer, token));
         TEST_MSG("%s: was written rather than refused", cases[index].name);
         TEST_CHECK(errno == EINVAL);
         TEST_MSG("%s: errno is %d, not EINVAL", cases[index].name, errno);
-        ys_close_writer(&writer);
+        ys_delete_token_sink(writer);
 
         // What YS_CODE_UNPARSED_INVALID exists to carry, it carries — and only if every byte of it qualifies.
         wire_buffer carried = {{0}, 0, 0};
-        ys_writer to_carried = {wire_write, NULL, &carried};
+        ys_token_sink *to_carried = ys_new_yeast_stream_writer((ys_writer){wire_write, NULL, &carried}, NULL);
         token.code = YS_CODE_UNPARSED_INVALID;
-        TEST_CHECK(ys_write_token(&to_carried, token) == cases[index].throughout);
+        TEST_CHECK(ys_write_token(to_carried, token) == cases[index].throughout);
         TEST_MSG("%s: under UNPARSED_INVALID it should have been %s", cases[index].name,
                  cases[index].throughout ? "written" : "refused");
-        ys_close_writer(&to_carried);
+        ys_delete_token_sink(to_carried);
     }
 }
 
@@ -479,18 +479,18 @@ static void test_wire_refuses_well_formed_invalid_text(void) {
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
         wire_buffer wire = {{0}, 0, 0};
-        ys_writer writer = {wire_write, NULL, &wire};
+        ys_token_sink *writer = ys_new_yeast_stream_writer((ys_writer){wire_write, NULL, &wire}, NULL);
         ys_token token = {.code = YS_CODE_UNPARSED_INVALID, .text = cases[index].text};
         token.start = (ys_mark){0, 0, 1, 0};
         token.end = token.start;
         token.end.byte_offset = cases[index].size;
 
         errno = 0;
-        TEST_CHECK(!ys_write_token(&writer, token));
+        TEST_CHECK(!ys_write_token(writer, token));
         TEST_MSG("%s: was written under YS_CODE_UNPARSED_INVALID rather than refused", cases[index].name);
         TEST_CHECK(errno == EINVAL);
         TEST_MSG("%s: errno is %d, not EINVAL", cases[index].name, errno);
-        ys_close_writer(&writer);
+        ys_delete_token_sink(writer);
     }
 }
 
@@ -541,14 +541,14 @@ static void test_wire_round_trips_an_error(void) {
     const char *message = "inside production 'ns-plain', expected ':' or a line break";
 
     wire_buffer wire = {{0}, 0, 0};
-    ys_writer writer = {wire_write, NULL, &wire};
+    ys_token_sink *writer = ys_new_yeast_stream_writer((ys_writer){wire_write, NULL, &wire}, NULL);
     ys_token written;
     written.code = YS_CODE_ERROR;
     written.start = (ys_mark){7, 7, 1, 3};
     written.end = written.start; // an error consumes nothing
     written.text = message;
-    TEST_CHECK(ys_write_token(&writer, written));
-    ys_close_writer(&writer);
+    TEST_CHECK(ys_write_token(writer, written));
+    ys_delete_token_sink(writer);
 
     TEST_CHECK(strstr(wire.bytes, message) != NULL); // the message reached the wire, and is not merely a bare '!'
 
@@ -587,9 +587,10 @@ static void test_wire_error_text_is_terminated(void) {
     TEST_CHECK(strlen(token.text) == 16); // reads to the terminator and no further
 
     wire_buffer out = {{0}, 0, 0};
-    ys_writer writer = {wire_write, NULL, &out};
-    TEST_CHECK(ys_write_token(&writer, token)); // the writer strlen's the message, and must not overread
+    ys_token_sink *sink = ys_new_yeast_stream_writer((ys_writer){wire_write, NULL, &out}, NULL);
+    TEST_CHECK(ys_write_token(sink, token)); // the writer strlen's the message, and must not overread
 
+    ys_delete_token_sink(sink);
     ys_delete_token_source(tokens);
 }
 
@@ -612,7 +613,7 @@ static void test_wire_empty_error_text(void) {
     ys_delete_token_source(tokens);
 }
 
-// A reader that fails partway is a host failure, not a stream that ended and not a malformed wire: YS_FAILED_READER,
+// A reader that fails partway is a host failure, not a stream that ended and not a malformed wire: YS_FAILED_STREAM,
 // with the reader's errno, and no token — then the source is spent.
 static void test_wire_reader_failure(void) {
     drip_source source = {"# B: 0, C: 0, L: 0, c: 0\nThello\n", 8, 0}; // it hands out 8 bytes, then fails
@@ -622,7 +623,7 @@ static void test_wire_reader_failure(void) {
 
     ys_token token;
     errno = 0;
-    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_READER);
+    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_STREAM);
     TEST_CHECK(errno == EIO);                                   // the reader's own, passed through
     TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_EOF); // and nothing follows it
 
@@ -630,7 +631,7 @@ static void test_wire_reader_failure(void) {
 }
 
 // A reader that fails after the position line, while the token line is being read, is a different path through the
-// reader than a failure on the position line itself — and reports the same YS_FAILED_READER.
+// reader than a failure on the position line itself — and reports the same YS_FAILED_STREAM.
 static void test_wire_reader_failure_mid_token(void) {
     drip_source source = {"# B: 0, C: 0, L: 0, c: 0\nThello\n", 25, 0}; // hands out the position line, then fails
     ys_reader reader = {drip_source_read, NULL, &source};
@@ -638,7 +639,7 @@ static void test_wire_reader_failure_mid_token(void) {
     TEST_ASSERT(tokens != NULL);
 
     ys_token token;
-    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_READER);
+    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_STREAM);
     TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_EOF);
 
     ys_delete_token_source(tokens);
@@ -732,12 +733,11 @@ static void test_fp_writer(void) {
         char buffer[8];
         TEST_CHECK(fread(buffer, 1, sizeof(buffer), file) == 2);
         TEST_CHECK(memcmp(buffer, "hi", 2) == 0);
-        TEST_CHECK(ys_close_writer(&writer) == 0); // the flush succeeded, so the close did
+        TEST_CHECK(writer.close(writer.context) == 0); // the flush succeeded, so the close did
     }
 
     ys_writer borrowed = ys_fp_writer(stdout, YS_BORROW);
-    TEST_CHECK(borrowed.close == NULL); // YS_BORROW leaves the stream alone
-    ys_close_writer(&borrowed);
+    TEST_CHECK(borrowed.close == NULL); // YS_BORROW leaves the stream alone, nothing to close
 }
 
 // The file-descriptor writer adapter, over a pipe: what goes in one end comes out the other.
@@ -748,7 +748,7 @@ static void test_fd_writer(void) {
 
     ys_writer writer = ys_fd_writer(ends[1], YS_OWN);
     TEST_CHECK(writer.write(writer.context, "hi", 2) == 2);
-    ys_close_writer(&writer); // the reader sees the end of input only once the write end is closed
+    writer.close(writer.context); // the reader sees the end of input only once the write end is closed
 
     char buffer[8];
     TEST_CHECK(read(ends[0], buffer, sizeof(buffer)) == 2);
@@ -760,6 +760,47 @@ static void test_fd_writer(void) {
     TEST_CHECK(borrowed.close == NULL); // YS_BORROW leaves the descriptor alone
 }
 #endif
+
+// A writer with no write callback is a bad argument, EINVAL — and an owned one handed over is closed even so, exactly
+// as a reader with no read callback is when a source constructor refuses it. And an allocator that refuses closes the
+// writer too, with ENOMEM: the sink is handed the writer whether or not it can be built.
+static void test_yeast_stream_writer_bad_argument(void) {
+    ys_writer empty = {NULL, NULL, NULL};
+    errno = 0;
+    TEST_CHECK(ys_new_yeast_stream_writer(empty, NULL) == NULL);
+    TEST_CHECK(errno == EINVAL);
+
+    ys_writer owned = {NULL, note_close, NULL}; // no write callback, but an owned resource to close
+    is_closed = false;
+    errno = 0;
+    TEST_CHECK(ys_new_yeast_stream_writer(owned, NULL) == NULL);
+    TEST_CHECK(is_closed && errno == EINVAL);
+
+    ys_allocator refusing = {failing_allocate, NULL, NULL, NULL, NULL};
+    ys_options refused = {refusing, YS_RESUME_NONE, 0};
+    ys_writer valid = {wire_write, note_close, NULL}; // a valid write, and an owned close
+    is_closed = false;
+    errno = 0;
+    TEST_CHECK(ys_new_yeast_stream_writer(valid, &refused) == NULL);
+    TEST_CHECK(is_closed && errno == ENOMEM); // the allocator refused, and the writer was closed anyway
+}
+
+// Deleting a sink reports its writer's close — the flush where a buffered write finally fails — as the source's delete
+// reports its reader's.
+static void test_sink_delete_reports_close_failure(void) {
+    wire_buffer wire = {{0}, 0, 0};
+    ys_writer owned = {wire_write, note_close, &wire}; // its close fails with EIO
+    ys_token_sink *sink = ys_new_yeast_stream_writer(owned, NULL);
+    TEST_ASSERT(sink != NULL);
+
+    is_closed = false;
+    errno = 0;
+    TEST_CHECK(ys_delete_token_sink(sink) == YS_FAILED_STREAM);
+    TEST_CHECK(is_closed);
+    TEST_CHECK(errno == EIO);
+
+    TEST_CHECK(ys_delete_token_sink(NULL) == YS_OK); // deleting nothing cannot fail
+}
 
 // A wire stream whose last line has no newline still yields its token, and a reader that owns its source closes it.
 static void test_wire_odds_and_ends(void) {
@@ -798,10 +839,10 @@ static void test_wire_memory_cap(void) {
     ys_token_source *tokens = ys_new_yeast_stream_reader(reader, &capped);
     TEST_ASSERT(tokens != NULL);
 
-    // It cannot buffer a line, and it says so — YS_FAILED_ALLOCATOR with ENOMEM, not a stream that was empty all along.
+    // It cannot buffer a line, and it says so — YS_FAILED_MEMORY with ENOMEM, not a stream that was empty all along.
     ys_token token;
     errno = 0;
-    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_ALLOCATOR);
+    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_MEMORY);
     TEST_CHECK(errno == ENOMEM);
     TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_EOF); // and nothing follows it
 
@@ -838,7 +879,7 @@ static void test_wire_text_out_of_memory(void) {
 
     ys_token token;
     errno = 0;
-    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_ALLOCATOR); // the line read; its text could not be unescaped
+    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_MEMORY); // the line read; its text could not be unescaped
     TEST_CHECK(errno == ENOMEM);
     TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_EOF);
 
@@ -862,7 +903,7 @@ static void test_wire_terminator_out_of_memory(void) {
 
     ys_token token;
     errno = 0;
-    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_ALLOCATOR);
+    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_MEMORY);
     TEST_CHECK(errno == ENOMEM);
 
     ys_delete_token_source(tokens);
@@ -971,6 +1012,8 @@ TEST_LIST = {
     {"fd_reader", test_fd_reader},
     {"fd_writer", test_fd_writer},
 #endif
+    {"yeast_stream_writer_bad_argument", test_yeast_stream_writer_bad_argument},
+    {"sink_delete_reports_close_failure", test_sink_delete_reports_close_failure},
     {"counting_allocator", test_counting_allocator},
     {"counting_allocator_shared", test_counting_allocator_shared},
     {NULL, NULL},

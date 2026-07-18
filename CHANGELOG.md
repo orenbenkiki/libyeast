@@ -28,12 +28,21 @@ All notable changes to this project are documented here. The format follows
   code over tokens does not know or care which made them: the two are a tagged union whose arms hold genuinely different
   state, with only the kind above them. `ys_read_token` fills the caller's token and returns a `ys_status` — `YS_OK`
   with a token, or a negative host failure with `errno` set — rather than repeating a halt token: a reader failing is
-  `YS_FAILED_READER`, an allocator `YS_FAILED_ALLOCATOR`, the end `YS_FAILED_EOF`. A host failure ends the source there,
+  `YS_FAILED_STREAM`, an allocator `YS_FAILED_MEMORY`, the end `YS_FAILED_EOF`. A host failure ends the source there,
   with no `end-stream` to close the `begin-stream`, the missing close being the sign it did not finish. So the three
   codes a document is never the cause of — a parser running out of memory, its reader failing, and the wire reader's own
   trouble — leave the token model, and `YS_CODE_ERROR` (a malformed document, or a malformed wire, which is bad data
   like a bad document) is the sole `!` the wire writes. The parser core is not implemented yet, so a parser's
   `ys_read_token` returns a "not implemented" error.
+
+- Token-sink API surface, the mirror: `ys_new_yeast_stream_writer` makes a `ys_token_sink` over a `ys_writer`,
+  `ys_write_token` feeds it, and `ys_delete_token_sink` releases it — so a token stream is sent onward the same way
+  whatever its destination, which is what will let the wire round-trip against the parser once a YAML emitter arm joins
+  the writer. `ys_write_token` moved from a `ys_writer` to the sink; the byte transport stays underneath, as a
+  `ys_reader` does for a source. `ys_delete_token_sink` replaces `ys_close_writer`, and its flush is where a buffered
+  write finally fails. The `ys_status` failure names dropped their direction — `YS_FAILED_STREAM` for a reader or a
+  writer, `YS_FAILED_MEMORY` for the allocator — since a source reads and a sink writes but both close a transport the
+  same way.
 
 - Character decoder: UTF-8 input is validated and classified against the grammar without a Unicode codepoint ever being
   assembled. Each character becomes a 32-bit key — the id of the character where the grammar names it, one bit per
@@ -249,7 +258,7 @@ All notable changes to this project are documented here. The format follows
   reader validates its input as the parser does — a byte that a conformant wire would have escaped, an escape naming no
   Unicode codepoint, a position that is not a number — each a located `YS_CODE_ERROR`, not a misread; the wire is spent
   after one. A host failure reading the wire — out of the memory to buffer it, or a byte source that fails — is not a
-  token but `ys_read_token`'s return, `YS_FAILED_ALLOCATOR` or `YS_FAILED_READER`, and the end is `YS_FAILED_EOF`. So a
+  token but `ys_read_token`'s return, `YS_FAILED_MEMORY` or `YS_FAILED_STREAM`, and the end is `YS_FAILED_EOF`. So a
   caller reading until a negative return learns why it stopped.
 
 - An `errno` policy across the API. Malformed data is never an `errno` — a syntax error or a broken wire is a
@@ -263,14 +272,15 @@ All notable changes to this project are documented here. The format follows
 - Closing reports, because a buffered close is where a write finally reaches its destination and so where a full disk or
   a broken pipe is first seen — long after the last `ys_write_token` returned true. A `ys_reader`'s, `ys_writer`'s and
   `ys_allocator`'s `close` each answer `close(2)`'s contract, 0 or -1 with `errno` set, as their `read` and `write`
-  already answer `read(2)`'s and `write(2)`'s; and `ys_close_writer` and `ys_delete_token_source` return it rather than
-  swallow it. A free closes the reader and then, once everything is given back, the allocator — the order that lets the
-  allocator be what the memory lived in — and runs the whole of it whatever fails, so a close that fails leaks nothing:
-  0 for a clean teardown, -1 if the reader's close failed, -2 the allocator's, -3 both, with `errno` the first one's.
-  That one `errno` cannot name two failures is the documented limit; a caller needing both records them in its own
-  callbacks. The `ys_allocator` gains the `close` for an arena or pool to be torn down with what was built out of it,
-  and the `ys_counting_allocator` installs one that checks nothing leaked — asserting in a build that has assertions, so
-  the leak points at the code that caused it, and `EBUSY` in one that does not.
+  already answer `read(2)`'s and `write(2)`'s; and `ys_delete_token_sink` and `ys_delete_token_source` return it rather
+  than swallow it. A delete closes the byte transport and then, once everything is given back, the allocator — the order
+  that lets the allocator be what the memory lived in — and runs the whole of it whatever fails, so a close that fails
+  leaks nothing: `YS_OK`, `YS_FAILED_STREAM` if the transport's close failed, `YS_FAILED_MEMORY` the allocator's,
+  `YS_FAILED_BOTH` both, with `errno` the first one's. That one `errno` cannot name two failures is the documented
+  limit; a caller needing both records them in its own callbacks. The `ys_allocator` gains the `close` for an arena or
+  pool to be torn down with what was built out of it, and the `ys_counting_allocator` installs one that checks nothing
+  leaked — asserting in a build that has assertions, so the leak points at the code that caused it, and `EBUSY` in one
+  that does not.
 
 ### Fixed
 

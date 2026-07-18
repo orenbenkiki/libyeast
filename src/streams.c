@@ -99,8 +99,3 @@ ys_writer ys_fp_writer(FILE *file, ys_ownership ownership) {
     writer.context = file;
     return writer;
 }
-
-int ys_close_writer(ys_writer *writer) {
-    // A writer that borrows what it writes to has nothing to close, and cannot fail here.
-    return writer->close != NULL ? writer->close(writer->context) : 0;
-}

@@ -124,7 +124,7 @@ static unsigned long ys_codepoint(const unsigned char *bytes, size_t size, size_
     return codepoint;
 }
 
-bool ys_write_token(ys_writer *writer, ys_token token) {
+bool ys_wire_write(ys_writer *writer, ys_token token) {
     // A code the wire spells nothing for is a bad argument, not a token to write: there is no character to say it with.
     // Every code the enum names has one, so this answers only an out-of-range code — which a test cannot hand over
     // without undefined behavior, and so which nothing here covers.
@@ -250,11 +250,11 @@ static char *ys_next_line(ys_wire *reader, size_t *size) {
         reader->scanned -= reader->consumed;
         reader->consumed = 0;
         if (filled == YS_FILL_OUT_OF_MEMORY) {
-            reader->fault = YS_FAILED_ALLOCATOR;
+            reader->fault = YS_FAILED_MEMORY;
             return NULL;
         }
         if (filled == YS_FILL_READER_FAILED) {
-            reader->fault = YS_FAILED_READER;
+            reader->fault = YS_FAILED_STREAM;
             return NULL;
         }
     }
@@ -286,7 +286,7 @@ static bool ys_append(ys_wire *reader, unsigned long codepoint) {
     char *grown = ys_memory_grow(&reader->memory, reader->text, &reader->text_capacity, reader->text_size + 4,
                                  YS_MEMORY_ITEMS, sizeof(char));
     if (grown == NULL) {
-        reader->fault = YS_FAILED_ALLOCATOR; // a resource fault, told from a malformed wire by ys_wire::fault being set
+        reader->fault = YS_FAILED_MEMORY; // a resource fault, told from a malformed wire by ys_wire::fault being set
         return false;
     }
     reader->text = grown;
@@ -409,7 +409,7 @@ static int ys_wire_error(ys_wire *reader, ys_token *token, size_t line, size_t c
 // failure is ENOMEM; the reader's is whatever it left, passed through.
 static int ys_wire_resource(ys_wire *reader) {
     reader->is_done = true;
-    if (reader->fault == YS_FAILED_ALLOCATOR) {
+    if (reader->fault == YS_FAILED_MEMORY) {
         errno = ENOMEM;
     }
     return reader->fault;
@@ -475,7 +475,7 @@ int ys_wire_read(ys_wire *reader, ys_token *token) {
     char *terminated = ys_memory_grow(&reader->memory, reader->text, &reader->text_capacity, reader->text_size + 1,
                                       YS_MEMORY_ITEMS, sizeof(char));
     if (terminated == NULL) {
-        reader->fault = YS_FAILED_ALLOCATOR;
+        reader->fault = YS_FAILED_MEMORY;
         return ys_wire_resource(reader);
     }
     reader->text = terminated;

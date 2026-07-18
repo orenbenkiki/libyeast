@@ -44,13 +44,13 @@ ys_token_source *ys_new_yaml_memory_parser(const char *input, size_t length, con
 ys_token_source *ys_new_yaml_stream_parser(ys_reader reader, const ys_options *options) {
     if (reader.read == NULL) {
         errno = EINVAL; // a reader with nothing to read from
-        ys_discard_reader(reader);
+        ys_discard_transport(reader.close, reader.context);
         return NULL;
     }
     ys_memory memory;
     ys_token_source *source = ys_new_source(YS_SOURCE_PARSER, options, &memory);
     if (source == NULL) {
-        ys_discard_reader(reader);
+        ys_discard_transport(reader.close, reader.context);
         return NULL;
     }
     ys_parser_init(&source->as.parser, memory, options);
@@ -61,13 +61,13 @@ ys_token_source *ys_new_yaml_stream_parser(ys_reader reader, const ys_options *o
 ys_token_source *ys_new_yeast_stream_reader(ys_reader reader, const ys_options *options) {
     if (reader.read == NULL) {
         errno = EINVAL; // a reader with nothing to read from
-        ys_discard_reader(reader);
+        ys_discard_transport(reader.close, reader.context);
         return NULL;
     }
     ys_memory memory;
     ys_token_source *source = ys_new_source(YS_SOURCE_WIRE, options, &memory);
     if (source == NULL) {
-        ys_discard_reader(reader);
+        ys_discard_transport(reader.close, reader.context);
         return NULL;
     }
     ys_wire_init(&source->as.wire, memory);
@@ -94,10 +94,11 @@ int ys_delete_token_source(ys_token_source *source) {
         ys_parser *parser = &source->as.parser;
         // The messages are static and the window may be the caller's; what is the parser's own is what it grew.
         void *buffers[] = {parser->window.source.bytes, parser->queue.tokens, parser->stack.frames, source};
-        return ys_teardown(parser->window.source.reader, parser->memory.allocator, buffers,
-                           sizeof(buffers) / sizeof(buffers[0]));
+        return ys_teardown(parser->window.source.reader.close, parser->window.source.reader.context,
+                           parser->memory.allocator, buffers, sizeof(buffers) / sizeof(buffers[0]));
     }
     ys_wire *wire = &source->as.wire;
     void *buffers[] = {wire->source.bytes, wire->text, source};
-    return ys_teardown(wire->source.reader, wire->memory.allocator, buffers, sizeof(buffers) / sizeof(buffers[0]));
+    return ys_teardown(wire->source.reader.close, wire->source.reader.context, wire->memory.allocator, buffers,
+                       sizeof(buffers) / sizeof(buffers[0]));
 }

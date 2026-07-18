@@ -211,7 +211,7 @@ static void test_window_compacts_to_the_queue(void) {
     ys_delete_token_source(src);
 }
 
-// A reader that fails ends the source: the fill records YS_FAILED_READER, ys_read_token() reports it once as a status
+// A reader that fails ends the source: the fill records YS_FAILED_STREAM, ys_read_token() reports it once as a status
 // rather than a token, and the source answers YS_FAILED_EOF from then on.
 static void test_reader_failure_ends_the_source(void) {
     drip source = {"hello", 5, 0, true};
@@ -220,18 +220,18 @@ static void test_reader_failure_ends_the_source(void) {
     ys_parser *parser = &src->as.parser;
 
     TEST_CHECK(!ys_parser_fill(parser, 1));
-    TEST_CHECK(parser->fault == YS_FAILED_READER); // recorded, not yet reported, and the source not yet done
+    TEST_CHECK(parser->fault == YS_FAILED_STREAM); // recorded, not yet reported, and the source not yet done
     TEST_CHECK(!parser->is_done);
 
     ys_token token;
-    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_READER); // reported once
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_STREAM); // reported once
     TEST_CHECK(parser->is_done);
     TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_EOF); // and the source is spent thereafter
 
     ys_delete_token_source(src);
 }
 
-// A window that cannot grow ends the source, out of memory: YS_FAILED_ALLOCATOR, with ENOMEM.
+// A window that cannot grow ends the source, out of memory: YS_FAILED_MEMORY, with ENOMEM.
 static void test_window_out_of_memory_ends_the_source(void) {
     drip source = {"hello", 5, 0, false};
     ys_options options = {ungrowable_allocator(), YS_RESUME_NONE, 0};
@@ -241,11 +241,11 @@ static void test_window_out_of_memory_ends_the_source(void) {
 
     errno = 0;
     TEST_CHECK(!ys_parser_fill(parser, 1));
-    TEST_CHECK(parser->fault == YS_FAILED_ALLOCATOR);
+    TEST_CHECK(parser->fault == YS_FAILED_MEMORY);
     TEST_CHECK(errno == ENOMEM);
 
     ys_token token;
-    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_ALLOCATOR);
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_MEMORY);
     TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_EOF);
 
     ys_delete_token_source(src);

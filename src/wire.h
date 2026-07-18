@@ -32,4 +32,8 @@ void ys_wire_init(ys_wire *wire, ys_memory memory);
 // with `errno` the callback's; YS_FAILED_EOF with `errno` ENODATA once the wire has ended and been read past.
 int ys_wire_read(ys_wire *wire, ys_token *token);
 
+// Write `token` to `writer` in the yeast wire format — the wire-writer arm of a token sink. True if it was written;
+// false with `errno` set — the writer's, or EINVAL if the token cannot be written at all.
+bool ys_wire_write(ys_writer *writer, ys_token token);
+
 #endif // YEAST_WIRE_H
