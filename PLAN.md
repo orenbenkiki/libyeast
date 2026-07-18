@@ -13,61 +13,31 @@ Throughout, the grammar's parameters split by two fates and it matters everywher
 and **`r`** (the resume policy) are finite, so they are resolved at generation time (static); **`n`** (indentation) and
 **`m`** (the auto-detected indent) are unbounded, so they are threaded into the runtime automaton.
 
-## Task — one token source, one read contract
+## Task — one token sink, mirroring the source
 
-A parser and the wire's token reader are the same thing to a caller: a source of yeast tokens, pulled one at a time.
-They differ only in where the tokens come from — parsed from YAML, or replayed from a wire — which is the one thing a
-caller consuming them should not have to care about. So the two collapse into one opaque `ys_token_source`, and code
-over tokens runs the same whether they are parsed or replayed.
+A `ys_token_source` produces yeast tokens; the mirror is a `ys_token_sink` that consumes them, so a token stream can be
+sent onward the same way whatever its destination — and, with both, the pipeline closes into round-trip tests. The sink
+has the two arms the source's kinds mirror: a yeast writer, which serializes tokens to the wire, and — later — a YAML
+emitter, which renders them back to YAML. The writer folds in from the value-based `ys_write_token`/`ys_close_writer`.
 
 ```c
-typedef struct ys_token_source ys_token_source; // internally a parser or a wire replay; a caller cannot tell which
+typedef struct ys_token_sink ys_token_sink; // internally a wire writer or a YAML emitter; a caller cannot tell which
 
-ys_token_source *ys_new_string_parser(const char *input, size_t length, const ys_options *options);
-ys_token_source *ys_new_stream_parser(ys_reader reader, const ys_options *options);
-ys_token_source *ys_new_token_reader(ys_reader reader, const ys_options *options); // replays a wire
+ys_token_sink *ys_new_yeast_stream_writer(ys_writer writer, const ys_options *options); // serializes to the wire
 
-int  ys_read_token(ys_token_source *source, ys_token *token); // 0 filled · -1 reader · -2 alloc · -3 end (ENODATA)
-bool ys_are_tokens_stable(const ys_token_source *source);     // true only for a string parser
-int  ys_delete_token_source(ys_token_source *source);         // 0 · -1 reader close · -2 alloc close · -3 both
+int ys_write_token(ys_token_sink *sink, ys_token token); // YS_OK, or a negative ys_status
+int ys_delete_token_sink(ys_token_sink *sink);           // the close contract: flushes, then reports
 ```
 
-`ys_read_token` fills the caller's token and returns a status rather than repeating a halt token forever: a reader
-failure is `-1`, an allocator failure `-2`, the end `-3` with `errno` `ENODATA`, and a token `0`. A resource failure
-ends the source there and then — no token, and no `end-stream` to close the `begin-stream`, the missing close being the
-sign it did not finish. A malformed document is unchanged: an `error-format` token, and the parse carries on by its
-resume policy. So the three codes a document is never the cause of — `error-memory`, `error-reader`, and the wire
-reader's `wire-error`, a malformed wire being an `error-format` of the wire like any other — leave the token model, and
-`error-format` is the sole `!` the wire writes. The token model says nothing about the host running out of memory or a
-byte source failing; those are the return value's to tell.
+`ys_write_token` moves from taking a `ys_writer` to taking a `ys_token_sink`; the byte-level `ys_writer` stays the
+transport underneath, as `ys_reader` does for a source. `ys_delete_token_sink` replaces `ys_close_writer`, and the flush
+a close performs is where a full disk or a broken pipe is finally seen. The `ys_status` enum gains what a writer's own
+close and write failures are, the way the source's reader failures are `YS_FAILED_READER`.
 
-Its verb is `read`, its lifecycle `new`/`delete`: `ys_delete_token_source` replaces `ys_free_parser` and
-`ys_free_token_reader`, and reports its closes the way the destructors already do; `ys_free_counting_allocator` becomes
-`ys_delete_counting_allocator` for the same reason. `ys_parser` and `ys_token_reader` (the types), `ys_next_token`, and
-the `is_halted` flag are gone — a source that has ended is in one terminal state, reached by a clean `end-stream` or by
-a resource failure alike, and it answers `-3` from then on.
-
-The work, in order:
-
-1. **The codes.** Remove `error-memory`, `error-reader` and `wire-error` from `ys_code`; drop their `!` rows and
-   `wire-error`'s character from `YS_WIRE`, mirror it in `wire.py`, and take `check_wire`'s count from 45 to 42.
-   `ys_is_error_code` recognises `error-format` alone.
-1. **The messages.** Drop `OUT_OF_MEMORY` and `READER_FAILED` — a resource failure is an `errno`, not a token with text.
-   The `WIRE_*` messages stay: they are now the text an `error-format` token carries off a malformed wire.
-1. **The type.** `ys_token_source`: one handle over the `ys_memory` and `ys_source` the parser and the token reader
-   already share, a `kind` tag, and the variant state behind it — the parser's window, queue, stack and state, or the
-   wire reader's line buffer. `ys_read_token` dispatches on the tag.
-1. **The constructors** return `ys_token_source *`, each building its variant.
-1. **`ys_read_token`.** The parser variant is `ys_next_token`'s body made to fill and return a status; the wire variant
-   is the old `ys_read_token`'s. A resource failure returns `-1`/`-2` and ends the source; past the end is `-3` with
-   `errno` `ENODATA`.
-1. **`is_halted` folds away** into the terminal state that answers `-3`; the flag and its helper go.
-1. **`ys_are_tokens_stable`, `ys_delete_token_source`** (over `ys_teardown`), and the `ys_free_counting_allocator`
-   rename.
-1. **The tests** — `test_c.c`, `test_parser.c`: the new signatures and names, the removed codes, and the `-1`/`-2`/`-3`
-   returns each exercised.
-1. **The documents** — `yeast.h`'s pull example and `errno` policy, the `ys_code` comment, `DESIGN.md`, `CHANGELOG.md`,
-   and every count that names the code total or the API surface, re-derived.
+Then a YAML emitter arm, `ys_new_yaml_stream_emitter`: it ignores errors — a token stream is what it is, and an emitter
+renders it rather than judging it — and takes options to strip comments (false by default) and strip unparsed tokens
+(true by default). With it the pipeline closes, and the round-trip tests fall out: YAML → yeast → YAML (parse, write,
+read, emit) and yeast → YAML → yeast, each a fixture checked against itself.
 
 ## §0 — Why this, and why it's hard
 
@@ -477,6 +447,8 @@ robustness under hostile input.
 1. Continuous structure-aware + byte-level fuzzing (ASan/UBSan) targeting the semantic long tail.
 1. Profile; eliminate any residual super-linear behaviour from over-broad lookahead.
 1. Benchmark against libyaml on representative corpora; tune hot states and buffering.
+1. Build the release library with link-time optimization, so the one-token-at-a-time dispatch inlines across the
+   translation units it is split over.
 1. Optionally: extend to an emitter (dump), or keep libyaml's emitter alongside for a complete round-trip library.
 1. Cut prebuilt binaries per platform so adoption isn't gated on a local native build.
 

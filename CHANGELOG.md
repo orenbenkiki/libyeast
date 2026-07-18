@@ -21,9 +21,19 @@ All notable changes to this project are documented here. The format follows
 
 - Version API: `ys_version`, `ys_major`, `ys_minor`, `ys_patch`.
 
-- Pull-parser API surface: `ys_new_string_parser` / `ys_new_stream_parser` / `ys_next_token` / `ys_free_parser`, with
+- Token-source API surface: `ys_new_yaml_memory_parser` / `ys_new_yaml_stream_parser` / `ys_new_yeast_stream_reader`
+  make a `ys_token_source`, `ys_read_token` pulls from it, and `ys_delete_token_source` releases it — with
   `ys_fd_reader`/`ys_fp_reader` reader adapters, a pluggable allocator, and the `ys_counting_allocator` leak counter.
-  The parser core is not implemented yet, so `ys_next_token` returns a "not implemented" error.
+  Tokens parsed from YAML and tokens replayed from a yeast wire are the same source to a caller, read the same way, so
+  code over tokens does not know or care which made them: the two are a tagged union whose arms hold genuinely different
+  state, with only the kind above them. `ys_read_token` fills the caller's token and returns a `ys_status` — `YS_OK`
+  with a token, or a negative host failure with `errno` set — rather than repeating a halt token: a reader failing is
+  `YS_FAILED_READER`, an allocator `YS_FAILED_ALLOCATOR`, the end `YS_FAILED_EOF`. A host failure ends the source there,
+  with no `end-stream` to close the `begin-stream`, the missing close being the sign it did not finish. So the three
+  codes a document is never the cause of — a parser running out of memory, its reader failing, and the wire reader's own
+  trouble — leave the token model, and `YS_CODE_ERROR` (a malformed document, or a malformed wire, which is bad data
+  like a bad document) is the sole `!` the wire writes. The parser core is not implemented yet, so a parser's
+  `ys_read_token` returns a "not implemented" error.
 
 - Character decoder: UTF-8 input is validated and classified against the grammar without a Unicode codepoint ever being
   assembled. Each character becomes a 32-bit key — the id of the character where the grammar names it, one bit per
@@ -64,32 +74,33 @@ All notable changes to this project are documented here. The format follows
   token cannot start at — one it can read, but whose own text carries the end of it past where counting stops and back
   around, so that a caller comparing or slicing the two marks would be handed a span running backwards. It is the same
   fault as a position too large to read at all, found one step later, and says so. A code the wire spells nothing for is
-  the last of the bad arguments it took: it wrote the code character out unchecked, so `YS_CODE_WIRE_ERROR` — a code no
-  wire carries — wrote a line no reader could read back, and `EINVAL` covers it now. `ys_code_char` answers `'\0'` there
-  rather than `'?'`, which was safe only for as long as nothing claimed `?` as a code. Nothing can claim `'\0'`: a line
-  is NUL-terminated, so a code written as one would read back as an empty line, and `check_wire.py` holds every
-  character in the table to being printable, which is what a wire being text meant all along.
+  the last of the bad arguments it took: it wrote the code character out unchecked, so a code with no wire character
+  wrote a line no reader could read back, and `EINVAL` covers it now. `ys_code_char` answers `'\0'` there rather than
+  `'?'`, which was safe only for as long as nothing claimed `?` as a code. Nothing can claim `'\0'`: a line is
+  NUL-terminated, so a code written as one would read back as an empty line, and `check_wire.py` holds every character
+  in the table to being printable, which is what a wire being text meant all along. Every code the enum names has a
+  character now, so this answers only an out-of-range code — a caller's mistake, not a code the library ever produces.
 
-- Errors tell the caller what to do about them. A malformed document is `YS_CODE_ERROR_FORMAT`, running out of memory is
-  `YS_CODE_ERROR_MEMORY`, and a reader that fails is `YS_CODE_ERROR_READER`; the last two end the parse for good — the
-  input must be parsed again, by a new parser with a larger cap. On the wire all three are `!`, since a consumer of the
-  wire has no choice to make between them. What the parser does with the input after a malformed document is
-  `ys_options.resume`: by default the error ends the parse and the rest of the input comes back as `YS_CODE_UNPARSED`
-  tokens, which is what the reference parser does, so the two token streams stay comparable on every input, valid or
-  not. `YS_RESUME_DOCUMENT` instead carries on at the next document, so that one malformed document in a stream does not
-  cost the caller the others; `YS_RESUME_INDENT` carries on at the next line no more indented than the entry that
-  failed, inside the document, so that a malformed entry does not cost the caller the rest of its container either. Each
-  gives up less of the input than the one before it, and where a policy has nothing to resume at it is the one before it
-  — at the price that only the input before the first error stays comparable with the reference. A skipped line is two
-  tokens, its content a `YS_CODE_UNPARSED` and its break a `YS_CODE_UNPARSED_BREAK` — the break its own code, since it
-  is not a structural break the parser found.
+- Errors tell the caller what to do about them. A malformed document — or a malformed wire, bad data like a bad document
+  — is `YS_CODE_ERROR`, its text the message and its wire character `!`. A host failure that is not the data's fault,
+  running out of memory or a reader failing, is `ys_read_token`'s return value, a `ys_status`, not a token: it ends the
+  source for good, the input to be read again by a new source with a larger cap. What the parser does with the input
+  after a malformed document is `ys_options.resume`: by default the error ends the parse and the rest of the input comes
+  back as `YS_CODE_UNPARSED` tokens, which is what the reference parser does, so the two token streams stay comparable
+  on every input, valid or not. `YS_RESUME_DOCUMENT` instead carries on at the next document, so that one malformed
+  document in a stream does not cost the caller the others; `YS_RESUME_INDENT` carries on at the next line no more
+  indented than the entry that failed, inside the document, so that a malformed entry does not cost the caller the rest
+  of its container either. Each gives up less of the input than the one before it, and where a policy has nothing to
+  resume at it is the one before it — at the price that only the input before the first error stays comparable with the
+  reference. A skipped line is two tokens, its content a `YS_CODE_UNPARSED` and its break a `YS_CODE_UNPARSED_BREAK` —
+  the break its own code, since it is not a structural break the parser found.
 
 - Parser state: the window over the input, the stack of productions the parser is inside, the queue of tokens it has
   built but not handed back, and the state it is in — the whole of it in one struct, none of it in the C call stack,
-  which is what lets `ys_next_token` hand back a token from the middle of a production and resume there. The queue holds
+  which is what lets `ys_read_token` hand back a token from the middle of a production and resume there. The queue holds
   a run of undecided tokens, whose codes are rewritten and ahead of which a marker is injected when the parser learns
   what they were, and the stack's frames carry the grammar's one runtime parameter, `n`. The automaton that drives them
-  is not generated yet, so `ys_next_token` still returns a "not implemented" error.
+  is not generated yet, so `ys_read_token` still returns a "not implemented" error.
 
 - A conformance suite, `tests/spec/`. It was built once from the reference parser's vendored `tests/` — the fixtures
   that align with libyeast's grammar, each expected output turned into what libyeast emits rather than what the
@@ -232,34 +243,34 @@ All notable changes to this project are documented here. The format follows
   built, so a constructor that fails closes it rather than leaking it, discarding a close failure it has no channel to
   report and holding on to the reason it is already returning `NULL` for.
 
-- The reader of the yeast wire format tells a broken wire from the tokens a wire carries. Every token code, the three
-  error codes included, is content the wire legitimately replays, so the reader cannot signal its own trouble with one
-  of them. A wire it cannot read — not the wire format, out of the memory to read it, or a byte source that failed —
-  ends the stream on a `YS_CODE_WIRE_ERROR` token, a code no parse emits and no writer produces. Its text says what was
-  wrong, one message per way the wire can be broken, and its marks say where: the line and column in the wire. So
-  `false` from `ys_read_token` means one thing, the wire ended, and a caller reading until then still learns why it
-  stopped. The reader validates its input as the parser does: a byte that a conformant wire would have escaped, an
-  escape naming no Unicode codepoint, a position that is not a number — each is a located `YS_CODE_WIRE_ERROR`, not a
-  misread.
+- The reader of the yeast wire format tells a broken wire from the tokens a wire carries, the same way the parser tells
+  a malformed document from a valid one: a wire that is not the wire format is a `YS_CODE_ERROR` token, bad data like a
+  bad document, its text one message per way the wire can be broken and its marks the line and column in the wire. The
+  reader validates its input as the parser does — a byte that a conformant wire would have escaped, an escape naming no
+  Unicode codepoint, a position that is not a number — each a located `YS_CODE_ERROR`, not a misread; the wire is spent
+  after one. A host failure reading the wire — out of the memory to buffer it, or a byte source that fails — is not a
+  token but `ys_read_token`'s return, `YS_FAILED_ALLOCATOR` or `YS_FAILED_READER`, and the end is `YS_FAILED_EOF`. So a
+  caller reading until a negative return learns why it stopped.
 
-- An `errno` policy across the API. A function that returns a token reports through the token and leaves `errno` for the
-  callback that set it, so a reader's or allocator's `errno` survives beside the error token it became. A function that
-  fails without a token — a constructor, `ys_write_token`, or one of the closers — sets `errno`: `EINVAL` for a bad
-  argument (a stream parser or token reader with no `read` callback, a string parser given a NULL buffer with a length),
-  `ENOMEM` for insufficient memory, or the value a failing callback set, passed through. An allocator or reader callback
-  must set `errno` when it fails; a debug build asserts a failing allocator did.
+- An `errno` policy across the API. Malformed data is never an `errno` — a syntax error or a broken wire is a
+  `YS_CODE_ERROR` token, part of the stream. A host failure is: `ys_read_token` returns a negative `ys_status` with
+  `errno` the reader's, `ENOMEM`, or `ENODATA`; and a function that fails without a token — a constructor,
+  `ys_write_token`, or one of the closers — sets `errno`: `EINVAL` for a bad argument (a stream source with no `read`
+  callback, a memory parser given a NULL buffer with a length), `ENOMEM` for insufficient memory, or the value a failing
+  callback set, passed through. An allocator or reader callback must set `errno` when it fails; a debug build asserts a
+  failing allocator did.
 
 - Closing reports, because a buffered close is where a write finally reaches its destination and so where a full disk or
   a broken pipe is first seen — long after the last `ys_write_token` returned true. A `ys_reader`'s, `ys_writer`'s and
   `ys_allocator`'s `close` each answer `close(2)`'s contract, 0 or -1 with `errno` set, as their `read` and `write`
-  already answer `read(2)`'s and `write(2)`'s; and `ys_close_writer`, `ys_free_parser` and `ys_free_token_reader` return
-  it rather than swallow it. A free closes the reader and then, once everything is given back, the allocator — the order
-  that lets the allocator be what the memory lived in — and runs the whole of it whatever fails, so a close that fails
-  leaks nothing: 0 for a clean teardown, -1 if the reader's close failed, -2 the allocator's, -3 both, with `errno` the
-  first one's. That one `errno` cannot name two failures is the documented limit; a caller needing both records them in
-  its own callbacks. The `ys_allocator` gains the `close` for an arena or pool to be torn down with what was built out
-  of it, and the `ys_counting_allocator` installs one that checks nothing leaked — asserting in a build that has
-  assertions, so the leak points at the code that caused it, and `EBUSY` in one that does not.
+  already answer `read(2)`'s and `write(2)`'s; and `ys_close_writer` and `ys_delete_token_source` return it rather than
+  swallow it. A free closes the reader and then, once everything is given back, the allocator — the order that lets the
+  allocator be what the memory lived in — and runs the whole of it whatever fails, so a close that fails leaks nothing:
+  0 for a clean teardown, -1 if the reader's close failed, -2 the allocator's, -3 both, with `errno` the first one's.
+  That one `errno` cannot name two failures is the documented limit; a caller needing both records them in its own
+  callbacks. The `ys_allocator` gains the `close` for an arena or pool to be torn down with what was built out of it,
+  and the `ys_counting_allocator` installs one that checks nothing leaked — asserting in a build that has assertions, so
+  the leak points at the code that caused it, and `EBUSY` in one that does not.
 
 ### Fixed
 

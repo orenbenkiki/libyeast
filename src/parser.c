@@ -45,12 +45,15 @@ bool ys_parser_fill(ys_parser *parser, size_t wanted) {
         if (window->source.bytes != NULL) {
             window->bytes = window->source.bytes;
         }
+        // A failed fill records the fault; ys_read_token() reports it and marks the source done, so the reader is not
+        // reached again. The allocator's failure is ENOMEM; the reader's is whatever it left, passed through.
         if (filled == YS_FILL_OUT_OF_MEMORY) {
-            ys_parser_halt(parser, YS_CODE_ERROR_MEMORY, ys_message(YS_MESSAGE_OUT_OF_MEMORY));
+            parser->fault = YS_FAILED_ALLOCATOR;
+            errno = ENOMEM;
             return false;
         }
         if (filled == YS_FILL_READER_FAILED) {
-            ys_parser_halt(parser, YS_CODE_ERROR_READER, ys_message(YS_MESSAGE_READER_FAILED));
+            parser->fault = YS_FAILED_READER;
             return false;
         }
     }
@@ -162,13 +165,8 @@ static void ys_parser_error(ys_parser *parser, ys_code code, const char *message
     parser->error.token.end = parser->window.mark;
 }
 
-void ys_parser_halt(ys_parser *parser, ys_code code, const char *message) {
-    ys_parser_error(parser, code, message);
-    parser->error.is_halted = true;
-}
-
 void ys_parser_fail(ys_parser *parser, const char *message) {
-    ys_parser_error(parser, YS_CODE_ERROR_FORMAT, message);
+    ys_parser_error(parser, YS_CODE_ERROR, message);
 }
 
 // --- The parser. ---
@@ -178,7 +176,7 @@ ys_token ys_parser_token(const ys_parser *parser, ys_pending pending) {
     token.code = pending.code;
     token.start = pending.start;
     token.end = pending.end;
-    if (ys_is_error_code(pending.code)) {
+    if (pending.code == YS_CODE_ERROR) {
         token.text = parser->error.message;
     } else if (pending.end.byte_offset > pending.start.byte_offset) {
         const uint8_t *at = parser->window.bytes + (pending.start.byte_offset - parser->window.base);
@@ -189,83 +187,45 @@ ys_token ys_parser_token(const ys_parser *parser, ys_pending pending) {
     return token;
 }
 
-static ys_parser *ys_new_parser(const ys_options *options) {
-    ys_memory memory;
-    ys_parser *parser = ys_memory_new(&memory, options, sizeof(ys_parser));
-    if (parser != NULL) {
-        parser->memory = memory;
-        parser->window.bytes = YS_NO_BYTES;
-        parser->error.resume = ys_resolved_options(options).resume;
-        parser->state = YS_STATE_START;
-    }
-    return parser;
+void ys_parser_init(ys_parser *parser, ys_memory memory, const ys_options *options) {
+    // The rest of the arm is the zeroed state ys_memory_new left — fault 0, is_done false, an empty queue and stack.
+    parser->memory = memory;
+    parser->window.bytes = YS_NO_BYTES;
+    parser->error.resume = ys_resolved_options(options).resume;
+    parser->state = YS_STATE_START;
 }
 
-ys_parser *ys_new_string_parser(const char *input, size_t length, const ys_options *options) {
-    if (input == NULL && length > 0) {
-        errno = EINVAL; // a NULL buffer of nonzero length is not an empty input, it is a mistake
-        return NULL;
+int ys_parser_read(ys_parser *parser, ys_token *token) {
+    if (parser->is_done) {
+        errno = ENODATA; // the stream ended, or the source faulted, and is being read past
+        return YS_FAILED_EOF;
     }
-    ys_parser *parser = ys_new_parser(options); // sets errno on failure
-    if (parser != NULL) {
-        // The window is the caller's buffer, whole: there is no reader to give it more, and no buffer of its own to
-        // free. That is what makes a string parser's tokens stable — their text is the caller's bytes.
-        if (input != NULL) {
-            parser->window.bytes = (const uint8_t *)input;
-        }
-        parser->window.source.size = length;
-        parser->window.source.is_at_end = true;
-    }
-    return parser;
-}
 
-ys_parser *ys_new_stream_parser(ys_reader reader, const ys_options *options) {
-    if (reader.read == NULL) {
-        errno = EINVAL; // a reader with nothing to read from
-        ys_discard_reader(reader);
-        return NULL;
-    }
-    ys_parser *parser = ys_new_parser(options); // sets errno on failure
-    if (parser == NULL) {
-        ys_discard_reader(reader);
-        return NULL;
-    }
-    parser->window.source.reader = reader;
-    return parser;
-}
-
-bool ys_are_tokens_stable(const ys_parser *parser) {
-    // A string parser is exactly a parser with nowhere to read more input from.
-    return parser->window.source.reader.read == NULL;
-}
-
-ys_token ys_next_token(ys_parser *parser) {
-    if (ys_parser_is_halted(parser)) {
-        return ys_parser_token(parser, parser->error.token);
-    }
+    // The automaton is not generated yet, so there is nothing to step and every call fails the same way: a format
+    // error, which a real parse would carry on past by its resume policy but which here has nothing to carry on to.
     if (!ys_queue_is_ready(&parser->queue) && parser->error.message == NULL) {
-        // The automaton is not generated yet, so there is nothing to step and every call fails the same way.
         ys_parser_fail(parser, ys_message(YS_MESSAGE_NOT_IMPLEMENTED));
     }
+
+    // A fill during the step above may have failed: the source is spent, and the failure is the return value, not a
+    // token. errno was set where the fill failed.
+    if (parser->fault != 0) {
+        parser->is_done = true;
+        return parser->fault;
+    }
+
     if (ys_queue_is_ready(&parser->queue)) {
-        return ys_parser_token(parser, ys_queue_pop(&parser->queue));
+        *token = ys_parser_token(parser, ys_queue_pop(&parser->queue));
+        if (token->code == YS_CODE_END_STREAM) {
+            parser->is_done = true; // the stream is closed; the next call is the end
+        }
+        return 0;
     }
 
     // The error goes behind every token the queue holds. Handing it back clears it — there is no longer an error to
     // hand back — and whether the parse carries on past it is ys_error::resume's business. The message it points at is
     // static, so the token stays good however long the caller keeps it.
-    ys_token token = ys_parser_token(parser, parser->error.token);
+    *token = ys_parser_token(parser, parser->error.token);
     parser->error.message = NULL;
-    return token;
-}
-
-int ys_free_parser(ys_parser *parser) {
-    if (parser == NULL) {
-        return 0; // freeing nothing cannot fail
-    }
-
-    // The messages are static and the window may be the caller's; what is the parser's own is what it grew.
-    void *buffers[] = {parser->window.source.bytes, parser->queue.tokens, parser->stack.frames, parser};
-    return ys_teardown(parser->window.source.reader, parser->memory.allocator, buffers,
-                       sizeof(buffers) / sizeof(buffers[0]));
+    return 0;
 }

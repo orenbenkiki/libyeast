@@ -164,36 +164,39 @@ ys_frame ys_stack_pop(ys_stack *stack);
 // token in it — so queueing it needs no room either, and reporting a malformed document cannot fail for want of memory.
 typedef struct ys_error {
     const char *message; // the error's text, and what says there is an error to hand back at all; NULL when there is
-                         // not. Handing a format error back clears it, the parse carrying on past one; halting does
-                         // not, which is how the same failure is handed back at every later call.
+                         // not. Handing a format error back clears it, the parse carrying on past one.
     ys_pending token;    // the error's token, handed back behind everything the queue holds
-    bool is_halted;      // the error ended the parse
     ys_resume resume;    // what the parser does with the input after a malformed document
 } ys_error;
 
 // --- The parser. ---
 
-struct ys_parser {
+// The parsing arm of a ys_token_source: the whole execution state of the automaton, none of it in the C call stack, so
+// ys_read_token() can hand back a token from the middle of a production and resume there on the next call.
+typedef struct ys_parser {
     ys_memory memory;
     ys_window window;
     ys_queue queue;
     ys_stack stack;
     ys_error error;
     ys_state state; // where the automaton is
-};
+    int fault;      // a resource failure ys_read_token() is to report: 0 none, -1 the reader failed, -2 the allocator
+    bool is_done;   // the source is spent — the stream ended, or it faulted — and answers -3 from here on
+} ys_parser;
 
-// Whether the parse has halted, and so hands back the same failure at every call.
-static inline bool ys_parser_is_halted(const ys_parser *parser) {
-    return parser->error.is_halted;
-}
+// Initialize a freshly-allocated parser arm: `memory` is what it may allocate, and `options` gives the resume policy.
+// The window's bytes and reader are the constructor's to set, string or stream.
+void ys_parser_init(ys_parser *parser, ys_memory memory, const ys_options *options);
+
+// Read the next token into `token`: 0 with it filled, -1 the reader failed, -2 the allocator did (with `errno` the
+// callback's), YS_FAILED_EOF with `errno` ENODATA once the stream has ended and been read past.
+int ys_parser_read(ys_parser *parser, ys_token *token);
 
 // Make at least `wanted` bytes readable, reading from the source if need be — so that the decoder never sees a
 // character the window's edge cut in half, and a run of them is never cut into two tokens. Fewer bytes are readable
-// only at the end of the input. False if the parse halted: the source failed, or the cap or the allocator refused.
+// only at the end of the input. False if a fill failed — the source's reader, or the cap or the allocator — which sets
+// ys_parser::fault and ends the source.
 bool ys_parser_fill(ys_parser *parser, size_t wanted);
-
-// Halt the parse at where it has reached: `code` is the failure and `message` says which it was.
-void ys_parser_halt(ys_parser *parser, ys_code code, const char *message);
 
 // Hand back a malformed document: the error token, with `message` as its text, at where the parser has reached. What
 // the parser does with the rest of the input is ys_error::resume. An open run must be resolved before this is called:

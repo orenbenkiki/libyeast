@@ -74,6 +74,6 @@ size_t ys_counting_allocator_live_buffers(const ys_counting_allocator *counter) 
     return counter->live_buffers;
 }
 
-void ys_free_counting_allocator(ys_counting_allocator *counter) {
+void ys_delete_counting_allocator(ys_counting_allocator *counter) {
     free(counter);
 }

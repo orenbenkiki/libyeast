@@ -2,6 +2,7 @@
 #include "acutest.h"
 #include "messages.h"
 #include "parser.h"
+#include "token_source.h"
 #include <errno.h>
 #include <string.h>
 
@@ -101,8 +102,9 @@ static void test_memory_grow(void) {
 // A mark advances by bytes and by characters, which differ above ASCII; a line break resets the column and counts a
 // line, however many characters it spans.
 static void test_window_marks(void) {
-    ys_parser *parser = ys_new_string_parser("", 0, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser("", 0, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
     ys_window *window = &parser->window;
 
     ys_run run = {5, 3}; // three characters, five bytes
@@ -115,24 +117,25 @@ static void test_window_marks(void) {
     TEST_CHECK(window->mark.byte_offset == 7 && window->mark.char_offset == 5);
     TEST_CHECK(window->mark.line == 1 && window->mark.column == 0);
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
 // A string parser's window is the caller's buffer, whole, from the first call.
 static void test_string_window(void) {
     const char *input = "hello";
-    ys_parser *parser = ys_new_string_parser(input, 5, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser(input, 5, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
 
-    TEST_CHECK(ys_are_tokens_stable(parser));
+    TEST_CHECK(ys_are_tokens_stable(src));
     TEST_CHECK(ys_window_readable(&parser->window) == 5);
     TEST_CHECK((const char *)ys_window_at(&parser->window) == input);
     TEST_CHECK(ys_parser_fill(parser, 4096)); // there is nothing to fill from, and that is not a failure
     TEST_CHECK(ys_window_readable(&parser->window) == 5);
-    TEST_CHECK(parser->window.source.bytes == NULL); // the caller's bytes are never copied
-    TEST_CHECK(parser->memory.allocated_bytes == sizeof(ys_parser));
+    TEST_CHECK(parser->window.source.bytes == NULL);                       // the caller's bytes are never copied
+    TEST_CHECK(parser->memory.allocated_bytes == sizeof(ys_token_source)); // the whole source is the one allocation
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
 // A reader that hands out its bytes one at a time, so that filling has to loop.
@@ -164,10 +167,11 @@ static ys_reader drip_reader(drip *source) {
 // A stream parser's window is its own: it fills from the reader, and stops filling at the end of the input.
 static void test_stream_window(void) {
     drip source = {"hello", 5, 0, false};
-    ys_parser *parser = ys_new_stream_parser(drip_reader(&source), NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
 
-    TEST_CHECK(!ys_are_tokens_stable(parser));
+    TEST_CHECK(!ys_are_tokens_stable(src));
     TEST_CHECK(ys_window_readable(&parser->window) == 0);
 
     TEST_CHECK(ys_parser_fill(parser, 3));
@@ -179,14 +183,15 @@ static void test_stream_window(void) {
     TEST_CHECK(ys_window_readable(&parser->window) == 5);
     TEST_CHECK(parser->window.source.is_at_end);
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
 // The window discards the bytes no token points at any more, and keeps every byte the queue still does.
 static void test_window_compacts_to_the_queue(void) {
     drip source = {"hello", 5, 0, false};
-    ys_parser *parser = ys_new_stream_parser(drip_reader(&source), NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
 
     TEST_CHECK(ys_parser_fill(parser, 5));
     ys_window_advance(&parser->window, (ys_run){2, 2}); // read past "he", with nothing queued
@@ -203,39 +208,47 @@ static void test_window_compacts_to_the_queue(void) {
     ys_token token = ys_parser_token(parser, ys_queue_pop(&parser->queue));
     TEST_CHECK(token.text != NULL && token.text[0] == 'l'); // still the right byte after the buffer moved
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
-// A reader that fails halts the parse, for good.
-static void test_reader_failure_halts(void) {
+// A reader that fails ends the source: the fill records YS_FAILED_READER, ys_read_token() reports it once as a status
+// rather than a token, and the source answers YS_FAILED_EOF from then on.
+static void test_reader_failure_ends_the_source(void) {
     drip source = {"hello", 5, 0, true};
-    ys_parser *parser = ys_new_stream_parser(drip_reader(&source), NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
 
     TEST_CHECK(!ys_parser_fill(parser, 1));
-    TEST_CHECK(ys_parser_is_halted(parser));
+    TEST_CHECK(parser->fault == YS_FAILED_READER); // recorded, not yet reported, and the source not yet done
+    TEST_CHECK(!parser->is_done);
 
-    ys_token token = ys_next_token(parser);
-    TEST_CHECK(token.code == YS_CODE_ERROR_READER);
-    TEST_CHECK(token.text == ys_message(YS_MESSAGE_READER_FAILED));
-    TEST_CHECK(ys_next_token(parser).code == YS_CODE_ERROR_READER); // and the same token, forever
+    ys_token token;
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_READER); // reported once
+    TEST_CHECK(parser->is_done);
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_EOF); // and the source is spent thereafter
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
-// A window that cannot grow halts the parse, out of memory.
-static void test_window_out_of_memory_halts(void) {
+// A window that cannot grow ends the source, out of memory: YS_FAILED_ALLOCATOR, with ENOMEM.
+static void test_window_out_of_memory_ends_the_source(void) {
     drip source = {"hello", 5, 0, false};
     ys_options options = {ungrowable_allocator(), YS_RESUME_NONE, 0};
-    ys_parser *parser = ys_new_stream_parser(drip_reader(&source), &options);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), &options);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
 
+    errno = 0;
     TEST_CHECK(!ys_parser_fill(parser, 1));
-    TEST_CHECK(ys_parser_is_halted(parser));
-    TEST_CHECK(ys_next_token(parser).code == YS_CODE_ERROR_MEMORY);
-    TEST_CHECK(ys_next_token(parser).text == ys_message(YS_MESSAGE_OUT_OF_MEMORY));
+    TEST_CHECK(parser->fault == YS_FAILED_ALLOCATOR);
+    TEST_CHECK(errno == ENOMEM);
 
-    ys_free_parser(parser);
+    ys_token token;
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_ALLOCATOR);
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_EOF);
+
+    ys_delete_token_source(src);
 }
 
 // A cap smaller than the parser itself refuses to build one at all — for either kind, and because of the cap. Both are
@@ -245,13 +258,13 @@ static void test_cap_below_the_parser(void) {
     ys_options options = {{0}, YS_RESUME_NONE, 1};
 
     errno = 0;
-    TEST_CHECK(ys_new_string_parser("x", 1, &options) == NULL);
+    TEST_CHECK(ys_new_yaml_memory_parser("x", 1, &options) == NULL);
     TEST_CHECK(errno == ENOMEM);
     TEST_MSG("a string parser under a cap of one byte: errno is %d, not ENOMEM", errno);
 
     drip source = {"x", 1, 0, false};
     errno = 0;
-    TEST_CHECK(ys_new_stream_parser(drip_reader(&source), &options) == NULL);
+    TEST_CHECK(ys_new_yaml_stream_parser(drip_reader(&source), &options) == NULL);
     TEST_CHECK(errno == ENOMEM);
     TEST_MSG("a stream parser under a cap of one byte: errno is %d, not ENOMEM", errno);
 }
@@ -260,8 +273,9 @@ static void test_cap_below_the_parser(void) {
 // none.
 static void test_queue_order(void) {
     const char *input = "ab";
-    ys_parser *parser = ys_new_string_parser(input, 2, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser(input, 2, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
     ys_memory *memory = &parser->memory;
     ys_queue *queue = &parser->queue;
 
@@ -278,14 +292,15 @@ static void test_queue_order(void) {
     TEST_CHECK(text.text == input && text.end.byte_offset - text.start.byte_offset == 2);
     TEST_CHECK(!ys_queue_is_ready(queue));
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
 // An open run is undecided: its tokens are held back, their codes rewritten when the parser learns what they were, and
 // a marker injected ahead of them — which is how a block scalar's chomped-away empty lines get their end-scalar.
 static void test_queue_run(void) {
-    ys_parser *parser = ys_new_string_parser("\n\n", 2, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser("\n\n", 2, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
     ys_memory *memory = &parser->memory;
     ys_queue *queue = &parser->queue;
 
@@ -310,14 +325,15 @@ static void test_queue_run(void) {
     TEST_CHECK(ys_queue_pop(queue).code == YS_CODE_BREAK);
     TEST_CHECK(!ys_queue_is_ready(queue));
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
 // The queue grows past its first block, reuses the room the handed-back tokens leave behind, and gives up when it may
 // not grow.
 static void test_queue_grows(void) {
-    ys_parser *parser = ys_new_string_parser("", 0, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser("", 0, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
 
     ys_queue_open_run(&parser->queue); // hold them all, so that none of the room is ever given back
     for (size_t index = 0; index < 100; index++) {
@@ -341,20 +357,22 @@ static void test_queue_grows(void) {
     TEST_CHECK(parser->queue.capacity == capacity); // that room was enough, so the queue did not grow
     TEST_CHECK(parser->queue.head == 0);            // it moved back to the front of its block instead
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 
     ys_options options = {ungrowable_allocator(), YS_RESUME_NONE, 0};
-    ys_parser *refusing = ys_new_string_parser("", 0, &options);
+    ys_token_source *refusing = ys_new_yaml_memory_parser("", 0, &options);
     TEST_ASSERT(refusing != NULL);
-    TEST_CHECK(!ys_queue_emit(&refusing->memory, &refusing->queue, YS_CODE_TEXT, mark_of(0, 0), mark_of(0, 0)));
-    ys_free_parser(refusing);
+    TEST_CHECK(!ys_queue_emit(&refusing->as.parser.memory, &refusing->as.parser.queue, YS_CODE_TEXT, mark_of(0, 0),
+                              mark_of(0, 0)));
+    ys_delete_token_source(refusing);
 }
 
 // A frame carries the production's `n` and where to resume; the stack grows past its first block, and gives up when it
 // may not grow.
 static void test_stack(void) {
-    ys_parser *parser = ys_new_string_parser("", 0, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser("", 0, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
 
     for (size_t index = 0; index < 100; index++) {
         TEST_ASSERT(ys_stack_push(&parser->memory, &parser->stack, (ys_state)index, (ptrdiff_t)index));
@@ -373,59 +391,80 @@ static void test_stack(void) {
     TEST_CHECK(ys_stack_push(&parser->memory, &parser->stack, 0, YS_NO_INDENT));
     TEST_CHECK(ys_stack_top(&parser->stack)->indent == YS_NO_INDENT);
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 
     ys_options options = {ungrowable_allocator(), YS_RESUME_NONE, 0};
-    ys_parser *refusing = ys_new_string_parser("", 0, &options);
+    ys_token_source *refusing = ys_new_yaml_memory_parser("", 0, &options);
     TEST_ASSERT(refusing != NULL);
-    TEST_CHECK(!ys_stack_push(&refusing->memory, &refusing->stack, 0, 0));
-    ys_free_parser(refusing);
+    TEST_CHECK(!ys_stack_push(&refusing->as.parser.memory, &refusing->as.parser.stack, 0, 0));
+    ys_delete_token_source(refusing);
 }
 
 // An error consumes nothing and its text is the message, not the input. It comes back behind everything the queue
 // holds, and handing it back leaves the parser running.
 static void test_error_behind_the_queue(void) {
-    ys_parser *parser = ys_new_string_parser("ab", 2, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser("ab", 2, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
 
     TEST_CHECK(ys_queue_emit(&parser->memory, &parser->queue, YS_CODE_TEXT, mark_of(0, 0), mark_of(2, 2)));
     ys_parser_fail(parser, ys_message(YS_MESSAGE_NOT_IMPLEMENTED));
-    TEST_CHECK(!ys_parser_is_halted(parser)); // a malformed document does not end the parse for good
+    TEST_CHECK(!parser->is_done); // a malformed document does not end the parse for good
 
-    ys_token text = ys_next_token(parser);
+    ys_token text;
+    TEST_CHECK(ys_read_token(src, &text) == YS_OK);
     TEST_CHECK(text.code == YS_CODE_TEXT); // the queue first
 
-    ys_token error = ys_next_token(parser);
-    TEST_CHECK(error.code == YS_CODE_ERROR_FORMAT);
+    ys_token error;
+    TEST_CHECK(ys_read_token(src, &error) == YS_OK);
+    TEST_CHECK(error.code == YS_CODE_ERROR);
     TEST_CHECK(error.text == ys_message(YS_MESSAGE_NOT_IMPLEMENTED));
     TEST_CHECK(error.start.byte_offset == error.end.byte_offset); // it consumed nothing
     TEST_CHECK(parser->error.message == NULL);                    // and there is no error left to hand back
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
+}
+
+// Handing back the end-of-stream token ends the source: the next read is YS_FAILED_EOF, the stream having closed.
+static void test_end_stream_ends_the_source(void) {
+    ys_token_source *src = ys_new_yaml_memory_parser("", 0, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
+
+    TEST_CHECK(ys_queue_emit(&parser->memory, &parser->queue, YS_CODE_END_STREAM, mark_of(0, 0), mark_of(0, 0)));
+    ys_token token;
+    TEST_CHECK(ys_read_token(src, &token) == YS_OK);
+    TEST_CHECK(token.code == YS_CODE_END_STREAM);
+    TEST_CHECK(parser->is_done); // the stream closed, so the source is spent
+    TEST_CHECK(ys_read_token(src, &token) == YS_FAILED_EOF);
+
+    ys_delete_token_source(src);
 }
 
 // The parser is not implemented yet, so every pull yields the same error at the first character.
 static void test_not_implemented(void) {
-    ys_parser *parser = ys_new_string_parser("hello: world\n", 13, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser("hello: world\n", 13, NULL);
+    TEST_ASSERT(src != NULL);
 
     for (int pull = 0; pull < 3; pull++) {
-        ys_token token = ys_next_token(parser);
-        TEST_CHECK(token.code == YS_CODE_ERROR_FORMAT);
+        ys_token token;
+        TEST_CHECK(ys_read_token(src, &token) == YS_OK);
+        TEST_CHECK(token.code == YS_CODE_ERROR);
         TEST_CHECK(token.text != NULL && strcmp(token.text, "not implemented") == 0);
         TEST_CHECK(token.start.byte_offset == 0 && token.end.byte_offset == 0);
     }
 
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
 // An input of no bytes at all is a window pointing at nothing, which is not a window pointing nowhere.
 static void test_empty_input(void) {
-    ys_parser *parser = ys_new_string_parser(NULL, 0, NULL);
-    TEST_ASSERT(parser != NULL);
+    ys_token_source *src = ys_new_yaml_memory_parser(NULL, 0, NULL);
+    TEST_ASSERT(src != NULL);
+    ys_parser *parser = &src->as.parser;
     TEST_CHECK(ys_window_readable(&parser->window) == 0);
     TEST_CHECK(ys_next_char(ys_window_at(&parser->window), 0) == YS_LIT_KEY_EOF);
-    ys_free_parser(parser);
+    ys_delete_token_source(src);
 }
 
 TEST_LIST = {
@@ -435,14 +474,15 @@ TEST_LIST = {
     {"string_window", test_string_window},
     {"stream_window", test_stream_window},
     {"window_compacts_to_the_queue", test_window_compacts_to_the_queue},
-    {"reader_failure_halts", test_reader_failure_halts},
-    {"window_out_of_memory_halts", test_window_out_of_memory_halts},
+    {"reader_failure_ends_the_source", test_reader_failure_ends_the_source},
+    {"window_out_of_memory_ends_the_source", test_window_out_of_memory_ends_the_source},
     {"cap_below_the_parser", test_cap_below_the_parser},
     {"queue_order", test_queue_order},
     {"queue_run", test_queue_run},
     {"queue_grows", test_queue_grows},
     {"stack", test_stack},
     {"error_behind_the_queue", test_error_behind_the_queue},
+    {"end_stream_ends_the_source", test_end_stream_ends_the_source},
     {"not_implemented", test_not_implemented},
     {"empty_input", test_empty_input},
     {NULL, NULL},

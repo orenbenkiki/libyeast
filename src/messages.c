@@ -6,8 +6,6 @@
 // would read as two of them.
 static const char *const YS_MESSAGES[YS_MESSAGE_COUNT] = {
     [YS_MESSAGE_NOT_IMPLEMENTED] = "not implemented",
-    [YS_MESSAGE_OUT_OF_MEMORY] = "out of memory: raise ys_options::max_bytes, or use an allocator that can meet it",
-    [YS_MESSAGE_READER_FAILED] = "the reader failed: it reported an error before the end of the input",
     [YS_MESSAGE_WIRE_BAD_POSITION] = "not the yeast wire format: expected a token position line",
     [YS_MESSAGE_WIRE_BAD_CODE] = "not the yeast wire format: unknown token code",
     [YS_MESSAGE_WIRE_BAD_ESCAPE] = "not the yeast wire format: invalid escape sequence",

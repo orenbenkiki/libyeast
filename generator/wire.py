@@ -15,7 +15,7 @@ the reference's own line counting.
 import re
 from dataclasses import dataclass
 
-ERROR = "!"  # the code all three failures share on the wire
+ERROR = "!"  # the wire's one error code, a malformed document
 
 # The wire character each token code is written as — the grammar names the code, `src/wire.c`'s YS_WIRE table gives the
 # character, and `check_wire.py` gates this copy against it so the two cannot drift. `CHAR_CODE` reads a wire back.

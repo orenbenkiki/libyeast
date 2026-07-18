@@ -8,15 +8,22 @@ its comments). The full public API surface is declared, but the parser core is n
 ## Pieces
 
 - **Public API** — `include/yeast.h`: the API surface and its behavioral contract, documented inline as Doxygen comments
-  (published to GitHub Pages). The version query; the pull-parser surface (`ys_new_string_parser` /
-  `ys_new_stream_parser` / `ys_next_token` / `ys_free_parser`) with `ys_fd_reader`/`ys_fp_reader` adapters; a pluggable
-  allocator; and the `ys_counting_allocator` leak counter.
-- **Wire format** — `src/wire.c`: the yeast wire format, one character and its escaped text per token, which
-  `ys_write_token` writes and `ys_read_token` reads back — together with the table that says which character each code
-  is. That format is what a token stream is compared against the reference parser in, and what lets one be piped between
-  tools; it is complete and works. The reader treats the wire as untrusted: a wire it cannot read ends on a
-  `YS_CODE_WIRE_ERROR` token — a code no valid wire carries, so it is never mistaken for the error tokens a wire
-  legitimately replays — with a located, specific message.
+  (published to GitHub Pages). The version query; the token-source surface — `ys_new_yaml_memory_parser` /
+  `ys_new_yaml_stream_parser` / `ys_new_yeast_stream_reader` make a `ys_token_source`, `ys_read_token` pulls from it,
+  and `ys_delete_token_source` releases it — with `ys_fd_reader`/`ys_fp_reader` adapters; the yeast wire writer; a
+  pluggable allocator; and the `ys_counting_allocator` leak counter. An `int`-returning function reports a `ys_status`:
+  `YS_OK`, or a negative host failure with `errno` set.
+- **Token source** — `src/token_source.h` and `src/token_source.c`: one `ys_token_source` over tokens however they are
+  made — YAML parsed from memory or a stream, or a yeast wire replayed from a stream — so code over tokens runs the same
+  whichever it is. It is a tagged union: the parser's arm and the wire's arm hold genuinely different state (a window,
+  queue, stack and automaton against a line buffer), so only the kind is above them. `ys_read_token`,
+  `ys_are_tokens_stable` and `ys_delete_token_source` dispatch on it.
+- **Wire format** — `src/wire.c` and `src/wire.h`: the yeast wire format, one character and its escaped text per token,
+  which `ys_write_token` writes and a yeast-wire token source reads back with `ys_read_token` — together with the table
+  that says which character each code is. That format is what a token stream is compared against the reference parser
+  in, and what lets one be piped between tools; it is complete and works. The reader treats the wire as untrusted: a
+  malformed wire is a `YS_CODE_ERROR` token, bad data like a bad document, with a located message; a host failure while
+  reading it — out of memory, or a byte source that fails — is `ys_read_token`'s return value, not a token.
 - **Memory** — `src/memory.h` and `src/memory.c`: allocation through a `ys_allocator`, and `ys_memory` — what an object
   may allocate and what it has. Everything that grows goes through it, so `ys_options::max_bytes` has exactly one door,
   and the parser and the wire-format reader are held to their cap by the same code rather than by two copies of it.
@@ -29,28 +36,31 @@ its comments). The full public API surface is declared, but the parser core is n
   version at all. **Counting allocator** — `src/counting_allocator.c`: the leak counter. **Stream adapters** —
   `src/streams.c`: the file-descriptor and `FILE *` adapters for `ys_reader` and `ys_writer`, which share a file because
   they share the act of closing.
-- **Parser** — `src/parser.h` and `src/parser.c`: the parser's whole execution state, and the runtime that keeps it. A
-  window over the input, a stack of the productions the parser is inside, a queue of the tokens it has built but not yet
-  handed back, and the state it is in — none of it in the C call stack, which is what lets `ys_next_token` hand back a
-  token from the middle of a production and resume there on the next call. `parser.h` says why each piece is shaped as
-  it is: why the queue's undecided tokens are a suffix and the marker injected ahead of them needs no room made for it,
-  why a frame carries `n` and nothing carries `c`, and why an error can always be reported. There is one automaton, not
-  a scanner and a parser: in yeast the automaton's output already *is* the token stream, so a second layer would need a
-  vocabulary that does not exist — and would be the one thing on the hot path the grammar did not derive. The automaton
-  itself is not generated yet (see `PLAN.md`); what is here is everything it will run on.
+- **Parser** — `src/parser.h` and `src/parser.c`: the parsing arm of a token source — its whole execution state, and the
+  runtime that keeps it. A window over the input, a stack of the productions the parser is inside, a queue of the tokens
+  it has built but not yet handed back, and the state it is in — none of it in the C call stack, which is what lets
+  `ys_read_token` hand back a token from the middle of a production and resume there on the next call. `parser.h` says
+  why each piece is shaped as it is: why the queue's undecided tokens are a suffix and the marker injected ahead of them
+  needs no room made for it, why a frame carries `n` and nothing carries `c`, and why an error can always be reported. A
+  resource failure — the reader, or the cap or the allocator — is recorded as the arm's `fault` and reported as
+  `ys_read_token`'s return, not as a token; there is one terminal `is_done` state, reached by a clean end-of-stream or
+  by a fault alike. There is one automaton, not a scanner and a parser: in yeast the automaton's output already *is* the
+  token stream, so a second layer would need a vocabulary that does not exist — and would be the one thing on the hot
+  path the grammar did not derive. The automaton itself is not generated yet (see `PLAN.md`); what is here is everything
+  it will run on.
 - **Messages** — `src/messages.h` and `src/messages.c`: what libyeast says to its caller, as one table of static strings
   indexed by name, so that all of it can be read in one place and swapped for another language. The messages that depend
   on the grammar live in `grammar/messages.yaml`, keyed by the code a `(cut)` or an `(error)` names — the one source the
   interpreter reads and the C table will be generated from, gated so the two cannot drift. Each says what was expected
   and never what was found, the byte that failed being the first unparsed token behind the error. That table is not
   generated into `src/parser_tables.h` yet. The messages `src/messages.c` keeps for itself are the ones no grammar can
-  reach: the wire reader's, which answer for a broken wire rather than for a parse, and the two the parser halts on —
-  running out of memory, and a reader that failed. Those two are why `tests/spec/` pins `YS_CODE_ERROR_FORMAT` and no
-  other error code. A fixture is a grammar and an input, and neither error is a property of either: when a cap trips
-  depends on how `ys_memory_grow` grows a buffer, and a reader fails for reasons the input cannot express. So they are
-  the C parser's alone, and `tests/test_parser.c` covers them there with a refusing allocator and a drip reader. Unlike
-  a malformed document, neither leaves anything unparsed behind it, and neither has markers to close: the parser halts,
-  and every pull from then on returns the same error.
+  reach: the wire reader's, which answer for a broken wire rather than for a parse. Running out of memory and a reader
+  that failed are not among them — they are `ys_read_token`'s return value, a `ys_status`, not a token with text, so the
+  token model stays about the data and not about the machine running on it. That is also why `tests/spec/` pins
+  `YS_CODE_ERROR` and no other error code: a fixture is a grammar and an input, and a host failure is a property of
+  neither — when a cap trips depends on how `ys_memory_grow` grows a buffer, and a reader fails for reasons the input
+  cannot express. So the host failures are the C parser's alone, and `tests/test_parser.c` covers them there with a
+  refusing allocator and a drip reader.
 - **Decoder** — `src/decoder.h`, `src/decoder.c` and the generated `src/decoder_tables.h`: the bottom layer, which turns
   input bytes into characters the parser can branch on. A character becomes a 32-bit key holding the id of the character
   if the grammar names it, one bit per character set the grammar tests, and the bytes it consumed — so a test is one
