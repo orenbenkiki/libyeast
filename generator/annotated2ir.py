@@ -38,6 +38,7 @@ SPECIALS = {
     "empty": ir.Empty,
     "start-of-line": ir.StartOfLine,
     "end-of-stream": ir.EndOfStream,
+    "invalid": ir.Invalid,
     "auto-detect-indent": ir.AutoDetectIndent,
     "auto-detect-in-line-indent": ir.AutoDetectInLineIndent,
 }

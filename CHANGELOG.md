@@ -96,6 +96,15 @@ All notable changes to this project are documented here. The format follows
   has a character now, so this answers only an out-of-range code — a caller's mistake, not a code the library ever
   produces.
 
+- Ill-formed UTF-8 is settled in the grammar, against fixtures, before any C parser exists to get it wrong. The
+  reference interpreter reads its input a character at a time out of the bytes — a byte that begins no character a value
+  of its own, `<invalid>`, rather than an exception thrown before the parse starts — so a token's text is the input
+  bytes as they are, and a fixture can be written for ill-formed input at last. Recovery's `l-unparsed` interleaves runs
+  of such bytes as `YS_CODE_UNPARSED_INVALID` tokens among the `unparsed-text` and the breaks, each a maximal run ending
+  where valid UTF-8 resumes or at the end of the input. On the wire that token's `\xXX` is a raw byte, not the codepoint
+  it would be under any other code, and the reader holds a `~` token to being ill-formed throughout — a valid character
+  anywhere among its bytes is a malformed wire — the mirror of the writer, which already refused to spell one.
+
 - Errors tell the caller what to do about them. A malformed document — or a malformed wire, bad data like a bad document
   — is `YS_CODE_ERROR`, its text the message and its wire character `!`. A host failure that is not the data's fault,
   running out of memory or a reader failing, is `ys_read_token`'s return value, a `ys_status`, not a token: it ends the

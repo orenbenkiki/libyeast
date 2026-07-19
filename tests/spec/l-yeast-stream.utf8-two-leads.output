@@ -1,0 +1,8 @@
+# B: 0, C: 0, L: 1, c: 0
+!A stream holds only documents, directives and comments
+# B: 0, C: 0, L: 1, c: 0
+~\xc2\xc3
+# B: 2, C: 2, L: 1, c: 2
+-z
+# B: 3, C: 3, L: 1, c: 3
+.\x0a

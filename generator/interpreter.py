@@ -60,6 +60,45 @@ class CommitFailure(Exception):
 BYTE_ORDER_MARK = 0xFEFF  # consumed without ending the start of a line, unlike any other character
 
 
+def _decode_one(raw, offset):
+    """The codepoint of the UTF-8 sequence at `offset` and its byte length, or `(None, 1)` where the byte begins none.
+    RFC 3629, matching the C decoder: an invalid byte is one unit of one byte, so a run of them resyncs at the next
+    valid lead rather than swallowing what follows it."""
+    lead = raw[offset]
+    if lead < 0x80:
+        return lead, 1
+    if 0xC2 <= lead <= 0xDF:
+        length = 2
+    elif 0xE0 <= lead <= 0xEF:
+        length = 3
+    elif 0xF0 <= lead <= 0xF4:
+        length = 4
+    else:
+        return None, 1  # a continuation byte alone, an overlong lead, or a byte no sequence starts with
+    if offset + length > len(raw):
+        return None, 1  # the sequence runs off the end of the input
+    try:
+        return ord(raw[offset : offset + length].decode("utf-8")), length
+    except (UnicodeDecodeError, TypeError):
+        return None, 1  # a bad continuation, an overlong encoding, a surrogate, or a codepoint past U+10FFFF
+
+
+def _decode(raw):
+    """`raw` as parallel lists: `chars` holds a codepoint per character and `None` per invalid byte, `byte_at` the byte
+    offset of each — with a final `byte_at` entry at the end of the input, so unit `i` spans
+    `raw[byte_at[i]:byte_at[i + 1]]`."""
+    chars = []
+    byte_at = []
+    offset = 0
+    while offset < len(raw):
+        codepoint, length = _decode_one(raw, offset)
+        chars.append(codepoint)
+        byte_at.append(offset)
+        offset += length
+    byte_at.append(len(raw))
+    return chars, byte_at
+
+
 class Emitter:
     """The token stream a run builds, and the input it reads to build it.
 
@@ -68,8 +107,9 @@ class Emitter:
     fails can be undone to the point before it, tokens and all.
     """
 
-    def __init__(self, text):
-        self.text = text  # the input, as codepoints
+    def __init__(self, raw):
+        self.raw = raw  # the input bytes, as they are: a token's text is a slice of these, never a re-encoding
+        self.chars, self.byte_at = _decode(raw)  # one unit per character or invalid byte; position indexes them
         self.position = 0
         self.mark = wire.Mark(0, 0, 1, 0)
         self.tokens = []
@@ -116,12 +156,12 @@ class Emitter:
         del self.codes[code_count:]
 
     def consume(self):
-        """Take the character at the position into the open run, opening one under the current code if none is."""
+        """Take the character or invalid byte at the position into the open run, opening one under the current code if
+        none is. An invalid byte is no break and no byte-order mark; it advances a byte and a column like any other."""
         if self.run is None:
             self.run = (wire.CODE_CHAR[self.codes[-1]], self.mark, self.position)
-        character = self.text[self.position]
-        codepoint = ord(character)
-        byte_length = len(character.encode("utf-8"))
+        codepoint = self.chars[self.position]
+        byte_length = self.byte_at[self.position + 1] - self.byte_at[self.position]
         is_break = codepoint == wire.LINE_FEED or (codepoint == wire.CARRIAGE_RETURN and not self._before_line_feed())
         if is_break:
             self.mark = wire.Mark(self.mark.byte + byte_length, self.mark.char + 1, self.mark.line + 1, 0)
@@ -136,15 +176,16 @@ class Emitter:
 
     def _before_line_feed(self):
         """Whether a CR at the position is immediately followed by an LF, so the two are one break."""
-        return self.position + 1 < len(self.text) and ord(self.text[self.position + 1]) == wire.LINE_FEED
+        return self.position + 1 < len(self.chars) and self.chars[self.position + 1] == wire.LINE_FEED
 
     def cut(self):
-        """End the open run, emitting it as a token if it took any characters."""
+        """End the open run, emitting it as a token if it took anything. Its text is the raw input bytes it spans,
+        escaped for the wire — the bytes as they are, whether characters or an unparsed-invalid run."""
         if self.run is not None:
             character, start, start_position = self.run
-            text = self.text[start_position : self.position]
-            if text:
-                self.tokens.append(wire.Token(character, start, wire.escape(text.encode("utf-8"))))
+            raw = self.raw[self.byte_at[start_position] : self.byte_at[self.position]]
+            if raw:
+                self.tokens.append(wire.Token(character, start, wire.escape(raw, character)))
             self.run = None
 
     def marker(self, code):
@@ -171,16 +212,16 @@ class Emitter:
 def _leading_spaces(emitter):
     """Count the spaces at the position, without consuming them — what the in-line indentation auto-detection reads."""
     count = 0
-    while emitter.position + count < len(emitter.text) and emitter.text[emitter.position + count] == " ":
+    while emitter.position + count < len(emitter.chars) and emitter.chars[emitter.position + count] == 0x20:
         count += 1
     return count
 
 
-def _skip_break(text, position):
+def _skip_break(chars, position):
     """The position after the break at `position` — CR LF together, or a lone CR or LF — or `position` if none."""
-    if position < len(text) and text[position] == "\r":
-        return position + (2 if position + 1 < len(text) and text[position + 1] == "\n" else 1)
-    if position < len(text) and text[position] == "\n":
+    if position < len(chars) and chars[position] == wire.CARRIAGE_RETURN:
+        return position + (2 if position + 1 < len(chars) and chars[position + 1] == wire.LINE_FEED else 1)
+    if position < len(chars) and chars[position] == wire.LINE_FEED:
         return position + 1
     return position
 
@@ -191,19 +232,20 @@ def _detect_indent(emitter):
     A block collection is already at the start of that line; a block scalar is mid-line, at the end of its header, so
     the header line and any empty lines are skipped first.
     """
-    text = emitter.text
+    chars = emitter.chars
     position = emitter.position
+    breaks = (wire.CARRIAGE_RETURN, wire.LINE_FEED)
     if not emitter.is_sol:
-        while position < len(text) and text[position] not in "\r\n":
+        while position < len(chars) and chars[position] not in breaks:
             position += 1
-        position = _skip_break(text, position)
-    while position < len(text):
+        position = _skip_break(chars, position)
+    while position < len(chars):
         spaces = 0
-        while position + spaces < len(text) and text[position + spaces] == " ":
+        while position + spaces < len(chars) and chars[position + spaces] == 0x20:
             spaces += 1
         after = position + spaces
-        if after >= len(text) or text[after] in "\r\n":
-            position = _skip_break(text, after)  # an empty line — skip it
+        if after >= len(chars) or chars[after] in breaks:
+            position = _skip_break(chars, after)  # an empty line — skip it
             continue
         return spaces
     return 0
@@ -219,7 +261,9 @@ def evaluate(expression, emitter, grammar):
     if isinstance(expression, ir.Param):
         return emitter.env.get(expression.name)  # an out-parameter (m, t) may be passed on before it is set
     if isinstance(expression, ir.Match):
-        return emitter.text[emitter.match_start : emitter.position]
+        # Every unit in a Match scope is a character — Match feeds only indentation and ordinal arithmetic, which no
+        # invalid byte reaches — so its codepoints reconstruct the text the scope consumed.
+        return "".join(chr(codepoint) for codepoint in emitter.chars[emitter.match_start : emitter.position])
     if isinstance(expression, ir.Ord):
         return ord(evaluate(expression.arg, emitter, grammar)) - ord("0")  # (ord) is a digit 1-9 to its integer value
     if isinstance(expression, ir.Len):
@@ -338,7 +382,7 @@ def match(node, emitter, grammar, k):
     False once every way is exhausted, having left the emitter as it found it. Nothing is committed until `k` accepts.
     """
     if isinstance(node, ir.Char):
-        if emitter.position < len(emitter.text) and ord(emitter.text[emitter.position]) == node.cp:
+        if emitter.position < len(emitter.chars) and emitter.chars[emitter.position] == node.cp:
             if _forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
@@ -348,7 +392,20 @@ def match(node, emitter, grammar, k):
             emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Range):
-        if emitter.position < len(emitter.text) and node.lo <= ord(emitter.text[emitter.position]) <= node.hi:
+        codepoint = emitter.chars[emitter.position] if emitter.position < len(emitter.chars) else None
+        if codepoint is not None and node.lo <= codepoint <= node.hi:
+            if _forbidden_here(emitter, grammar):
+                return False
+            checkpoint = emitter.checkpoint()
+            emitter.consume()
+            if k():
+                return True
+            emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.Invalid):
+        # A byte that begins no character. It belongs to no set, so only the recovery rules ask for it, where a run of
+        # these becomes one unparsed-invalid token.
+        if emitter.position < len(emitter.chars) and emitter.chars[emitter.position] is None:
             if _forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
@@ -512,7 +569,7 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.StartOfLine):
         return k() if emitter.is_sol else False
     if isinstance(node, ir.EndOfStream):
-        return k() if emitter.position == len(emitter.text) else False
+        return k() if emitter.position == len(emitter.chars) else False
     if isinstance(node, ir.Look):
         return k() if _probe(node.item, emitter, grammar) else False
     if isinstance(node, ir.NegLook):
@@ -618,7 +675,7 @@ def run(grammar, production, data, parameters=None):
     The production is entered as a reference to it, the way every other rule is entered, rather than by matching its
     body: a rule run at the top is still a rule, and whatever watches references — the coverage gate — must see it.
     """
-    emitter = Emitter(data.decode("utf-8"))
+    emitter = Emitter(data)
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in (parameters or {}).items()}
     resume = emitter.env.get("r", "n")
     entry = ir.Ref(production, tuple(ir.Lit(emitter.env.get(name)) for name in grammar[production].params))
@@ -646,7 +703,7 @@ def run(grammar, production, data, parameters=None):
         # Recovering to where we already recovered from would go round for ever: a failed cut on a document boundary
         # leaves `l-unparsed` nothing to consume, so what resumes there has to be what makes the progress.
         if failed_at == emitter.position:
-            raise AssertionError(f"recovery at byte {failed_at} consumed nothing: the parse cannot go on")
+            raise AssertionError(f"recovery at position {failed_at} consumed nothing: the parse cannot go on")
         failed_at = emitter.position
         # The parse has unwound past every rule that might have answered for it, so it is at the stream's own level and
         # there is no indentation left to bound the recovery by.

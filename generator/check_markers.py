@@ -31,6 +31,7 @@ SILENT = (
     ir.Empty,
     ir.StartOfLine,
     ir.EndOfStream,
+    ir.Invalid,
     ir.Lt,
     ir.Le,
     ir.Max,

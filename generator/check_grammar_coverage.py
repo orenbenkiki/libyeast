@@ -48,6 +48,7 @@ NEVER_SURE = (
     ir.Diff,
     ir.StartOfLine,
     ir.EndOfStream,
+    ir.Invalid,
     ir.Lt,
     ir.Le,
     ir.Max,

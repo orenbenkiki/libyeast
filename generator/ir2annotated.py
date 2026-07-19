@@ -74,6 +74,8 @@ def node_yaml(n):
         return "<start-of-line>"
     if isinstance(n, ir.EndOfStream):
         return "<end-of-stream>"
+    if isinstance(n, ir.Invalid):
+        return "<invalid>"
     if isinstance(n, ir.Seq):
         return {"(all)": [node_yaml(i) for i in n.items]}
     if isinstance(n, ir.Alt):

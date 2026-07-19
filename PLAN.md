@@ -171,19 +171,10 @@ well-trodden compiler work.
 
 ### Phase 01 — The reference interpreter · the grammar's executor, and the project's oracle
 
-**What is left is the interpreter's input: bytes, not codepoints.** `Emitter` takes `data.decode("utf-8")` and matches
-over the codepoints it gets, so an input that is not UTF-8 raises before a production is ever entered, and no fixture
-can be written for one. The suite is therefore silent about the whole layer the decoder exists for, and the C parser
-would be the only thing that ever ran that path — the one place in the token layer where the fixtures are not the
-oracle. That is a hole in the argument this phase is here to make: the grammar is supposed to be proved against the
-fixtures *before any C exists to be wrong*, and on ill-formed input it would not be.
-
-So the interpreter reads the input the way the decoder does — a character at a time, out of the bytes, with a byte that
-is no character a value in its own right rather than an exception thrown before the parse starts. It is a slow executor
-by design and this makes it slower; performance is a non-issue here, and correctness of the argument is the whole point.
-What it buys is that §4's encoding questions — what covers an ill-formed byte, under what code, whether an error
-accompanies it, what the wire writes for it — are settled against fixtures the interpreter reproduces, in the grammar,
-before the C parser is generated from it. Everything downstream then has one oracle instead of two.
+The interpreter is complete: it executes the grammar over the input a byte at a time — a byte that begins no character a
+value of its own, `<invalid>`, rather than an exception thrown before the parse starts — so a token's text is the input
+bytes as they are, and ill-formed input is proved against fixtures, in the grammar, before the C parser is generated
+from it. Everything downstream then has one oracle instead of two.
 
 Still to be scoped, when something needs it: the interpreter's committed mode is phase 03's, where the grammar it judges
 is the one that has been transformed.
@@ -303,48 +294,12 @@ alongside the pipeline rather than strictly after it. This is where bugs get smu
    divergence the differential oracle will find. Deciding this decides four things at once: whether the decoder grows a
    transcoding front end or stays UTF-8 and rejects the rest, what a `bom` token's text is, whether libyeast may call
    itself conformant, and what the resume policy does with a byte that is no character at all.
-1. **A byte that is no character, and what resuming does about it — the C parser's alone to answer.** A codepoint that
-   is merely not a YAML character needs nothing: `nb-unparsed` is every codepoint but a break, so the recovery consumes
-   it and `YS_RESUME_DOCUMENT` carries on at the next marker, which the fixtures show. A byte that is not a codepoint is
-   a different thing, and two settled facts collide over it. The decoder gives `YS_LIT_KEY_INVALID` no set bits at all,
-   as it gives `YS_LIT_KEY_EOF` none — deliberately, so that "every membership test fails at them without being asked" —
-   and `nb-unparsed` is a set, so **no rule can match an ill-formed byte**, the recovery included. Yet every byte of the
-   input is accounted for by exactly one token, the ill-formed ones included, and an error token is zero-width and
-   accounts for nothing. Something must carry those bytes and no rule can be what does. <br>**What is missing is
-   notation, not a bit.** The decoder already tells an ill-formed byte apart from every other thing:
-   `YS_LIT_KEY_INVALID` is id 59 where `YS_LIT_KEY_EOF` is id 58, and a literal is tested by one comparison as a set is
-   by one AND. Carrying no set bits is not a gap in it — it is the encoding, and the reason every membership test fails
-   at it without being asked. What the grammar cannot do is *write* the thing: its vocabulary is codepoints, and a byte
-   that is no codepoint has none to name. So the rule that covers such bytes needs a marker of libyeast's own — a
-   `<not-a-character>` beside `<end-of-stream>`, lowering to the comparison the key already answers — and no set bit, no
-   layout change, and no walking back of what the decoder was built on. The rule itself is then ordinary: a maximal run
-   of them, ending where valid UTF-8 resumes or at the end of the input, which states the resynchronisation
-   declaratively rather than burying it in the decoder. It also settles the wire, whose escapes cannot tell a raw `0x80`
-   from U+0080 today: once the token's *code* says its text is bytes rather than codepoints, `\x80` means one thing
-   again — and that code is `unparsed-invalid`, third of the family beside `unparsed` and `unparsed-break`, earning a
-   code of its own by the argument `unparsed-break` already won: so that its text is not taken for a thing it is not.
-   There it is codepoints rather than a structural break, but it is the same argument and the same family, since bytes
-   that are no character are only ever reached where the parse has already given up. <br>Nothing new is needed to write
-   it: the escapes stay as they are and the code disambiguates them, `\x80` being U+0080 under a code that claims
-   codepoints and the byte `0x80` under this one. That works only because the run is maximal — such a token is
-   ill-formed bytes throughout and never a mixture, so one code answers for the whole of its text. Which makes the rule
-   symmetric rather than special: every other code requires its text to be well-formed UTF-8, and this one requires the
-   opposite, every byte of it a place where no valid sequence begins. `ys_write_token` can hold both halves, and does
-   hold the first already — it refuses ill-formed bytes today because every code that exists claims codepoints, and
-   gains the other branch with the code. Two consequences to carry: the wire needs a character for it, which
-   `check_wire` gates against `src/wire.c`; and once `<not-a-character>` lets the grammar name the byte, the error
-   naming it is a `(cut)`-or-`(error)` message in `messages.yaml` like any other, where the header of that file
-   currently says such a message would be hand-written in `src/messages.c` because the grammar could not reach it.
-   <br>**An ill-formed byte inside an unparsed run is an error there too**, and not swallowed into the run around it.
-   The recovery has already given the input up, so it is tempting to let the bytes go by unremarked as more of the junk
-   they sit in; but `YS_RESUME_NONE` brings the rest back unparsed *so that nothing is silently lost*, and a caller who
-   cannot tell malformed YAML from bytes that are not YAML at all has lost something — inside a region where the bytes
-   are precisely what it would be reaching for. So: the error, then the run of ill-formed bytes under its own code, then
-   unparsed as before. That the run is its own token rather than more `unparsed` is the same argument `unparsed-break`
-   already won — a run that would otherwise be taken for something it is not earns a code of its own. <br>All of it is
-   answered in the grammar and proved by fixtures, once the interpreter reads bytes rather than codepoints — which is
-   phase 01's remaining work and the reason it comes first. Until it does, nothing here can be written down as a rule
-   and checked; after it, this is an ordinary grammar question with an ordinary oracle.
+1. **A byte that is no character — settled and in place.** `<invalid>` names the byte the decoder's `YS_LIT_KEY_INVALID`
+   already tells apart, and `l-unparsed` brings maximal `unparsed-invalid` runs back among the `unparsed-text` and the
+   breaks, resynchronising where valid UTF-8 resumes or at the end of the input; the wire carries them, its `\xXX` a raw
+   byte under that code and a codepoint under any other, and the reader holds a `~` token to being ill-formed
+   throughout. Proved by fixtures, the interpreter reading bytes. What is left is only for the generated C parser to
+   emit them, by running the same grammar.
 1. **Indentation detection — defined; implement it.** The grammar now says what the official grammar would not:
    `<auto-detect-indent>` is the indentation of the next line holding a character other than a space, less `n`, the
    current line counting only if the parse is at its start; `<auto-detect-in-line-indent>` is the spaces that follow on

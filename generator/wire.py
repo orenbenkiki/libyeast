@@ -133,7 +133,7 @@ def chain_fault(tokens):
         if token.code == ERROR:
             continue
         if previous is not None:
-            end = advance(previous.start, previous.text)
+            end = advance(previous.start, previous.text, previous.code)
             if token.start.byte != end.byte or token.start.char != end.char:
                 return f"token at {token.start} does not follow the previous token's end {end}"
         previous = token
@@ -150,7 +150,7 @@ def is_clean(tokens, size):
     consumed = [token for token in tokens if token.code != ERROR]
     if len(consumed) != len(tokens):
         return False
-    end = advance(consumed[-1].start, consumed[-1].text) if consumed else Mark(0, 0, 1, 0)
+    end = advance(consumed[-1].start, consumed[-1].text, consumed[-1].code) if consumed else Mark(0, 0, 1, 0)
     return end.byte == size
 
 
@@ -184,10 +184,14 @@ def marker_fault(tokens, is_whole):
     return None
 
 
-def escape(raw):
-    """Escape raw UTF-8 `bytes` into wire text, as `src/wire.c` does — printable ASCII but a backslash stands for
-    itself, and everything else becomes `\\xXX`, `\\uXXXX`, or `\\UXXXXXXXX` with lower-case hex.
+def escape(raw, code=None):
+    """Escape raw `bytes` into wire text, as `src/wire.c` does. Under unparsed-invalid — `code` is its wire character —
+    the bytes begin no character, so each is written `\\xXX`. Under every other code (the default) they are UTF-8,
+    escaped by codepoint: printable ASCII but a backslash stands for itself, and everything else becomes `\\xXX`,
+    `\\uXXXX`, or `\\UXXXXXXXX` with lower-case hex.
     """
+    if code == CODE_CHAR["unparsed-invalid"]:
+        return "".join(f"\\x{byte:02x}" for byte in raw)
     out = []
     for character in raw.decode("utf-8"):
         codepoint = ord(character)
@@ -202,10 +206,11 @@ def escape(raw):
     return "".join(out)
 
 
-def advance(mark, text):
-    """The mark reached after consuming escaped `text` from `mark` — a byte per UTF-8 length, a line at each break."""
+def advance(mark, text, code=None):
+    """The mark reached after consuming escaped `text` from `mark` — a byte per UTF-8 length, a line at each break.
+    Under unparsed-invalid each escape is one raw byte and one column, none of them a break."""
     index = 0
-    pieces = units(text)
+    pieces = units(text, code)
     while index < len(pieces):
         codepoint, byte_length, _escaped = pieces[index]
         if codepoint == CARRIAGE_RETURN and index + 1 < len(pieces) and pieces[index + 1][0] == LINE_FEED:
@@ -220,16 +225,19 @@ def advance(mark, text):
     return mark
 
 
-def units(text):
-    """Split escaped wire text into codepoint units — `(codepoint, byte_length, escaped)` for each character in it."""
+def units(text, code=None):
+    """Split escaped wire text into units — `(value, byte_length, escaped)` per character. Under unparsed-invalid each
+    escape is a raw byte, so it is one byte; under every other code (the default) an escape is a codepoint, whose byte
+    length is its UTF-8 length."""
+    invalid = code == CODE_CHAR["unparsed-invalid"]
     result = []
     index = 0
     while index < len(text):
         escape = _ESCAPE.match(text, index)
         if escape is not None:
             piece = escape.group(0)
-            codepoint = int(piece[2:], 16)
-            result.append((codepoint, _utf8_length(codepoint), piece))
+            value = int(piece[2:], 16)
+            result.append((value, 1 if invalid else _utf8_length(value), piece))
             index = escape.end()
         else:
             character = text[index]

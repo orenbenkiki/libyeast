@@ -143,6 +143,12 @@ class EndOfStream:
 
 
 @dataclass(frozen=True)
+class Invalid:
+    """`<invalid>`: one byte that begins no valid UTF-8 sequence. It belongs to no character set, so it matches nowhere
+    the grammar names a character — only the recovery rules reach for it, where a run of these is `unparsed-invalid`."""
+
+
+@dataclass(frozen=True)
 class Seq:
     """`(all)`: an ordered concatenation."""
 

@@ -3966,7 +3966,8 @@ l-yaml-stream:
 # nb-unparsed ::=
 #   [x:0-x:10FFFF] - b-char
 #
-# Any character at all but a line break: recovery consumes whatever is there, valid or not.
+# Any character at all but a line break: recovery consumes whatever character is there. A byte that is no character is
+# not one of these — <invalid> carries it instead.
 
 nb-unparsed:
   (---):
@@ -3980,7 +3981,7 @@ nb-unparsed:
 #   ( <empty>
 #   | <excluding_c-forbidden_content>
 #   | <excluding_c-forbidden_or_s-indent-le-line(n)_content> )
-#   ( nb-unparsed+ | b-break )*
+#   ( nb-unparsed+ | <invalid>+ | b-break )*
 #
 # The run of input the parser could not parse, bounded by the resume policy: everything that is left when nothing is to
 # be resumed; only as far as the next document marker when the parse carries on there; and, when it carries on at the
@@ -3991,7 +3992,10 @@ nb-unparsed:
 # c-forbidden is not redundant in the third: s-indent-le-line cannot hold below an indentation of 0, so a run bounded
 # by nothing would go straight past a document marker.
 #
-# Emits: unparsed-text, unparsed-break
+# A run of bytes that begin no character comes back as unparsed-invalid — as many bytes as it takes to reach where
+# valid UTF-8 resumes — among the unparsed-text of the characters on either side of it.
+#
+# Emits: unparsed-text, unparsed-invalid, unparsed-break
 
 l-unparsed:
   (...): [ n, r ]
@@ -4004,6 +4008,7 @@ l-unparsed:
   - (***):
       (any):
       - (token): [ unparsed-text, { (+++): nb-unparsed } ]
+      - (token): [ unparsed-invalid, { (+++): <invalid> } ]
       - (token): [ unparsed-break, b-break ]
 
 

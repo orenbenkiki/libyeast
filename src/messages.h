@@ -19,6 +19,7 @@ typedef enum ys_message_id {
     YS_MESSAGE_WIRE_BAD_CODE,
     YS_MESSAGE_WIRE_BAD_ESCAPE,
     YS_MESSAGE_WIRE_STRAY_BYTE,
+    YS_MESSAGE_WIRE_CHAR_IN_INVALID,
     YS_MESSAGE_WIRE_TRUNCATED,
     YS_MESSAGE_COUNT // how many there are, and no message itself
 } ys_message_id;

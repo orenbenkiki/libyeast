@@ -22,7 +22,7 @@ import interpreter
 # is read and never written. Naming them is the point — a new field must be sorted into one list or the other, and the
 # gate says so rather than assuming.
 RESTORED = ("position", "mark", "tokens", "run", "codes", "env", "match_start", "is_sol", "forbidden", "pending")
-READ_ONLY = ("text",)
+READ_ONLY = ("raw", "chars", "byte_at")
 
 
 def _dirty(emitter):
@@ -53,7 +53,7 @@ def _state(emitter):
 
 def _fields_are_accounted(errors):
     """Every field of an `Emitter` is either restored by a checkpoint or declared read-only."""
-    held = set(vars(interpreter.Emitter("x")))
+    held = set(vars(interpreter.Emitter(b"x")))
     for name in sorted(held - set(RESTORED) - set(READ_ONLY)):
         errors.append(f"Emitter.{name}: nothing says whether a checkpoint restores it")
     for name in sorted((set(RESTORED) | set(READ_ONLY)) - held):
@@ -62,7 +62,7 @@ def _fields_are_accounted(errors):
 
 def _rewind_restores(errors):
     """A checkpoint taken, the state dirtied, and the checkpoint rewound to, leaves the state as it was."""
-    emitter = interpreter.Emitter("ab")
+    emitter = interpreter.Emitter(b"ab")
     before = _state(emitter)
     checkpoint = emitter.checkpoint()
     _dirty(emitter)
@@ -77,7 +77,7 @@ def _rewind_is_repeatable(errors):
     This is what an alternation does — one checkpoint, rewound to once per branch — so a checkpoint that hands out its
     own mutable state rather than a copy of it lets one branch reach into what the next rewinds to.
     """
-    emitter = interpreter.Emitter("ab")
+    emitter = interpreter.Emitter(b"ab")
     before = _state(emitter)
     checkpoint = emitter.checkpoint()
     for attempt in ("first", "second"):

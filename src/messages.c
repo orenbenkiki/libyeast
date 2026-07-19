@@ -10,6 +10,7 @@ static const char *const YS_MESSAGES[YS_MESSAGE_COUNT] = {
     [YS_MESSAGE_WIRE_BAD_CODE] = "not the yeast wire format: unknown token code",
     [YS_MESSAGE_WIRE_BAD_ESCAPE] = "not the yeast wire format: invalid escape sequence",
     [YS_MESSAGE_WIRE_STRAY_BYTE] = "not the yeast wire format: a raw byte outside printable ASCII",
+    [YS_MESSAGE_WIRE_CHAR_IN_INVALID] = "not the yeast wire format: a valid character in an unparsed-invalid token",
     [YS_MESSAGE_WIRE_TRUNCATED] = "not the yeast wire format: a position line with no token after it",
 };
 

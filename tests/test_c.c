@@ -723,6 +723,12 @@ static void test_wire_rejects_rubbish(void) {
         // stops and back around, so the marks would hand a caller a span running backwards.
         {"# B: 18446744073709551615, C: 0, L: 1, c: 0\nThi\n", "position"},
         {"# B: 0, C: 18446744073709551615, L: 1, c: 0\nThi\n", "position"},
+        // An unparsed-invalid token whose bytes begin a character: the writer never puts one under this code, so the
+        // reader refuses to read one back — as much a broken wire as an escape that names no codepoint.
+        {"# B: 0, C: 0, L: 1, c: 0\n~\\xc3\\xa9\n", "unparsed-invalid"}, // \xc3\xa9 is a valid U+00E9
+        {"# B: 0, C: 0, L: 1, c: 0\n~\\x41\n", "unparsed-invalid"},      // \x41 is a valid 'A'
+        {"# B: 0, C: 0, L: 1, c: 0\n~q\n", "escape"},                    // an unparsed-invalid unit that is not \xXX
+        {"# B: 0, C: 0, L: 1, c: 0\n~\\xZZ\n", "escape"},                // a byte escape whose digits are not digits
     };
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
@@ -744,6 +750,29 @@ static void test_wire_rejects_rubbish(void) {
 
         ys_delete_token_source(tokens);
     }
+}
+
+// An unparsed-invalid token round-trips its raw bytes: the writer spells each \xXX, and the reader hands them back as
+// the bytes themselves — a two-byte span for two bytes, not the two codepoints \x80 and \x81 would name.
+static void test_wire_reads_unparsed_invalid(void) {
+    wire_buffer wire = {{0}, 0, 0};
+    const char *written = "# B: 3, C: 3, L: 1, c: 3\n~\\x80\\x81\n";
+    wire.size = strlen(written);
+    memcpy(wire.bytes, written, wire.size);
+
+    ys_bytes_reader reader = {wire_read, NULL, &wire};
+    ys_token_source *tokens = ys_new_yeast_stream_reader(reader, NULL);
+    TEST_ASSERT(tokens != NULL);
+
+    ys_token token;
+    TEST_ASSERT(ys_read_token(tokens, &token) == YS_OK);
+    TEST_CHECK(token.code == YS_CODE_UNPARSED_INVALID);
+    TEST_CHECK(token.end.byte_offset - token.start.byte_offset == 2); // two raw bytes, not two codepoints' worth
+    TEST_CHECK((unsigned char)token.text[0] == 0x80u && (unsigned char)token.text[1] == 0x81u);
+    TEST_CHECK(token.end.char_offset - token.start.char_offset == 2); // one column per byte
+    TEST_CHECK(token.start.byte_offset == 3 && token.start.column == 3);
+
+    ys_delete_token_source(tokens);
 }
 
 // The FILE* writer adapter: what it writes comes back, and YS_BORROW leaves the stream alone.
@@ -1033,27 +1062,33 @@ static void *counted_reallocate(void *context, void *pointer, size_t size) {
     return realloc(pointer, size);
 }
 
-// The reader's text buffer is under the same cap as its line buffer, and its failure is reported the same way.
+// The reader's text buffer is under the same cap as its line buffer, and its failure is reported the same way — whether
+// the text grows through ys_append for a character token or ys_append_byte for an unparsed-invalid one.
 static void test_wire_text_out_of_memory(void) {
-    wire_buffer wire = {{0}, 0, 0};
-    const char *written = "# B: 0, C: 0, L: 0, c: 0\nThello\n";
-    wire.size = strlen(written);
-    memcpy(wire.bytes, written, wire.size);
+    static const char *wires[] = {
+        "# B: 0, C: 0, L: 0, c: 0\nThello\n", // characters, unescaped via ys_append
+        "# B: 0, C: 0, L: 1, c: 0\n~\\x80\n", // a raw byte, appended via ys_append_byte
+    };
+    for (size_t index = 0; index < sizeof(wires) / sizeof(wires[0]); index++) {
+        wire_buffer wire = {{0}, 0, 0};
+        wire.size = strlen(wires[index]);
+        memcpy(wire.bytes, wires[index], wire.size);
 
-    buffers_left = 1; // enough for the line buffer, and nothing left for the text
-    ys_allocator allocator = {NULL, counted_reallocate, NULL, NULL, NULL};
-    ys_options options = {allocator, YS_RESUME_NONE, 0};
-    ys_bytes_reader reader = {wire_read, NULL, &wire};
-    ys_token_source *tokens = ys_new_yeast_stream_reader(reader, &options);
-    TEST_ASSERT(tokens != NULL);
+        buffers_left = 1; // enough for the line buffer, and nothing left for the text
+        ys_allocator allocator = {NULL, counted_reallocate, NULL, NULL, NULL};
+        ys_options options = {allocator, YS_RESUME_NONE, 0};
+        ys_bytes_reader reader = {wire_read, NULL, &wire};
+        ys_token_source *tokens = ys_new_yeast_stream_reader(reader, &options);
+        TEST_ASSERT(tokens != NULL);
 
-    ys_token token;
-    errno = 0;
-    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_MEMORY); // the line read; its text could not be unescaped
-    TEST_CHECK(errno == ENOMEM);
-    TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_ACTION);
+        ys_token token;
+        errno = 0;
+        TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_MEMORY); // the line read; its text could not be unescaped
+        TEST_CHECK(errno == ENOMEM);
+        TEST_CHECK(ys_read_token(tokens, &token) == YS_FAILED_ACTION);
 
-    ys_delete_token_source(tokens);
+        ys_delete_token_source(tokens);
+    }
 }
 
 // Even a token with no text is left NUL-terminated, which is one allocation — and when that is the one the cap refuses,
@@ -1163,6 +1198,7 @@ TEST_LIST = {
     {"wire_empty_error_text", test_wire_empty_error_text},
     {"wire_refuses_ill_formed_text", test_wire_refuses_ill_formed_text},
     {"wire_refuses_well_formed_invalid_text", test_wire_refuses_well_formed_invalid_text},
+    {"wire_reads_unparsed_invalid", test_wire_reads_unparsed_invalid},
     {"wire_rejects_rubbish", test_wire_rejects_rubbish},
     {"wire_odds_and_ends", test_wire_odds_and_ends},
     {"wire_memory_cap", test_wire_memory_cap},

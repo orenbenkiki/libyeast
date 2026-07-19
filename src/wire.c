@@ -309,13 +309,50 @@ static bool ys_append(ys_wire *reader, unsigned long codepoint) {
     return true;
 }
 
+// Append one raw byte, for an unparsed-invalid token whose text is bytes and not codepoints.
+static bool ys_append_byte(ys_wire *reader, unsigned char byte) {
+    char *grown = ys_memory_grow(&reader->memory, reader->text, &reader->text_capacity, reader->text_size + 1,
+                                 YS_MEMORY_ITEMS, sizeof(char));
+    if (grown == NULL) {
+        reader->fault = YS_FAILED_MEMORY; // a resource fault, told from a malformed wire by ys_wire::fault being set
+        return false;
+    }
+    reader->text = grown;
+    reader->text[reader->text_size] = (char)byte;
+    reader->text_size += 1;
+    return true;
+}
+
 // Unescape a token's text into the reader's own storage, and count the codepoints and the breaks in it, so that the
-// token's end can be worked out — the wire records only its start. On a fault it returns false, and reports where in
-// `escaped` it was (`fault_at`) and what it was (`why`), so the caller can locate it in the wire.
-static bool ys_unescape(ys_wire *reader, const char *escaped, size_t size, ys_mark *end, size_t *fault_at,
-                        ys_message_id *why) {
+// token's end can be worked out — the wire records only its start. When `wants_characters` is false the token is an
+// unparsed-invalid one whose text is raw bytes: each is read from its \xXX, and every one must begin no character, the
+// same rule the writer holds to. On a fault it returns false, and reports where in `escaped` it was (`fault_at`) and
+// what it was (`why`), so the caller can locate it in the wire.
+static bool ys_unescape(ys_wire *reader, const char *escaped, size_t size, bool wants_characters, ys_mark *end,
+                        size_t *fault_at, ys_message_id *why) {
     reader->text_size = 0;
     for (size_t index = 0; index < size;) {
+        if (!wants_characters) {
+            // An unparsed-invalid token carries raw bytes; the writer spells each as \xXX and it reads back as itself.
+            if (escaped[index] != '\\' || index + 4 > size || escaped[index + 1] != 'x') {
+                *fault_at = index;
+                *why = YS_MESSAGE_WIRE_BAD_ESCAPE;
+                return false;
+            }
+            unsigned long byte;
+            if (!ys_hex(escaped + index + 2, 2, &byte)) {
+                *fault_at = index;
+                *why = YS_MESSAGE_WIRE_BAD_ESCAPE;
+                return false;
+            }
+            if (!ys_append_byte(reader, (unsigned char)byte)) {
+                return false; // ys_append_byte set ys_wire::fault
+            }
+            end->char_offset += 1;
+            end->column += 1;
+            index += 4;
+            continue;
+        }
         unsigned long codepoint;
         if (escaped[index] != '\\') {
             // The writer emits a byte raw only when it is printable ASCII and not a backslash; everything else it
@@ -354,6 +391,18 @@ static bool ys_unescape(ys_wire *reader, const char *escaped, size_t size, ys_ma
             end->column = 0;
         } else {
             end->column += 1;
+        }
+    }
+    // Every byte of an unparsed-invalid token must begin no character, the same rule the writer holds to: a valid
+    // character among them would make the token a lie about what it carries. Each byte is one \xXX — four characters of
+    // `escaped` — so a fault at byte `at` sits at `escaped` offset `at * 4`.
+    if (!wants_characters) {
+        for (size_t at = 0; at < reader->text_size; at += 1) {
+            if (ys_utf8_length((const unsigned char *)reader->text + at, reader->text_size - at) != 0) {
+                *fault_at = at * 4;
+                *why = YS_MESSAGE_WIRE_CHAR_IN_INVALID;
+                return false;
+            }
         }
     }
     end->byte_offset += reader->text_size;
@@ -450,7 +499,8 @@ int ys_wire_read(ys_wire *reader, ys_token *token) {
     ys_mark end = start;
     size_t fault_at = 0;
     ys_message_id why = YS_MESSAGE_WIRE_BAD_ESCAPE;
-    if (!ys_unescape(reader, line + 1, size - 1, &end, &fault_at, &why)) {
+    bool wants_characters = token->code != YS_CODE_UNPARSED_INVALID;
+    if (!ys_unescape(reader, line + 1, size - 1, wants_characters, &end, &fault_at, &why)) {
         if (reader->fault != 0) {
             return ys_wire_resource(reader); // out of memory unescaping, not a malformed wire
         }
