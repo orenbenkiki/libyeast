@@ -165,9 +165,10 @@ fourth, orthogonal leg for safety:
 
 ## §4 — Implementation phases
 
-Phases are ordered by dependency. The deepest research risk lives in **phase 03** (the normalization pipeline, where
-determinization happens), with **phase 04** (semantics) close behind. The rest — codegen and the ABI layer — is
-well-trodden compiler work.
+Phases are ordered by dependency. **Phase 02 is a gate**: the grammar and its fixtures are made spec-complete and
+enforcing before the transformation touches them, so Phase 03 never has to go back to the grammar. The deepest research
+risk then lives in **phase 03** (the normalization pipeline, where determinization happens); the semantic decisions that
+feed it are settled in phase 02. The rest — codegen and the ABI layer — is well-trodden compiler work.
 
 ### Phase 01 — The reference interpreter · the grammar's executor, and the project's oracle
 
@@ -179,31 +180,50 @@ from it. Everything downstream then has one oracle instead of two.
 Still to be scoped, when something needs it: the interpreter's committed mode is phase 03's, where the grammar it judges
 is the one that has been transformed.
 
-### Phase 02 — Differential oracles · The broader nets around the token fixtures
+### Phase 02 — Completeness · the grammar and fixtures made spec-complete, and the gate before transformation
 
-*Risk: Low · ~2–4 wks.* Phase 01's per-production fixtures pin the *token* layer against the Haskell reference. This
-stands up the rest: the *value* layer, the debug view, and the CI that runs them on every commit.
+*Risk: Medium · ~4–8 wks.* Phase 01's fixtures pin the *token* layer and every production is matched and rejected — but
+self-consistently, against libyeast's own fixtures, which were migrated from the reference. Before the structural
+transformation touches the grammar, the grammar must be complete and correct against the spec and the fixtures
+sufficient to hold it there, so that Phase 03 carries a frozen, right grammar through its provable steps rather than
+discovering the grammar's own bugs sixteen steps deep. This phase earns that, and its exit is the gate.
 
-1. Vendor the YAML Test Suite; build a runner that consumes its event-stream expectations — the value layer the token
-   fixtures do not cover.
-1. Run the suite through the `yaml-grammar` harness against the IR — a correctness leg for the grammar itself rather
-   than for anything generated from it, and independent of the fixtures, which libyeast wrote. The grammar is
-   version-stable, 1.2 and 1.2.2 sharing productions, so it matches the `yamlreference` token oracle here too.
-1. Wire the Clojure reference as the value-level (load/event) differential oracle, behind a stable diff interface.
-1. Bootstrap the yeast→HTML debug view on the Haskell reference's `yaml2html` as the divergence microscope; it later
-   serves as the reference oracle for the package's own port (phase 06).
-1. Set up CI: every commit runs the fixtures, the suite, and a differential fuzz corpus, reporting the first divergence.
+**The spec's prose, audited into fixtures.** The BNF is already gated production-for-production against the vendored
+spec grammar (`check_vendor_spec`). What the BNF cannot say — the constraints the spec leaves to prose — is inventoried
+here, and each ends as either a rule in the grammar with a fixture that fails when the behaviour is wrong, or a declared
+divergence with its reason. Phase 04's semantic items are that checklist, brought forward and settled here rather than
+alongside the pipeline: the single-line simple-key restriction and its length bound, tab forbidden as indentation, `#`
+opening a comment only after whitespace, line-break normalization, and the block-scalar indentation rules — the leading
+over-indented empty line among them, **decided: an error** (the spec's §8.1.1.1, against the reference's and the BNF's
+leniency, declared in `check_vendor_spec`). The exit is that the inventory is closed: every prose constraint encoded or
+declared, each with a fixture that enforces it.
 
-**Exit** — a red/green harness scores the parser against both oracles on every commit.
+**The YAML Test Suite, folded to compare.** The independent net is the community suite YAMLStar runs — `<ID>/in.yaml`
+in, `<ID>/test.event` and `error` expected — derived from the same spec, and so the thing that catches a grammar bug
+libyeast's own fixtures share. libyeast is a token parser, not an event one, so the check is a deterministic **fold**:
+the yeast stream's `begin-`/`end-` markers rebuild the production tree and the leaf tokens fill it, up to the event
+stream the suite expects — _would_ this stream produce these events, matched as far as the token layer settles them.
+YAMLStar is the reference libyeast targets, so where it and the raw suite diverge libyeast follows YAMLStar, its
+`expected-fails` (loader / roundtrip / emit) the baseline of known-diverging cases. Every remaining failure is triaged
+into the inventory above — a grammar fix, or a declared divergence with its reason.
+
+Then, once the gate holds: the yeast→HTML debug view bootstrapped on the Haskell reference's `yaml2html` as the
+divergence microscope (it later serves as the reference oracle for the package's own port, Phase 06), and CI that runs
+the fixtures, the folded suite, and a differential fuzz corpus on every commit, reporting the first divergence.
+
+**Exit — the gate.** `check_vendor_spec` green, the prose inventory closed, and the folded YAML Test Suite
+green-or-declared against YAMLStar. At that point the grammar is as spec-complete as we can make it and the fixtures
+enforce it — and only then does Phase 03 begin, over a grammar it treats as frozen.
 
 ### Phase 03 — Normalize · the grammar-to-canonical pipeline
 
 *Risk: High — the prize · ~3–6 mo.* This is where the backtracking grammar becomes a committed one, and it is done not
 as one leap but as a **series of small, individually-provable, semantics-preserving transformations** that carry the raw
-IR to a canonical form a state machine falls out of. Binding-time, `c`/`t` specialization, determinization, and the
-lowering to a pushdown shape — the old separate mechanical phases — are all steps of this one pipeline. Performance of
-the generator is a non-issue; every step is written to be simple enough to prove by eye, and checked two ways after it
-runs.
+IR to a canonical form a state machine falls out of. It runs over the grammar frozen at Phase 02's gate: every step
+preserves the interpreter's token stream, so a grammar bug is Phase 02's to have caught, never this pipeline's to
+introduce. Binding-time, `c`/`t` specialization, determinization, and the lowering to a pushdown shape — the old
+separate mechanical phases — are all steps of this one pipeline. Performance of the generator is a non-issue; every step
+is written to be simple enough to prove by eye, and checked two ways after it runs.
 
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:
@@ -279,9 +299,12 @@ that emitting the C state machine (Phase 06) is mechanical rather than clever.
 
 ### Phase 04 — Semantics · Specify what the BNF doesn't say
 
-*Risk: High · ~4–8 wks.* The productions alone don't fully specify a parser. The spec leans on prose for rules that must
-become an explicit, auditable input to the generator — the decisions the Phase 03 lowering steps consume, so this runs
-alongside the pipeline rather than strictly after it. This is where bugs get smuggled in undetected.
+*Risk: High · ~4–8 wks.* The productions alone don't fully specify a parser; the spec leans on prose. The constraints
+that shape the **token** stream are settled in Phase 02, as the completeness gate requires — the items below are that
+audit, each ending as a grammar rule with an enforcing fixture or a declared divergence. What genuinely runs alongside
+Phase 03's lowering is the rest: the value-layer decisions the token layer never reaches, and marking each rule
+grammar-versus-semantic-action so the fidelity claim is honest about its boundary. This is where bugs get smuggled in
+undetected.
 
 1. Encode the single-line simple-key restriction and its hard length bound as a first-class constraint.
 1. Specify tab handling (forbidden as indentation), and the comment rule (`#` starts a comment only after whitespace:
@@ -307,10 +330,11 @@ alongside the pipeline rather than strictly after it. This is where bugs get smu
    `"auto-detect"`, and the two departures that took are declared in `check_vendor_spec.py`, with their reasons. What is
    left is for the generator to implement the two markers — and to do so **consuming**, not peeking: the grammar says
    what is measured, not that the parser must read the input twice to measure it.
-1. **Settle a real divergence first.** The reference treats a leading all-space line longer than the detected indent as
-   *content*; the spec calls a line with no non-space character *empty*, and an over-indented empty line an *error*.
-   They disagree, the differential oracle will trip on it, and the answer must be decided before the generator
-   implements the markers rather than after.
+1. **The leading over-indented empty line — decided: an error.** The reference and the BNF read it as _content_: the
+   extra spaces fall through `l-empty(n)`'s cap to `s-indent(n) nb-char+`, and a space is an `nb-char`. The spec's
+   §8.1.1.1 calls a leading empty line more indented than the content an _error_; libyeast follows the spec and declares
+   the divergence from the reference. The grammar gains the guard that tells a leading over-indented all-space line from
+   a legitimately over-indented content line, with an enforcing fixture — settled in Phase 02.
 1. Mark each rule as "grammar" vs "asserted semantic action" so the fidelity claim is honest about its boundary.
 
 **Exit** — a written semantic spec, versioned alongside the IR, covering every rule beyond the BNF.
@@ -417,6 +441,15 @@ Wanted, but not planned, and not on the way to anything else:
   This is why `YS_CODE_DETECTED` is in the vocabulary already: the finest level is where libyeast emits it, and the wire
   round-trips it in the meantime. A coarser level is cheaper and is all a caller loading a document needs; a finer one
   is what the differential oracle and a debugger want.
+
+- **Arena allocators** — revisit the `ys_allocator` API against arena and pool allocators, which free everything at once
+  rather than buffer by buffer: whether a no-op `deallocate` is enough as it stands or the shape wants a variant, and
+  whether a source's allocations can be arranged so a caller drops the whole parse in a single free. The `close` hook is
+  already the seam such an allocator would be torn down through.
+
+- **libc version portability** — deal with the libc-version issues a shared library faces: which symbol versions the
+  built `.so` pulls in and their minimums, so a binary built against a newer toolchain still loads on an older target.
+  The ABI-compat goal — a libyamlstar drop-in — depends on this not being quietly broken by a libc symbol-version bump.
 
 ## §7 — Shape of the whole
 
