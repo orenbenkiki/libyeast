@@ -57,6 +57,12 @@ class CommitFailure(Exception):
         self.code = code
 
 
+class LimitExceeded(Exception):
+    """Raised when a wrapping `(max)` window is exhausted — the match would consume past its character limit. It
+    unwinds, keeping the tokens up to the window's edge, to the `(max)` that turns it into a `CommitFailure` and the
+    unparsed recovery. A lookahead is exempt, so it never escapes a probe."""
+
+
 BYTE_ORDER_MARK = 0xFEFF  # consumed without ending the start of a line, unlike any other character
 
 
@@ -120,6 +126,8 @@ class Emitter:
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
         self.forbidden = ()  # patterns that must not match at a start of line — the ongoing `(exclude)` guards in scope
         self.pending = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
+        self.ceiling = None  # the position a `Limited` window ends at, past which committed input may not be consumed
+        self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
 
     def checkpoint(self):
         return (
@@ -133,6 +141,8 @@ class Emitter:
             self.is_sol,
             self.forbidden,
             self.pending,
+            self.ceiling,
+            self.probing,
         )
 
     def rewind(self, checkpoint):
@@ -147,6 +157,8 @@ class Emitter:
             self.is_sol,
             self.forbidden,
             self.pending,
+            self.ceiling,
+            self.probing,
         ) = checkpoint
         # The parameters are copied out rather than adopted: an alternation rewinds to the same checkpoint once per
         # branch, so handing a branch the checkpoint's own dictionary would let its `(set)` reach back into what the
@@ -158,6 +170,10 @@ class Emitter:
     def consume(self):
         """Take the character or invalid byte at the position into the open run, opening one under the current code if
         none is. An invalid byte is no break and no byte-order mark; it advances a byte and a column like any other."""
+        if self.ceiling is not None and not self.probing and self.position >= self.ceiling:
+            # A committed character past a `(max)` window's edge exhausts it. The open run is left as it is so the
+            # tokens up to here still emit; a lookahead is exempt and reads on freely.
+            raise LimitExceeded()
         if self.run is None:
             self.run = (wire.CODE_CHAR[self.codes[-1]], self.mark, self.position)
         codepoint = self.chars[self.position]
@@ -305,6 +321,7 @@ def _probe(pattern, emitter, grammar):
     and read as "did not match" rather than allowed to escape.
     """
     checkpoint = emitter.checkpoint()
+    emitter.probing += 1  # a lookahead reads past a `Limited` window's edge freely; the rewind restores the count
     try:
         matched = match(pattern, emitter, grammar, _accept)
     except CommitFailure:
@@ -471,17 +488,16 @@ def match(node, emitter, grammar, k):
             emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Diff):
+        # A difference is a character class: the base, minus each excluded. The exclusions are checked first, as
+        # lookaheads that consume nothing, so an excluded character is never trial-consumed to be rejected — which a
+        # `Limited` window would otherwise see as a break or an over-run committed and refuse.
+        for excluded in node.minus:
+            if _probe(excluded, emitter, grammar):
+                return False
         start = emitter.checkpoint()
-        if not match(node.base, emitter, grammar, _accept):  # the base's first way; a difference is a character class
+        if not match(node.base, emitter, grammar, _accept):
             emitter.rewind(start)
             return False
-        after_base = emitter.checkpoint()
-        for excluded in node.minus:
-            emitter.rewind(start)
-            if _probe(excluded, emitter, grammar):
-                emitter.rewind(start)
-                return False
-        emitter.rewind(after_base)
         if k():
             return True
         emitter.rewind(start)
@@ -557,7 +573,27 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.Le):
         return k() if evaluate(node.a, emitter, grammar) <= evaluate(node.b, emitter, grammar) else False
     if isinstance(node, ir.Max):
-        return k() if emitter.position - emitter.match_start <= evaluate(node.limit, emitter, grammar) else False
+        if node.item is None:
+            return k()  # the vendored grammar's bare length note, which libyeast never runs — only recovers to
+        if emitter.ceiling is not None:
+            return match(node.item, emitter, grammar, k)  # nested: only the outermost window applies, being the buffer
+        emitter.ceiling = emitter.position + evaluate(node.limit, emitter, grammar)
+
+        def past_window():
+            emitter.ceiling = None  # the window bounds `item`, not the parse that carries on once it has matched
+            if k():
+                return True
+            return False  # `item` will try its next way; its own rewind restores the ceiling the checkpoint kept
+
+        try:
+            # The window is exhausted where the match would consume past the edge: hand the overflow to the recovery a
+            # failed cut takes, keeping the tokens up to the edge — the error the caller emits cuts the open run into
+            # the last of them. Any exit clears the ceiling: a cut inside `item` unwinding past here leaves the window.
+            return match(node.item, emitter, grammar, past_window)
+        except LimitExceeded:
+            raise CommitFailure(node.message)
+        finally:
+            emitter.ceiling = None
     if isinstance(node, ir.Bound):
         saved_start = emitter.match_start
         emitter.match_start = emitter.position
@@ -592,6 +628,7 @@ def match(node, emitter, grammar, k):
         target = emitter.position
         for start in range(target - 1, -1, -1):
             checkpoint = emitter.checkpoint()
+            emitter.probing += 1  # a look-behind reads speculatively, past any `Limited` edge; the rewind restores it
             emitter.position = start
             reached = match(node.item, emitter, grammar, lambda: emitter.position == target)
             emitter.rewind(checkpoint)

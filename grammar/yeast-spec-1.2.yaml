@@ -266,9 +266,11 @@
 #
 #   * (max)
 #     The YAML spec grammar constrains some rules to complete in the next 1024
-#     characters. The (max) function is used to indicate that this is the
-#     case. How it is implemented (like many things) is left as an exercise for
-#     the parser author.
+#     characters. The vendored grammar writes (max): N before the rule, as a
+#     length note. libyeast writes (max): [N, MESSAGE, rule] around the rule and
+#     enforces it: matching rule within a window of N characters, where consuming
+#     past N is the error MESSAGE and unparsed from there. Recovering the official
+#     grammar undoes the wrapping back to a (max): N before the rule.
 #
 #   * (exclude)
 #     This one is a doozy. It indicates a rule that must not match during any
@@ -2827,8 +2829,12 @@ c-ns-flow-pair-json-key-entry:
 
 
 #===============================================================================
-# The (max) function tells the parser that it can consider only the given
-# number of characters to match the next rule.
+# An implicit key must resolve within a bounded lookahead: the spec's 1024
+# characters (§7.4.2). libyeast wraps the key in that `(max)`, where the official
+# grammar writes it before the production rather than around it — a key past 1024
+# characters is an error, IMPLICIT_KEY_TOO_LONG, and unparsed from there. The
+# single line the key is also held to needs no bound here: the flow-key context
+# already forbids a break inside a key, so none is ever consumed.
 #===============================================================================
 
 :154: ns-s-implicit-yaml-key
@@ -2839,10 +2845,12 @@ c-ns-flow-pair-json-key-entry:
 
 ns-s-implicit-yaml-key:
   (...): c
-  (all):
-  - (max): 1024
-  - ns-flow-yaml-node: [ null, c ]
-  - (???): s-separate-in-line
+  (max):
+  - 1024
+  - IMPLICIT_KEY_TOO_LONG
+  - (all):
+    - ns-flow-yaml-node: [ null, c ]
+    - (???): s-separate-in-line
 
 
 
@@ -2854,10 +2862,12 @@ ns-s-implicit-yaml-key:
 
 c-s-implicit-json-key:
   (...): c
-  (all):
-  - (max): 1024
-  - c-flow-json-node: [ null, c ]
-  - (???): s-separate-in-line
+  (max):
+  - 1024
+  - IMPLICIT_KEY_TOO_LONG
+  - (all):
+    - c-flow-json-node: [ null, c ]
+    - (???): s-separate-in-line
 
 
 

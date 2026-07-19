@@ -36,7 +36,6 @@ SILENT = (
     ir.Invalid,
     ir.Le,
     ir.Lt,
-    ir.Max,
     ir.Range,
     ir.SetVar,
     ir.StartOfLine,
@@ -87,9 +86,9 @@ def effect(node, values, known):
         return marker(node.code)
     if isinstance(node, ir.Wrap):
         return compose(compose(marker(node.begin), effect(node.item, values, known)), marker(node.end))
-    if isinstance(node, (ir.Token, ir.Bound)):
-        # A `(<<<)` matches what is inside it, so what is inside it emits. Passing over it would let a marker opened
-        # there go unclosed, and no other gate looks.
+    if isinstance(node, (ir.Token, ir.Bound)) or (isinstance(node, ir.Max) and node.item is not None):
+        # A `(<<<)` or a wrapping `(max)` matches what is inside it, so what is inside it emits. Passing over it would
+        # let a marker opened there go unclosed, and no other gate looks.
         return effect(node.item, values, known)
     if isinstance(node, ir.ZERO_WIDTH):
         return BALANCED  # a lookahead emits nothing, whatever it matches

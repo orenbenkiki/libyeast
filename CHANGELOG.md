@@ -190,6 +190,20 @@ All notable changes to this project are documented here. The format follows
   folded-versus-spaced lines drawn only after the shared indentation is taken so the floor is checked once; fixtures
   enforce both.
 
+- An implicit mapping key is held to the spec's §7.4.2 bound: a parser resolving whether a `:` makes the entry a key
+  must see it within 1024 characters. The official grammar writes this as `(max): 1024` before the key production, a
+  length note it never enforces; libyeast makes `(max)` a wrapping window — `(max): [1024, IMPLICIT_KEY_TOO_LONG, key]`
+  around the production — that the interpreter runs. The window is the deterministic parser's bounded lookahead:
+  matching the key, but no further than 1024 characters, taking the interpreter's own unbounded lookahead to get there
+  and then keeping only what fit. A key that runs past the limit is an error, `IMPLICIT_KEY_TOO_LONG`, and unparsed from
+  there — the tokens up to exactly the 1024th character emitted first, the run cut where the limit falls so a token
+  split across it comes back as its own code, then the error, as a failed cut leaves things. Recovering the official
+  grammar undoes the wrapping back to the preceding `(max): 1024`, so `check_vendor_spec` still reads it rule for rule
+  with no divergence declared. The single line the key is also restricted to needs no window: the flow-key context
+  already binds a key's separation to `s-separate-in-line` and its scalars to one line, so no break is ever consumed
+  inside a key — fixtures pin the limit falling inside a token and on the boundary between two, and a flow-collection
+  key that a break would carry onto a second line failing as an unterminated flow collection.
+
 - `l-yeast-stream` is the root the parser runs: a YAML stream, and then the end of the input. Every part of the spec's
   `l-yaml-stream` is optional, so on input that is no stream at all — a `]`, say — it matches nothing and would leave
   the whole of the input unaccounted for, silently; the root makes that an error and the input comes back unparsed, so

@@ -52,7 +52,6 @@ NEVER_SURE = (
     ir.Look,
     ir.LookBehind,
     ir.Lt,
-    ir.Max,
     ir.NegLook,
     ir.Range,
     ir.StartOfLine,
@@ -82,6 +81,9 @@ def is_total(node, grammar, seen=frozenset()):
         return False
     if isinstance(node, (ir.Star, ir.Opt)):
         return True
+    if isinstance(node, ir.Max):
+        # A wrapping `(max)` says no where its production does; the vendored grammar's bare `(max)` is a length note.
+        return is_total(node.item, grammar, seen) if node.item is not None else False
     if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Rep)):
         return is_total(node.item, grammar, seen)
     if isinstance(node, ir.Bind):

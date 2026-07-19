@@ -106,6 +106,8 @@ def node_yaml(n):
     if isinstance(n, ir.Increase):
         return {"(increase)": n.param}
     if isinstance(n, ir.Max):
+        if n.item is not None:
+            return {"(max)": [expr_yaml(n.limit), n.message, node_yaml(n.item)]}
         return {"(max)": expr_yaml(n.limit)}
     if isinstance(n, ir.Lt):
         return {"(<)": [expr_yaml(n.a), expr_yaml(n.b)]}

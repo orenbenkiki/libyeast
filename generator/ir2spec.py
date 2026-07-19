@@ -116,6 +116,12 @@ def erase(node, owner):
         # A `(recover)` says where a failed cut stops unwinding, which is a question the official grammar never asks:
         # what it wraps is what that grammar writes, and the rule it recovers through is libyeast's own.
         return erase(node.item, owner)
+    if isinstance(node, ir.Max) and node.item is not None:
+        # libyeast wraps a production in `(max)`; the official grammar writes the character bound as a bare `(max)`
+        # before that production instead, so the wrapping is undone into the sequence the vendored grammar spells.
+        inner = erase(node.item, owner)
+        items = inner.items if isinstance(inner, ir.Seq) else (inner,)
+        return ir.Seq((ir.Max(node.limit),) + items)
     if isinstance(node, ir.Ref) and node.name in MARKER_ONLY:
         return ir.Empty()
     if isinstance(node, ir.Ref) and not node.args and node.name in INDICATORS and node.name != owner:

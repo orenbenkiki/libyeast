@@ -44,5 +44,8 @@ DOCUMENT_END: "A '...' document-end marker requires a comment or line break"
 # A block scalar's leading empty lines set a floor its first content line may not fall below.
 BLOCK_SCALAR_UNDER_INDENT: "A block scalar's content must be indented at least as far as its leading empty lines"
 
+# An implicit mapping key ran past the bounded lookahead a parser resolves it within.
+IMPLICIT_KEY_TOO_LONG: "An implicit mapping key must be at most 1024 characters"
+
 # The input holds something a stream cannot.
 TRAILING_CONTENT: "A stream holds only documents, directives and comments"

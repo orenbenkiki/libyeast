@@ -308,7 +308,6 @@ Phase 03's lowering is the rest: the value-layer decisions the token layer never
 grammar-versus-semantic-action so the fidelity claim is honest about its boundary. This is where bugs get smuggled in
 undetected.
 
-1. Encode the single-line simple-key restriction and its hard length bound as a first-class constraint.
 1. Specify tab handling (forbidden as indentation), and the comment rule (`#` starts a comment only after whitespace:
    `foo#bar` is a scalar).
 1. Decide and document duplicate-mapping-key policy (error / last-wins / first-wins) — the spec underspecifies it.

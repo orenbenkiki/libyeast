@@ -151,6 +151,8 @@ def node(x):
         if op == "(increase)":
             return ir.Increase(value)
         if op == "(max)":
+            if isinstance(value, list):  # libyeast wraps a production, the vendored grammar precedes one
+                return ir.Max(expr(value[0]), value[1], node(value[2]))
             return ir.Max(expr(value))
         if op == "(<)":
             return ir.Lt(expr(value[0]), expr(value[1]))

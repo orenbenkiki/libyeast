@@ -21,8 +21,21 @@ import interpreter
 # What an `Emitter` holds, and whether a checkpoint must restore it. The input is the only thing that is not state: it
 # is read and never written. Naming them is the point — a new field must be sorted into one list or the other, and the
 # gate says so rather than assuming.
-RESTORED = ("position", "mark", "tokens", "run", "codes", "env", "match_start", "is_sol", "forbidden", "pending")
-READ_ONLY = ("raw", "chars", "byte_at")
+RESTORED = (  # in alphabetical order
+    "ceiling",
+    "codes",
+    "env",
+    "forbidden",
+    "is_sol",
+    "mark",
+    "match_start",
+    "pending",
+    "position",
+    "probing",
+    "run",
+    "tokens",
+)
+READ_ONLY = ("byte_at", "chars", "raw")  # in alphabetical order
 
 
 def _dirty(emitter):
@@ -33,6 +46,8 @@ def _dirty(emitter):
     emitter.marker("begin-scalar")
     emitter.forbidden += (None,)
     emitter.match_start = 1
+    emitter.ceiling = 5
+    emitter.probing += 1
 
 
 def _state(emitter):
@@ -48,6 +63,8 @@ def _state(emitter):
         emitter.is_sol,
         emitter.forbidden,
         emitter.pending,
+        emitter.ceiling,
+        emitter.probing,
     )
 
 

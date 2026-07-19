@@ -236,9 +236,18 @@ class ExcludeAt:
 
 @dataclass(frozen=True)
 class Max:
-    """`(max)`: a length bound (the single-line simple-key limit)."""
+    """`(max)`: a bound of `limit` characters — the implicit-key lookahead limit (§7.4.2).
+
+    The vendored grammar writes it before a production, as a length note on what follows: `(max): N`. libyeast writes it
+    around the production instead — `(max): [N, message, rule]` — where it is the bounded window a parser resolves the
+    key within: consuming past `limit` characters is the error `message`, and unparsed from there. The single line the
+    key is also held to needs no help here — the flow-key context already forbids a break inside a key. `ir2spec` undoes
+    the wrapping back to the vendored's preceding `(max): N`.
+    """
 
     limit: object
+    message: object = None
+    item: object = None
 
 
 @dataclass(frozen=True)
