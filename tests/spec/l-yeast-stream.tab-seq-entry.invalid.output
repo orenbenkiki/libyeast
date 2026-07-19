@@ -1,0 +1,30 @@
+# B: 0, C: 0, L: 1, c: 0
+O
+# B: 0, C: 0, L: 1, c: 0
+N
+# B: 0, C: 0, L: 1, c: 0
+Q
+# B: 0, C: 0, L: 1, c: 0
+I-
+# B: 1, C: 1, L: 1, c: 1
+N
+# B: 1, C: 1, L: 1, c: 1
+S
+# B: 1, C: 1, L: 1, c: 1
+s
+# B: 1, C: 1, L: 1, c: 1
+n
+# B: 1, C: 1, L: 1, c: 1
+b\x0a
+# B: 2, C: 2, L: 2, c: 0
+q
+# B: 2, C: 2, L: 2, c: 0
+n
+# B: 2, C: 2, L: 2, c: 0
+o
+# B: 2, C: 2, L: 2, c: 0
+!A stream holds only documents, directives and comments
+# B: 2, C: 2, L: 2, c: 0
+-\x09- a
+# B: 6, C: 6, L: 2, c: 4
+.\x0a
