@@ -2065,11 +2065,13 @@ c-double-quoted:
   - end-scalar
   - (all):
     - c-double-quote
-    - (cut): UNTERMINATED_DOUBLE_QUOTE
-    - (token):
-      - text
-      - nb-double-text: [ n, c ]
-    - c-double-quote
+    - (commit):
+      - UNTERMINATED_DOUBLE_QUOTE
+      - (all):
+        - (token):
+          - text
+          - nb-double-text: [ n, c ]
+        - c-double-quote
 
 
 
@@ -2244,11 +2246,13 @@ c-single-quoted:
   - end-scalar
   - (all):
     - c-single-quote
-    - (cut): UNTERMINATED_SINGLE_QUOTE
-    - (token):
-      - text
-      - nb-single-text: [ n, c ]
-    - c-single-quote
+    - (commit):
+      - UNTERMINATED_SINGLE_QUOTE
+      - (all):
+        - (token):
+          - text
+          - nb-single-text: [ n, c ]
+        - c-single-quote
 
 
 
@@ -2535,10 +2539,12 @@ c-flow-sequence:
   - end-sequence
   - (all):
     - c-sequence-start
-    - (cut): UNTERMINATED_FLOW_SEQ
-    - (???): { s-separate: [ n, c ] }
-    - (???): { ns-s-flow-seq-entries: [ n, { in-flow: c } ] }
-    - c-sequence-end
+    - (commit):
+      - UNTERMINATED_FLOW_SEQ
+      - (all):
+        - (???): { s-separate: [ n, c ] }
+        - (???): { ns-s-flow-seq-entries: [ n, { in-flow: c } ] }
+        - c-sequence-end
 
 
 
@@ -2591,10 +2597,12 @@ c-flow-mapping:
   - end-mapping
   - (all):
     - c-mapping-start
-    - (cut): UNTERMINATED_FLOW_MAP
-    - (???): { s-separate: [ n, c ] }
-    - (???): { ns-s-flow-map-entries: [ n, { in-flow: c } ] }
-    - c-mapping-end
+    - (commit):
+      - UNTERMINATED_FLOW_MAP
+      - (all):
+        - (???): { s-separate: [ n, c ] }
+        - (???): { ns-s-flow-map-entries: [ n, { in-flow: c } ] }
+        - c-mapping-end
 
 
 

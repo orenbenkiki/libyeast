@@ -127,6 +127,8 @@ def node_yaml(n):
         return {"(emit)": n.code}
     if isinstance(n, ir.Cut):
         return {"(cut)": n.message}
+    if isinstance(n, ir.Commit):
+        return {"(commit)": [n.message, node_yaml(n.item)]}
     if isinstance(n, ir.Error):
         return {"(error)": n.message}
     if isinstance(n, ir.Recover):

@@ -112,9 +112,9 @@ def normalize(node):
 
 def erase(node, owner):
     """What the official grammar writes where libyeast writes `node`."""
-    if isinstance(node, (ir.Token, ir.Wrap, ir.Recover)):
-        # A `(recover)` says where a failed cut stops unwinding, which is a question the official grammar never asks:
-        # what it wraps is what that grammar writes, and the rule it recovers through is libyeast's own.
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Recover, ir.Commit)):
+        # A `(recover)` says where a failed cut stops unwinding, and a `(commit)` is a scoped cut, both questions the
+        # official grammar never asks: what they wrap is what that grammar writes.
         return erase(node.item, owner)
     if isinstance(node, ir.Max) and node.item is not None:
         # libyeast wraps a production in `(max)`; the official grammar writes the character bound as a bare `(max)`

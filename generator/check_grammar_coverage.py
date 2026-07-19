@@ -84,7 +84,7 @@ def is_total(node, grammar, seen=frozenset()):
     if isinstance(node, ir.Max):
         # A wrapping `(max)` says no where its production does; the vendored grammar's bare `(max)` is a length note.
         return is_total(node.item, grammar, seen) if node.item is not None else False
-    if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Rep)):
+    if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Rep, ir.Commit)):
         return is_total(node.item, grammar, seen)
     if isinstance(node, ir.Bind):
         return is_total(node.cond, grammar, seen)

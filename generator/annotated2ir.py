@@ -170,6 +170,8 @@ def node(x):
             return ir.Emit(value)
         if op == "(cut)":
             return ir.Cut(value)
+        if op == "(commit)":
+            return ir.Commit(value[0], node(value[1]))
         if op == "(error)":
             return ir.Error(value)
         if op == "(recover)":

@@ -354,6 +354,22 @@ class Cut:
 
 
 @dataclass(frozen=True)
+class Commit:
+    """`(commit)`: match `item`, committing only to `item` being present — a `(cut)` scoped to what follows it.
+
+    Where a `(cut)` commits the whole parse from its point on, `(commit)` commits only that `item` can match at all: if
+    `item` cannot (a quoted scalar that never closes, a flow collection that never ends), `message` is the error, as a
+    `(cut)` raises it. But if `item` matches and a *later* rule fails, the match backtracks like any other — the
+    commitment does not reach past `item`. That is what lets a flow scalar which closed cleanly be reinterpreted when it
+    turns out not to be the mapping key it was tried as, while one that never closed is still the error it should be.
+    `message` keys `grammar/messages.yaml`, as a `(cut)`'s does.
+    """
+
+    message: str
+    item: object
+
+
+@dataclass(frozen=True)
 class Error:
     """`(error)`: a zero-width error token at this point, which also cuts the run of characters around it.
 

@@ -401,6 +401,15 @@ Wanted, but not planned, and not on the way to anything else:
   round-trips it in the meantime. A coarser level is cheaper and is all a caller loading a document needs; a finer one
   is what the differential oracle and a debugger want.
 
+- **An event-projecting token source** — a `ys_token_source` that wraps another and is one itself, handing back only the
+  event-level tokens: the stream, document, mapping, sequence, scalar and alias markers, a scalar's value already folded
+  (a `line-fold` a space, a `line-feed` a newline, an escape resolved) with its anchor and tag attached, everything else
+  — the node and pair brackets, indicators, indentation, whitespace, breaks — dropped. It is the C twin of the Python
+  fold the YAML Test Suite is checked through: the event stream is a subset of yeast, so the projection is a filter over
+  the markers plus the mechanical value fold the codes already settle. A caller wanting YAML events rather than tokens
+  reads them straight, without composing a node graph — and because it wraps a source and is a source, it drops in
+  wherever tokens already flow.
+
 - **Arena allocators** — revisit the `ys_allocator` API against arena and pool allocators, which free everything at once
   rather than buffer by buffer: whether a no-op `deallocate` is enough as it stands or the shape wants a variant, and
   whether a source's allocations can be arranged so a caller drops the whole parse in a single free. The `close` hook is
@@ -411,7 +420,7 @@ Wanted, but not planned, and not on the way to anything else:
   The ABI-compat goal — a libyamlstar drop-in — depends on this not being quietly broken by a libc symbol-version bump.
 
 - Binaries as well as library - yaml2yeast (resume policy in ARGV), yeast2yaml (filtering policy in ARGV), yeast2html
-  (based on YamlReference).
+  (based on YamlReference), yaml2event, yeast2event...
 
 ## §7 — Shape of the whole
 

@@ -681,6 +681,22 @@ def match(node, emitter, grammar, k):
         if k():
             return True
         raise CommitFailure(node.message)  # committed: unwind past the backtracking, this is the error
+    if isinstance(node, ir.Commit):
+        # A `(cut)` scoped to `item`: it is the error only where `item` never reaches its own end. `reached` is set the
+        # first time `item` matches through to the continuation, so a continuation that then fails backtracks the whole
+        # of `item` like any other match — the commitment does not reach past it. An `item` that cannot close never
+        # reaches its end, and that is the error. A `(cut)` inside `item` fires on its own terms, escaping past here.
+        reached = [False]
+
+        def at_end():
+            reached[0] = True
+            return k()
+
+        if match(node.item, emitter, grammar, at_end):
+            return True
+        if reached[0]:
+            return False
+        raise CommitFailure(node.message)
     if isinstance(node, ir.Error):
         checkpoint = emitter.checkpoint()
         emitter.error(MESSAGES[node.message])
