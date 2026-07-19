@@ -103,6 +103,8 @@ def node_yaml(n):
         return {"(exclude)": node_yaml(n.item)}
     if isinstance(n, ir.SetVar):
         return {"(set)": [n.param, expr_yaml(n.value)]}
+    if isinstance(n, ir.Increase):
+        return {"(increase)": n.param}
     if isinstance(n, ir.Max):
         return {"(max)": expr_yaml(n.limit)}
     if isinstance(n, ir.Lt):

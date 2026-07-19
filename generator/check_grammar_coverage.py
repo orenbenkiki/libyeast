@@ -40,21 +40,22 @@ import yaml
 AMBIENT = {"r": len(annotated2ir.RESUMES)}
 
 # The nodes that match wherever they are asked to, and the ones that may always refuse. A `(cut)` counts as matching: it
-# never returns "no", it raises instead, which is a different thing that `rejected` accounts for separately.
-ALWAYS = (ir.Empty, ir.Emit, ir.Error, ir.SetVar, ir.ExcludeAt, ir.Cut, ir.Flip)
+# never returns "no", it raises instead, which is a different thing that `rejected` accounts for separately. Both lists
+# in alphabetical order.
+ALWAYS = (ir.Cut, ir.Emit, ir.Empty, ir.Error, ir.ExcludeAt, ir.Flip, ir.Increase, ir.SetVar)
 NEVER_SURE = (
     ir.Char,
-    ir.Range,
     ir.Diff,
-    ir.StartOfLine,
     ir.EndOfStream,
     ir.Invalid,
-    ir.Lt,
     ir.Le,
-    ir.Max,
     ir.Look,
-    ir.NegLook,
     ir.LookBehind,
+    ir.Lt,
+    ir.Max,
+    ir.NegLook,
+    ir.Range,
+    ir.StartOfLine,
 )
 
 

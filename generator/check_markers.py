@@ -23,22 +23,23 @@ CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, an
 # The nodes that emit no marker: a character, a guard, a commit point, an error token, and the `(flip)` a value
 # production is made of. Named rather than assumed, because assuming it is how a `(recover)` once hid every marker
 # inside it — a node this does not know is a node whose markers nothing has looked at, and the gate says so rather than
-# passing it.
+# passing it. In alphabetical order.
 SILENT = (
     ir.Char,
-    ir.Range,
+    ir.Cut,
     ir.Diff,
     ir.Empty,
-    ir.StartOfLine,
     ir.EndOfStream,
-    ir.Invalid,
-    ir.Lt,
-    ir.Le,
-    ir.Max,
-    ir.SetVar,
-    ir.Cut,
     ir.Error,
     ir.Flip,
+    ir.Increase,
+    ir.Invalid,
+    ir.Le,
+    ir.Lt,
+    ir.Max,
+    ir.Range,
+    ir.SetVar,
+    ir.StartOfLine,
 )
 BALANCED = ((), ())  # no marker left open, and none closed that was not opened here
 

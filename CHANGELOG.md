@@ -146,7 +146,7 @@ All notable changes to this project are documented here. The format follows
 - A reference interpreter of the grammar, `generator/interpreter.py`: a slow, obviously-correct backtracking matcher
   that runs a production against an input and emits its yeast tokens, checked fixture by fixture against the conformance
   suite so libyeast's grammar is proved to produce the reference's tokens before any C runs. It matches every node
-  family — the character-level nodes, the repetitions, the parameter machinery that threads `n`/`m`/`c`/`t`/`r` and
+  family — the character-level nodes, the repetitions, the parameter machinery that threads `n`/`m`/`c`/`t`/`r`/`f` and
   detects indentation, and the assertions and lookahead, including the ongoing `(exclude)` guard that stops a plain
   scalar at a document boundary — and produces tokens from the annotation nodes, giving a run its code, bracketing a
   match in `begin`/`end` markers, emitting a marker on its own, and writing an error token that names what was expected.
@@ -163,7 +163,7 @@ All notable changes to this project are documented here. The format follows
   to `l-recover` — the grammar's own recovery rule — which brings it back as unparsed. A failure that passed no cut is
   not an error but a production simply rejecting its input, reported where what matched ends.
 
-- Error reporting lives in the grammar. Nineteen `(cut)` points mark where a parse commits, and an `(error)` is an error
+- Error reporting lives in the grammar. Twenty `(cut)` points mark where a parse commits, and an `(error)` is an error
   token the grammar writes where it already knows the parse cannot go on; each names a message in
   `grammar/messages.yaml` — the one source the interpreter reads and the C message table generates from, gated so the
   two cannot drift. `l-unparsed` is the recovery rule they hand the rest of the input to, bringing it back a line at a
@@ -175,6 +175,20 @@ All notable changes to this project are documented here. The format follows
   rather than a rule declining to match. A message says what its own cut expects and no more — a `...` marker requires a
   comment or a line break, which is what its cut guards, where it had claimed a new document was required after it and a
   stream of nothing but `...` has always been valid.
+
+- A block scalar's leading empty lines are held to the spec's prose §8.1.1.1: none may out-indent the first content
+  line. The reference and the BNF read such a line as content — its extra spaces fall through `l-empty(n)`'s cap into
+  `s-indent(n) nb-char+`, a space being an `nb-char` — where libyeast makes it an error, the divergence declared in
+  `check_vendor_spec`. A forward parser with no lookahead cannot know the floor is broken until the content line
+  arrives, so that is where it speaks: `l-leading-empties` emits every leading empty whatever its indentation and raises
+  `f`, a new runtime floor parameter, to the widest of them with the `(increase)` action — `f = max(f, column)`, made
+  explicit rather than magic so the structural transformation has less to infer; then `s-indent-floor` takes the content
+  line's own indentation and, only after it, an under-indent error keyed `BLOCK_SCALAR_UNDER_INDENT`. Reporting it there
+  — as this line being under-indented rather than a past empty line being over-indented — is also what tells an empty
+  scalar, whose content line never comes, from a violating one: there the indentation match fails before the cut and the
+  scalar ends with no error. The literal and folded styles share the mechanism, the folded fork into
+  folded-versus-spaced lines drawn only after the shared indentation is taken so the floor is checked once; fixtures
+  enforce both.
 
 - `l-yeast-stream` is the root the parser runs: a YAML stream, and then the end of the input. Every part of the spec's
   `l-yaml-stream` is optional, so on input that is no stream at all — a `]`, say — it matches nothing and would leave

@@ -22,7 +22,7 @@ DEFAULT_GRAMMAR = os.path.join(TREE, "grammar", "yeast-spec-1.2.yaml")
 
 # The grammar's parameters: `n`/`m` are indentations, `c` a context, `t` a chomping mode, `r` the resume policy. A bare
 # name among these is that parameter; any other bare name is the value it spells.
-PARAMS = frozenset({"n", "c", "m", "t", "r"})
+PARAMS = frozenset({"c", "f", "m", "n", "r", "t"})  # in alphabetical order
 
 # The values of the finite parameters — the ones specialized away at generation time, so that a gate wanting to hold the
 # grammar to every one of them can enumerate them. `n` and `m` are indentations and have no such list. `r` reaching only
@@ -148,6 +148,8 @@ def node(x):
             return ir.ExcludeAt(node(value))
         if op == "(set)":
             return ir.SetVar(value[0], expr(value[1]))
+        if op == "(increase)":
+            return ir.Increase(value)
         if op == "(max)":
             return ir.Max(expr(value))
         if op == "(<)":

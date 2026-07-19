@@ -55,10 +55,10 @@ emit that marker, and without it an empty stripped block scalar opens a scalar i
 it, and the stack that deep nesting grows are capped together, since a run that is never resolved grows all three; past
 the cap `ys_read_token` returns `YS_FAILED_MEMORY`, the caller's sizing to fix.
 
-## §1 — The central principle: five parameters, two fates
+## §1 — The central principle: six parameters, two fates
 
-The productions are indexed by five parameters, and the generator's core intellectual move — a binding-time analysis —
-is to sort them into two fates and treat those completely differently. `c` and `n` are the exemplars.
+The productions are indexed by six parameters, and the generator's core intellectual move — a binding-time analysis — is
+to sort them into two fates and treat those completely differently. `c` and `n` are the exemplars.
 
 - **`c` — context · STATIC.** `c` ranges over a **finite** set (block-in, block-out, flow-in, flow-out, block-key,
   flow-key). Specialize it away at generation time: each `c`-parameterized production monomorphizes into ≤6 concrete
@@ -67,10 +67,11 @@ is to sort them into two fates and treat those completely differently. `c` and `
   `s-indent(≤n)`. It cannot be specialized away; it must survive into the emitted automaton, carried on the indentation
   stack.
 
-The other three follow the same two fates: **`t`** (chomping — strip, clip, keep) and **`r`** (the resume policy — what
-`ys_options.resume` chooses) are finite, so they are specialized away like `c`; **`m`** (the auto-detected indent) is an
-unbounded integer, so it is threaded like `n`. So the runtime carries `n` and `m`, and never sees `c`, `t` or `r` — the
-emitted C is one automaton per resume policy, and `ys_options.resume` picks the start state.
+The others follow the same two fates: **`t`** (chomping — strip, clip, keep) and **`r`** (the resume policy — what
+`ys_options.resume` chooses) are finite, so they are specialized away like `c`; **`m`** (the auto-detected indent) and
+**`f`** (the floor a block scalar's leading empty lines set for its first content line) are unbounded integers, so they
+are threaded like `n`. So the runtime carries `n`, `m` and `f`, and never sees `c`, `t` or `r` — the emitted C is one
+automaton per resume policy, and `ys_options.resume` picks the start state.
 
 Getting this split right is the crux: partial-evaluate over `c` while *preserving* `n`.
 
@@ -249,9 +250,10 @@ determinization.
 - **Provisional run** — `OpenProvisional`, `RetypeProvisional(payload, break)` (the block scalar's held run carries both
   content and the breaks between it, so retyping names two codes), `InjectBefore(code)`, `CommitProvisional`.
   One-for-one with the `ys_queue` run. There is no discard: a failed hypothesis retypes, it never drops tokens.
-- **Parameters** — `SetIndentToColumn`, `AdjustIndent(expr)`, `SetIndentFromDigit`. Only `n` and `m` are runtime; `c`
-  and `t` are specialized away and never appear. Counting indentation is a loop of `[space]` gates with an accumulator
-  action, not a special multi-character gate.
+- **Parameters** — `SetIndentToColumn`, `IncreaseIndentToColumn` (`f = max(f, column)`, what `(increase)` lowers to for
+  the block-scalar floor), `AdjustIndent(expr)`, `SetIndentFromDigit`. Only `n`, `m` and `f` are runtime; `c` and `t`
+  are specialized away and never appear. Counting indentation is a loop of `[space]` gates with an accumulator action,
+  not a special multi-character gate.
 - **Guards** — `AtStartOfLine`, `AtEndOfStream`, `IndentLt/Le/Eq(n)`, `WithinKeyLimit`. A guard is a cheap zero-width
   condition on an alternative; the sharp case that forces the gate to be a conjunction is indentation matching, where
   both the eat-another-space and the stop alternatives gate on `[space]` and are told apart only by `column < n`.
@@ -330,11 +332,6 @@ undetected.
    `"auto-detect"`, and the two departures that took are declared in `check_vendor_spec.py`, with their reasons. What is
    left is for the generator to implement the two markers — and to do so **consuming**, not peeking: the grammar says
    what is measured, not that the parser must read the input twice to measure it.
-1. **The leading over-indented empty line — decided: an error.** The reference and the BNF read it as _content_: the
-   extra spaces fall through `l-empty(n)`'s cap to `s-indent(n) nb-char+`, and a space is an `nb-char`. The spec's
-   §8.1.1.1 calls a leading empty line more indented than the content an _error_; libyeast follows the spec and declares
-   the divergence from the reference. The grammar gains the guard that tells a leading over-indented all-space line from
-   a legitimately over-indented content line, with an enforcing fixture — settled in Phase 02.
 1. Mark each rule as "grammar" vs "asserted semantic action" so the fidelity claim is honest about its boundary.
 
 **Exit** — a written semantic spec, versioned alongside the IR, covering every rule beyond the BNF.
@@ -450,6 +447,9 @@ Wanted, but not planned, and not on the way to anything else:
 - **libc version portability** — deal with the libc-version issues a shared library faces: which symbol versions the
   built `.so` pulls in and their minimums, so a binary built against a newer toolchain still loads on an older target.
   The ABI-compat goal — a libyamlstar drop-in — depends on this not being quietly broken by a libc symbol-version bump.
+
+- Binaries as well as library - yaml2yeast (resume policy in ARGV), yeast2yaml (filtering policy in ARGV), yeast2html
+  (based on YamlReference).
 
 ## §7 — Shape of the whole
 

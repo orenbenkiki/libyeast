@@ -282,6 +282,15 @@ class SetVar:
     value: object
 
 
+@dataclass(frozen=True)
+class Increase:
+    """`(increase)`: increase indentation parameter `param` to the current column — `param = max(param, column)` — a
+    zero-width action. It records the widest indentation seen so far, which is how a block scalar's leading empty lines
+    set the floor its first content line may not fall below."""
+
+    param: str
+
+
 # --- token annotations ---
 #
 # The parser accumulates the characters it consumes into a run, and gives the run a code. A run ends — becoming one
@@ -375,5 +384,5 @@ class Prod:
     body: object
 
 
-# The nodes that match without consuming: a lookahead reads the input and gives it back.
-ZERO_WIDTH = (Look, NegLook, LookBehind, ExcludeAt)
+# The nodes that match without consuming: a lookahead reads the input and gives it back. In alphabetical order.
+ZERO_WIDTH = (ExcludeAt, Look, LookBehind, NegLook)

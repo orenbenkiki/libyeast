@@ -41,5 +41,8 @@ TAG_DIRECTIVE: "The %TAG directive requires a handle and a prefix"
 BLOCK_HEADER: "A block scalar header requires a comment or line break"
 DOCUMENT_END: "A '...' document-end marker requires a comment or line break"
 
+# A block scalar's leading empty lines set a floor its first content line may not fall below.
+BLOCK_SCALAR_UNDER_INDENT: "A block scalar's content must be indented at least as far as its leading empty lines"
+
 # The input holds something a stream cannot.
 TRAILING_CONTENT: "A stream holds only documents, directives and comments"

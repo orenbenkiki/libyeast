@@ -35,6 +35,17 @@ DEVIATIONS = {
         "the first ordering with a lookahead, so the second is reached without backtracking and a junk header commits "
         "to a BLOCK_HEADER error instead of silently failing to match"
     ),
+    "l-literal-content": (
+        "the official grammar's first content chunk is l-nb-literal-text, whose l-empty* silently consumes the leading "
+        "empty lines; libyeast routes it through l-nb-literal-first, which consumes those empties itself and holds "
+        "them to the spec's prose §8.1.1.1 — an error, BLOCK_SCALAR_UNDER_INDENT, when the first content line is less "
+        "indented than the widest leading empty line — a rule the official BNF does not carry"
+    ),
+    "l-nb-diff-lines": (
+        "the folded twin of the l-literal-content deviation: its first same-lines chunk is l-nb-same-first, which "
+        "applies the same §8.1.1.1 leading-empty floor before the folded content that l-nb-literal-first does before "
+        "the literal content"
+    ),
 }
 
 

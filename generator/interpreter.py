@@ -529,6 +529,13 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.Increase):
+        checkpoint = emitter.checkpoint()
+        emitter.env[node.param] = max(emitter.env.get(node.param, 0), emitter.mark.column)
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.Bind):
         saved_start = emitter.match_start
         emitter.match_start = emitter.position

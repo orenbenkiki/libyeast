@@ -3189,6 +3189,97 @@ l-nb-literal-text:
   - (+++): nb-char
 
 
+:219: l-leading-empties
+# l-leading-empties(f) ::=
+#   ( <any-indent empty line> => f = max(f, column) )*
+#
+# libyeast's own, shared by both block-scalar styles: the leading empty lines before a block scalar's first content
+# line, which the spec's §8.1.1.1 forbids from out-indenting the content. The stream is taken as valid and every one is
+# emitted whatever its indentation, raising f — the floor, an out-parameter the caller reads back — to the widest of
+# them. It stops at the first line that is not all spaces, leaving that line for the content to read.
+#
+# Emits: indent
+
+l-leading-empties:
+  (...): f
+  (***):
+    (all):
+    - (token): [ indent, { (***): s-space } ]
+    - (increase): f
+    - b-as-line-feed
+
+
+:220: s-indent-floor
+# s-indent-floor(n,f) ::=
+#   s-indent(n) <where n >= f, else BLOCK_SCALAR_UNDER_INDENT>
+#
+# libyeast's own, shared by both block-scalar styles: a block scalar's first content line takes its indentation, and
+# then an error if that line falls below the floor f the leading empty lines set. Reporting it here, after the
+# indentation and as this line being under-indented rather than a past empty line being over-indented, is what a forward
+# parser with no lookahead can say: the empty lines are already emitted, and f is all it has to remember. Taking the
+# indentation before the check is also what tells an empty scalar, whose content line never comes, from an
+# under-indented one — there s-indent fails before the cut, and the scalar ends with no error.
+
+s-indent-floor:
+  (...): [ n, f ]
+  (all):
+  - s-indent: n
+  - (cut): BLOCK_SCALAR_UNDER_INDENT
+  - (<=): [ f, n ]
+
+
+:221: l-nb-literal-first
+# l-nb-literal-first(n) ::=
+#   l-leading-empties(f)
+#   s-indent-floor(n,f) nb-char+
+#
+# libyeast's own: the first chunk of a literal scalar — its leading empties raising the floor, its first content line
+# held to it, then the literal content.
+
+l-nb-literal-first:
+  (...): n
+  (all):
+  - (set): [ f, 0 ]
+  - l-leading-empties: f
+  - s-indent-floor: [ n, f ]
+  - (+++): nb-char
+
+
+:222: l-nb-same-first
+# l-nb-same-first(n) ::=
+#   l-leading-empties(f)
+#   s-indent-floor(n,f)
+#   ( ns-char nb-char* ( b-l-folded(n,block-in) s-nb-folded-text(n) )*
+#   | s-white nb-char* ( b-l-spaced(n) s-nb-spaced-text(n) )* )
+#
+# libyeast's own: the folded twin of l-nb-literal-first — the leading empties raising the floor, the first content
+# line's indentation held to it, and then the folded or spaced lines, their shared indentation already taken so the
+# floor is checked before the two are told apart. The rest of each line's content, and every line after the first, are
+# the folded and spaced texts unchanged.
+
+l-nb-same-first:
+  (...): n
+  (all):
+  - (set): [ f, 0 ]
+  - l-leading-empties: f
+  - s-indent-floor: [ n, f ]
+  - (any):
+    - (all):
+      - ns-char
+      - (***): nb-char
+      - (***):
+          (all):
+          - b-l-folded: [ n, "block-in" ]
+          - s-nb-folded-text: n
+    - (all):
+      - s-white
+      - (***): nb-char
+      - (***):
+          (all):
+          - b-l-spaced: n
+          - s-nb-spaced-text: n
+
+
 
 :172: b-nb-literal-next
 # b-nb-literal-next(n) ::=
@@ -3242,7 +3333,7 @@ l-literal-content:
   (all):
   - (any):
     - (all):
-      - l-nb-literal-text: n
+      - l-nb-literal-first: n
       - (***): { b-nb-literal-next: n }
       - b-chomped-last: t
     - end-block-scalar: t
@@ -3371,7 +3462,7 @@ l-nb-same-lines:
 l-nb-diff-lines:
   (...): n
   (all):
-  - l-nb-same-lines: n
+  - l-nb-same-first: n
   - (***):
       (all):
       - b-as-line-feed
