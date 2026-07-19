@@ -112,9 +112,9 @@ are kept **byte-identical to the Haskell reference's `Code` constructors** (alre
 header), and that one decision makes the single stream do three jobs at once:
 
 - **The load API** — `compose → resolve → serialize` is a downstream fold over yeast. YAMLStar already owns that back
-  half and already eats these tokens, so the JSON path is a front-end swap, not new code (phase 07).
+  half and already eats these tokens, so the JSON path is a front-end swap, not new code (phase 06).
 - **A debug view** — folding the balanced `Begin`/`End` markers rebuilds the nested productions tree, rendered by the
-  package's own `yaml2html` (migrated from the Haskell reference; phase 06). Identical codes make the port a faithful
+  package's own `yaml2html` (migrated from the Haskell reference; phase 05). Identical codes make the port a faithful
   copy, validated against the Haskell reference's own rendering.
 - **The differential oracles** — identical codes make the yeast comparison against the Haskell reference
   token-for-token; the folded load output is checked value-for-value against the Clojure reference (§3).
@@ -192,12 +192,11 @@ discovering the grammar's own bugs sixteen steps deep. This phase earns that, an
 **The spec's prose, audited into fixtures.** The BNF is already gated production-for-production against the vendored
 spec grammar (`check_vendor_spec`). What the BNF cannot say — the constraints the spec leaves to prose — is inventoried
 here, and each ends as either a rule in the grammar with a fixture that fails when the behaviour is wrong, or a declared
-divergence with its reason. Phase 04's semantic items are that checklist, brought forward and settled here rather than
-alongside the pipeline: the single-line simple-key restriction and its length bound, tab forbidden as indentation, `#`
-opening a comment only after whitespace, line-break normalization, and the block-scalar indentation rules — the leading
-over-indented empty line among them, **decided: an error** (the spec's §8.1.1.1, against the reference's and the BNF's
-leniency, declared in `check_vendor_spec`). The exit is that the inventory is closed: every prose constraint encoded or
-declared, each with a fixture that enforces it.
+divergence with its reason. The checklist of prose constraints: the single-line simple-key restriction and its length
+bound, tab forbidden as indentation, `#` opening a comment only after whitespace, line-break normalization, and the
+block-scalar indentation rules — the leading over-indented empty line among them, **decided: an error** (the spec's
+§8.1.1.1, against the reference's and the BNF's leniency, declared in `check_vendor_spec`). The exit is that the
+inventory is closed: every prose constraint encoded or declared, each with a fixture that enforces it.
 
 **The YAML Test Suite, folded to compare.** The independent net is the community suite YAMLStar runs — `<ID>/in.yaml`
 in, `<ID>/test.event` and `error` expected — derived from the same spec, and so the thing that catches a grammar bug
@@ -209,7 +208,7 @@ YAMLStar is the reference libyeast targets, so where it and the raw suite diverg
 into the inventory above — a grammar fix, or a declared divergence with its reason.
 
 Then, once the gate holds: the yeast→HTML debug view bootstrapped on the Haskell reference's `yaml2html` as the
-divergence microscope (it later serves as the reference oracle for the package's own port, Phase 06), and CI that runs
+divergence microscope (it later serves as the reference oracle for the package's own port, Phase 05), and CI that runs
 the fixtures, the folded suite, and a differential fuzz corpus on every commit, reporting the first divergence.
 
 **Exit — the gate.** `check_vendor_spec` green, the prose inventory closed, and the folded YAML Test Suite
@@ -297,43 +296,9 @@ non-issue — and it runs in two modes off one flag:
   interpreter cannot catch on their own.
 
 **Exit** — a canonical grammar the validator passes, on which the interpreter agrees in both modes across the corpus, so
-that emitting the C state machine (Phase 06) is mechanical rather than clever.
+that emitting the C state machine (Phase 05) is mechanical rather than clever.
 
-### Phase 04 — Semantics · Specify what the BNF doesn't say
-
-*Risk: High · ~4–8 wks.* The productions alone don't fully specify a parser; the spec leans on prose. The constraints
-that shape the **token** stream are settled in Phase 02, as the completeness gate requires — the items below are that
-audit, each ending as a grammar rule with an enforcing fixture or a declared divergence. What genuinely runs alongside
-Phase 03's lowering is the rest: the value-layer decisions the token layer never reaches, and marking each rule
-grammar-versus-semantic-action so the fidelity claim is honest about its boundary. This is where bugs get smuggled in
-undetected.
-
-1. Decide and document duplicate-mapping-key policy (error / last-wins / first-wins) — the spec underspecifies it.
-1. Specify line-break normalization and error-recovery states.
-1. **Encoding — a conformance gap, open today.** libyeast reads UTF-8 and only UTF-8. YAML 1.2 asks a conformant parser
-   to read UTF-16 as well, and UTF-32 where it accepts JSON. Nothing detects an encoding, and `c-byte-order-mark` emits
-   the mark it matched and no more, where the reference gives that token the *name* of the encoding it detected — a
-   divergence the differential oracle will find. Deciding this decides four things at once: whether the decoder grows a
-   transcoding front end or stays UTF-8 and rejects the rest, what a `bom` token's text is, whether libyeast may call
-   itself conformant, and what the resume policy does with a byte that is no character at all.
-1. **A byte that is no character — settled and in place.** `<invalid>` names the byte the decoder's `YS_LIT_KEY_INVALID`
-   already tells apart, and `l-unparsed` brings maximal `unparsed-invalid` runs back among the `unparsed-text` and the
-   breaks, resynchronising where valid UTF-8 resumes or at the end of the input; the wire carries them, its `\xXX` a raw
-   byte under that code and a codepoint under any other, and the reader holds a `~` token to being ill-formed
-   throughout. Proved by fixtures, the interpreter reading bytes. What is left is only for the generated C parser to
-   emit them, by running the same grammar.
-1. **Indentation detection — defined; implement it.** The grammar now says what the official grammar would not:
-   `<auto-detect-indent>` is the indentation of the next line holding a character other than a space, less `n`, the
-   current line counting only if the parse is at its start; `<auto-detect-in-line-indent>` is the spaces that follow on
-   this line, which is what a compact collection is indented by. `m` is an indentation now and never the string
-   `"auto-detect"`, and the two departures that took are declared in `check_vendor_spec.py`, with their reasons. What is
-   left is for the generator to implement the two markers — and to do so **consuming**, not peeking: the grammar says
-   what is measured, not that the parser must read the input twice to measure it.
-1. Mark each rule as "grammar" vs "asserted semantic action" so the fidelity claim is honest about its boundary.
-
-**Exit** — a written semantic spec, versioned alongside the IR, covering every rule beyond the BNF.
-
-### Phase 05 — Deferral · The two provisional cases, worked out concretely
+### Phase 04 — Deferral · The two provisional cases, worked out concretely
 
 *Risk: Medium · ~2–3 mo.* Phase 03's determinize step says "insert provisional speculation for the two unbounded cases"
 in one line; this is that line worked out. The queue and its undecided run are already built (`src/parser.h`), so what
@@ -347,7 +312,7 @@ each case, and the proof — via the interpreter's committed mode — that each 
 
 **Exit** — the two deferrals resolve correctly, pull-driven, oracle-clean.
 
-### Phase 06 — C codegen · Emit the C library
+### Phase 05 — C codegen · Emit the C library
 
 *Risk: Low · ~1–2 mo.* The easy end of every compiler. Turn the lowered IR into a switch-on-state character loop with
 arena allocation.
@@ -369,7 +334,7 @@ arena allocation.
 
 **Exit** — a self-contained C `.so`, plus the bundled `yaml2html` tool, passing suite + differential + fuzz.
 
-### Phase 07 — ABI layer · Drop-in for libyamlstar
+### Phase 06 — ABI layer · Drop-in for libyamlstar
 
 *Risk: Low · ~3–5 wks.* The existing YAMLStar ABI was designed as a swappable seam — thin, JSON-string in/out, no
 exposed structs — so this is nearly free. Every existing binding works unchanged.
@@ -386,7 +351,7 @@ exposed structs — so this is nearly free. Every existing binding works unchang
 
 **Exit** — the new `.so` slots in where the GraalVM blob sat; all bindings green.
 
-### Phase 08 — Harden · Fuzz, tune, and reach libyaml-class speed
+### Phase 07 — Harden · Fuzz, tune, and reach libyaml-class speed
 
 *Risk: Medium · ~2–4 mo.* Correct-but-slow is not the goal. Close the algorithmic gaps naive codegen leaves and prove
 robustness under hostile input.
@@ -407,11 +372,11 @@ robustness under hostile input.
 | -------------------------------------------------------------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Malicious input triggers memory-unsafety or resource-exhaustion DoS  | all     | ▪▪▪▪     | Hardening flags on the release build; ASan/UBSan on every run; structure-aware fuzzing from day one; bounded allocation plus a configurable parse-depth cap; billion-laughs / recursive-alias guards; continuous security audit, not a final pass. |
 | A step in the normalization pipeline silently changes the language   | 03      | ▪▪▪▪     | Reference IR interpreter diffs the token stream before and after every step; the committed mode catches an unsafe gate the backtracking mode cannot; dual differential oracles against the Haskell and Clojure references; log assurance gaps.     |
-| Semantic rules beyond the BNF encoded wrongly / incompletely         | 04      | ▪▪▪▪     | Written, versioned semantic spec; each rule tagged grammar vs asserted; fuzz the corners the suite misses.                                                                                                                                         |
+| Semantic rules beyond the BNF encoded wrongly / incompletely         | 02      | ▪▪▪▪     | The grammar is the semantic spec; `check_vendor_spec` tags each rule grammar-vs-deviation; fixtures enforce; fuzz the corners the suite misses.                                                                                                    |
 | The first working slice is a big leap from IR to emitting tokens     | 01      | ▪▪▪      | Decompose into many small, individually-verified sub-steps; grow the production subset one at a time, staying green; hand-checked expected outputs before the reference oracles exist.                                                             |
-| Naive codegen is correct but super-linear                            | 03 / 08 | ▪▪▪      | Commit-safety discharged per decision point in phase 03; profiling and hot-state tuning in phase 08.                                                                                                                                               |
+| Naive codegen is correct but super-linear                            | 03 / 07 | ▪▪▪      | Commit-safety discharged per decision point in phase 03; profiling and hot-state tuning in phase 07.                                                                                                                                               |
 | A pipeline step is subtly non-semantics-preserving and slips the net | 03      | ▪▪▪      | Keep every step small enough to prove by eye; assert its structural post-condition; the interpreter corpus-diff is the behavioural backstop.                                                                                                       |
-| Arena/backtracking scratch leaks or corrupts                         | 06      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                       |
+| Arena/backtracking scratch leaks or corrupts                         | 05      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                       |
 | Incumbency: 1.1 quirks are load-bearing in real configs              | —       | ▪▪       | Out of scope to "fix" silently; position as a conformance upgrade, document behavioural deltas from libyaml/1.1.                                                                                                                                   |
 
 ## §6 — Future work
@@ -458,8 +423,8 @@ low-single-digit-years** project. The difficulty is lumpy, not uniform:
 - **The hard ~20%** — the determinize steps of the pipeline (phase 03): reducing each decision to a commit-safe one-char
   gate, faithful-by-construction. This is the part that determines whether the result is worth more than libyaml, and it
   touches formal methods.
-- **The judgment-heavy long tail** — the semantic spec beyond the BNF (phase 04), continuous throughout, the source of
-  the subtle bugs no single test happens to catch.
+- **The judgment-heavy long tail** — the semantic layer beyond the BNF, settled into the grammar and its gates (phase
+  02), the source of the subtle bugs no single test happens to catch.
 
 The reason this doesn't already exist isn't that any one piece is impossible. It's that the *valuable* version requires
 the determinization to be faithful-by-construction — a real proof effort on top of a real compiler — and the set of

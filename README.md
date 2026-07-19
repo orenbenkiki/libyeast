@@ -21,6 +21,22 @@ hand-written ones (libyaml-class) are "faithful by luck." libyeast generates a f
 the ~211 formal productions**, so speed comes from the state machine and fidelity from the derivation. It targets a
 drop-in, ABI-compatible C shared library.
 
+## Conformance
+
+libyeast targets **YAML 1.2**, its conformance derived from the grammar rather than hand-tested. Two boundaries define
+what that claims:
+
+- **It is a token parser.** libyeast turns the character stream into a _yeast_ token stream — a lossless representation
+  of the document's structure — and stops there. Everything above the token stream is a higher layer's job and out of
+  scope: composing tokens into a node graph, resolving anchors, aliases and tags, constructing native values, and the
+  model decisions that ride along — whether a duplicate mapping key is an error, whether mapping key order is kept.
+  libyeast emits every key, in order, and leaves those to whatever consumes the tokens.
+- **It reads UTF-8 only** — its one conformance limitation. YAML 1.2 asks a conformant parser for UTF-16 as well, and
+  UTF-32 where it accepts JSON; libyeast reads UTF-8 and nothing else. The decoder classifies UTF-8 bytes straight into
+  the grammar without assembling codepoints — a design the other encodings would fight — so they are forgone. A UTF-8
+  stream may still open with a byte-order mark, which libyeast reads and emits as the mark it is (`U+FEFF`); it simply
+  never uses a BOM to switch encoding, having only the one. See [`DESIGN.md`](DESIGN.md) for the details.
+
 ## Requirements
 
 Building the C library needs only a C99 compiler (GCC, Clang, or MSVC), CMake ≥ 3.20, and pkg-config — the generated

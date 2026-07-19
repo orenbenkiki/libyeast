@@ -1,9 +1,13 @@
 # libyeast design
 
-libyeast is a YAML 1.2 parser in C, generated from the formal grammar. This document is a map: it names the pieces and
-how they relate, and points at where each piece's design and rationale live — in that piece's own source (its file or
-its comments). The full public API surface is declared, but the parser core is not yet implemented — parsing returns a
-"not implemented" error — so what exists is the project framework and this facade.
+libyeast is a YAML 1.2 parser in C, generated from the formal grammar. It is a _token_ parser: it produces a yeast token
+stream — a lossless representation of the document's structure — and stops there. Composing those tokens into a node
+graph, resolving anchors, aliases and tags, constructing native values, and the model questions that ride along
+(duplicate mapping keys, mapping key order) are a higher layer's and out of scope. Its one departure from YAML 1.2 is
+that it reads UTF-8 only, forgoing the UTF-16 and UTF-32 the spec also asks for. This document is a map: it names the
+pieces and how they relate, and points at where each piece's design and rationale live — in that piece's own source (its
+file or its comments). The full public API surface is declared, but the parser core is not yet implemented — parsing
+returns a "not implemented" error — so what exists is the project framework and this facade.
 
 ## Pieces
 
