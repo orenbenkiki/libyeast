@@ -308,7 +308,6 @@ Phase 03's lowering is the rest: the value-layer decisions the token layer never
 grammar-versus-semantic-action so the fidelity claim is honest about its boundary. This is where bugs get smuggled in
 undetected.
 
-1. Specify the comment rule (`#` starts a comment only after whitespace: `foo#bar` is a scalar).
 1. Decide and document duplicate-mapping-key policy (error / last-wins / first-wins) — the spec underspecifies it.
 1. Specify line-break normalization and error-recovery states.
 1. **Encoding — a conformance gap, open today.** libyeast reads UTF-8 and only UTF-8. YAML 1.2 asks a conformant parser
