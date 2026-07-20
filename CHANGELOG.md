@@ -67,11 +67,15 @@ All notable changes to this project are documented here. The format follows
 
 - Grammar normalization: an ordered pipeline of semantics-preserving grammar-to-grammar transformations that carry the
   hand-authored grammar toward the canonical form a state machine falls out of — each terminal a character set, each run
-  a repetition of one. `monomorphize` specializes the lexical context parameter `c` away — every production it reaches
-  copied once per combination of `c` values, its `(case)`/`(flip)` on `c` evaluated to the copy's, and `c` fixed into
-  the copy's name (`ns-plain-char_c_flow-in`) rather than passed — following references from the root and every fixture
-  entry point, so only combinations that occur are made; `n`, `m`, `f`, and the runtime state `t` and `r` stay. It rests
-  on a rule the grammar now keeps: a finite parameter is only ever switched on, so where an implicit key's commit
+  a repetition of one. `lift-chomping` makes the chomping `t` lexical: `c-chomping-indicator` matches an indicator and
+  sets `t`, which the block scalar reads two productions on through the env, a set that is no switch — so it inverts the
+  setter into a `(case) t` matching the indicator for a given `t`, and turns the block scalar into an ordered choice
+  over strip/keep/clip, each branch fixing `t` to the literal it hands the header and the content alike. `monomorphize`
+  then specializes the finite parameters — the context `c` and the now-lexical `t` — away: every production it reaches
+  copied once per combination of their values, its `(case)`/`(flip)` on them evaluated to the copy's, and the values
+  fixed into the copy's name (`ns-plain-char_c_flow-in`) rather than passed, following references from the root and
+  every fixture entry point so only combinations that occur are made; `n`, `m`, `f`, and the runtime state `r` stay. It
+  rests on a rule the grammar now keeps: a finite parameter is only ever switched on, so where an implicit key's commit
   softens by context — a key that will not parse being simply not this key — the grammar says so in a `(case) c`, its
   key branches the bare item and its `else` the commit, and the parser's `(commit)` is the same hard cut everywhere.
   `(case)` grew that `else` for it. `lower-optionals` and `lower-plus` drop the `x?` and complex `x+` spellings;

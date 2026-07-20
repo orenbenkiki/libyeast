@@ -17,10 +17,11 @@ from dataclasses import dataclass, fields, is_dataclass, replace
 ROOT = "l-yeast-stream"
 
 # The parameters `normalize.monomorphize` specializes away into a production's name: the ones passed lexically, as
-# arguments, so their value is settled where a production is entered. The context `c` is the one. `n`, `m` and `f` are
-# integers, and `t` (chomping) and `r` (resume) are state a match sets at runtime, so all four stay parameters. A
-# left-out finite parameter takes its default, of which there are none while `c`, always passed, is the only one.
-FINITE_PARAMS = ("c",)
+# arguments, so their value is settled where a production is entered. The context `c` is one; the chomping `t` is
+# another once `lift-chomping` has made it lexical rather than a match's stashed state. `n`, `m` and `f` are integers,
+# and `r` (resume) is state, so they stay parameters. A left-out finite parameter takes its default, of which there are
+# none while `c` and `t`, always passed, are the only ones.
+FINITE_PARAMS = ("c", "t")
 FINITE_DEFAULTS = {}
 
 

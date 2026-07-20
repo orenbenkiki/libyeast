@@ -60,6 +60,71 @@ def _branch(node, value):
     raise ValueError(f"{node.var} has no branch for {value!r}")
 
 
+def _uses(node, param):
+    """Whether `Param(param)` appears anywhere in `node`."""
+    if isinstance(node, ir.Param):
+        return node.name == param
+    found = []
+    ir.rebuilt(node, lambda child: found.append(_uses(child, param)) or child)
+    return any(found)
+
+
+def _substitute(node, param, value):
+    """`node` with each `Param(param)` replaced by `Lit(value)`."""
+    if isinstance(node, ir.Param) and node.name == param:
+        return ir.Lit(value)
+    return ir.rebuilt(node, lambda child: _substitute(child, param, value))
+
+
+def _finite_setter(node):
+    """`(param, [value, ...], {value: condition})` where `node` is an alternation of `Bind`s that each match a condition
+    and set one finite parameter to a literal — a data-dependent setter of a finite parameter — else `None`. The values
+    are in the alternation's order, which is the order the choice lifting it must try them in."""
+    if not isinstance(node, ir.Alt) or not node.items or not all(isinstance(item, ir.Bind) for item in node.items):
+        return None
+    params = {item.param for item in node.items}
+    if len(params) != 1 or not all(isinstance(item.value, ir.Lit) for item in node.items):
+        return None
+    (param,) = params
+    if param not in ir.FINITE_PARAMS:
+        return None
+    return param, [item.value.value for item in node.items], {item.value.value: item.cond for item in node.items}
+
+
+def _dispatch(body, param, values):
+    """`body` with the tail that uses `param` — its first use to the end of the top-level sequence — replaced by an
+    ordered choice over `values`, each branch substituting the literal for `Param(param)`."""
+    items = body.items if isinstance(body, ir.Seq) else (body,)
+    first = next(index for index, item in enumerate(items) if _uses(item, param))
+    prefix, tail = items[:first], items[first:]
+    choice = ir.Alt(tuple(ir.Seq(tuple(_substitute(item, param, value) for item in tail)) for value in values))
+    return ir.Seq(prefix + (choice,)) if prefix else choice
+
+
+def lift_chomping(grammar, namer):
+    """Make a data-dependent finite parameter lexical, so it monomorphizes like the context. The chomping `t` is the
+    one: `c-chomping-indicator` matches an indicator and sets `t` — strip, keep, or clip — which the block scalar reads
+    two productions later, through the env. That set is not a switch, so `t` cannot be specialized. This inverts the
+    setter into a `(case) t` that matches the indicator for a given `t`, and turns each production that holds `t` as a
+    local out-parameter into an ordered choice over its values — each branch fixing `t` to a literal it hands the setter
+    and the reader alike. The parse tries the values in the setter's order, so exactly the one whose indicator is
+    present matches, and `t` flows as a value rather than stashed state."""
+    setters = {name: setter for name in grammar if (setter := _finite_setter(grammar[name].body))}
+    values = {param: ordered for param, ordered, _conditions in setters.values()}
+    result = {}
+    for name, production in grammar.items():
+        if name in setters:
+            param, ordered, conditions = setters[name]
+            body = ir.Case(param, tuple(ir.Branch(value, conditions[value]) for value in ordered))
+        else:
+            body = production.body
+            for param in ir.FINITE_PARAMS:
+                if param in values and param not in production.params and _uses(body, param):
+                    body = _dispatch(body, param, values[param])
+        result[name] = dataclasses.replace(production, body=body)
+    return result
+
+
 def _relevant_finite(grammar):
     """For each production, the finite parameters its specialized subtree depends on — the ones a monomorphic copy must
     fix in its name. A production's own body reads some directly (a `Case`/`Flip` on one, or one passed as itself); the
@@ -598,6 +663,7 @@ def non_char_set_runs(grammar):
 
 # The pipeline, in order, as `(name, transform)` pairs.
 STEPS = [
+    ("lift-chomping", lift_chomping),
     ("monomorphize", monomorphize),
     ("lower-optionals", lower_optionals),
     ("lower-plus", lower_plus),
