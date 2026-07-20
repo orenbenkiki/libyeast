@@ -1,0 +1,501 @@
+# SPDX-License-Identifier: MIT
+"""The normalization pipeline: the ordered, semantics-preserving transformations that carry the hand-authored grammar
+toward the canonical form a state machine falls out of.
+
+A transformation is a function from a grammar to a grammar — a grammar being the `{name: ir.Prod}` mapping
+`annotated2ir.load()` returns, its nodes the frozen dataclasses of `ir`. Each is small enough to prove by eye and is
+held to preserving the interpreter's token stream over the whole corpus, step by step, by `check_normalize`. `STEPS`
+lists them in order as `(name, transform)` pairs, so a step is named wherever it passes or fails; the pipeline is the
+one seam every transformation slots into.
+"""
+
+import dataclasses
+
+import ir
+
+# Nodes that begin no character — a match of one starts no run, so it adds nothing to a first-character set: the
+# lookaheads, the epsilon and marker emitters, the guards, and the parameter actions.
+_ZERO_WIDTH = ir.ZERO_WIDTH + (
+    ir.Empty,
+    ir.Emit,
+    ir.StartOfLine,
+    ir.EndOfStream,
+    ir.Lt,
+    ir.Le,
+    ir.SetVar,
+    ir.Increase,
+    ir.Cut,
+    ir.Error,
+)
+
+
+class Namer:
+    """Fresh helper-production names, `<base>_<N>`, the `<N>` the next unused per base across the whole pipeline.
+
+    One is threaded through every step, so a base's count carries across them: a helper minted for `foo` is `foo_1`, the
+    next `foo_2`, and one minted while a later step processes `foo_3` is `foo_4` — never `foo_3_1`, since the base is
+    `foo` with any `_<N>` suffix stripped. Two steps minting for the same base do not collide.
+    """
+
+    def __init__(self):
+        self._counts = {}
+
+    def fresh(self, owner):
+        """A fresh `<base>_<N>` name for a helper of `owner`, the base being `owner` without its `_<N>` suffix."""
+        head, _underscore, tail = owner.rpartition("_")
+        base = head if tail.isdigit() and head else owner
+        self._counts[base] = self._counts.get(base, 0) + 1
+        return f"{base}_{self._counts[base]}"
+
+
+def _lower_optionals(node):
+    """`node` with each optional `x?` rewritten as the alternation `x | <empty>`. Bottom-up, so a parent sees its
+    already-lowered children."""
+    node = ir.rebuilt(node, _lower_optionals)
+    if isinstance(node, ir.Opt):
+        return ir.Alt((node.item, ir.Empty()))
+    return node
+
+
+def lower_optionals(grammar, namer):
+    """Rewrite each optional `x?` as the alternation `x | <empty>` — the same match, x greedily then nothing, with the
+    empty as the last, unconditional alternative the canonical form allows. Removes the `Opt` node kind."""
+    return {
+        name: dataclasses.replace(production, body=_lower_optionals(production.body))
+        for name, production in grammar.items()
+    }
+
+
+def matches_one_char(node, grammar, seen=frozenset()):
+    """Whether `node` matches exactly one character — a terminal char class. A `+`/`*` over one stays a single repeated
+    char-set match (one SIMD call); over anything else it breaks into a sequence or a recursion. A `Char`, `Range` or
+    `Invalid` is one; a `Diff` is one when its base is (the exclusions only narrow it); an `Alt` is one when every
+    branch is (a union of char sets), so a lowered optional `x | <empty>` is not one; a `Ref` is one when its
+    production is."""
+    if isinstance(node, (ir.Char, ir.Range, ir.Invalid)):
+        return True
+    if isinstance(node, ir.Diff):
+        return matches_one_char(node.base, grammar, seen)
+    if isinstance(node, ir.Alt):
+        return all(matches_one_char(item, grammar, seen) for item in node.items)
+    if isinstance(node, ir.Case):
+        return all(matches_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
+    if isinstance(node, ir.Ref):
+        return node.name in seen or matches_one_char(grammar[node.name].body, grammar, seen | {node.name})
+    return False
+
+
+def matches_empty(node, grammar, seen=frozenset()):
+    """Whether `node` can match the empty string. Conservative: a node it cannot prove non-empty is reported as matching
+    empty, so a caller under-acts. A `Star` over a node that matches empty cannot become a right-recursive helper — it
+    would spin on that empty match where the interpreter's own repetition stops."""
+    if isinstance(node, (ir.Char, ir.Range, ir.Invalid, ir.Diff)):
+        return False
+    if isinstance(node, ir.Ref):
+        return node.name in seen or matches_empty(grammar[node.name].body, grammar, seen | {node.name})
+    if isinstance(node, ir.Seq):
+        return all(matches_empty(item, grammar, seen) for item in node.items)
+    if isinstance(node, ir.Alt):
+        return any(matches_empty(item, grammar, seen) for item in node.items)
+    if isinstance(node, ir.Plus):
+        return matches_empty(node.item, grammar, seen)
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Recover)):
+        return matches_empty(node.item, grammar, seen)
+    if isinstance(node, ir.Max):
+        return node.item is None or matches_empty(node.item, grammar, seen)
+    if isinstance(node, ir.Case):
+        return any(matches_empty(branch.item, grammar, seen) for branch in node.branches)
+    if isinstance(node, ir.Bind):
+        return matches_empty(node.cond, grammar, seen)
+    return True
+
+
+def _lower_plus(node, grammar):
+    """`node` with each `x+` over a complex `x` rewritten as the sequence `x x*`, and each `x+` over a char class left
+    alone to stay one SIMD match. Bottom-up, so a parent sees its already-lowered children."""
+    node = ir.rebuilt(node, lambda child: _lower_plus(child, grammar))
+    if isinstance(node, ir.Plus) and not matches_one_char(node.item, grammar):
+        return ir.Seq((node.item, ir.Star(node.item)))
+    return node
+
+
+def lower_plus(grammar, namer):
+    """Rewrite each `x+` over a complex production as the sequence `x x*` — one match then zero or more, the same
+    one-or-more. A `x+` over a character class stays as it is, to map later to a single repeated-char-set SIMD call.
+    Every complex `x+` in the grammar is over a production that consumes, so the sequence never matches `x` a second
+    time where `x+` would not."""
+    return {
+        name: dataclasses.replace(production, body=_lower_plus(production.body, grammar))
+        for name, production in grammar.items()
+    }
+
+
+def lower_star(grammar, namer):
+    """Rewrite each `x*` over a complex, always-consuming production as a fresh right-recursive helper
+    `_N ::= x _N | <empty>`, the star replaced by a reference to it. A `x*` over a character class stays as it is, to
+    map later to a single repeated-char-set SIMD call; one over a node that can match empty stays too, since the
+    recursion would spin on that empty match — it waits for the zero-width guard a later step brings. The helper carries
+    the owner production's parameters, threaded unchanged through the recursion, and anything else `x` reads flows
+    through the interpreter's env inheritance, as it did in place."""
+    minted = {}
+
+    def lower(owner, params, node):
+        node = ir.rebuilt(node, lambda child: lower(owner, params, child))
+        item = node.item if isinstance(node, ir.Star) else None
+        if item is not None and not matches_empty(item, grammar) and not matches_one_char(item, grammar):
+            name = namer.fresh(owner)
+            reference = ir.Ref(name, tuple(ir.Param(parameter) for parameter in params))
+            body = ir.Alt((ir.Seq((item, reference)), ir.Empty()))
+            minted[name] = ir.Prod(grammar[owner].number, name, params, body)
+            return reference
+        return node
+
+    result = {
+        name: dataclasses.replace(production, body=lower(name, production.params, production.body))
+        for name, production in grammar.items()
+    }
+    result.update(minted)
+    return result
+
+
+def _trim_runs(node, grammar):
+    """`node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
+    rewritten as a `TrimStar` over `w | p` that trims `w`. Bottom-up, so a parent sees its already-rewritten children.
+    """
+    node = ir.rebuilt(node, lambda child: _trim_runs(child, grammar))
+    if (
+        isinstance(node, ir.Star)
+        and isinstance(node.item, ir.Seq)
+        and len(node.item.items) == 2
+        and isinstance(node.item.items[0], ir.Star)
+        and matches_one_char(node.item.items[0].item, grammar)
+    ):
+        whitespace = node.item.items[0].item
+        content = node.item.items[1]
+        return ir.TrimStar(ir.Alt((whitespace, content)), whitespace)
+    return node
+
+
+def trim_runs(grammar, namer):
+    """Rewrite each `(s-white* content)*` — a run of content, its inner whitespace kept and its trailing whitespace
+    given back — as a `TrimStar` over `s-white | content` that trims `s-white`. This is the in-line run of a plain and
+    of a single- or double-quoted one, a long text token today matched one character per outer iteration; the `TrimStar`
+    is the maximal run a single scan takes, its trailing whitespace trimmed. `content` may be complex — a quoted escape,
+    a plain `#`/`:` behind its guard — which does not stop the run being one scan: the whitespace and the plain content
+    are its char-set bulk, the exceptions its slow path."""
+    return {
+        name: dataclasses.replace(production, body=_trim_runs(production.body, grammar))
+        for name, production in grammar.items()
+    }
+
+
+class NotAlmostCharSet(Exception):
+    """A `*` over an alternation of character classes and complex alternatives whose first character a class also
+    accepts, or cannot be pinned down — factoring it to `common* (uncommon common*)*` would change the match, so it is
+    refused rather than guessed."""
+
+
+def _first_chars(node, grammar, seen=frozenset()):
+    """The codepoints a match of `node` can begin with, or `None` where that set is not a concrete few — a range of
+    first characters, or a shape not analysed — which the caller treats as unsure rather than guessing through."""
+    if isinstance(node, ir.Char):
+        return frozenset({node.cp})
+    if isinstance(node, ir.Ref):
+        return frozenset() if node.name in seen else _first_chars(grammar[node.name].body, grammar, seen | {node.name})
+    if isinstance(node, ir.Alt):
+        first = frozenset()
+        for item in node.items:
+            got = _first_chars(item, grammar, seen)
+            if got is None:
+                return None
+            first |= got
+        return first
+    if isinstance(node, ir.Seq):
+        first = frozenset()
+        for item in node.items:
+            got = _first_chars(item, grammar, seen)
+            if got is None:
+                return None
+            first |= got
+            if not matches_empty(item, grammar):
+                break
+        return first
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Recover, ir.Star, ir.Plus, ir.Opt)):
+        return _first_chars(node.item, grammar, seen)
+    if isinstance(node, ir.Max):
+        return frozenset() if node.item is None else _first_chars(node.item, grammar, seen)
+    if isinstance(node, ir.Case):
+        first = frozenset()
+        for branch in node.branches:
+            got = _first_chars(branch.item, grammar, seen)
+            if got is None:
+                return None
+            first |= got
+        return first
+    if isinstance(node, ir.Bind):
+        return _first_chars(node.cond, grammar, seen)
+    if isinstance(node, ir.Diff):
+        return _first_chars(node.base, grammar, seen)  # the exclusions only narrow, so the base's set over-approximates
+    if isinstance(node, _ZERO_WIDTH):
+        return frozenset()  # begins no character
+    return None  # a Range, Invalid or Rep as a first-character source is not a concrete few — unsure
+
+
+def _accepts(node, codepoint, grammar, seen=frozenset()):
+    """Whether the character class `node` matches `codepoint`."""
+    if isinstance(node, ir.Char):
+        return node.cp == codepoint
+    if isinstance(node, ir.Range):
+        return node.lo <= codepoint <= node.hi
+    if isinstance(node, ir.Diff):
+        return _accepts(node.base, codepoint, grammar, seen) and not any(
+            _accepts(excluded, codepoint, grammar, seen) for excluded in node.minus
+        )
+    if isinstance(node, ir.Alt):
+        return any(_accepts(item, codepoint, grammar, seen) for item in node.items)
+    if isinstance(node, ir.Case):
+        return any(_accepts(branch.item, codepoint, grammar, seen) for branch in node.branches)
+    if isinstance(node, ir.Ref):
+        return node.name not in seen and _accepts(grammar[node.name].body, codepoint, grammar, seen | {node.name})
+    return False
+
+
+def hoist_char_runs(grammar, namer):
+    """Factor a `*` over an almost-character-set — an alternation of character classes and a few complex exceptions, the
+    escapes of a quoted scalar, a URI, a tag — into `common* (uncommon common*)*`: the common characters matched in bulk
+    runs (each a repeated-char-set match, later one SIMD call), dropping to the slow path only for an exception. A
+    `TrimStar` factors the same way, keeping its trim a character set of its own: `trim-run (trim* uncommon trim-run)*`,
+    so its common runs stay the two-set trimming scan a plain or quoted scalar's line compiles to. The equivalence holds
+    only where an exception cannot begin with a character the common set also accepts, so that a greedy common run never
+    takes one an ordered choice would have handed the exception; where that cannot be shown the factoring is refused
+    with `NotAlmostCharSet` rather than guessed."""
+
+    def resolved(node):
+        while isinstance(node, ir.Ref):
+            node = grammar[node.name].body
+        if isinstance(node, ir.Diff):
+            # A difference over an alternation distributes into the alternation: the exclusions are a start-position
+            # guard the interpreter probes before matching the base, so guarding the whole alternation and guarding each
+            # branch accept the same characters. Pushing them in lets the escape of a tag or URI — `ns-tag-char` is
+            # `ns-uri-char` less a few indicators — surface as the one complex branch a run factors around.
+            base = resolved(node.base)
+            if isinstance(base, ir.Alt):
+                return ir.Alt(tuple(ir.Diff(item, node.minus) for item in base.items))
+        return node
+
+    def flat_alternatives(node):
+        """`node`'s alternatives, flat: a char class kept whole, an alternation resolved and its own alternatives
+        flattened in, so a run's fast char set separates from its complex exceptions however the grammar nests them."""
+        if matches_one_char(node, grammar):
+            return (node,)
+        expanded = resolved(node)
+        if isinstance(expanded, ir.Alt):
+            return tuple(alternative for item in expanded.items for alternative in flat_alternatives(item))
+        return (node,)
+
+    def split(alternatives, owner):
+        """`alternatives` split into `(common, uncommon)` — a character set of the char-class alternatives, or `None`
+        where there is none, and one alternative of the complex ones, or `None` where there is none. Raises where a
+        complex alternative is not provably start-disjoint from the common set, so a greedy common run could take a
+        character an ordered choice would have handed the exception."""
+        common_alts = tuple(item for item in alternatives if matches_one_char(item, grammar))
+        uncommon_alts = tuple(item for item in alternatives if not matches_one_char(item, grammar))
+        common = None if not common_alts else common_alts[0] if len(common_alts) == 1 else ir.Alt(common_alts)
+        uncommon = None if not uncommon_alts else uncommon_alts[0] if len(uncommon_alts) == 1 else ir.Alt(uncommon_alts)
+        if common is not None and uncommon is not None:
+            first = _first_chars(uncommon, grammar)
+            if first is None or any(_accepts(common, codepoint, grammar) for codepoint in first):
+                raise NotAlmostCharSet(
+                    f"{owner}: a repeated alternation's complex alternative is not provably start-disjoint from its "
+                    f"character classes, so its character runs cannot be factored out"
+                )
+        return common, uncommon
+
+    def hoist(owner, node):
+        node = ir.rebuilt(node, lambda child: hoist(owner, child))
+        if isinstance(node, ir.TrimStar):
+            # A trimmed run factors as a plain run does, but each common run gives back its trailing trim, so the trim
+            # stays a char set of its own: `trim-run (trim* uncommon trim-run)*`, the leading `trim*` re-taking what the
+            # run before it gave back — which is what keeps the whitespace before a mid-scalar `:` while trailing
+            # whitespace is still trimmed off the end.
+            common, uncommon = split(flat_alternatives(node.full), owner)
+            run = ir.TrimStar(common, node.trim)
+            if uncommon is None:
+                return run  # a pure character-set run — one trimming scan, no exceptions
+            return ir.Seq((run, ir.Star(ir.Seq((ir.Star(node.trim), uncommon, run)))))
+        if not isinstance(node, ir.Star):
+            return node
+        alternation = resolved(node.item)
+        if not isinstance(alternation, ir.Alt):
+            return node
+        common, uncommon = split(alternation.items, owner)
+        if common is None or uncommon is None:
+            return node  # a pure character set (lower-star keeps it) or all complex (lower-star recurses it)
+        run = ir.Star(common)
+        return ir.Seq((run, ir.Star(ir.Seq((uncommon, run)))))
+
+    return {
+        name: dataclasses.replace(production, body=hoist(name, production.body)) for name, production in grammar.items()
+    }
+
+
+# The token codes that carry a long text token — a run of content: a scalar's text, a name's meta, the recovery's
+# unparsed text and invalid bytes. A run under one of these should be matched by a char-set `+`/`*` (one SIMD call), not
+# one character per iteration; `content_run_offenders` finds where the normalized grammar still matches it per char.
+CONTENT_CODES = frozenset({"text", "meta", "unparsed-text", "unparsed-invalid"})
+_ROOT_CODE = "unparsed-text"  # the code the emitter's stack starts with, before any `(token)` sets one
+
+
+def _child_nodes(node):
+    """The grammar nodes `node` holds directly, as a list."""
+    children = []
+    ir.rebuilt(node, lambda child: children.append(child) or child)
+    return children
+
+
+def _ref_codes(node, active):
+    """Yield `(ref-target, active-code)` for each `Ref` in `node`, under the `(token)` scopes that change the code."""
+    if isinstance(node, ir.Ref):
+        yield (node.name, active)
+        return
+    inner = node.code if isinstance(node, ir.Token) else active
+    for child in _child_nodes(node):
+        yield from _ref_codes(child, inner)
+
+
+def codes_at(grammar):
+    """For each production, the token codes active at its entry — what the emitter's code stack holds when it is called,
+    gathered over every call site by propagation from the root down through the `(token)` scopes."""
+    entry = {name: set() for name in grammar}
+    entry[ir.ROOT] = {_ROOT_CODE}
+    worklist = [ir.ROOT]
+    while worklist:
+        name = worklist.pop()
+        for active in list(entry[name]):
+            for target, code in _ref_codes(grammar[name].body, active):
+                if target in entry and code not in entry[target]:
+                    entry[target].add(code)
+                    worklist.append(target)
+    return entry
+
+
+def _is_lowered_star(name, grammar):
+    """Whether `name` is a helper `lower_star` minted, `_N ::= x _N | <empty>`."""
+    body = grammar[name].body
+    return (
+        isinstance(body, ir.Alt)
+        and len(body.items) == 2
+        and isinstance(body.items[1], ir.Empty)
+        and isinstance(body.items[0], ir.Seq)
+        and len(body.items[0].items) == 2
+        and isinstance(body.items[0].items[1], ir.Ref)
+        and body.items[0].items[1].name == name
+    )
+
+
+def _content_tail(node, active, grammar, seen=frozenset()):
+    """How `node` ends its content matching under the `active` token code, at its surface — `"run"` where the last
+    content consumed is a char-set `*`/`+` (a bulk run, so consecutive content folds into it), `"bare"` where it is a
+    single character (so each one costs a loop iteration), or `None` where it consumes no surface content (behind a
+    `(wrap)`, through a helper's own loop, or under a non-content code). This tells an efficient content loop from one
+    that collects its run one character at a time."""
+    if isinstance(node, (ir.Star, ir.Plus)):
+        return "run" if active in CONTENT_CODES and matches_one_char(node.item, grammar) else None
+    if isinstance(node, ir.TrimStar):
+        return "run" if active in CONTENT_CODES else None  # a maximal run, matched in bulk by a single trimming scan
+    if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid)):
+        return "bare" if active in CONTENT_CODES else None
+    if isinstance(node, ir.Wrap):
+        return None  # a nested span or node — its content is not this loop's surface run
+    if isinstance(node, ir.Token):
+        return _content_tail(node.item, node.code, grammar, seen)
+    if isinstance(node, ir.Ref):
+        if node.name in seen or _is_lowered_star(node.name, grammar):
+            return None
+        return _content_tail(grammar[node.name].body, active, grammar, seen | {node.name})
+    if isinstance(node, ir.Seq):
+        for item in reversed(node.items):  # the tail is the last item that consumes content
+            tail = _content_tail(item, active, grammar, seen)
+            if tail is not None:
+                return tail
+        return None
+    if isinstance(node, (ir.Alt, ir.Case)):
+        items = node.items if isinstance(node, ir.Alt) else [branch.item for branch in node.branches]
+        tails = {_content_tail(item, active, grammar, seen) for item in items}
+        return "bare" if "bare" in tails else "run" if "run" in tails else None  # a bare branch makes it per-character
+    if isinstance(node, (ir.Bound, ir.Commit, ir.Recover)):
+        return _content_tail(node.item, active, grammar, seen)
+    if isinstance(node, ir.Max):
+        return _content_tail(node.item, active, grammar, seen) if node.item is not None else None
+    if isinstance(node, ir.Bind):
+        return _content_tail(node.cond, active, grammar, seen)
+    return None
+
+
+def content_run_offenders(grammar):
+    """The productions collecting a content run one character at a time — a `lower_star` helper whose iteration ends its
+    content on a bare character rather than a char-set `*`/`+`. Each is a place a long text token is not bulk-matched;
+    the check that reports them shrinks to empty as the char-run factoring reaches every one."""
+    entry = codes_at(grammar)
+    return [
+        name
+        for name in grammar
+        if _is_lowered_star(name, grammar)
+        and any(_content_tail(grammar[name].body.items[0].items[0], code, grammar) == "bare" for code in entry[name])
+    ]
+
+
+def non_char_set_runs(grammar):
+    """The repetitions whose element is not the character set a bulk scan needs. A `TrimStar` must run and trim two
+    character sets — it is the two-set trimming scan a scalar's line compiles to — so a `full` or `trim` that is not one
+    means the fast/slow split did not complete. A `Star` must run a character set too, save one allowed for now: a
+    `Star` over a nullable production, which `lower_star` cannot make a recursive helper of and which waits for the
+    zero-width guard determinize will bring. A `Star` over anything else non-character-set is a `lower_star` that should
+    have fired and did not."""
+    faults = []
+
+    def walk(name, node):
+        if isinstance(node, ir.TrimStar):
+            if not matches_one_char(node.full, grammar):
+                faults.append(f"{name}: a TrimStar runs a non-character-set `full`")
+            if not matches_one_char(node.trim, grammar):
+                faults.append(f"{name}: a TrimStar trims a non-character-set `trim`")
+        if (
+            isinstance(node, ir.Star)
+            and not matches_one_char(node.item, grammar)
+            and not matches_empty(node.item, grammar)
+        ):
+            faults.append(f"{name}: a Star runs a non-character-set, non-nullable production")
+        ir.rebuilt(node, lambda child: walk(name, child) or child)
+
+    for name in grammar:
+        walk(name, grammar[name].body)
+    return faults
+
+
+# The pipeline, in order, as `(name, transform)` pairs.
+STEPS = [
+    ("lower-optionals", lower_optionals),
+    ("lower-plus", lower_plus),
+    ("trim-runs", trim_runs),
+    ("hoist-char-runs", hoist_char_runs),
+    ("lower-star", lower_star),
+]
+
+
+def stages(grammar):
+    """The grammar after each step, as `(label, grammar)` pairs, opening with `("base", grammar)` — what
+    `check_normalize` diffs the interpreter's token stream across, so a step that changes it is named. One `Namer` is
+    threaded through the steps, so the helper productions they mint number `<base>_<N>` off a count shared across them.
+    """
+    namer = Namer()
+    result = [("base", grammar)]
+    for name, transform in STEPS:
+        grammar = transform(grammar, namer)
+        result.append((name, grammar))
+    return result
+
+
+def normalize(grammar):
+    """The grammar with every step applied in order."""
+    return stages(grammar)[-1][1]

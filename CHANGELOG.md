@@ -65,6 +65,26 @@ All notable changes to this project are documented here. The format follows
   chomping and resume policy. And every rule that emits tokens must say which, checked against the grammar itself, so a
   note that is wrong fails as surely as one that is missing.
 
+- Grammar normalization: an ordered pipeline of semantics-preserving grammar-to-grammar transformations that carry the
+  hand-authored grammar toward the canonical form a state machine falls out of — each terminal a character set, each run
+  a repetition of one. `lower-optionals` and `lower-plus` drop the `x?` and complex `x+` spellings; `trim-runs`
+  recognizes a plain or quoted scalar's in-line run `(s-white* content)*` and rewrites it as a single trimmed run that
+  keeps inner whitespace and gives back trailing; `hoist-char-runs` factors a run over an almost-character-set — a URI,
+  a tag, quoted content, its handful of escapes and guards the exception — into a character-set bulk with a slow path,
+  seeing through a `(---)` difference to reach the set beneath, and splitting a trimmed run the same way so its common
+  runs are the two-set trimming scan (`trim-run (trim* uncommon trim-run)*`, the leading `trim*` re-taking what the run
+  before it gave back, which keeps the whitespace before a mid-scalar `:`); `lower-star` turns each remaining complex
+  `x*` into a right-recursive helper. `check_normalize` holds every step token-and-event identical over the whole
+  corpus — 681 conformance fixtures and 402 YAML Test Suite cases — and ends on two own-gates over the result: every
+  long text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character
+  per loop; and every repetition runs a character set — a `TrimStar` both sets, a `Star` its element or, until
+  determinize supplies the guard that lowers them, a nullable production.
+
+- Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
+  far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run
+  after it. It is what a plain or a quoted scalar's line compiles to: its inner spaces kept, its trailing ones handed to
+  the caller as that caller's own `s-white*`, the input scanned but once. The generated parser does not call it yet.
+
 - Indentation detection, which the official grammar declares a "special rule" and never defines, and which it elsewhere
   leaves as an integer added to the string `"auto-detect"`. libyeast defines it, and its two departures from the
   official grammar are declared, with their reasons: `m` is an indentation now, and `s-l+block-indented` sets the `m` it

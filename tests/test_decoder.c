@@ -219,6 +219,30 @@ static void test_scan_set(void) {
     TEST_CHECK(run.bytes == 2 && run.characters == 2);
 }
 
+static void test_span_trim_sets(void) {
+    // A run keeps its inner spaces and gives back the trailing ones: the span is "a b", the trim the two spaces after.
+    ys_trim run = ys_span_trim_sets((const uint8_t *)"a b  ", 5, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(run.span.bytes == 3 && run.trim.bytes == 2);
+
+    // Nothing but the given-back kind: the span is empty and the whole run is trim — the empty match a trimmed run
+    // makes of a line of only spaces.
+    run = ys_span_trim_sets((const uint8_t *)"    ", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(run.span.bytes == 0 && run.trim.bytes == 4);
+
+    // No trailing given-back characters: the span is the whole run, the trim empty. nb-char stops at the break.
+    run = ys_span_trim_sets((const uint8_t *)"abc\n", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(run.span.bytes == 3 && run.trim.bytes == 0);
+
+    // The span is counted in characters too, stopping after a non-ASCII kept character: "a" then U+4E00 (three bytes),
+    // then two given-back spaces.
+    run = ys_span_trim_sets((const uint8_t *)"a\xE4\xB8\x80  ", 6, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(run.span.bytes == 4 && run.span.characters == 2 && run.trim.bytes == 2 && run.trim.characters == 2);
+
+    // A non-ASCII byte in no set ends the run as an ASCII one out of set does: "ab" then a byte that is not UTF-8.
+    run = ys_span_trim_sets((const uint8_t *)"ab\xFF", 3, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(run.span.bytes == 2 && run.trim.bytes == 0);
+}
+
 TEST_LIST = {
     {"end_of_input", test_end_of_input},
     {"ascii_character", test_ascii_character},
@@ -229,5 +253,6 @@ TEST_LIST = {
     {"utf8_length", test_utf8_length},
     {"every_codepoint", test_every_codepoint},
     {"scan_set", test_scan_set},
+    {"span_trim_sets", test_span_trim_sets},
     {NULL, NULL},
 };

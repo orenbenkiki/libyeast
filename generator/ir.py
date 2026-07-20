@@ -11,7 +11,7 @@ is what lets a walker recurse over the IR without knowing what any particular no
 a `(case)` branch is a node rather than a bare pair, so nothing has to special-case one.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 
 # The production the whole grammar hangs off: a YAML stream, and then the end of the input.
 ROOT = "l-yeast-stream"
@@ -189,6 +189,18 @@ class Rep:
 
     count: object
     item: object
+
+
+@dataclass(frozen=True)
+class TrimStar:
+    """A maximal run of `full` whose trailing run of `trim` characters is given back — the normalized form of a
+    `(trim* content)*`, where `full` is `trim | content`. A plain scalar's in-line run is one: it keeps its inner spaces
+    and leaves the trailing ones, so `nb-ns-plain-in-line` — `(s-white* ns-plain-char)*` — becomes `TrimStar` over
+    `s-white | ns-plain-char`, trimming `s-white`; the single- and double-quoted in-line runs likewise. It matches the
+    empty string, so a run of nothing but `trim` characters consumes none of them."""
+
+    full: object
+    trim: object
 
 
 @dataclass(frozen=True)
@@ -411,3 +423,22 @@ class Prod:
 
 # The nodes that match without consuming: a lookahead reads the input and gives it back. In alphabetical order.
 ZERO_WIDTH = (ExcludeAt, Look, LookBehind, NegLook)
+
+
+def rebuilt(node, visit):
+    """`node` with every grammar node it holds replaced by `visit` of that node.
+
+    The generic walker the module's shape exists for: it reaches every node the same way, whatever node it is — a field
+    of its own or an item of a tuple of them — so a caller recurses without special-casing any node. A `Lit` and a
+    `Param` are values rather than grammar and are left as they are.
+    """
+    if not is_dataclass(node):
+        return node
+    changed = {}
+    for field in fields(node):
+        value = getattr(node, field.name)
+        if is_dataclass(value) and not isinstance(value, (Lit, Param)):
+            changed[field.name] = visit(value)
+        elif isinstance(value, tuple) and value and all(is_dataclass(item) for item in value):
+            changed[field.name] = tuple(visit(item) for item in value)
+    return replace(node, **changed) if changed else node

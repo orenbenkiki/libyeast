@@ -133,3 +133,37 @@ ys_run ys_scan_set(const uint8_t *bytes, size_t size, ys_set_id set) {
     }
     return run;
 }
+
+// The two-set scan behind a trimmed run. It runs the `full` set exactly as `ys_scan_set` does, and alongside remembers
+// how far the last character not in `trim` reached: that is the span kept, and whatever `full` ran on past it is the
+// given-back trim. The same nibble-table kernel that vectorizes the one loop vectorizes this, testing two masks a block
+// at a time rather than one.
+ys_trim ys_span_trim_sets(const uint8_t *bytes, size_t size, ys_set_id full, ys_set_id trim) {
+    const uint32_t in_full = YS_SET_BITS[full];
+    const uint32_t in_trim = YS_SET_BITS[trim];
+    ys_run run = {0, 0};
+    ys_run span = {0, 0};
+    while (run.bytes < size) {
+        uint32_t key;
+        if (bytes[run.bytes] < 0x80u) {
+            key = YS_ASCII[bytes[run.bytes]];
+            if ((key & in_full) == 0) {
+                break;
+            }
+            run.bytes += 1;
+        } else {
+            const ys_char character = ys_next_char_slow(bytes + run.bytes, size - run.bytes);
+            key = character;
+            if ((key & in_full) == 0) {
+                break;
+            }
+            run.bytes += YS_LEN(character);
+        }
+        run.characters += 1;
+        if ((key & in_trim) == 0) {
+            span = run;
+        }
+    }
+    ys_trim result = {span, {run.bytes - span.bytes, run.characters - span.characters}};
+    return result;
+}

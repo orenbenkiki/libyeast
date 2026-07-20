@@ -31,8 +31,16 @@ import wire
 import yaml
 
 # The continuation-passing matcher recurses once per grammar step and once per repetition, so a match nests far deeper
-# than Python's default limit allows even for the small conformance inputs.
+# than Python's default limit allows even for the small conformance inputs. A caller running the recursive helpers a
+# transformed grammar carries (see `check_normalize`) raises this further, from a stack large enough to hold it.
 sys.setrecursionlimit(20000)
+
+# A production may nest this deep before the parse is refused — the depth cap the emitted parser will carry too, a guard
+# on runaway recursion (a recursive helper that never bottoms out, pathological nesting). It sits well above any
+# legitimate depth; nearing it, the production stack is traced to stderr so what recurses is seen, and reaching it
+# raises a clear error rather than leaving Python's own limit to fire a bare one.
+DEPTH_LIMIT = 6000
+DEPTH_TRACE = 40  # productions of the stack's deep end to show, and how near the cap to start showing them
 
 # The text of every message a `(cut)` names, from the grammar's companion table — the one source the interpreter and the
 # generated C table both read, so the error text the interpreter emits is the error text the parser will.
@@ -55,6 +63,10 @@ class CommitFailure(Exception):
     def __init__(self, code):
         super().__init__(code)
         self.code = code
+
+
+class DepthExceeded(Exception):
+    """Raised when a production nests past `DEPTH_LIMIT` — runaway recursion, refused after its trace is shown."""
 
 
 class LimitExceeded(Exception):
@@ -128,6 +140,7 @@ class Emitter:
         self.pending = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
         self.ceiling = None  # the position a `Limited` window ends at, past which committed input may not be consumed
         self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
+        self.stack = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
 
     def checkpoint(self):
         return (
@@ -470,7 +483,17 @@ def match(node, emitter, grammar, k):
             emitter.forbidden = callee_forbidden
             return False
 
-        committed = match(production.body, emitter, grammar, continue_out)
+        emitter.stack.append(node.name)
+        if len(emitter.stack) >= DEPTH_LIMIT:
+            trace = " -> ".join(emitter.stack[-DEPTH_TRACE:])
+            emitter.stack.pop()
+            raise DepthExceeded(f"production nesting reached {DEPTH_LIMIT}, deepest: ...{trace}")
+        if len(emitter.stack) > DEPTH_LIMIT - DEPTH_TRACE:
+            print(f"    depth {len(emitter.stack)}: {node.name}", file=sys.stderr)
+        try:
+            committed = match(production.body, emitter, grammar, continue_out)
+        finally:
+            emitter.stack.pop()
         if not committed:
             emitter.env = saved_env
             emitter.forbidden = saved_forbidden
@@ -526,6 +549,25 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.TrimStar):
+        # A maximal run of `full`, its trailing `trim` characters given back: consume greedily, remembering where the
+        # last character that was not `trim` ended, then rewind to it. Possessive, as its char-class guards make it —
+        # the run never takes a character a later rule needs — so there is no shorter match to fall back to.
+        span = emitter.checkpoint()  # the run kept so far; empty at the start, so an all-`trim` run consumes nothing
+        while emitter.position < len(emitter.chars):
+            at_trim = _probe(node.trim, emitter, grammar)
+            before = emitter.position
+            step = emitter.checkpoint()
+            if not match(node.full, emitter, grammar, _accept):
+                emitter.rewind(step)
+                break
+            if emitter.position == before:
+                emitter.rewind(step)  # a zero-width match cannot repeat without looping
+                break
+            if not at_trim:
+                span = emitter.checkpoint()
+        emitter.rewind(span)
+        return k()
     if isinstance(node, ir.Rep):
         count = evaluate(node.count, emitter, grammar)
 

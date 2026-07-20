@@ -52,27 +52,39 @@ def _disagreement(grammar, directory):
     return None if folded == wanted else "folds to events the suite does not expect"
 
 
-def main():
-    grammar = annotated2ir.load()
-    cases = sorted(
+def cases():
+    """The suite's case ids, `<ID>` or `<ID>/<part>`, sorted."""
+    return sorted(
         os.path.relpath(root, star.SUITE) for root, _directories, files in os.walk(star.SUITE) if "in.yaml" in files
     )
 
+
+def disagreements(grammar, suite=None):
+    """The suite cases `grammar` folds differently from the suite and does not declare, as error strings — empty when it
+    agrees green-or-declared. Takes the grammar as an argument, so a structurally-transformed grammar folds the whole
+    corpus to the same events the base one does."""
+    if suite is None:
+        suite = cases()
     errors = []
-    for case in cases:
+    for case in suite:
         disagreement = _disagreement(grammar, os.path.join(star.SUITE, case))
         if case in DIVERGENCES:
             if disagreement is None:
                 errors.append(f"{case}: declared as a divergence, but now agrees with the suite")
         elif disagreement is not None:
             errors.append(f"{case}: {disagreement}")
-    for case in sorted(set(DIVERGENCES) - set(cases)):
+    for case in sorted(set(DIVERGENCES) - set(suite)):
         errors.append(f"{case}: declared as a divergence, but the suite has no such case")
+    return errors
 
+
+def main():
+    suite = cases()
+    errors = disagreements(annotated2ir.load(), suite)
     gate.report(
         errors,
         "case(s) that disagree with the suite and are not declared",
-        f"YAML Test Suite folded: {len(cases)} cases, {len(DIVERGENCES)} declared divergence(s)",
+        f"YAML Test Suite folded: {len(suite)} cases, {len(DIVERGENCES)} declared divergence(s)",
     )
     for case in sorted(DIVERGENCES):
         print(f"    {case}: {DIVERGENCES[case]}")

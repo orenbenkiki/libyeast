@@ -36,6 +36,10 @@ RESTORED = (  # in alphabetical order
     "tokens",
 )
 READ_ONLY = ("byte_at", "chars", "raw")  # in alphabetical order
+# Balanced by its own pushes and pops rather than by a checkpoint: the production stack the depth guard traces is the
+# live chain of entered productions, pushed on entry and popped on exit even as an exception unwinds, so a rewind —
+# which happens inside a production, its entry still standing — must leave it alone, not truncate it.
+TRANSIENT = ("stack",)
 
 
 def _dirty(emitter):
@@ -71,9 +75,9 @@ def _state(emitter):
 def _fields_are_accounted(errors):
     """Every field of an `Emitter` is either restored by a checkpoint or declared read-only."""
     held = set(vars(interpreter.Emitter(b"x")))
-    for name in sorted(held - set(RESTORED) - set(READ_ONLY)):
+    for name in sorted(held - set(RESTORED) - set(READ_ONLY) - set(TRANSIENT)):
         errors.append(f"Emitter.{name}: nothing says whether a checkpoint restores it")
-    for name in sorted((set(RESTORED) | set(READ_ONLY)) - held):
+    for name in sorted((set(RESTORED) | set(READ_ONLY) | set(TRANSIENT)) - held):
         errors.append(f"Emitter.{name}: named here but no such field")
 
 

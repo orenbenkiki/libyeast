@@ -16,10 +16,15 @@ import spec_tests
 import wire
 
 
-def main():
-    grammar = annotated2ir.load()
-    fixtures = spec_tests.load()
+def reproduced(grammar, fixtures=None):
+    """The fixtures `grammar` does not reproduce token for token, as error strings — empty when it reproduces them all.
 
+    Takes the grammar as an argument the way the interpreter does, so a structurally-transformed grammar is held to the
+    same token streams the base one is: the fixtures are the base's frozen output, so reproducing them is the transform
+    changing no token.
+    """
+    if fixtures is None:
+        fixtures = spec_tests.load()
     errors = []
     for fixture in fixtures:
         try:
@@ -31,7 +36,12 @@ def main():
         if actual != fixture.expected:
             reason = actual if actual.startswith("(") else "output differs from the fixture"
             errors.append(f"{os.path.basename(fixture.input_path)}: {reason}")
+    return errors
 
+
+def main():
+    fixtures = spec_tests.load()
+    errors = reproduced(annotated2ir.load(), fixtures)
     gate.report(
         errors, "fixture(s) the interpreter does not reproduce", f"interpreter: {len(fixtures)} fixtures reproduced"
     )

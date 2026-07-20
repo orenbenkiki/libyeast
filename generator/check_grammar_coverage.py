@@ -168,8 +168,10 @@ def fired():
     return texts
 
 
-def main():
-    grammar = annotated2ir.load()
+def gaps(grammar):
+    """The productions `grammar` leaves unexercised and the messages nothing fires, as error strings — empty when the
+    fixtures reach and reject every production and carry every message. Takes the grammar as an argument, so it re-runs
+    on a structurally-transformed grammar whose reshaped productions the same fixtures must still exercise."""
     reached, rejected = exercised(grammar)
     with open(check_messages.MESSAGES) as handle:
         messages = yaml.safe_load(handle)
@@ -186,11 +188,17 @@ def main():
         for code, text in sorted(messages.items())
         if wire.escape(text.encode("utf-8")) not in texts
     ]
+    return errors
 
+
+def main():
+    grammar = annotated2ir.load()
+    with open(check_messages.MESSAGES) as handle:
+        message_count = len(yaml.safe_load(handle))
     gate.report(
-        errors,
+        gaps(grammar),
         "gap(s) in what the fixtures exercise",
-        f"grammar coverage: {len(grammar)} productions matched and rejected, {len(messages)} messages fired",
+        f"grammar coverage: {len(grammar)} productions matched and rejected, {message_count} messages fired",
     )
 
 

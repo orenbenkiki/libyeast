@@ -39,6 +39,14 @@ typedef struct ys_run {
     size_t characters; // the characters they encoded, which is fewer whenever any of them is not ASCII
 } ys_run;
 
+// A run split where its trailing given-back characters begin: `span` reaches through the last character kept — where a
+// trimmed run ends — and `trim` is the run of given-back characters after it, possibly empty. A plain scalar keeps
+// `span` and hands `trim`, the spaces that follow, to the caller as its own `s-white*`, the input scanned but once.
+typedef struct ys_trim {
+    ys_run span; // the trimmed run: through the last character kept
+    ys_run trim; // the given-back run after it — the trailing characters of the trimmed kind, or nothing
+} ys_trim;
+
 // Classify the character at the head of the window, which begins with a byte of 0x80 or above.
 ys_char ys_next_char_slow(const uint8_t *bytes, size_t size);
 
@@ -57,6 +65,13 @@ size_t ys_utf8_length(const uint8_t *bytes, size_t size);
 // characters counted. That holds because no character set the grammar scans admits a line break, which is not a
 // coincidence to be relied upon quietly: `generator/check_decoder.py` fails the build if it ever stops being true.
 ys_run ys_scan_set(const uint8_t *bytes, size_t size, ys_set_id set);
+
+// Advance while the character is in `full`, splitting the run where its trailing `trim` characters begin. One pass
+// yields both parts: `.span`, the run kept — through the last character not in `trim` — and `.trim`, the given-back run
+// of `trim` characters after it. A run of nothing but `trim` characters leaves `.span` empty, which is the empty match
+// `(s-white* ns-plain-char)*` makes of a line of only spaces. This is what a trimmed run — a plain or a quoted scalar's
+// line, its inner spaces kept and its trailing ones given back — compiles to.
+ys_trim ys_span_trim_sets(const uint8_t *bytes, size_t size, ys_set_id full, ys_set_id trim);
 
 // The next character at the head of a window of `size` readable bytes, or YS_LIT_KEY_EOF when the window is empty.
 //

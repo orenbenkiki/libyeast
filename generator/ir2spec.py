@@ -9,8 +9,6 @@ names. What comes out must be the vendored grammar, which `check_vendor_spec.py`
 Usage: `python3 generator/ir2spec.py > recovered.yaml`
 """
 
-import dataclasses
-
 import sys
 
 import ir2annotated
@@ -79,27 +77,9 @@ def flatten(items):
     return tuple(spliced)
 
 
-def rebuilt(node, visit):
-    """`node` with every IR node it holds replaced by `visit` of that node.
-
-    A `Lit` and a `Param` are values rather than grammar, and are left as they are. Everything else is reached the same
-    way, whatever node it is — which is why a `(case)` branch is an `ir.Branch` and not a bare pair.
-    """
-    if not dataclasses.is_dataclass(node):
-        return node
-    changed = {}
-    for field in dataclasses.fields(node):
-        value = getattr(node, field.name)
-        if dataclasses.is_dataclass(value) and not isinstance(value, (ir.Lit, ir.Param)):
-            changed[field.name] = visit(value)
-        elif isinstance(value, tuple) and value and all(dataclasses.is_dataclass(item) for item in value):
-            changed[field.name] = tuple(visit(item) for item in value)
-    return dataclasses.replace(node, **changed) if changed else node
-
-
 def normalize(node):
     """`node` with its sequences flattened, and a sequence of one item collapsed into that item."""
-    node = rebuilt(node, normalize)
+    node = ir.rebuilt(node, normalize)
     if isinstance(node, ir.Seq):
         items = flatten(node.items)
         return items[0] if len(items) == 1 else ir.Seq(items)
@@ -129,7 +109,7 @@ def erase(node, owner):
     if isinstance(node, ir.Seq):
         kept = [erase(item, owner) for item in node.items if not isinstance(item, (ir.Emit, ir.Cut, ir.Error))]
         return ir.Seq(tuple(kept))
-    return rebuilt(node, lambda item: erase(item, owner))
+    return ir.rebuilt(node, lambda item: erase(item, owner))
 
 
 def official(grammar):

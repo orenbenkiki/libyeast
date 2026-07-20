@@ -100,7 +100,7 @@ DEV_DEP_TOOLS   := python3 python3:yaml $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK
 
 .PHONY: all package install test test-debug test-release regen \
         verify verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
-        verify-emitter verify-fixtures verify-grammar verify-star verify-wire verify-decoder \
+        verify-emitter verify-fixtures verify-grammar verify-star verify-normalize verify-wire verify-decoder \
         verify-grammar-base verify-grammar-base-coverage \
         vet vet-format vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh \
         vet-comments vet-lint vet-version vet-packaging vet-$(TODO_X) \
@@ -293,6 +293,14 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	python3 generator/check_star.py
 	@touch $@
 
+# The normalization pipeline preserves meaning, step by step: after each transformation carrying the grammar toward the
+# canonical form, the fixtures are still reproduced token for token and the folded suite still agrees green-or-declared,
+# and the final grammar is still wholly exercised. Token and event identity is the whole proof — a step that changes
+# either is rejected, named. Empty for now, so this passes exactly when the base grammar's own nets do.
+.stamps/verify-normalize: $(FIXTURES) $(STAR_DATA) $(MESSAGES) $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_normalize.py
+	@touch $@
+
 # Wire code map: wire.py's character-per-code table must match src/wire.c's, so the interpreter cannot write a code the
 # C parser would write differently.
 .stamps/verify-wire: src/wire.c $(GEN_SRC) | .stamps
@@ -375,6 +383,7 @@ verify-messages: .stamps/verify-messages
 verify-emitter: .stamps/verify-emitter
 verify-fixtures: .stamps/verify-fixtures
 verify-star: .stamps/verify-star
+verify-normalize: .stamps/verify-normalize
 verify-grammar-base: .stamps/verify-grammar-base
 verify-grammar-base-coverage: .stamps/verify-grammar-base-coverage
 # Every grammar reproduces the fixtures and is wholly exercised by them, bottom-up: the base grammar now, the structural
@@ -384,7 +393,7 @@ verify-grammar: verify-grammar-base verify-grammar-base-coverage
 # machinery, then the fixtures (intact, then reproduced), then the independent star suite folded through the
 # interpreter, and last the generator-to-C consistency the eventual C parser rests on.
 verify: verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
-        verify-emitter verify-fixtures verify-grammar verify-star verify-wire verify-decoder
+        verify-emitter verify-fixtures verify-grammar verify-star verify-normalize verify-wire verify-decoder
 
 # Static code quality.
 vet-format-c: .stamps/vet-format-c
