@@ -69,12 +69,6 @@ class DepthExceeded(Exception):
     """Raised when a production nests past `DEPTH_LIMIT` — runaway recursion, refused after its trace is shown."""
 
 
-class LimitExceeded(Exception):
-    """Raised when a wrapping `(max)` window is exhausted — the match would consume past its character limit. It
-    unwinds, keeping the tokens up to the window's edge, to the `(max)` that turns it into a `CommitFailure` and the
-    unparsed recovery. A lookahead is exempt, so it never escapes a probe."""
-
-
 BYTE_ORDER_MARK = 0xFEFF  # consumed without ending the start of a line, unlike any other character
 
 
@@ -140,7 +134,8 @@ class Emitter:
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
         self.forbidden = ()  # patterns that must not match at a start of line — the ongoing `(exclude)` guards in scope
         self.pending = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
-        self.ceiling = None  # the position a `Limited` window ends at, past which committed input may not be consumed
+        self.ceiling = None  # the position a `(max)` window ends at, past which committed input may not be consumed
+        self.ceiling_message = None  # the cut message a consume past the ceiling raises — the window's, held with it
         self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
         self.stack = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
 
@@ -157,6 +152,7 @@ class Emitter:
             self.forbidden,
             self.pending,
             self.ceiling,
+            self.ceiling_message,
             self.probing,
         )
 
@@ -173,6 +169,7 @@ class Emitter:
             self.forbidden,
             self.pending,
             self.ceiling,
+            self.ceiling_message,
             self.probing,
         ) = checkpoint
         # The parameters are copied out rather than adopted: an alternation rewinds to the same checkpoint once per
@@ -185,9 +182,9 @@ class Emitter:
         """Take the character or invalid byte at the position into the open run, opening one under the current code if
         none is. An invalid byte is no break and no byte-order mark; it advances a byte and a column like any other."""
         if self.ceiling is not None and not self.probing and self.position >= self.ceiling:
-            # A committed character past a `(max)` window's edge exhausts it. The open run is left as it is so the
-            # tokens up to here still emit; a lookahead is exempt and reads on freely.
-            raise LimitExceeded()
+            # A committed character past a `(max)` window's edge exhausts it, failing the cut the window names. The open
+            # run is left as it is so the tokens up to here still emit; a lookahead is exempt and reads on freely.
+            raise CommitFailure(self.ceiling_message)
         if self.run is None:
             self.run = (wire.CODE_CHAR[self.code], self.mark, self.position)
         codepoint = self.chars[self.position]
@@ -398,10 +395,13 @@ def _fail(emitter, message):
 
     What the parser does about the input from there is not decided here: that is the grammar's `l-recover`, which the
     caller matches. The guard is cleared because an `(exclude)` the abandoned parse had in scope never got to unwind,
-    and the recovery is entitled to the guards its own rules declare and no others.
+    and the recovery is entitled to the guards its own rules declare and no others; the `(max)` window goes for the same
+    reason, so the recovery reads on past the edge the abandoned parse had failed against.
     """
     emitter.code = "unparsed-text"  # a raise skips the token frames' cleanup; from here on the input is unparsed
     emitter.forbidden = ()
+    emitter.ceiling = None
+    emitter.ceiling_message = None
     emitter.error(message)
     while emitter.pending:
         emitter.marker(emitter.pending[-1])
@@ -464,13 +464,15 @@ def match(node, emitter, grammar, k):
         saved_forbidden = emitter.forbidden  # inherited by the callee, and any (exclude) it adds is scoped to it
         # A production inherits the ambient parameters and overrides only the ones it declares, so `n` stays in scope
         # through a callee that does not name it — which is how the block header's indent detection still reads `n`. Its
-        # run code and `(match)` origin are the ones in force where it was entered, which a `(token)` and a `(<<<)` it
-        # lowers to restore past a nested one.
+        # run code, `(match)` origin and `(max)` window are the ones in force where it was entered, which a `(token)`,
+        # a `(<<<)` and a `(max)` it lowers to restore past a nested one.
         emitter.env = {
             **saved_env,
             **dict(zip(production.params, arguments)),
             "code": emitter.code,
             "match_start": emitter.match_start,
+            "ceiling": emitter.ceiling,
+            "ceiling_message": emitter.ceiling_message,
         }
 
         def continue_out():
@@ -633,22 +635,23 @@ def match(node, emitter, grammar, k):
         if emitter.ceiling is not None:
             return match(node.item, emitter, grammar, k)  # nested: only the outermost window applies, being the buffer
         emitter.ceiling = emitter.position + evaluate(node.limit, emitter, grammar)
+        emitter.ceiling_message = node.message  # a consume past the edge raises this, keeping the tokens up to it
 
         def past_window():
             emitter.ceiling = None  # the window bounds `item`, not the parse that carries on once it has matched
+            emitter.ceiling_message = None
             if k():
                 return True
             return False  # `item` will try its next way; its own rewind restores the ceiling the checkpoint kept
 
         try:
-            # The window is exhausted where the match would consume past the edge: hand the overflow to the recovery a
-            # failed cut takes, keeping the tokens up to the edge — the error the caller emits cuts the open run into
-            # the last of them. Any exit clears the ceiling: a cut inside `item` unwinding past here leaves the window.
+            # The window is exhausted where the match would consume past the edge: `consume` fails the window's cut, and
+            # the overflow unwinds to the recovery, keeping the tokens up to the edge — the error the caller emits cuts
+            # the open run into the last of them. Any exit clears the ceiling: a cut unwinding past here leaves it.
             return match(node.item, emitter, grammar, past_window)
-        except LimitExceeded:
-            raise CommitFailure(node.message)
         finally:
             emitter.ceiling = None
+            emitter.ceiling_message = None
     if isinstance(node, ir.Bound):
         saved_start = emitter.match_start
         emitter.match_start = emitter.position
@@ -763,6 +766,23 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.OpenWindow):
+        checkpoint = emitter.checkpoint()
+        if emitter.ceiling is None:  # outermost-only: a nested window keeps the outer edge, being the buffer
+            emitter.ceiling = emitter.position + evaluate(node.limit, emitter, grammar)
+            emitter.ceiling_message = node.message
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.CloseWindow):
+        checkpoint = emitter.checkpoint()
+        emitter.ceiling = emitter.env["ceiling"]  # the production's own `(max)` window, held on its frame
+        emitter.ceiling_message = emitter.env["ceiling_message"]
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.Cut):
         if k():
             return True
@@ -791,17 +811,27 @@ def match(node, emitter, grammar, k):
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Recover):
-        depth, code, forbidden, env = len(emitter.pending), emitter.code, emitter.forbidden, dict(emitter.env)
+        depth, code, forbidden, env, ceiling, ceiling_message = (
+            len(emitter.pending),
+            emitter.code,
+            emitter.forbidden,
+            dict(emitter.env),
+            emitter.ceiling,
+            emitter.ceiling_message,
+        )
         try:
             return match(node.item, emitter, grammar, k)
         except CommitFailure as failure:
             # The cut asks whether this rule answers for it. Undo what the abandoned parse left of the scopes it was
-            # inside — those frames never got to — and put this rule's own back: the recovery is this rule's to name,
-            # so it reads this rule's parameters and not those of whatever failed somewhere below it.
+            # inside — those frames never got to, including a `(max)` window it failed inside of — and put this rule's
+            # own back: the recovery is this rule's to name, so it reads this rule's parameters and not those of
+            # whatever failed somewhere below it.
             stopped = emitter.checkpoint()
             emitter.code = code
             emitter.forbidden = forbidden
             emitter.env = env
+            emitter.ceiling = ceiling
+            emitter.ceiling_message = ceiling_message
             emitter.error(MESSAGES[failure.code])
             while len(emitter.pending) > depth:
                 emitter.marker(emitter.pending[-1])  # close what `item` opened, down to here and no further

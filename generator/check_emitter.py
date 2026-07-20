@@ -23,6 +23,7 @@ import interpreter
 # gate says so rather than assuming.
 RESTORED = (  # in alphabetical order
     "ceiling",
+    "ceiling_message",
     "code",
     "env",
     "forbidden",
@@ -51,6 +52,7 @@ def _dirty(emitter):
     emitter.forbidden += (None,)
     emitter.match_start = 1
     emitter.ceiling = 5
+    emitter.ceiling_message = "IMPLICIT_KEY_TOO_LONG"
     emitter.probing += 1
 
 
@@ -68,6 +70,7 @@ def _state(emitter):
         emitter.forbidden,
         emitter.pending,
         emitter.ceiling,
+        emitter.ceiling_message,
         emitter.probing,
     )
 

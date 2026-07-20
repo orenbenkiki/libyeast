@@ -422,6 +422,23 @@ class CloseMatch:
 
 
 @dataclass(frozen=True)
+class OpenWindow:
+    """A zero-width action that opens a `(max)` window `limit` characters wide, past which a committed consume fails the
+    cut `message` names. Only the outermost applies — a nested one keeps the outer edge, being the buffer — and
+    `CloseWindow` restores it at the trailing edge."""
+
+    limit: object
+    message: str
+
+
+@dataclass(frozen=True)
+class CloseWindow:
+    """A zero-width action that restores the `(max)` window to the production's own — `env["ceiling"]`, the window it
+    was entered under, held on its frame not a stack, since a `(max)` never nests within one body. Paired with
+    `OpenWindow`: `Max(limit, message, item)` lowers to `OpenWindow(limit, message), item, CloseWindow`."""
+
+
+@dataclass(frozen=True)
 class Cut:
     """`(cut)`: a zero-width commit past which the parse does not backtrack; on a later failure it is the error, and
 

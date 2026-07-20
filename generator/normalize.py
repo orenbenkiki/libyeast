@@ -18,6 +18,7 @@ import spec_tests
 # lookaheads, the epsilon and marker emitters, the guards, and the parameter actions.
 _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
     ir.CloseMatch,
+    ir.CloseWindow,
     ir.Cut,
     ir.Emit,
     ir.Empty,
@@ -27,6 +28,7 @@ _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
     ir.Le,
     ir.Lt,
     ir.OpenMatch,
+    ir.OpenWindow,
     ir.PopCode,
     ir.PushCode,
     ir.SetVar,
@@ -399,6 +401,29 @@ def lower_bounds(grammar, namer):
     }
 
 
+def _lower_windows(node):
+    """`node` with each `(max)` rewritten as the pair of actions that open and restore its character window around the
+    run it bounds, or dropped where it is a bare length note. Bottom-up, so a parent sees its already-lowered
+    children."""
+    node = ir.rebuilt(node, _lower_windows)
+    if isinstance(node, ir.Max):
+        if node.item is None:
+            return ir.Empty()  # a bare `(max)` is a length note libyeast never runs — only recovers to
+        return ir.Seq((ir.OpenWindow(node.limit, node.message), node.item, ir.CloseWindow()))
+    return node
+
+
+def lower_windows(grammar, namer):
+    """Rewrite each `(max)` as `OpenWindow(limit, message), item, CloseWindow`: the character window a `(max)` bounds
+    its run with becomes an explicit action over the window its production carries on its frame, restored at the run's
+    trailing edge — the overflow past the edge failing the window's cut in `consume`, no longer a wrapper catching it.
+    Removes the `Max` node kind — after it the window is a runtime value, no longer a scope the tree shape implies."""
+    return {
+        name: dataclasses.replace(production, body=_lower_windows(production.body))
+        for name, production in grammar.items()
+    }
+
+
 def _trim_runs(node, grammar):
     """`node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
     rewritten as a `TrimStar` over `w | p` that trims `w`. Bottom-up, so a parent sees its already-rewritten children.
@@ -725,6 +750,7 @@ STEPS = [
     ("lower-star", lower_star),
     ("lower-tokens", lower_tokens),
     ("lower-bounds", lower_bounds),
+    ("lower-windows", lower_windows),
 ]
 
 

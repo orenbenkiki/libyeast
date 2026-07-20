@@ -45,6 +45,7 @@ AMBIENT = {"r": len(annotated2ir.RESUMES)}
 # in alphabetical order.
 ALWAYS = (
     ir.CloseMatch,
+    ir.CloseWindow,
     ir.Cut,
     ir.Emit,
     ir.Empty,
@@ -53,6 +54,7 @@ ALWAYS = (
     ir.Flip,
     ir.Increase,
     ir.OpenMatch,
+    ir.OpenWindow,
     ir.PopCode,
     ir.PushCode,
     ir.SetVar,
