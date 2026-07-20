@@ -23,7 +23,7 @@ import interpreter
 # gate says so rather than assuming.
 RESTORED = (  # in alphabetical order
     "ceiling",
-    "codes",
+    "code",
     "env",
     "forbidden",
     "is_sol",
@@ -44,7 +44,7 @@ TRANSIENT = ("stack",)
 
 def _dirty(emitter):
     """Mutate every restorable field of `emitter`, the way matching a character under an annotation would."""
-    emitter.codes.append("text")
+    emitter.code = "text"
     emitter.consume()
     emitter.env["n"] = 99
     emitter.marker("begin-scalar")
@@ -61,7 +61,7 @@ def _state(emitter):
         emitter.mark,
         list(emitter.tokens),
         emitter.run,
-        list(emitter.codes),
+        emitter.code,
         dict(emitter.env),
         emitter.match_start,
         emitter.is_sol,

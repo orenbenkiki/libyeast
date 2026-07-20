@@ -394,6 +394,34 @@ class Emit:
 
 
 @dataclass(frozen=True)
+class PushCode:
+    """A zero-width action that cuts the run and sets the code its following characters carry to `code` — what a
+    `(token)` opens with, over the production's own, which `PopCode` restores at its trailing edge."""
+
+    code: str
+
+
+@dataclass(frozen=True)
+class PopCode:
+    """A zero-width action that cuts the run and restores the code its following characters carry to the production's
+    own — `env["code"]`, the code it was entered under, held on its frame rather than a stack, since a `(token)` never
+    nests within one body. Paired with `PushCode`: `Token(code, item)` lowers to `PushCode(code), item, PopCode`."""
+
+
+@dataclass(frozen=True)
+class OpenMatch:
+    """A zero-width action that sets the origin a `(match)` measures from to the current position — what `(<<<)` marks
+    before the run it bounds. `CloseMatch` restores it at the trailing edge."""
+
+
+@dataclass(frozen=True)
+class CloseMatch:
+    """A zero-width action that restores the `(match)` origin to the production's own — `env["match_start"]`, the origin
+    it was entered under, held on its frame not a stack, since a `(<<<)` never nests within one body. Paired with
+    `OpenMatch`: `Bound(item)` lowers to `OpenMatch, item, CloseMatch`."""
+
+
+@dataclass(frozen=True)
 class Cut:
     """`(cut)`: a zero-width commit past which the parse does not backtrack; on a later failure it is the error, and
 

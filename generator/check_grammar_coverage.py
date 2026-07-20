@@ -43,7 +43,20 @@ AMBIENT = {"r": len(annotated2ir.RESUMES)}
 # The nodes that match wherever they are asked to, and the ones that may always refuse. A `(cut)` counts as matching: it
 # never returns "no", it raises instead, which is a different thing that `rejected` accounts for separately. Both lists
 # in alphabetical order.
-ALWAYS = (ir.Cut, ir.Emit, ir.Empty, ir.Error, ir.ExcludeAt, ir.Flip, ir.Increase, ir.SetVar)
+ALWAYS = (
+    ir.CloseMatch,
+    ir.Cut,
+    ir.Emit,
+    ir.Empty,
+    ir.Error,
+    ir.ExcludeAt,
+    ir.Flip,
+    ir.Increase,
+    ir.OpenMatch,
+    ir.PopCode,
+    ir.PushCode,
+    ir.SetVar,
+)
 NEVER_SURE = (
     ir.Char,
     ir.Diff,

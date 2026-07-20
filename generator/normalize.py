@@ -16,17 +16,21 @@ import spec_tests
 
 # Nodes that begin no character — a match of one starts no run, so it adds nothing to a first-character set: the
 # lookaheads, the epsilon and marker emitters, the guards, and the parameter actions.
-_ZERO_WIDTH = ir.ZERO_WIDTH + (
-    ir.Empty,
-    ir.Emit,
-    ir.StartOfLine,
-    ir.EndOfStream,
-    ir.Lt,
-    ir.Le,
-    ir.SetVar,
-    ir.Increase,
+_ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
+    ir.CloseMatch,
     ir.Cut,
+    ir.Emit,
+    ir.Empty,
+    ir.EndOfStream,
     ir.Error,
+    ir.Increase,
+    ir.Le,
+    ir.Lt,
+    ir.OpenMatch,
+    ir.PopCode,
+    ir.PushCode,
+    ir.SetVar,
+    ir.StartOfLine,
 )
 
 
@@ -353,6 +357,48 @@ def lower_star(grammar, namer):
     return result
 
 
+def _lower_tokens(node):
+    """`node` with each `(token)` and `(wrap)` rewritten as the sequence of actions it stands for. Bottom-up, so a
+    parent sees its already-lowered children."""
+    node = ir.rebuilt(node, _lower_tokens)
+    if isinstance(node, ir.Token):
+        return ir.Seq((ir.PushCode(node.code), node.item, ir.PopCode()))
+    if isinstance(node, ir.Wrap):
+        return ir.Seq((ir.Emit(node.begin), node.item, ir.Emit(node.end)))
+    return node
+
+
+def lower_tokens(grammar, namer):
+    """Rewrite each `(token)` as `PushCode(code), item, PopCode` and each `(wrap)` as `Emit(begin), item, Emit(end)`:
+    the run-code changes a token stands for become explicit actions over the run code its production carries on its
+    frame, and the markers a wrap stands for become the plain `(emit)`s they always were. Removes the `Token` and `Wrap`
+    node kinds — after it the run code is a runtime value, no longer a scope the tree shape implies."""
+    return {
+        name: dataclasses.replace(production, body=_lower_tokens(production.body))
+        for name, production in grammar.items()
+    }
+
+
+def _lower_bounds(node):
+    """`node` with each `(<<<)` rewritten as the pair of actions that mark and restore the `(match)` origin around its
+    run. Bottom-up, so a parent sees its already-lowered children."""
+    node = ir.rebuilt(node, _lower_bounds)
+    if isinstance(node, ir.Bound):
+        return ir.Seq((ir.OpenMatch(), node.item, ir.CloseMatch()))
+    return node
+
+
+def lower_bounds(grammar, namer):
+    """Rewrite each `(<<<)` as `OpenMatch, item, CloseMatch`: the `(match)` origin a bound marks for its run becomes an
+    explicit action over the origin its production carries on its frame, restored at the run's trailing edge. Removes
+    the `Bound` node kind — after it the measuring origin is a runtime value, no longer a scope the tree shape implies.
+    """
+    return {
+        name: dataclasses.replace(production, body=_lower_bounds(production.body))
+        for name, production in grammar.items()
+    }
+
+
 def _trim_runs(node, grammar):
     """`node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
     rewritten as a `TrimStar` over `w | p` that trims `w`. Bottom-up, so a parent sees its already-rewritten children.
@@ -538,7 +584,7 @@ def hoist_char_runs(grammar, namer):
 # unparsed text and invalid bytes. A run under one of these should be matched by a char-set `+`/`*` (one SIMD call), not
 # one character per iteration; `content_run_offenders` finds where the normalized grammar still matches it per char.
 CONTENT_CODES = frozenset({"text", "meta", "unparsed-text", "unparsed-invalid"})
-_ROOT_CODE = "unparsed-text"  # the code the emitter's stack starts with, before any `(token)` sets one
+_ROOT_CODE = "unparsed-text"  # the code the emitter starts with, before any `(token)` sets one
 
 
 def _child_nodes(node):
@@ -559,8 +605,8 @@ def _ref_codes(node, active):
 
 
 def codes_at(grammar):
-    """For each production, the token codes active at its entry — what the emitter's code stack holds when it is called,
-    gathered over every call site by propagation from the root down through the `(token)` scopes."""
+    """For each production, the token codes active at its entry — the run code in force when it is called, gathered over
+    every call site by propagation from the root down through the `(token)` scopes."""
     entry = {name: set() for name in grammar}
     entry[ir.ROOT] = {_ROOT_CODE}
     worklist = [ir.ROOT]
@@ -677,6 +723,8 @@ STEPS = [
     ("trim-runs", trim_runs),
     ("hoist-char-runs", hoist_char_runs),
     ("lower-star", lower_star),
+    ("lower-tokens", lower_tokens),
+    ("lower-bounds", lower_bounds),
 ]
 
 

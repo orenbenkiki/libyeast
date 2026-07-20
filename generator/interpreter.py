@@ -132,7 +132,9 @@ class Emitter:
         self.mark = wire.Mark(0, 0, 1, 0)
         self.tokens = []
         self.run = None  # (code character, start mark, start position) of the open run, or None
-        self.codes = ["unparsed-text"]  # the stack of token codes; the top is the one the next character carries
+        self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it, restoring the
+        # production's own on the way out — which it reads back from `env["code"]`, the code the production was entered
+        # under, the way the C parser reads it off the frame rather than a second stack.
         self.env = {}  # the current production's parameters (n/m/c/t/r) and their values
         self.match_start = 0  # where the enclosing Match() scope began, for Match() and Len(Match())
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
@@ -148,7 +150,7 @@ class Emitter:
             self.mark,
             len(self.tokens),
             self.run,
-            len(self.codes),
+            self.code,
             dict(self.env),
             self.match_start,
             self.is_sol,
@@ -164,7 +166,7 @@ class Emitter:
             self.mark,
             token_count,
             self.run,
-            code_count,
+            self.code,
             env,
             self.match_start,
             self.is_sol,
@@ -178,7 +180,6 @@ class Emitter:
         # branch after it rewinds to. Everything else here is either a value or a length, and cannot be written through.
         self.env = dict(env)
         del self.tokens[token_count:]
-        del self.codes[code_count:]
 
     def consume(self):
         """Take the character or invalid byte at the position into the open run, opening one under the current code if
@@ -188,7 +189,7 @@ class Emitter:
             # tokens up to here still emit; a lookahead is exempt and reads on freely.
             raise LimitExceeded()
         if self.run is None:
-            self.run = (wire.CODE_CHAR[self.codes[-1]], self.mark, self.position)
+            self.run = (wire.CODE_CHAR[self.code], self.mark, self.position)
         codepoint = self.chars[self.position]
         byte_length = self.byte_at[self.position + 1] - self.byte_at[self.position]
         is_break = codepoint == wire.LINE_FEED or (codepoint == wire.CARRIAGE_RETURN and not self._before_line_feed())
@@ -399,7 +400,7 @@ def _fail(emitter, message):
     caller matches. The guard is cleared because an `(exclude)` the abandoned parse had in scope never got to unwind,
     and the recovery is entitled to the guards its own rules declare and no others.
     """
-    emitter.codes[:] = ["unparsed-text"]  # a raise skips the token frames' cleanup; from here on the input is unparsed
+    emitter.code = "unparsed-text"  # a raise skips the token frames' cleanup; from here on the input is unparsed
     emitter.forbidden = ()
     emitter.error(message)
     while emitter.pending:
@@ -462,8 +463,15 @@ def match(node, emitter, grammar, k):
         saved_env = emitter.env
         saved_forbidden = emitter.forbidden  # inherited by the callee, and any (exclude) it adds is scoped to it
         # A production inherits the ambient parameters and overrides only the ones it declares, so `n` stays in scope
-        # through a callee that does not name it — which is how the block header's indent detection still reads `n`.
-        emitter.env = {**saved_env, **dict(zip(production.params, arguments))}
+        # through a callee that does not name it — which is how the block header's indent detection still reads `n`. Its
+        # run code and `(match)` origin are the ones in force where it was entered, which a `(token)` and a `(<<<)` it
+        # lowers to restore past a nested one.
+        emitter.env = {
+            **saved_env,
+            **dict(zip(production.params, arguments)),
+            "code": emitter.code,
+            "match_start": emitter.match_start,
+        }
 
         def continue_out():
             callee_env = emitter.env
@@ -685,21 +693,22 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.Token):
         entry = emitter.checkpoint()
         emitter.cut()
-        emitter.codes.append(node.code)
+        surrounding = emitter.code  # the production's own code, restored at the token's trailing edge
+        emitter.code = node.code
 
         def close_token():
             middle = emitter.checkpoint()
             emitter.cut()  # end the token's run at its trailing edge
-            code = emitter.codes.pop()  # the following characters carry the surrounding code again
+            emitter.code = surrounding  # the following characters carry the surrounding code again
             if k():
                 return True
-            emitter.codes.append(code)
+            emitter.code = node.code
             emitter.rewind(middle)  # reopen the run so the wrapped item can try its next way
             return False
 
         matched = match(node.item, emitter, grammar, close_token)
         if not matched:
-            emitter.rewind(entry)  # undo the leading cut and the pushed code
+            emitter.rewind(entry)  # undo the leading cut and the code change
         return matched
     if isinstance(node, ir.Wrap):
         entry = emitter.checkpoint()
@@ -720,6 +729,36 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.Emit):
         checkpoint = emitter.checkpoint()
         emitter.marker(node.code)
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.PushCode):
+        checkpoint = emitter.checkpoint()
+        emitter.cut()
+        emitter.code = node.code
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.PopCode):
+        checkpoint = emitter.checkpoint()
+        emitter.cut()
+        emitter.code = emitter.env["code"]  # the production's own run code, held on its frame
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.OpenMatch):
+        checkpoint = emitter.checkpoint()
+        emitter.match_start = emitter.position
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.CloseMatch):
+        checkpoint = emitter.checkpoint()
+        emitter.match_start = emitter.env["match_start"]  # the production's own `(match)` origin, held on its frame
         if k():
             return True
         emitter.rewind(checkpoint)
@@ -752,7 +791,7 @@ def match(node, emitter, grammar, k):
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Recover):
-        depth, codes, forbidden, env = len(emitter.pending), len(emitter.codes), emitter.forbidden, dict(emitter.env)
+        depth, code, forbidden, env = len(emitter.pending), emitter.code, emitter.forbidden, dict(emitter.env)
         try:
             return match(node.item, emitter, grammar, k)
         except CommitFailure as failure:
@@ -760,7 +799,7 @@ def match(node, emitter, grammar, k):
             # inside — those frames never got to — and put this rule's own back: the recovery is this rule's to name,
             # so it reads this rule's parameters and not those of whatever failed somewhere below it.
             stopped = emitter.checkpoint()
-            del emitter.codes[codes:]
+            emitter.code = code
             emitter.forbidden = forbidden
             emitter.env = env
             emitter.error(MESSAGES[failure.code])

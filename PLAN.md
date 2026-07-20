@@ -225,8 +225,11 @@ determinization.
 
 **The action vocabulary**, four families, each derived from an IR node or the runtime already built in `src/parser.h`:
 
-- **Token run** — `Consume` (push the peeked character into the current run), `SetCode(code)`, `CompleteToken` (cut the
-  run into a token), `Emit(code)` (a zero-width marker, which also cuts). These are what `Token`/`Wrap`/`Emit` lower to.
+- **Token run** — `Consume` (push the peeked character into the current run), `PushCode(code)`/`PopCode` (cut the run
+  and set the code its characters carry, or restore the production's own — the run code it carries on its frame,
+  restored past a nested token, not a stack), `Emit(code)` (a zero-width marker, which also cuts), and
+  `OpenMatch`/`CloseMatch` (mark and restore the `(match)` origin the production likewise carries on its frame). These
+  are what `Token`/`Wrap`/`Emit`/`(<<<)` lower to.
 - **Provisional run** — `OpenProvisional`, `RetypeProvisional(payload, break)` (the block scalar's held run carries both
   content and the breaks between it, so retyping names two codes), `InjectBefore(code)`, `CommitProvisional`.
   One-for-one with the `ys_queue` run. There is no discard: a failed hypothesis retypes, it never drops tokens.
@@ -246,10 +249,10 @@ none of them, and the validator rejects any that remain.
 
 1. *Parameters.* Specialize `c` away (monomorphize, drop `Case`/`Flip` on `c`, prune unreachable branches); specialize
    `t` (chomping) the same way. Confirm only `n`/`m` remain, and only in indentation predicates and parameter actions.
-1. *Structural.* Flatten `Seq`/`Alt`, drop `Empty`, collapse singletons. Lower `Token`/`Wrap` to token actions. Evaluate
-   `Diff` and single-character `Look`/`NegLook` into plain char-sets. Lower `Star`/`Plus`/`Opt`/`Rep` into recursive
-   `_<N>` productions. Lower `SetVar`/`Bind`/`Lt`/`Le`/`Bound`/`Max`/`StartOfLine`/`EndOfStream` into parameter actions
-   and guards.
+1. *Structural.* Flatten `Seq`/`Alt`, drop `Empty`, collapse singletons. Lower `Token`/`Wrap` to token actions and
+   `(<<<)` to the `(match)`-origin pair. Evaluate `Diff` and single-character `Look`/`NegLook` into plain char-sets.
+   Lower `Star`/`Plus`/`Opt`/`Rep` into recursive `_<N>` productions. Lower
+   `SetVar`/`Bind`/`Lt`/`Le`/`Max`/`StartOfLine`/`EndOfStream` into parameter actions and guards.
 1. *Alternative shape.* Split each `Seq` into head-matcher + tail until every alternative is `matcher; actions; tail`.
    Binarize to ≤2 calls. Hoist FIRST-sets into gates, handling a nullable call as FIRST∪FOLLOW. Turn a leading
    unconditional action into an empty-gate alternative.

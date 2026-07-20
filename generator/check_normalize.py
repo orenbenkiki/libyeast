@@ -42,7 +42,10 @@ def _check():
             errors.append(f"[{label}] star {error}")
     for error in check_grammar_coverage.gaps(stages[-1][1]):
         errors.append(f"[final] coverage {error}")
-    for offender in normalize.content_run_offenders(stages[-1][1]):
+    # The content-run gate reads the `(token)` scopes lower-tokens dissolves, so it runs on the last grammar that still
+    # holds them; lower-tokens leaves the character runs it checks untouched, so the two grammars agree on the answer.
+    before_lower_tokens = dict(stages)["lower-star"]
+    for offender in normalize.content_run_offenders(before_lower_tokens):
         errors.append(f"[content-runs] {offender}: a long text token is collected one character at a time")
     for fault in normalize.non_char_set_runs(stages[-1][1]):
         errors.append(f"[char-set-runs] {fault}")

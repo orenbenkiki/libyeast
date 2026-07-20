@@ -87,11 +87,15 @@ All notable changes to this project are documented here. The format follows
   difference to reach the set beneath, and splitting a trimmed run the same way so its common runs are the two-set
   trimming scan (`trim-run (trim* uncommon trim-run)*`, the leading `trim*` re-taking what the run before it gave back,
   which keeps the whitespace before a mid-scalar `:`); `lower-star` turns each remaining complex `x*` into a
-  right-recursive helper. `check_normalize` holds every step token-and-event identical over the whole corpus — 681
-  conformance fixtures and 402 YAML Test Suite cases — and ends on two own-gates over the result: every long text token,
-  a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per loop; and
-  every repetition runs a character set — a `TrimStar` both sets, a `Star` its element or, until determinize supplies
-  the guard that lowers them, a nullable production.
+  right-recursive helper; `lower-tokens` dissolves the `(token)` and `(wrap)` scopes into actions — a `(token)` becomes
+  `PushCode(code)` … `PopCode` around its item, the run code an explicit value the production carries on its frame and a
+  nested token restores past rather than a scope the tree shape implies, and a `(wrap)` the pair of `(emit)`s it always
+  was; and `lower-bounds` does the same for `(<<<)`, its `(match)` origin becoming `OpenMatch` … `CloseMatch` around the
+  run it measures, an origin the production likewise carries on its frame. `check_normalize` holds every step
+  token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases — and ends on
+  two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is
+  matched in bulk rather than one character per loop; and every repetition runs a character set — a `TrimStar` both
+  sets, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run
