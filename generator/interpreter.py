@@ -578,10 +578,12 @@ def match(node, emitter, grammar, k):
 
         return step(0)
     if isinstance(node, ir.Case):
-        value = emitter.env[node.var]
+        value = emitter.env.get(node.var)  # a parameter never set is no branch's value, so it takes the `else`
         for branch in node.branches:
             if branch.value == value:
                 return match(branch.item, emitter, grammar, k)
+        if node.default is not None:
+            return match(node.default, emitter, grammar, k)
         return False
     if isinstance(node, ir.SetVar):
         checkpoint = emitter.checkpoint()
@@ -741,8 +743,6 @@ def match(node, emitter, grammar, k):
             return True
         if reached[0]:
             return False
-        if emitter.env.get("c") in ("block-key", "flow-key"):
-            return False  # an implicit key being speculatively tried: one that will not parse is simply not this key
         raise CommitFailure(node.message)
     if isinstance(node, ir.Error):
         checkpoint = emitter.checkpoint()
@@ -782,8 +782,11 @@ def run(grammar, production, data, parameters=None):
     The production is entered as a reference to it, the way every other rule is entered, rather than by matching its
     body: a rule run at the top is still a rule, and whatever watches references — the coverage gate — must see it.
     """
+    # A caller names the production polymorphically — the fixture's, the root's — and a monomorphized grammar holds only
+    # its specialized copies; resolve to the copy, its finite parameters moved into the name.
+    production, parameters = ir.entry(grammar, production, parameters or {})
     emitter = Emitter(data)
-    emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in (parameters or {}).items()}
+    emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in parameters.items()}
     resume = emitter.env.get("r", "n")
     if "r" in grammar[production].params:
         emitter.env.setdefault("r", resume)  # a production run without a resume policy takes the zeroed one, no-resume

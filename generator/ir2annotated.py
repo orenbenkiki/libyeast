@@ -114,7 +114,8 @@ def node_yaml(n):
     if isinstance(n, ir.Le):
         return {"(<=)": [expr_yaml(n.a), expr_yaml(n.b)]}
     if isinstance(n, ir.Case):
-        return {"(case)": {"var": n.var, **{b.value: node_yaml(b.item) for b in n.branches}}}
+        default = {"else": node_yaml(n.default)} if n.default is not None else {}
+        return {"(case)": {"var": n.var, **{b.value: node_yaml(b.item) for b in n.branches}, **default}}
     if isinstance(n, ir.Flip):
         return {"(flip)": {"var": n.var, **{b.value: expr_yaml(b.item) for b in n.branches}}}
     if isinstance(n, ir.Bind):

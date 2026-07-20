@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass
 
 import annotated2ir
+import ir
 
 _TREE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS_DIR = os.path.join(_TREE, "tests", "spec")
@@ -78,10 +79,11 @@ def is_runnable(fixture, grammar):
     the interpreter driver filters on; that the supplied values are ones the grammar understands is a separate data
     check the reference-test gate makes.
     """
-    production = grammar.get(fixture.production)
+    name, runtime = ir.entry(grammar, fixture.production, fixture.parameters)
+    production = grammar.get(name)
     if production is None:
         return "not a production of the official grammar"
-    given = set(fixture.parameters)
+    given = set(runtime)  # the finite parameters a monomorphized copy fixes are in its name, not its arguments
     wanted = set(production.params)
     if given - wanted:
         listed = ", ".join(sorted(given - wanted))
@@ -95,7 +97,8 @@ def is_runnable(fixture, grammar):
 
 def arguments(fixture, grammar):
     """The parameters to run `fixture` with: those its filename names, and `DEFAULTS` for those it leaves out."""
-    declared = grammar[fixture.production].params
+    resolved, _runtime = ir.entry(grammar, fixture.production, fixture.parameters)
+    declared = grammar[resolved].params
     defaulted = {name: value for name, value in DEFAULTS.items() if name in declared}
     return {**defaulted, **fixture.parameters}
 

@@ -24,6 +24,7 @@ must still exercise all of them.
 """
 
 import os
+import re
 
 import annotated2ir
 import check_messages
@@ -79,7 +80,7 @@ def is_total(node, grammar, seen=frozenset()):
         return True
     if isinstance(node, NEVER_SURE):
         return False
-    if isinstance(node, (ir.Star, ir.Opt)):
+    if isinstance(node, (ir.Star, ir.Opt, ir.TrimStar)):
         return True
     if isinstance(node, ir.Max):
         # A wrapping `(max)` says no where its production does; the vendored grammar's bare `(max)` is a length note.
@@ -96,6 +97,8 @@ def is_total(node, grammar, seen=frozenset()):
     if isinstance(node, ir.Alt):
         return any(is_total(item, grammar, seen) for item in node.items)
     if isinstance(node, ir.Case):
+        if node.default is not None:  # the else covers every value with no branch, so no value is left to say no
+            return is_total(node.default, grammar, seen) and all(is_total(b.item, grammar, seen) for b in node.branches)
         if len(node.branches) < AMBIENT.get(node.var, 0):
             return False  # a value of an ambient parameter with no branch is a path that is taken, and says no
         return all(is_total(branch.item, grammar, seen) for branch in node.branches)
@@ -168,20 +171,37 @@ def fired():
     return texts
 
 
+_MONOMORPHIC_SUFFIX = (
+    re.compile(r"_(?:" + "|".join(ir.FINITE_PARAMS) + r")_[a-z]+(?:-[a-z]+)*") if ir.FINITE_PARAMS else None
+)
+
+
+def _base(name):
+    """`name` with its monomorphic-copy suffixes stripped — `foo_c_flow-in_1` to `foo_1`. A copy is covered when its
+    base is: the fixtures test a base production, `monomorphize` is a token-faithful split of it (each copy reachable
+    and proved to change no token), and a copy differs only by a static context substitution, adding no logic to leave
+    untested. Covering every copy directly would take a fixture per production and context it appears in —
+    combinatorial, where `[ 'x' ]` reaching a copy `key: 'x'` does not is a hole in the corpus, not dead code."""
+    return _MONOMORPHIC_SUFFIX.sub("", name) if _MONOMORPHIC_SUFFIX else name
+
+
 def gaps(grammar):
     """The productions `grammar` leaves unexercised and the messages nothing fires, as error strings — empty when the
     fixtures reach and reject every production and carry every message. Takes the grammar as an argument, so it re-runs
-    on a structurally-transformed grammar whose reshaped productions the same fixtures must still exercise."""
+    on a structurally-transformed grammar whose reshaped productions the same fixtures must still exercise; a
+    monomorphic copy is held covered when its base is."""
     reached, rejected = exercised(grammar)
+    reached_bases = {_base(name) for name in reached}
+    rejected_bases = {_base(name) for name in rejected}
     with open(check_messages.MESSAGES) as handle:
         messages = yaml.safe_load(handle)
     texts = fired()
 
-    errors = [f"{name}: no reproducible fixture exercises it" for name in grammar if name not in reached]
+    errors = [f"{name}: no reproducible fixture exercises it" for name in grammar if _base(name) not in reached_bases]
     errors += [
         f"{name}: no fixture makes it reject an input, and it is not total"
         for name in grammar
-        if name not in rejected and not is_total(grammar[name].body, grammar, frozenset({name}))
+        if _base(name) not in rejected_bases and not is_total(grammar[name].body, grammar, frozenset({name}))
     ]
     errors += [
         f"{code}: no fixture's output carries its message, so nothing shows the cut fires"

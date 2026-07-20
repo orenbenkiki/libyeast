@@ -884,11 +884,17 @@ ns-uri-char:
   (any):
   - (all):
     - '%'
-    - (commit):
-      - ESC_URI
-      - (all):
-        - ns-hex-digit
-        - ns-hex-digit
+    - (case):
+        var: c
+        "block-key": &ns-uri-char-hex
+          (all):
+          - ns-hex-digit
+          - ns-hex-digit
+        "flow-key": *ns-uri-char-hex
+        else:
+          (commit):
+          - ESC_URI
+          - *ns-uri-char-hex
   - ns-word-char
   - '#'
   - ';'
@@ -1150,11 +1156,17 @@ ns-esc-paragraph-separator:
 ns-esc-8-bit:
   (all):
   - (token): [ indicator, 'x' ]
-  - (commit):
-    - ESC_X2
-    - (token):
-      - meta
-      - ({2}): ns-hex-digit
+  - (case):
+      var: c
+      "block-key": &ns-esc-8-bit-hex
+        (token):
+        - meta
+        - ({2}): ns-hex-digit
+      "flow-key": *ns-esc-8-bit-hex
+      else:
+        (commit):
+        - ESC_X2
+        - *ns-esc-8-bit-hex
 
 
 
@@ -1168,11 +1180,17 @@ ns-esc-8-bit:
 ns-esc-16-bit:
   (all):
   - (token): [ indicator, 'u' ]
-  - (commit):
-    - ESC_U4
-    - (token):
-      - meta
-      - ({4}): ns-hex-digit
+  - (case):
+      var: c
+      "block-key": &ns-esc-16-bit-hex
+        (token):
+        - meta
+        - ({4}): ns-hex-digit
+      "flow-key": *ns-esc-16-bit-hex
+      else:
+        (commit):
+        - ESC_U4
+        - *ns-esc-16-bit-hex
 
 
 
@@ -1186,11 +1204,17 @@ ns-esc-16-bit:
 ns-esc-32-bit:
   (all):
   - (token): [ indicator, 'U' ]
-  - (commit):
-    - ESC_U8
-    - (token):
-      - meta
-      - ({8}): ns-hex-digit
+  - (case):
+      var: c
+      "block-key": &ns-esc-32-bit-hex
+        (token):
+        - meta
+        - ({8}): ns-hex-digit
+      "flow-key": *ns-esc-32-bit-hex
+      else:
+        (commit):
+        - ESC_U8
+        - *ns-esc-32-bit-hex
 
 
 
@@ -1215,29 +1239,35 @@ c-ns-esc-char:
   - (all):
     - c-escape
     - (!==): b-char
-    - (commit):
-      - INVALID_ESCAPE
-      - (any):
-        - ns-esc-null
-        - ns-esc-bell
-        - ns-esc-backspace
-        - ns-esc-horizontal-tab
-        - ns-esc-line-feed
-        - ns-esc-vertical-tab
-        - ns-esc-form-feed
-        - ns-esc-carriage-return
-        - ns-esc-escape
-        - ns-esc-space
-        - ns-esc-double-quote
-        - ns-esc-slash
-        - ns-esc-backslash
-        - ns-esc-next-line
-        - ns-esc-non-breaking-space
-        - ns-esc-line-separator
-        - ns-esc-paragraph-separator
-        - ns-esc-8-bit
-        - ns-esc-16-bit
-        - ns-esc-32-bit
+    - (case):
+        var: c
+        "block-key": &c-ns-esc-char-body
+          (any):
+          - ns-esc-null
+          - ns-esc-bell
+          - ns-esc-backspace
+          - ns-esc-horizontal-tab
+          - ns-esc-line-feed
+          - ns-esc-vertical-tab
+          - ns-esc-form-feed
+          - ns-esc-carriage-return
+          - ns-esc-escape
+          - ns-esc-space
+          - ns-esc-double-quote
+          - ns-esc-slash
+          - ns-esc-backslash
+          - ns-esc-next-line
+          - ns-esc-non-breaking-space
+          - ns-esc-line-separator
+          - ns-esc-paragraph-separator
+          - ns-esc-8-bit
+          - ns-esc-16-bit
+          - ns-esc-32-bit
+        "flow-key": *c-ns-esc-char-body
+        else:
+          (commit):
+          - INVALID_ESCAPE
+          - *c-ns-esc-char-body
 
 
 
@@ -1948,9 +1978,14 @@ c-ns-anchor-property:
   - end-anchor
   - (all):
     - c-anchor
-    - (commit):
-      - MISSING_ANCHOR_NAME
-      - ns-anchor-name
+    - (case):
+        var: c
+        "block-key": &c-ns-anchor-property-name ns-anchor-name
+        "flow-key": *c-ns-anchor-property-name
+        else:
+          (commit):
+          - MISSING_ANCHOR_NAME
+          - *c-ns-anchor-property-name
 
 
 
@@ -1995,9 +2030,14 @@ c-ns-alias-node:
   - end-alias
   - (all):
     - c-alias
-    - (commit):
-      - MISSING_ALIAS_NAME
-      - ns-anchor-name
+    - (case):
+        var: c
+        "block-key": &c-ns-alias-node-name ns-anchor-name
+        "flow-key": *c-ns-alias-node-name
+        else:
+          (commit):
+          - MISSING_ALIAS_NAME
+          - *c-ns-alias-node-name
 
 
 
@@ -2077,13 +2117,19 @@ c-double-quoted:
   - end-scalar
   - (all):
     - c-double-quote
-    - (commit):
-      - UNTERMINATED_DOUBLE_QUOTE
-      - (all):
-        - (token):
-          - text
-          - nb-double-text: [ n, c ]
-        - c-double-quote
+    - (case):
+        var: c
+        "block-key": &c-double-quoted-tail
+          (all):
+          - (token):
+            - text
+            - nb-double-text: [ n, c ]
+          - c-double-quote
+        "flow-key": *c-double-quoted-tail
+        else:
+          (commit):
+          - UNTERMINATED_DOUBLE_QUOTE
+          - *c-double-quoted-tail
 
 
 
@@ -2258,13 +2304,19 @@ c-single-quoted:
   - end-scalar
   - (all):
     - c-single-quote
-    - (commit):
-      - UNTERMINATED_SINGLE_QUOTE
-      - (all):
-        - (token):
-          - text
-          - nb-single-text: [ n, c ]
-        - c-single-quote
+    - (case):
+        var: c
+        "block-key": &c-single-quoted-tail
+          (all):
+          - (token):
+            - text
+            - nb-single-text: [ n, c ]
+          - c-single-quote
+        "flow-key": *c-single-quoted-tail
+        else:
+          (commit):
+          - UNTERMINATED_SINGLE_QUOTE
+          - *c-single-quoted-tail
 
 
 
@@ -2551,12 +2603,18 @@ c-flow-sequence:
   - end-sequence
   - (all):
     - c-sequence-start
-    - (commit):
-      - UNTERMINATED_FLOW_SEQ
-      - (all):
-        - (???): { s-separate: [ n, c ] }
-        - (???): { ns-s-flow-seq-entries: [ n, { in-flow: c } ] }
-        - c-sequence-end
+    - (case):
+        var: c
+        "block-key": &c-flow-sequence-tail
+          (all):
+          - (???): { s-separate: [ n, c ] }
+          - (???): { ns-s-flow-seq-entries: [ n, { in-flow: c } ] }
+          - c-sequence-end
+        "flow-key": *c-flow-sequence-tail
+        else:
+          (commit):
+          - UNTERMINATED_FLOW_SEQ
+          - *c-flow-sequence-tail
 
 
 
@@ -2609,12 +2667,18 @@ c-flow-mapping:
   - end-mapping
   - (all):
     - c-mapping-start
-    - (commit):
-      - UNTERMINATED_FLOW_MAP
-      - (all):
-        - (???): { s-separate: [ n, c ] }
-        - (???): { ns-s-flow-map-entries: [ n, { in-flow: c } ] }
-        - c-mapping-end
+    - (case):
+        var: c
+        "block-key": &c-flow-mapping-tail
+          (all):
+          - (???): { s-separate: [ n, c ] }
+          - (???): { ns-s-flow-map-entries: [ n, { in-flow: c } ] }
+          - c-mapping-end
+        "flow-key": *c-flow-mapping-tail
+        else:
+          (commit):
+          - UNTERMINATED_FLOW_MAP
+          - *c-flow-mapping-tail
 
 
 

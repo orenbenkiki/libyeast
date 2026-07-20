@@ -87,6 +87,12 @@ def normalize(node):
         # An alternation whose last branch matches nothing is an optional, which is how the official grammar writes it.
         rest = node.items[:-1]
         return ir.Opt(rest[0] if len(rest) == 1 else ir.Alt(rest))
+    if isinstance(node, ir.Case):
+        # A case whose branches are all one thing is that thing, no dispatch: libyeast's soft-commit case reads that way
+        # once the commit it wraps is erased to its item, matching the official grammar's bare rule.
+        items = [branch.item for branch in node.branches] + ([node.default] if node.default is not None else [])
+        if items and all(item == items[0] for item in items):
+            return items[0]
     return node
 
 

@@ -76,8 +76,8 @@ def args(value):
 
 
 def branches(mapping, translate):
-    """The value-keyed branches of a `(case)`/`(flip)`, minus the `var` selector."""
-    return tuple(ir.Branch(key, translate(val)) for key, val in mapping.items() if key != "var")
+    """The value-keyed branches of a `(case)`/`(flip)`, minus the `var` selector and a `(case)`'s `else` default."""
+    return tuple(ir.Branch(key, translate(val)) for key, val in mapping.items() if key not in ("var", "else"))
 
 
 def expr(x):
@@ -159,7 +159,8 @@ def node(x):
         if op == "(<=)":
             return ir.Le(expr(value[0]), expr(value[1]))
         if op == "(case)":
-            return ir.Case(value["var"], branches(value, node))
+            default = node(value["else"]) if "else" in value else None
+            return ir.Case(value["var"], branches(value, node), default)
         if op == "(flip)":
             return ir.Flip(value["var"], branches(value, expr))
         if op == "(token)":

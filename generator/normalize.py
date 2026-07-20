@@ -12,6 +12,7 @@ one seam every transformation slots into.
 import dataclasses
 
 import ir
+import spec_tests
 
 # Nodes that begin no character — a match of one starts no run, so it adds nothing to a first-character set: the
 # lookaheads, the epsilon and marker emitters, the guards, and the parameter actions.
@@ -46,6 +47,128 @@ class Namer:
         base = head if tail.isdigit() and head else owner
         self._counts[base] = self._counts.get(base, 0) + 1
         return f"{base}_{self._counts[base]}"
+
+
+def _branch(node, value):
+    """The item of the `(case)`/`(flip)` `node`'s branch for `value` — its `else` default where no branch names it."""
+    for branch in node.branches:
+        if branch.value == value:
+            return branch.item
+    default = getattr(node, "default", None)
+    if default is not None:
+        return default
+    raise ValueError(f"{node.var} has no branch for {value!r}")
+
+
+def _relevant_finite(grammar):
+    """For each production, the finite parameters its specialized subtree depends on — the ones a monomorphic copy must
+    fix in its name. A production's own body reads some directly (a `Case`/`Flip` on one, or one passed as itself); the
+    rest it inherits and hands down, so a callee's relevant parameters are relevant to the caller too, save the ones the
+    caller passes an argument for. A least fixed point, since a reference can reach back to its own production."""
+    reads, calls = {}, {}
+    for name, production in grammar.items():
+        direct, references = set(), []
+
+        def gather(node):
+            if isinstance(node, (ir.Case, ir.Flip)) and node.var in ir.FINITE_PARAMS:
+                direct.add(node.var)
+            if isinstance(node, ir.Param) and node.name in ir.FINITE_PARAMS:
+                direct.add(node.name)
+            if isinstance(node, ir.Ref):
+                passed = {p for p, _argument in zip(grammar[node.name].params, node.args) if p in ir.FINITE_PARAMS}
+                references.append((node.name, passed))
+            ir.rebuilt(node, lambda child: gather(child) or child)
+
+        gather(production.body)
+        reads[name], calls[name] = direct, references
+    relevant = {name: set(direct) for name, direct in reads.items()}
+    changed = True
+    while changed:
+        changed = False
+        for name in grammar:
+            for callee, passed in calls[name]:
+                inherited = relevant[callee] - passed
+                if inherited - relevant[name]:
+                    relevant[name] |= inherited
+                    changed = True
+    return relevant
+
+
+def monomorphize(grammar, namer):
+    """Specialize the lexical finite parameters — the context c — away. Each production is copied once per combination
+    of their values it is reached with — from the root, following references, so only combinations that occur are made
+    — its `Case` and `Flip` on them evaluated to the copy's values, its name `ir.specialized`, and those parameters
+    dropped from its signature. `n`, `m`, `f`, and the runtime state `t` and `r` stay parameters."""
+    result, done, pending = {}, set(), []
+
+    def finite_value(expression, env):
+        """A finite (c/t/r) value expression as its concrete value under `env`, inlining a value function — `in-flow`
+        maps one context to another — the way a call to it would."""
+        if isinstance(expression, ir.Param):
+            return env[expression.name]
+        if isinstance(expression, ir.Lit):
+            return expression.value
+        if isinstance(expression, ir.Flip):
+            return finite_value(_branch(expression, env[expression.var]), env)
+        if isinstance(expression, ir.Ref):
+            callee = grammar[expression.name]
+            inner = {p: finite_value(a, env) for p, a in zip(callee.params, expression.args)}
+            return finite_value(callee.body, inner)
+        raise ValueError(f"not a finite value: {expression!r}")
+
+    def runtime_value(expression, env):
+        """A runtime (n/m/f) argument with its `Flip`s on a finite parameter and value functions — `seq-spaces` is `n`
+        or `n-1` by context — reduced under `env`, its arithmetic and runtime parameters left."""
+        if isinstance(expression, ir.Ref):
+            callee = grammar[expression.name]
+            inner = {
+                parameter: (
+                    finite_value(argument, env) if parameter in ir.FINITE_PARAMS else runtime_value(argument, env)
+                )
+                for parameter, argument in zip(callee.params, expression.args)
+            }
+            return runtime_value(callee.body, inner)
+        if isinstance(expression, ir.Flip):
+            return runtime_value(_branch(expression, env[expression.var]), env)
+        if isinstance(expression, ir.Param):
+            return env.get(expression.name, expression)
+        return ir.rebuilt(expression, lambda inner: runtime_value(inner, env))
+
+    def specialize(node, env):
+        if isinstance(node, ir.Case) and node.var in ir.FINITE_PARAMS:
+            return specialize(_branch(node, env.get(node.var)), env)
+        if isinstance(node, ir.Ref):
+            passed, args = {}, []
+            for parameter, argument in zip(grammar[node.name].params, node.args):
+                if parameter in ir.FINITE_PARAMS:
+                    passed[parameter] = finite_value(argument, env)
+                else:
+                    args.append(runtime_value(argument, env))
+            # the callee inherits the ambient finite values and overrides the ones this reference passes; its copy is
+            # named by the finite parameters its subtree depends on, at those values, an unset one carried as `None`.
+            ambient = {x: passed[x] if x in passed else env.get(x) for x in relevant[node.name]}
+            pending.append((node.name, ambient))
+            return ir.Ref(ir.specialized(node.name, ambient), tuple(args))
+        return ir.rebuilt(node, lambda child: specialize(child, env))
+
+    relevant = _relevant_finite(grammar)
+    pending.append((ir.ROOT, {x: ir.FINITE_DEFAULTS.get(x) for x in relevant[ir.ROOT]}))
+    # the fixtures are entry points too: each runs a production in isolation at the finite values its filename names,
+    # reaching combinations the root does not, so seed each so its monomorphic copy is there for the driver to enter.
+    for fixture in spec_tests.load():
+        if fixture.production in grammar:
+            pending.append((fixture.production, {x: fixture.parameters.get(x) for x in relevant[fixture.production]}))
+    while pending:
+        name, ambient = pending.pop()
+        new_name = ir.specialized(name, ambient)
+        if new_name in done:
+            continue
+        done.add(new_name)
+        production = grammar[name]
+        body = specialize(production.body, ambient)
+        params = tuple(parameter for parameter in production.params if parameter not in ir.FINITE_PARAMS)
+        result[new_name] = ir.Prod(production.number, new_name, params, body)
+    return result
 
 
 def _lower_optionals(node):
@@ -475,6 +598,7 @@ def non_char_set_runs(grammar):
 
 # The pipeline, in order, as `(name, transform)` pairs.
 STEPS = [
+    ("monomorphize", monomorphize),
     ("lower-optionals", lower_optionals),
     ("lower-plus", lower_plus),
     ("trim-runs", trim_runs),

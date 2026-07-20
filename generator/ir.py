@@ -16,6 +16,36 @@ from dataclasses import dataclass, fields, is_dataclass, replace
 # The production the whole grammar hangs off: a YAML stream, and then the end of the input.
 ROOT = "l-yeast-stream"
 
+# The parameters `normalize.monomorphize` specializes away into a production's name: the ones passed lexically, as
+# arguments, so their value is settled where a production is entered. The context `c` is the one. `n`, `m` and `f` are
+# integers, and `t` (chomping) and `r` (resume) are state a match sets at runtime, so all four stay parameters. A
+# left-out finite parameter takes its default, of which there are none while `c`, always passed, is the only one.
+FINITE_PARAMS = ("c",)
+FINITE_DEFAULTS = {}
+
+
+def specialized(base, bindings):
+    """The name of the monomorphic copy of `base` that fixes `bindings` — its finite parameters, in `FINITE_PARAMS`
+    order, each written `_<parameter>_<value>`. A parameter left unset (its value `None`, as a context is where none is
+    established) is not in the name, so a copy that fixes nothing keeps the base name and resolves like it."""
+    return base + "".join(
+        f"_{parameter}_{bindings[parameter]}" for parameter in FINITE_PARAMS if bindings.get(parameter) is not None
+    )
+
+
+def entry(grammar, name, parameters):
+    """Resolve a call of `name` with `parameters` to the production `grammar` holds: its monomorphic copy if present —
+    the finite parameters moved out of the arguments and into the name — else `name` unchanged, with its arguments
+    whole. A left-out finite default is filled, so a fixture or the root finds its copy whether or not `grammar` has
+    been monomorphized."""
+    given = {parameter: parameters[parameter] for parameter in FINITE_PARAMS if parameter in parameters}
+    for bindings in (given, {**FINITE_DEFAULTS, **given}):
+        resolved = specialized(name, bindings)
+        if resolved in grammar:
+            return resolved, {name: value for name, value in parameters.items() if name not in FINITE_PARAMS}
+    return name, dict(parameters)
+
+
 # --- value / parameter expressions ---
 
 
@@ -280,10 +310,12 @@ class Le:
 
 @dataclass(frozen=True)
 class Case:
-    """`(case)`: dispatch on a parameter's value, each branch a grammar node."""
+    """`(case)`: dispatch on a parameter's value, each branch a grammar node, `default` the `else` for a value no branch
+    names — `None` where there is none, and then a value with no branch is a path that does not match."""
 
     var: str
     branches: tuple  # (Branch, ...), each holding a grammar node
+    default: object = None
 
 
 @dataclass(frozen=True)
@@ -374,7 +406,9 @@ class Commit:
     `(cut)` raises it. But if `item` matches and a *later* rule fails, the match backtracks like any other — the
     commitment does not reach past `item`. That is what lets a flow scalar which closed cleanly be reinterpreted when it
     turns out not to be the mapping key it was tried as, while one that never closed is still the error it should be.
-    `message` keys `grammar/messages.yaml`, as a `(cut)`'s does.
+    `message` keys `grammar/messages.yaml`, as a `(cut)`'s does. An implicit key that will not parse is simply not this
+    key rather than an error, so where a commit is reached in a key context the grammar wraps it in a `(case) c` whose
+    key branches are the bare `item` and whose `else` is the commit — the softening a switch on `c`, not the parser's.
     """
 
     message: str
