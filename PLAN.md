@@ -17,10 +17,10 @@ and **`r`** (the resume policy) are finite, so they are resolved at generation t
 
 Every YAML parser to date sits on one horn of a dilemma.
 
-The **reference parser** (pure Clojure, the basis of YAMLStar) is mechanically faithful to the ~211 productions but slow
-— naive backtracking over the grammar can go superlinear, and it ships a heavy runtime (GraalVM today, Go tomorrow). The
-**libyaml-class** hand-written state machine is fast and O(n) but its conformance is established test-by-test; it has
-known deviations from the 1.2 grammar and is "faithful by luck."
+**YAMLStar** (pure Clojure) is mechanically faithful to the ~211 productions but slow — naive backtracking over the
+grammar can go superlinear, and it ships a heavy runtime (GraalVM today, Go tomorrow). The **libyaml-class**
+hand-written state machine is fast and O(n) but its conformance is established test-by-test; it has known deviations
+from the 1.2 grammar and is "faithful by luck."
 
 The reconciliation is a machine that is *both*: a deterministic, committed, character-at-a-time automaton with an
 indentation stack and bounded deferred-token tracking — **generated from the parameterized productions** so that its
@@ -34,7 +34,7 @@ without draining the whole document. It is doing triple duty and the entire arch
 It bounds the *key* deferral, and nothing else. There is a second, and the block scalar is where it lives.
 
 **Indentation detection is not the problem.** A block collection's indentation, and an inline one's, are read straight
-off the current column — the reference peeks past comment lines first, but `s-l-comments` has already eaten them, so
+off the current column — YamlReference peeks past comment lines first, but `s-l-comments` has already eaten them, so
 there is nothing to peek past. Those two cost no lookahead at all.
 
 **The empty lines that open a block scalar are the problem, and the chomping is why.** An empty line there is content if
@@ -105,19 +105,19 @@ literal queue entry marked *provisional*. `next_token()` returns the frontmost *
 when the head is still ambiguous or the queue is empty. Because the ambiguity is line-bounded, the eager buffering
 before an honest return is bounded too.
 
-**The canonical stream is yeast.** The event/node stream the parser emits is **yeast** — the Haskell reference parser's
-own token model (from `yamlreference`): zero-width `Begin`/`End` markers wrapping the interesting productions, and every
-consumed character classified as a leaf token (`Indicator`, `White`, `Indent`, `Break`, `Text`, `Meta`, …). The codes
-are kept **byte-identical to the Haskell reference's `Code` constructors** (already declared as `ys_code` in the public
-header), and that one decision makes the single stream do three jobs at once:
+**The canonical stream is yeast.** The event/node stream the parser emits is **yeast** — YamlReference's own token
+model: zero-width `Begin`/`End` markers wrapping the interesting productions, and every consumed character classified as
+a leaf token (`Indicator`, `White`, `Indent`, `Break`, `Text`, `Meta`, …). The codes are kept **byte-identical to
+YamlReference's `Code` constructors** (already declared as `ys_code` in the public header), and that one decision makes
+the single stream do three jobs at once:
 
 - **The load API** — `compose → resolve → serialize` is a downstream fold over yeast. YAMLStar already owns that back
   half and already eats these tokens, so the JSON path is a front-end swap, not new code (phase 06).
 - **A debug view** — folding the balanced `Begin`/`End` markers rebuilds the nested productions tree, rendered by the
-  package's own `yaml2html` (migrated from the Haskell reference; phase 05). Identical codes make the port a faithful
-  copy, validated against the Haskell reference's own rendering.
-- **The differential oracles** — identical codes make the yeast comparison against the Haskell reference
-  token-for-token; the folded load output is checked value-for-value against the Clojure reference (§3).
+  package's own `yaml2html` (migrated from YamlReference; phase 05). Identical codes make the port a faithful copy,
+  validated against YamlReference's own rendering.
+- **The differential oracles** — identical codes make the yeast comparison against YamlReference token-for-token; the
+  folded load output is checked value-for-value against YAMLStar (§3).
 
 **Where the rewind problem went:** a backtracking parser would have to discard emitted events on every failed
 alternative. The determinized automaton (phase 03) doesn't backtrack — committed transitions emit on commit, so there is
@@ -148,12 +148,11 @@ fourth, orthogonal leg for safety:
   the productions — commit-here *and here's why it's still the same language*. This is the part that touches
   formal-methods territory and is what makes the result worth more than libyaml.
 - **Differential oracles — both reference implementations.** The parser is pinned against *both* references, each
-  authoritative for a different half of the pipeline. Against the **Haskell `yamlreference`** the comparison is
-  *token-for-token* on yeast — codes are identical, so it validates the syntactic layer (production structure, character
-  classes) at the finest possible grain. Against the **Clojure reference** (YAMLStar's basis) the comparison is
-  *value-for-value* on the folded load output, validating composition and schema resolution — the semantic layer.
-  Agreement with both spans the whole pipeline; a mismatch with exactly one half localizes the bug, and the yeast→HTML
-  debug view renders the divergence.
+  authoritative for a different half of the pipeline. Against **YamlReference** the comparison is *token-for-token* on
+  yeast — codes are identical, so it validates the syntactic layer (production structure, character classes) at the
+  finest possible grain. Against **YAMLStar** the comparison is *value-for-value* on the folded load output, validating
+  composition and schema resolution — the semantic layer. Agreement with both spans the whole pipeline; a mismatch with
+  exactly one half localizes the bug, and the yeast→HTML debug view renders the divergence.
 - **YAML Test Suite + fuzzing.** The ~350+ case suite as the empirical floor; structure-aware fuzzing over the grammar
   to hunt the long tail, especially in the semantic rules the BNF doesn't capture.
 - **Memory-safety & adversarial auditing.** This library is a building block for sensitive software parsing untrusted,
@@ -183,37 +182,19 @@ is the one that has been transformed.
 
 ### Phase 02 — Completeness · the grammar and fixtures made spec-complete, and the gate before transformation
 
-*Risk: Medium · ~4–8 wks.* Phase 01's fixtures pin the *token* layer and every production is matched and rejected — but
-self-consistently, against libyeast's own fixtures, which were migrated from the reference. Before the structural
-transformation touches the grammar, the grammar must be complete and correct against the spec and the fixtures
-sufficient to hold it there, so that Phase 03 carries a frozen, right grammar through its provable steps rather than
-discovering the grammar's own bugs sixteen steps deep. This phase earns that, and its exit is the gate.
+Phase 02 is complete: the grammar is as spec-complete as it can be made, and its gate holds. The BNF is recovered
+production-for-production from libyeast's own grammar (`check_vendor_spec`), and every constraint the spec leaves to
+prose — the single-line simple-key restriction and its length bound, tab forbidden as indentation, `#` opening a comment
+only after whitespace, line-break normalization, and the block-scalar §8.1.1.1 rules — is a rule in the grammar with a
+fixture that fails when the behaviour is wrong, or a declared deviation with its reason. The independent net is the YAML
+Test Suite, folded to events (`make verify-star`): every case folds to its events or rejects where it must, one declared
+divergence apart — where the YAML Test Suite follows YAMLStar past the spec, and libyeast follows the spec. With
+`check_vendor_spec` green, the prose inventory closed, and the fold green-or-declared, the grammar is frozen for Phase
+03 to carry through its provable steps.
 
-**The spec's prose, audited into fixtures.** The BNF is already gated production-for-production against the vendored
-spec grammar (`check_vendor_spec`). What the BNF cannot say — the constraints the spec leaves to prose — is inventoried
-here, and each ends as either a rule in the grammar with a fixture that fails when the behaviour is wrong, or a declared
-divergence with its reason. The checklist of prose constraints: the single-line simple-key restriction and its length
-bound, tab forbidden as indentation, `#` opening a comment only after whitespace, line-break normalization, and the
-block-scalar indentation rules — the leading over-indented empty line among them, **decided: an error** (the spec's
-§8.1.1.1, against the reference's and the BNF's leniency, declared in `check_vendor_spec`). The exit is that the
-inventory is closed: every prose constraint encoded or declared, each with a fixture that enforces it.
-
-**The YAML Test Suite, folded to compare.** The independent net is the community suite YAMLStar runs — `<ID>/in.yaml`
-in, `<ID>/test.event` and `error` expected — derived from the same spec, and so the thing that catches a grammar bug
-libyeast's own fixtures share. libyeast is a token parser, not an event one, so the check is a deterministic **fold**:
-the yeast stream's `begin-`/`end-` markers rebuild the production tree and the leaf tokens fill it, up to the event
-stream the suite expects — _would_ this stream produce these events, matched as far as the token layer settles them.
-YAMLStar is the reference libyeast targets, so where it and the raw suite diverge libyeast follows YAMLStar, its
-`expected-fails` (loader / roundtrip / emit) the baseline of known-diverging cases. Every remaining failure is triaged
-into the inventory above — a grammar fix, or a declared divergence with its reason.
-
-Then, once the gate holds: the yeast→HTML debug view bootstrapped on the Haskell reference's `yaml2html` as the
-divergence microscope (it later serves as the reference oracle for the package's own port, Phase 05), and CI that runs
-the fixtures, the folded suite, and a differential fuzz corpus on every commit, reporting the first divergence.
-
-**Exit — the gate.** `check_vendor_spec` green, the prose inventory closed, and the folded YAML Test Suite
-green-or-declared against YAMLStar. At that point the grammar is as spec-complete as we can make it and the fixtures
-enforce it — and only then does Phase 03 begin, over a grammar it treats as frozen.
+Still to be scoped, when something needs it: the yeast→HTML debug view — the divergence microscope, bootstrapped on
+YamlReference's `yaml2html`, later the oracle for the package's own port (Phase 05) — and the differential fuzz corpus
+CI runs beside the fold.
 
 ### Phase 03 — Normalize · the grammar-to-canonical pipeline
 
@@ -288,9 +269,9 @@ alternative is gate-led with ≤2 calls and no post-P2 action; and every decisio
 pipeline introduces and given a second mode. It is a slow, backtracking executor with undo — performance being a
 non-issue — and it runs in two modes off one flag:
 
-- **Backtracking mode** is the reference. Diff its token stream before and after *every* step against the yaml-test
+- **Backtracking mode** is the baseline. Diff its token stream before and after *every* step against the yaml-test
   suite; a step that changes any output is rejected. This is the net for all sixteen steps, and the interpreter doubles
-  as an early differential oracle against the Haskell reference.
+  as an early differential oracle against YamlReference.
 - **Committed mode** respects the gates and never backtracks. After the determinize steps, both modes must agree on the
   corpus; a divergence means a gate is not commit-safe — the one thing the structural invariants and the backtracking
   interpreter cannot catch on their own.
@@ -328,8 +309,8 @@ arena allocation.
 1. Emit the `Code` enum and the compose fold (yeast → node graph); event retention is trace-mode only — the committed
    hot path emits and consumes without buffering.
 1. Migrate `yaml2html` into the package: a small C companion that folds the yeast stream to colorized nested HTML,
-   sharing the emitted `Code` enum — so the debug view ships *with* the library and carries no Haskell/reference
-   dependency. Validate byte-for-byte against the Haskell reference renderer.
+   sharing the emitted `Code` enum — so the debug view ships *with* the library and carries no YamlReference dependency.
+   Validate byte-for-byte against the YamlReference renderer.
 1. Build as `cdylib`-style `.so` across Linux/macOS (and Windows once the toolchain is clean).
 
 **Exit** — a self-contained C `.so`, plus the bundled `yaml2html` tool, passing suite + differential + fuzz.
@@ -371,9 +352,9 @@ robustness under hostile input.
 | Risk                                                                 | Phase   | Severity | Mitigation                                                                                                                                                                                                                                         |
 | -------------------------------------------------------------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Malicious input triggers memory-unsafety or resource-exhaustion DoS  | all     | ▪▪▪▪     | Hardening flags on the release build; ASan/UBSan on every run; structure-aware fuzzing from day one; bounded allocation plus a configurable parse-depth cap; billion-laughs / recursive-alias guards; continuous security audit, not a final pass. |
-| A step in the normalization pipeline silently changes the language   | 03      | ▪▪▪▪     | Reference IR interpreter diffs the token stream before and after every step; the committed mode catches an unsafe gate the backtracking mode cannot; dual differential oracles against the Haskell and Clojure references; log assurance gaps.     |
-| Semantic rules beyond the BNF encoded wrongly / incompletely         | 02      | ▪▪▪▪     | The grammar is the semantic spec; `check_vendor_spec` tags each rule grammar-vs-deviation; fixtures enforce; fuzz the corners the suite misses.                                                                                                    |
-| The first working slice is a big leap from IR to emitting tokens     | 01      | ▪▪▪      | Decompose into many small, individually-verified sub-steps; grow the production subset one at a time, staying green; hand-checked expected outputs before the reference oracles exist.                                                             |
+| A step in the normalization pipeline silently changes the language   | 03      | ▪▪▪▪     | Reference IR interpreter diffs the token stream before and after every step; the committed mode catches an unsafe gate the backtracking mode cannot; dual differential oracles against YamlReference and YAMLStar; log assurance gaps.             |
+| Semantic rules beyond the BNF encoded wrongly / incompletely         | 02      | ▪▪▪▪     | The grammar is the semantic spec; `check_vendor_spec` tags each rule grammar-vs-deviation; fixtures enforce; fuzz the corners the YAML Test Suite misses.                                                                                          |
+| The first working slice is a big leap from IR to emitting tokens     | 01      | ▪▪▪      | Decompose into many small, individually-verified sub-steps; grow the production subset one at a time, staying green; hand-checked expected outputs before the YamlReference and YAMLStar oracles exist.                                            |
 | Naive codegen is correct but super-linear                            | 03 / 07 | ▪▪▪      | Commit-safety discharged per decision point in phase 03; profiling and hot-state tuning in phase 07.                                                                                                                                               |
 | A pipeline step is subtly non-semantics-preserving and slips the net | 03      | ▪▪▪      | Keep every step small enough to prove by eye; assert its structural post-condition; the interpreter corpus-diff is the behavioural backstop.                                                                                                       |
 | Arena/backtracking scratch leaks or corrupts                         | 05      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                       |
@@ -395,7 +376,7 @@ Wanted, but not planned, and not on the way to anything else:
   - the payload too — the content characters, which is what the default emits;
   - the non-payload characters as well — indentation, separation, breaks, indicators — so every input byte is covered;
   - the detection values too — `YS_CODE_DETECTED` tokens carrying the `m`/`t` an indentation or chomping rule computed,
-    which is what makes libyeast's detection comparable to the reference's `Detected` output token for token.
+    which is what makes libyeast's detection comparable to YamlReference's `Detected` output token for token.
 
   This is why `YS_CODE_DETECTED` is in the vocabulary already: the finest level is where libyeast emits it, and the wire
   round-trips it in the meantime. A coarser level is cheaper and is all a caller loading a document needs; a finer one

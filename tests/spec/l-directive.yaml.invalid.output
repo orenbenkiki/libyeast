@@ -5,10 +5,12 @@ I%
 # B: 1, C: 1, L: 1, c: 1
 tYAML
 # B: 5, C: 5, L: 1, c: 5
+w 
+# B: 6, C: 6, L: 1, c: 6
 !The %YAML directive requires a version, e.g. %YAML 1.2
-# B: 5, C: 5, L: 1, c: 5
+# B: 6, C: 6, L: 1, c: 6
 d
-# B: 5, C: 5, L: 1, c: 5
-- a
+# B: 6, C: 6, L: 1, c: 6
+-a
 # B: 7, C: 7, L: 1, c: 7
 .\x0a

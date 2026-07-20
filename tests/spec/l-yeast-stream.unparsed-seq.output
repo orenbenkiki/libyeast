@@ -23,13 +23,7 @@ b\x0a
 # B: 4, C: 4, L: 2, c: 0
 I-
 # B: 5, C: 5, L: 2, c: 1
-i 
-# B: 6, C: 6, L: 2, c: 2
-N
-# B: 6, C: 6, L: 2, c: 2
-M
-# B: 6, C: 6, L: 2, c: 2
-X
+w 
 # B: 6, C: 6, L: 2, c: 2
 N
 # B: 6, C: 6, L: 2, c: 2
@@ -38,12 +32,6 @@ M
 I{
 # B: 7, C: 7, L: 2, c: 3
 !Unterminated flow mapping
-# B: 7, C: 7, L: 2, c: 3
-m
-# B: 7, C: 7, L: 2, c: 3
-n
-# B: 7, C: 7, L: 2, c: 3
-x
 # B: 7, C: 7, L: 2, c: 3
 m
 # B: 7, C: 7, L: 2, c: 3

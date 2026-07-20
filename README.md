@@ -16,10 +16,10 @@ derived, not hand-tested.
 
 ## Why
 
-Existing YAML parsers sit on one horn of a dilemma: the grammar-faithful reference parsers are slow, and the fast
-hand-written ones (libyaml-class) are "faithful by luck." libyeast generates a fast, O(n), committed automaton **from
-the ~211 formal productions**, so speed comes from the state machine and fidelity from the derivation. It targets a
-drop-in, ABI-compatible C shared library.
+Existing YAML parsers sit on one horn of a dilemma: the grammar-faithful parsers — YamlReference, YAMLStar — are slow,
+and the fast hand-written ones (libyaml-class) are "faithful by luck." libyeast generates a fast, O(n), committed
+automaton **from the ~211 formal productions**, so speed comes from the state machine and fidelity from the derivation.
+It targets a drop-in, ABI-compatible C shared library.
 
 ## Conformance
 

@@ -884,9 +884,11 @@ ns-uri-char:
   (any):
   - (all):
     - '%'
-    - (cut): ESC_URI
-    - ns-hex-digit
-    - ns-hex-digit
+    - (commit):
+      - ESC_URI
+      - (all):
+        - ns-hex-digit
+        - ns-hex-digit
   - ns-word-char
   - '#'
   - ';'
@@ -1148,10 +1150,11 @@ ns-esc-paragraph-separator:
 ns-esc-8-bit:
   (all):
   - (token): [ indicator, 'x' ]
-  - (cut): ESC_X2
-  - (token):
-    - meta
-    - ({2}): ns-hex-digit
+  - (commit):
+    - ESC_X2
+    - (token):
+      - meta
+      - ({2}): ns-hex-digit
 
 
 
@@ -1165,10 +1168,11 @@ ns-esc-8-bit:
 ns-esc-16-bit:
   (all):
   - (token): [ indicator, 'u' ]
-  - (cut): ESC_U4
-  - (token):
-    - meta
-    - ({4}): ns-hex-digit
+  - (commit):
+    - ESC_U4
+    - (token):
+      - meta
+      - ({4}): ns-hex-digit
 
 
 
@@ -1182,10 +1186,11 @@ ns-esc-16-bit:
 ns-esc-32-bit:
   (all):
   - (token): [ indicator, 'U' ]
-  - (cut): ESC_U8
-  - (token):
-    - meta
-    - ({8}): ns-hex-digit
+  - (commit):
+    - ESC_U8
+    - (token):
+      - meta
+      - ({8}): ns-hex-digit
 
 
 
@@ -1209,28 +1214,30 @@ c-ns-esc-char:
   - end-escape
   - (all):
     - c-escape
-    - (cut): INVALID_ESCAPE
-    - (any):
-      - ns-esc-null
-      - ns-esc-bell
-      - ns-esc-backspace
-      - ns-esc-horizontal-tab
-      - ns-esc-line-feed
-      - ns-esc-vertical-tab
-      - ns-esc-form-feed
-      - ns-esc-carriage-return
-      - ns-esc-escape
-      - ns-esc-space
-      - ns-esc-double-quote
-      - ns-esc-slash
-      - ns-esc-backslash
-      - ns-esc-next-line
-      - ns-esc-non-breaking-space
-      - ns-esc-line-separator
-      - ns-esc-paragraph-separator
-      - ns-esc-8-bit
-      - ns-esc-16-bit
-      - ns-esc-32-bit
+    - (!==): b-char
+    - (commit):
+      - INVALID_ESCAPE
+      - (any):
+        - ns-esc-null
+        - ns-esc-bell
+        - ns-esc-backspace
+        - ns-esc-horizontal-tab
+        - ns-esc-line-feed
+        - ns-esc-vertical-tab
+        - ns-esc-form-feed
+        - ns-esc-carriage-return
+        - ns-esc-escape
+        - ns-esc-space
+        - ns-esc-double-quote
+        - ns-esc-slash
+        - ns-esc-backslash
+        - ns-esc-next-line
+        - ns-esc-non-breaking-space
+        - ns-esc-line-separator
+        - ns-esc-paragraph-separator
+        - ns-esc-8-bit
+        - ns-esc-16-bit
+        - ns-esc-32-bit
 
 
 
@@ -1605,11 +1612,12 @@ l-directive:
     - end-directive
     - (all):
       - c-directive
-      - (cut): MISSING_DIRECTIVE
-      - (any):
-        - ns-yaml-directive
-        - ns-tag-directive
-        - ns-reserved-directive
+      - (commit):
+        - MISSING_DIRECTIVE
+        - (any):
+          - ns-yaml-directive
+          - ns-tag-directive
+          - ns-reserved-directive
   - s-l-comments
 
 
@@ -1673,8 +1681,8 @@ ns-yaml-directive:
     - 'A'
     - 'M'
     - 'L'
-    - (cut): YAML_DIRECTIVE
     - s-separate-in-line
+    - (cut): YAML_DIRECTIVE
     - ns-yaml-version
 
 
@@ -1713,8 +1721,8 @@ ns-tag-directive:
     - 'T'
     - 'A'
     - 'G'
-    - (cut): TAG_DIRECTIVE
     - s-separate-in-line
+    - (cut): TAG_DIRECTIVE
     - c-tag-handle
     - s-separate-in-line
     - ns-tag-prefix
@@ -1940,8 +1948,9 @@ c-ns-anchor-property:
   - end-anchor
   - (all):
     - c-anchor
-    - (cut): MISSING_ANCHOR_NAME
-    - ns-anchor-name
+    - (commit):
+      - MISSING_ANCHOR_NAME
+      - ns-anchor-name
 
 
 
@@ -1963,9 +1972,11 @@ ns-anchor-char:
 # Emits: meta
 
 ns-anchor-name:
-  (token):
-  - meta
-  - (+++): ns-anchor-char
+  (all):
+  - (token):
+    - meta
+    - (+++): ns-anchor-char
+  - (!==): ns-anchor-char
 
 
 
@@ -1984,8 +1995,9 @@ c-ns-alias-node:
   - end-alias
   - (all):
     - c-alias
-    - (cut): MISSING_ALIAS_NAME
-    - ns-anchor-name
+    - (commit):
+      - MISSING_ALIAS_NAME
+      - ns-anchor-name
 
 
 
@@ -3032,8 +3044,9 @@ c-b-block-header:
     - (all):
       - c-chomping-indicator: t
       - c-indentation-indicator: m
-  - (cut): BLOCK_HEADER
-  - s-b-comment
+  - (commit):
+    - BLOCK_HEADER
+    - s-b-comment
 
 
 
@@ -3088,16 +3101,22 @@ c-chomping-indicator:
 # Where the scalar ends depends on how it is chomped. Stripped, the final break is not
 # content and the scalar ended before it. Clipped, the break is a line feed the scalar
 # keeps, so the scalar ends after it. Kept, more breaks follow, and the scalar does not
-# end here at all — l-keep-empty ends it once they are consumed.
+# end here at all — l-keep-empty ends it once they are consumed. At end-of-input the
+# clipped and kept alternatives still have their line feed, a zero-width one, since the
+# spec reads the end of input as a final line break.
 #
-# Emits: end-scalar
+# Emits: line-feed, end-scalar
 
 b-chomped-last:
   (...): t
   (case):
     var: t
-    "clip": { (all): [ { (any): [ b-as-line-feed, <end-of-stream> ] }, { (emit): end-scalar } ] }
-    "keep": { (any): [ b-as-line-feed, <end-of-stream> ] }
+    "clip":
+      (all):
+      - (any): [ b-as-line-feed, { (all): [ <end-of-stream>, { (emit): line-feed } ] } ]
+      - (emit): end-scalar
+    "keep":
+      (any): [ b-as-line-feed, { (all): [ <end-of-stream>, { (emit): line-feed } ] } ]
     "strip": { (all): [ { (emit): end-scalar }, { (any): [ b-non-content, <end-of-stream> ] } ] }
 
 
@@ -3242,8 +3261,9 @@ s-indent-floor:
   (...): [ n, f ]
   (all):
   - s-indent: n
-  - (cut): BLOCK_SCALAR_UNDER_INDENT
-  - (<=): [ f, n ]
+  - (commit):
+    - BLOCK_SCALAR_UNDER_INDENT
+    - (<=): [ f, n ]
 
 
 :221: l-nb-literal-first
@@ -3552,8 +3572,9 @@ c-l-block-seq-entry:
   (all):
   - c-sequence-entry
   - (!==): ns-char
-  - (cut): MISSING_ENTRY
-  - s-l+block-indented: [ n, "block-in" ]
+  - (commit):
+    - MISSING_ENTRY
+    - s-l+block-indented: [ n, "block-in" ]
 
 
 
@@ -3679,8 +3700,10 @@ c-l-block-map-explicit-key:
   (...): n
   (all):
   - c-mapping-key
-  - (cut): MISSING_KEY
-  - s-l+block-indented: [ n, "block-out" ]
+  - (!==): ns-char
+  - (commit):
+    - MISSING_KEY
+    - s-l+block-indented: [ n, "block-out" ]
 
 
 
@@ -3737,12 +3760,14 @@ c-l-block-map-implicit-value:
   (...): n
   (all):
   - c-mapping-value
-  - (cut): MISSING_VALUE
-  - (any):
-    - s-l+block-node: [ n, "block-out" ]
-    - (all):
-      - e-node
-      - s-l-comments
+  - (!==): ns-char
+  - (commit):
+    - MISSING_VALUE
+    - (any):
+      - s-l+block-node: [ n, "block-out" ]
+      - (all):
+        - e-node
+        - s-l-comments
 
 
 
@@ -3934,8 +3959,9 @@ c-document-end:
 l-document-suffix:
   (all):
   - c-document-end
-  - (cut): DOCUMENT_END
-  - s-l-comments
+  - (commit):
+    - DOCUMENT_END
+    - s-l-comments
 
 
 

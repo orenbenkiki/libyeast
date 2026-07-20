@@ -1,6 +1,4 @@
 # B: 0, C: 0, L: 1, c: 0
-I:
-# B: 1, C: 1, L: 1, c: 1
-!A mapping value is required after ':'
-# B: 1, C: 1, L: 1, c: 1
--"a"
+!
+# B: 0, C: 0, L: 1, c: 0
+-:"a"

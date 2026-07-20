@@ -5,21 +5,9 @@ N
 # B: 0, C: 0, L: 1, c: 0
 M
 # B: 0, C: 0, L: 1, c: 0
-X
-# B: 0, C: 0, L: 1, c: 0
-N
-# B: 0, C: 0, L: 1, c: 0
-M
-# B: 0, C: 0, L: 1, c: 0
 I{
 # B: 1, C: 1, L: 1, c: 1
 !Unterminated flow mapping
-# B: 1, C: 1, L: 1, c: 1
-m
-# B: 1, C: 1, L: 1, c: 1
-n
-# B: 1, C: 1, L: 1, c: 1
-x
 # B: 1, C: 1, L: 1, c: 1
 m
 # B: 1, C: 1, L: 1, c: 1
@@ -35,13 +23,7 @@ O
 # B: 4, C: 4, L: 2, c: 0
 K---
 # B: 7, C: 7, L: 2, c: 3
-N
-# B: 7, C: 7, L: 2, c: 3
 b\x0a
-# B: 8, C: 8, L: 3, c: 0
-M
-# B: 8, C: 8, L: 3, c: 0
-X
 # B: 8, C: 8, L: 3, c: 0
 N
 # B: 8, C: 8, L: 3, c: 0
@@ -50,12 +32,6 @@ M
 I{
 # B: 9, C: 9, L: 3, c: 1
 !Unterminated flow mapping
-# B: 9, C: 9, L: 3, c: 1
-m
-# B: 9, C: 9, L: 3, c: 1
-n
-# B: 9, C: 9, L: 3, c: 1
-x
 # B: 9, C: 9, L: 3, c: 1
 m
 # B: 9, C: 9, L: 3, c: 1
@@ -77,21 +53,9 @@ N
 # B: 16, C: 16, L: 5, c: 0
 M
 # B: 16, C: 16, L: 5, c: 0
-X
-# B: 16, C: 16, L: 5, c: 0
-N
-# B: 16, C: 16, L: 5, c: 0
-M
-# B: 16, C: 16, L: 5, c: 0
 I{
 # B: 17, C: 17, L: 5, c: 1
 !Unterminated flow mapping
-# B: 17, C: 17, L: 5, c: 1
-m
-# B: 17, C: 17, L: 5, c: 1
-n
-# B: 17, C: 17, L: 5, c: 1
-x
 # B: 17, C: 17, L: 5, c: 1
 m
 # B: 17, C: 17, L: 5, c: 1

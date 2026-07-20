@@ -31,10 +31,10 @@ returns a "not implemented" error — so what exists is the project framework an
   where a full disk is first seen.
 - **Wire format** — `src/wire.c` and `src/wire.h`: the yeast wire format, one character and its escaped text per token,
   which the writer arm writes and a yeast-wire token source reads back with `ys_read_token` — together with the table
-  that says which character each code is. That format is what a token stream is compared against the reference parser
-  in, and what lets one be piped between tools; it is complete and works. The reader treats the wire as untrusted: a
-  malformed wire is a `YS_CODE_ERROR` token, bad data like a bad document, with a located message; a host failure while
-  reading it — out of memory, or a byte source that fails — is `ys_read_token`'s return value, not a token.
+  that says which character each code is. That format is what a token stream is compared against YamlReference in, and
+  what lets one be piped between tools; it is complete and works. The reader treats the wire as untrusted: a malformed
+  wire is a `YS_CODE_ERROR` token, bad data like a bad document, with a located message; a host failure while reading it
+  — out of memory, or a byte source that fails — is `ys_read_token`'s return value, not a token.
 - **Memory** — `src/memory.h` and `src/memory.c`: allocation through a `ys_allocator`, and `ys_memory` — what an object
   may allocate and what it has. Everything that grows goes through it, so `ys_options::max_bytes` has exactly one door,
   and the parser and the wire-format reader are held to their cap by the same code rather than by two copies of it.
@@ -102,12 +102,12 @@ returns a "not implemented" error — so what exists is the project framework an
   `check_grammar_docs.py`, `check_messages.py`, `check_decoder.py`, `check_spec_tests.py`, `check_wire.py`,
   `check_emitter.py`, `check_interpreter.py` and `check_grammar_coverage.py`, which report through `gate.py`. This is
   where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
-- **Reference** — `third_party/yamlreference/`: the Haskell YAML reference parser, vendored to be read. Its grammar
-  carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code` comes
-  from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of it is
-  built. Its `tests/` fixtures were the source libyeast's own conformance suite (`tests/spec/`) was built from once, and
-  are kept only to be read against — see the differences from the reference below, and the reference-interpreter phase
-  in `PLAN.md`.
+- **YamlReference** — `third_party/yamlreference/`: the Haskell YAML 1.2 reference parser, vendored to be read. Its
+  grammar carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code`
+  comes from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of
+  it is built. Its `tests/` fixtures were the source libyeast's own conformance suite (`tests/spec/`) was built from
+  once, and are kept only to be read against — see the differences from YamlReference below, and the
+  reference-interpreter phase in `PLAN.md`.
 - **Build** — `CMakeLists.txt` is the source of truth for building, testing, installing, and the version. It defines the
   shared + static libraries (hardened, symbol-visibility controlled), the sanitized Debug and hardened Release configs,
   and the coverage option. No list of files is kept by hand, here or in the `Makefile`: the sources and the tests are
@@ -132,26 +132,26 @@ returns a "not implemented" error — so what exists is the project framework an
 - **Docs** — `Doxyfile` drives the API docs from the header comments, completeness-gated: an undocumented public symbol
   or a missing `@param`/`@return` fails the build.
 
-## Differences from the reference parser
+## Differences from YamlReference
 
-libyeast's goal is a fast, correct YAML 1.2 parser for YAMLStar and its kin — not a byte-for-byte replica of the Haskell
-reference. Where the token stream a caller sees differs from the reference's, it is a decision, and every one is here
-with its reason. (Deviations from the _official grammar_ are a separate matter, declared with their reasons in
-`generator/check_vendor_spec.py`.) The conformance suite is migrated with these differences applied, so the reference's
+libyeast's goal is a fast, correct YAML 1.2 parser for YAMLStar and its kin — not a byte-for-byte replica of
+YamlReference. Where the token stream a caller sees differs from YamlReference's, it is a decision, and every one is
+here with its reason. (Deviations from the _official grammar_ are a separate matter, declared with their reasons in
+`generator/check_vendor_spec.py`.) The conformance suite is migrated with these differences applied, so YamlReference's
 fixtures go on testing libyeast rather than a parser it is not.
 
-- **UTF-8 only.** libyeast reads UTF-8 and nothing else; the reference detects and reads UTF-16 and UTF-32 too. The
+- **UTF-8 only.** libyeast reads UTF-8 and nothing else; YamlReference detects and reads UTF-16 and UTF-32 too. The
   decoder classifies UTF-8 bytes straight into a key without ever assembling a codepoint, and tokens are spans of those
   bytes — a design the other encodings would fight (a second classifier, codepoint assembly to serialize a token,
   source-byte marks). YAML 1.2 asks a conformant parser for UTF-16, and UTF-32 where it accepts JSON; libyeast forgoes
-  them for now. Non-UTF-8 inputs are simply left out of the suite.
+  them for now. Non-UTF-8 inputs are simply left out of the fixtures.
 - **A byte-order mark is the character, not the encoding.** libyeast's `bom` token holds the mark it matched (`U+FEFF`);
-  the reference's holds the name of the encoding it detected (`UTF-8`). Detecting no encoding, libyeast has no name to
+  YamlReference's holds the name of the encoding it detected (`UTF-8`). Detecting no encoding, libyeast has no name to
   give.
 - **No token spans a line.** libyeast cuts every run at a line break: a skipped line comes back as two `unparsed`
-  tokens, one for its content and one for its break, where the reference can hand back a single token across the break.
+  tokens, one for its content and one for its break, where YamlReference can hand back a single token across the break.
   A token that spanned a line would make a stream parser's output depend on how much of the input its buffer held.
-- **After an error, libyeast stops parsing the document; the reference recovers and continues.** On a malformed document
+- **After an error, libyeast stops parsing the document; YamlReference recovers and continues.** On a malformed document
   libyeast ends the parse and, by default, returns the rest of the input as `unparsed` tokens — or, with
   `YS_RESUME_DOCUMENT`, skips to the next document and parses that, the skipped lines coming back unparsed. It restarts
   *at* the `---` or `...`, which the resumed document then parses as its own: that marker is the only thing the recovery
@@ -162,8 +162,8 @@ fixtures go on testing libyeast rather than a parser it is not.
   three are one hierarchy — nothing, then a document marker, then a marker or a less-indented line — so each gives up
   less of the input than the one before it, and where nothing encloses the failure the indent policy *is* the document
   one. The reference instead keeps tokenizing past the error, recovering into structured tokens of its own. So the two
-  streams agree only up to the first error, and that is where the suite stops comparing. The message differs too:
-  libyeast's names the production it was in and what it expected, not the reference's wording, and what carries the
+  streams agree only up to the first error, and that is where the fixtures stop comparing. The message differs too:
+  libyeast's names the production it was in and what it expected, not YamlReference's wording, and what carries the
   meaning is the position — the first `unparsed` token behind the error begins at the byte that failed.
 - **An error closes what it opened.** A `begin-` marker gets its `end-` on every path, the errored ones included: the
   abandoned parse's open markers are closed at the error, after the error token and before the first `unparsed` — all
@@ -178,14 +178,14 @@ fixtures go on testing libyeast rather than a parser it is not.
 Some further differences never reach the token stream a caller sees, so they are not in the list above — they are helper
 productions that diverge only when run alone, and agree once composed into a document:
 
-- libyeast consumes and emits the indentation the reference peeks at, so it needs no cross-line lookahead.
+- libyeast consumes and emits the indentation YamlReference peeks at, so it needs no cross-line lookahead.
 - It flattens the character-class helpers it uses only inside a `Diff`, so a helper run _alone_ emits `unparsed` where
-  the reference emits its tokens — invisible in a real document, since the helper only ever appears in a subtraction.
-- It follows the spec's factoring of the plain-scalar `:`/`#` exclusion, and the reference does not. The spec keeps
+  YamlReference emits its tokens — invisible in a real document, since the helper only ever appears in a subtraction.
+- It follows the spec's factoring of the plain-scalar `:`/`#` exclusion, and YamlReference does not. The spec keeps
   `ns-plain-safe-out`/`-in` (rules 128/129) as `ns-char` (and `ns-char - c-flow-indicator`) and excludes `:`/`#` in
-  `ns-plain-char` (rule 130), with its two exceptions; the reference instead subtracts `:`/`#` up in 128/129 and makes
-  130 just `ns-plain-safe`. So run alone, `ns-plain-safe-out(':')` matches for libyeast and errors for the reference —
-  but a full plain scalar accepts the same characters either way (verified against the reference's own fixtures).
+  `ns-plain-char` (rule 130), with its two exceptions; YamlReference instead subtracts `:`/`#` up in 128/129 and makes
+  130 just `ns-plain-safe`. So run alone, `ns-plain-safe-out(':')` matches for libyeast and errors for YamlReference —
+  but a full plain scalar accepts the same characters either way (verified against YamlReference's own fixtures).
 
 ## Memory safety
 

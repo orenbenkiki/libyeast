@@ -46,6 +46,31 @@ DEVIATIONS = {
         "applies the same §8.1.1.1 leading-empty floor before the folded content that l-nb-literal-first does before "
         "the literal content"
     ),
+    "c-l-block-map-implicit-value": (
+        "the official grammar's ':' value indicator carries no guard: it leans on greedy ns-plain, which swallows the "
+        "mid-scalar ':' of a plain a:b, so the value ':' is only ever reached with a space or break after it. A "
+        "backtracking parser can shorten the key and hand that ':' back, so libyeast guards it with "
+        "<not_followed_by_an_ns-char> — the guard the official grammar already puts on the '-' of "
+        "c-l-block-seq-entry — which prunes that path and changes no token stream"
+    ),
+    "c-l-block-map-explicit-key": (
+        "the folded twin for '?': the official grammar makes '?foo' a plain scalar through ns-plain-first and never "
+        "reaches the explicit-key '?' for it; libyeast guards that '?' with the same <not_followed_by_an_ns-char> so a "
+        "backtracking parser does not reach it for a plain scalar that begins with '?'"
+    ),
+    "c-ns-esc-char": (
+        "a '\\' at the end of a line is an escaped break — a line continuation the official grammar reaches through "
+        "s-double-escaped, not this rule, whose escape alternation carries no break and so simply fails to match it. "
+        "libyeast's INVALID_ESCAPE would fire on that failure, so it guards the escape with <not_followed_by_a_break>, "
+        "which hands the '\\<break>' back to s-double-escaped and changes no token stream"
+    ),
+    "ns-anchor-name": (
+        "':' is an ns-anchor-char — it is not a c-flow-indicator — so a name greedily takes it: '*a:' is the "
+        "alias 'a:'. The official grammar's ns-anchor-char+ is possessive under the reference's PEG, which never "
+        "re-enters it to hand a trailing ':' back; a backtracking parser can, shortening the name to 'a' so the "
+        "':' opens a mapping. libyeast guards the name with <not_followed_by_an_ns-anchor-char> so it commits to "
+        "its greedy match, and changes no token stream"
+    ),
 }
 
 

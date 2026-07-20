@@ -88,6 +88,9 @@ ANNOTATED := grammar/yeast-spec-1.2.yaml
 MESSAGES := grammar/messages.yaml
 GEN_SRC    := $(wildcard generator/*.py)
 FIXTURES   := $(wildcard tests/spec/*.input tests/spec/*.output)
+STAR_DATA  := $(wildcard third_party/yaml-test-suite/*/in.yaml third_party/yaml-test-suite/*/*/in.yaml \
+                         third_party/yaml-test-suite/*/test.event third_party/yaml-test-suite/*/*/test.event \
+                         third_party/yaml-test-suite/*/error third_party/yaml-test-suite/*/*/error)
 
 # Tool dependencies, verified by check-build-deps / check-dev-deps. Python is not a C build dep — the build uses the
 # committed generated files — so it rides with the dev tools, for the generator that verify and regen run.
@@ -96,9 +99,9 @@ DEV_DEP_TOOLS   := python3 python3:yaml $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK
                    $(GERSEMI) $(SHFMT) doxygen $(firstword $(GCOV_EXE))
 
 .PHONY: all package install test test-debug test-release regen \
-        verify verify-roundtrip verify-references verify-spec verify-markers verify-emits verify-decoder \
-        verify-wire verify-emitter verify-messages verify-fixtures verify-grammar verify-grammar-base \
-        verify-grammar-base-coverage \
+        verify verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
+        verify-emitter verify-fixtures verify-grammar verify-star verify-wire verify-decoder \
+        verify-grammar-base verify-grammar-base-coverage \
         vet vet-format vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh \
         vet-comments vet-lint vet-version vet-packaging vet-$(TODO_X) \
         gh-pages gh-pages-docs gh-pages-coverage \
@@ -282,6 +285,14 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	python3 generator/check_spec_tests.py
 	@touch $@
 
+# The community YAML Test Suite, folded to events — YAMLStar is the reference libyeast follows, so this is the star net:
+# an independent one, written by other hands from the same spec, so it catches a grammar bug libyeast's own fixtures —
+# migrated from one reference — would share. Every case must fold to its events or reject where it must, save the
+# divergences declared with their reasons, where the spec and the suite disagree and the spec wins.
+.stamps/verify-star: $(STAR_DATA) $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_star.py
+	@touch $@
+
 # Wire code map: wire.py's character-per-code table must match src/wire.c's, so the interpreter cannot write a code the
 # C parser would write differently.
 .stamps/verify-wire: src/wire.c $(GEN_SRC) | .stamps
@@ -363,13 +374,17 @@ verify-wire: .stamps/verify-wire
 verify-messages: .stamps/verify-messages
 verify-emitter: .stamps/verify-emitter
 verify-fixtures: .stamps/verify-fixtures
+verify-star: .stamps/verify-star
 verify-grammar-base: .stamps/verify-grammar-base
 verify-grammar-base-coverage: .stamps/verify-grammar-base-coverage
 # Every grammar reproduces the fixtures and is wholly exercised by them, bottom-up: the base grammar now, the structural
 # grammar once it exists.
 verify-grammar: verify-grammar-base verify-grammar-base-coverage
-verify: verify-roundtrip verify-references verify-spec verify-markers verify-emits verify-decoder \
-        verify-wire verify-emitter verify-messages verify-fixtures verify-grammar
+# In dependency order: the grammar as itself, then its compatibility with the official spec, then the interpreter
+# machinery, then the fixtures (intact, then reproduced), then the independent star suite folded through the
+# interpreter, and last the generator-to-C consistency the eventual C parser rests on.
+verify: verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
+        verify-emitter verify-fixtures verify-grammar verify-star verify-wire verify-decoder
 
 # Static code quality.
 vet-format-c: .stamps/vet-format-c

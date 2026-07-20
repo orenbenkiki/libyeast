@@ -246,7 +246,8 @@ def _detect_indent(emitter):
     """The indentation of the first content line at or after the position, peeked without consuming.
 
     A block collection is already at the start of that line; a block scalar is mid-line, at the end of its header, so
-    the header line and any empty lines are skipped first.
+    the header line and any empty lines are skipped first. Where no content line follows — a block scalar of empty lines
+    alone — the level is the widest of those empty lines instead, the spec's §8.1.1.1 fallback.
     """
     chars = emitter.chars
     position = emitter.position
@@ -255,16 +256,18 @@ def _detect_indent(emitter):
         while position < len(chars) and chars[position] not in breaks:
             position += 1
         position = _skip_break(chars, position)
+    widest_empty = 0
     while position < len(chars):
         spaces = 0
         while position + spaces < len(chars) and chars[position + spaces] == 0x20:
             spaces += 1
         after = position + spaces
         if after >= len(chars) or chars[after] in breaks:
+            widest_empty = max(widest_empty, spaces)
             position = _skip_break(chars, after)  # an empty line — skip it
             continue
         return spaces
-    return 0
+    return widest_empty
 
 
 def evaluate(expression, emitter, grammar):
@@ -696,6 +699,8 @@ def match(node, emitter, grammar, k):
             return True
         if reached[0]:
             return False
+        if emitter.env.get("c") in ("block-key", "flow-key"):
+            return False  # an implicit key being speculatively tried: one that will not parse is simply not this key
         raise CommitFailure(node.message)
     if isinstance(node, ir.Error):
         checkpoint = emitter.checkpoint()
@@ -738,6 +743,8 @@ def run(grammar, production, data, parameters=None):
     emitter = Emitter(data)
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in (parameters or {}).items()}
     resume = emitter.env.get("r", "n")
+    if "r" in grammar[production].params:
+        emitter.env.setdefault("r", resume)  # a production run without a resume policy takes the zeroed one, no-resume
     entry = ir.Ref(production, tuple(ir.Lit(emitter.env.get(name)) for name in grammar[production].params))
 
     # A cut says where the unwind lands and nothing else; what to do about the input from there is `l-recover`'s, which

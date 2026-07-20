@@ -110,14 +110,14 @@ All notable changes to this project are documented here. The format follows
   running out of memory or a reader failing, is `ys_read_token`'s return value, a `ys_status`, not a token: it ends the
   source for good, the input to be read again by a new source with a larger cap. What the parser does with the input
   after a malformed document is `ys_options.resume`: by default the error ends the parse and the rest of the input comes
-  back as `YS_CODE_UNPARSED` tokens, which is what the reference parser does, so the two token streams stay comparable
-  on every input, valid or not. `YS_RESUME_DOCUMENT` instead carries on at the next document, so that one malformed
-  document in a stream does not cost the caller the others; `YS_RESUME_INDENT` carries on at the next line no more
-  indented than the entry that failed, inside the document, so that a malformed entry does not cost the caller the rest
-  of its container either. Each gives up less of the input than the one before it, and where a policy has nothing to
-  resume at it is the one before it — at the price that only the input before the first error stays comparable with the
-  reference. A skipped line is two tokens, its content a `YS_CODE_UNPARSED` and its break a `YS_CODE_UNPARSED_BREAK` —
-  the break its own code, since it is not a structural break the parser found.
+  back as `YS_CODE_UNPARSED` tokens, which is what YamlReference does, so the two token streams stay comparable on every
+  input, valid or not. `YS_RESUME_DOCUMENT` instead carries on at the next document, so that one malformed document in a
+  stream does not cost the caller the others; `YS_RESUME_INDENT` carries on at the next line no more indented than the
+  entry that failed, inside the document, so that a malformed entry does not cost the caller the rest of its container
+  either. Each gives up less of the input than the one before it, and where a policy has nothing to resume at it is the
+  one before it — at the price that only the input before the first error stays comparable with YamlReference. A skipped
+  line is two tokens, its content a `YS_CODE_UNPARSED` and its break a `YS_CODE_UNPARSED_BREAK` — the break its own
+  code, since it is not a structural break the parser found.
 
 - Parser state: the window over the input, the stack of productions the parser is inside, the queue of tokens it has
   built but not handed back, and the state it is in — the whole of it in one struct, none of it in the C call stack,
@@ -126,26 +126,26 @@ All notable changes to this project are documented here. The format follows
   what they were, and the stack's frames carry the grammar's one runtime parameter, `n`. The automaton that drives them
   is not generated yet, so `ys_read_token` still returns a "not implemented" error.
 
-- A conformance suite, `tests/spec/`. It was built once from the reference parser's vendored `tests/` — the fixtures
-  that align with libyeast's grammar, each expected output turned into what libyeast emits rather than what the
-  reference does: a production libyeast flattens to a character class becomes plain unparsed, no token spans a line, a
-  byte-order mark is the character it matched and not the reference's encoding name, an error keeps its position but not
-  its wording, the reference's isolated-run commit artifacts are dropped, and where the reference itself departs from
-  the spec (the plain-scalar `:`/`#` factoring) libyeast follows the spec. Fixtures in encodings libyeast does not read,
-  or for the reference's own internal productions, are left out. From there the suite is libyeast's to own — the
-  one-time build is not kept; `generator/check_spec_tests.py` keeps the suite intact, every input paired, every name a
-  production the grammar still has, every output a token stream whose marks chain and whose markers balance — a fixture
-  of the root being a whole parse, which must balance exactly, where one of a rule run by itself may close what its
-  caller would have opened but may still not leave a marker open. That last is what `check_markers` cannot reach: it
-  settles the grammar's clean paths and says nothing about what an error leaves behind, which is where both of the
-  imbalances found so far have been. A fixture whose name calls its input invalid must have one: the production either
-  refuses it or stops short of its end, never matching the whole of it cleanly — the name being a claim, and an
-  unchecked claim being how `c-printable.invalid` came to hold a character `c-printable` accepts. The bytes are held
-  verbatim, CR and CRLF included, out of line-ending normalization.
+- A conformance suite, `tests/spec/`. It was built once from YamlReference's vendored `tests/` — the fixtures that align
+  with libyeast's grammar, each expected output turned into what libyeast emits rather than what YamlReference does: a
+  production libyeast flattens to a character class becomes plain unparsed, no token spans a line, a byte-order mark is
+  the character it matched and not YamlReference's encoding name, an error keeps its position but not its wording,
+  YamlReference's isolated-run commit artifacts are dropped, and where YamlReference itself departs from the spec (the
+  plain-scalar `:`/`#` factoring) libyeast follows the spec. Fixtures in encodings libyeast does not read, or for
+  YamlReference's own internal productions, are left out. From there the fixtures are libyeast's to own — the one-time
+  build is not kept; `generator/check_spec_tests.py` keeps them intact, every input paired, every name a production the
+  grammar still has, every output a token stream whose marks chain and whose markers balance — a fixture of the root
+  being a whole parse, which must balance exactly, where one of a rule run by itself may close what its caller would
+  have opened but may still not leave a marker open. That last is what `check_markers` cannot reach: it settles the
+  grammar's clean paths and says nothing about what an error leaves behind, which is where both of the imbalances found
+  so far have been. A fixture whose name calls its input invalid must have one: the production either refuses it or
+  stops short of its end, never matching the whole of it cleanly — the name being a claim, and an unchecked claim being
+  how `c-printable.invalid` came to hold a character `c-printable` accepts. The bytes are held verbatim, CR and CRLF
+  included, out of line-ending normalization.
 
 - A reference interpreter of the grammar, `generator/interpreter.py`: a slow, obviously-correct backtracking matcher
   that runs a production against an input and emits its yeast tokens, checked fixture by fixture against the conformance
-  suite so libyeast's grammar is proved to produce the reference's tokens before any C runs. It matches every node
+  suite so libyeast's grammar is proved to produce YamlReference's tokens before any C runs. It matches every node
   family — the character-level nodes, the repetitions, the parameter machinery that threads `n`/`m`/`c`/`t`/`r`/`f` and
   detects indentation, and the assertions and lookahead, including the ongoing `(exclude)` guard that stops a plain
   scalar at a document boundary — and produces tokens from the annotation nodes, giving a run its code, bracketing a
@@ -269,14 +269,42 @@ All notable changes to this project are documented here. The format follows
   `l-yaml-stream` fails, which every part of being optional makes impossible. That a rule can never say no is worth
   knowing anyway — it is exactly what let `l-yaml-stream` swallow a whole input before `l-yeast-stream` was written to
   say so. A `(cut)` is a decision too: one that never fires is a commit point nothing shows is reachable and a message
-  nothing shows is right, so each must appear in some fixture's expected output — checked against the suite rather than
-  by watching the interpreter, which is stricter, proving the error survived to be handed back where a cut raising
+  nothing shows is right, so each must appear in some fixture's expected output — checked against the fixtures rather
+  than by watching the interpreter, which is stricter, proving the error survived to be handed back where a cut raising
   inside a lookahead would prove only that it can raise. Ten fixtures close what this found: seven cuts that had never
   fired, and `c-reserved`/`ns-tag-prefix`/`ns-global-tag-prefix`, which no input had ever made refuse.
 
   The interpreter enters the top production as a reference to it, the way every other rule is entered, rather than by
   matching its body — a rule run at the top is still a rule, and the gate that watches references could not see it
   otherwise. That is what had hidden five of these: their fixtures existed and rejected all along.
+
+- The YAML Test Suite, folded to events — the independent net, `generator/star.py`, gated by `make verify-star`.
+  Vendored under `third_party/yaml-test-suite/` and written by other hands from the same spec, it catches a grammar bug
+  libyeast's own fixtures, migrated from YamlReference, would share. libyeast is a token parser, a level below events,
+  so the check is a deterministic fold: the yeast stream's `begin-`/`end-` markers rebuild the production tree and its
+  leaf tokens fill it, projected to the events it states — `+STR`/`+DOC`/`+MAP`/`+SEQ`/`=VAL`/`=ALI` — with node and
+  pair brackets and all presentation dropped, a scalar's value read off the codes the parser settled (a `line-fold` a
+  space, a `line-feed` a newline, an escape resolved) with nothing stripped, since the tokens already separate content
+  from whitespace, and a tag resolved through the document's `%TAG` directives over the default `!`/`!!` with its `%XX`
+  URI escapes decoded. A valid case must fold to its `test.event`; an error case must come back a rejection — the fold
+  reporting even the two resolution errors a token stream cannot show, a named tag handle no `%TAG` defines and a
+  repeated `%YAML`. All 402 cases hold green-or-declared against the HTML spec, the source of truth. The one case
+  libyeast declines to match is `JEF9/02`: an empty kept block scalar whose input ends in no line break, which YAMLStar
+  loads by first appending the break, so the YAML Test Suite expects the line feed that break yields. The spec appends
+  nothing — end-of-input is a line break only in `b-chomped-last`, which an all-empty scalar never reaches — so libyeast
+  folds it to the empty scalar and declares the divergence from the suite.
+
+  The net earned its keep, five corrections across the grammar and the interpreter that libyeast's own fixtures had
+  agreed with. A quoted scalar or flow collection at a document's top or as a block-sequence entry is first tried as a
+  block-mapping key; its `UNTERMINATED_*` cut committed at the opening, so one that closed cleanly but found no `:`
+  fired the cut rather than backtracking to the scalar it was — a whole `"hello"` document became an error — and the
+  four flow cuts are scoped to their item now, the error only where the item never closes. `:` is an `ns-anchor-char`,
+  so `*a:` is the alias `a:`; the backtracking interpreter shortened the name to `a` to open a mapping, and a
+  `<not_followed_by_an_ns-anchor-char>` guard now holds it to its greedy match, as YamlReference and YAMLStar do. A
+  block scalar's last content line at end-of-input keeps its break, the zero-width line feed `b-chomped-last` emits
+  where the spec reads end-of-input as a line break; an all-empty block scalar takes its content indentation from the
+  widest of its empty lines, the spec's §8.1.1.1 fallback; and the root the parser runs, given no resume policy, takes
+  the zeroed one, so trailing content it cannot parse recovers rather than the interpreter asserting the root is total.
 
 ### Changed
 
@@ -329,8 +357,8 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 
 - The yeast wire format dropped an error's message. It took a token's text to be the input the token spans, and an error
-  spans none — so a malformed document wrote `!` and nothing else, where the reference writes `!` and the message. The
-  wire exists to compare token streams against the reference, and an invalid document is exactly where two parsers
+  spans none — so a malformed document wrote `!` and nothing else, where YamlReference writes `!` and the message. The
+  wire exists to compare token streams against YamlReference, and an invalid document is exactly where two parsers
   differ, so the comparison was broken precisely where it was worth the most.
 
 - The wire reader handed out a token text that was not NUL-terminated, and `ys_write_token` took an error's length with
@@ -368,11 +396,11 @@ All notable changes to this project are documented here. The format follows
 - The `FILE *` writer adapter is tested on Windows, where it had never run: its test was portable but sat behind the
   guard that hides the file-descriptor ones, and behind that guard a second copy of the guard.
 
-- The reference parser does not resume after an error, and libyeast had been built to match a reading of it that said it
-  did: it emits the error token, hands back the input behind it as unparsed, and stops. So resuming at the next document
-  was not fidelity but a departure, and the one thing it was adopted to protect — the token-for-token comparison against
-  the reference — is exactly what it broke. Not resuming is now the default, and resuming is an option the caller asks
-  for, knowing what it costs.
+- YamlReference does not resume after an error, and libyeast had been built to match a reading of YamlReference that
+  said it did: it emits the error token, hands back the input behind it as unparsed, and stops. So resuming at the next
+  document was not fidelity but a departure, and the one thing it was adopted to protect — the token-for-token
+  comparison against YamlReference — is exactly what it broke. Not resuming is now the default, and resuming is an
+  option the caller asks for, knowing what it costs.
 
 - An error's message is a static string, so its lifetime is no longer an exception to the rule every other token's text
   follows. It cannot be, since the message names the production the parser was inside and what it expected there, both

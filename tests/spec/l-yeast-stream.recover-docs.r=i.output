@@ -5,12 +5,6 @@ N
 # B: 0, C: 0, L: 1, c: 0
 M
 # B: 0, C: 0, L: 1, c: 0
-X
-# B: 0, C: 0, L: 1, c: 0
-N
-# B: 0, C: 0, L: 1, c: 0
-M
-# B: 0, C: 0, L: 1, c: 0
 I{
 # B: 1, C: 1, L: 1, c: 1
 !Unterminated flow mapping
@@ -19,17 +13,11 @@ m
 # B: 1, C: 1, L: 1, c: 1
 n
 # B: 1, C: 1, L: 1, c: 1
-x
+o
 # B: 1, C: 1, L: 1, c: 1
 - oops
 # B: 6, C: 6, L: 1, c: 6
 .\x0a
-# B: 7, C: 7, L: 2, c: 0
-m
-# B: 7, C: 7, L: 2, c: 0
-n
-# B: 7, C: 7, L: 2, c: 0
-o
 # B: 7, C: 7, L: 2, c: 0
 O
 # B: 7, C: 7, L: 2, c: 0
