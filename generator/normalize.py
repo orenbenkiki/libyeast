@@ -201,7 +201,13 @@ def monomorphize(grammar, namer):
 
     def specialize(node, env):
         if isinstance(node, ir.Case) and node.var in ir.FINITE_PARAMS:
-            return specialize(_branch(node, env.get(node.var)), env)
+            value = env.get(node.var)
+            for branch in node.branches:
+                if branch.value == value:
+                    return specialize(branch.item, env)
+            if node.default is not None:
+                return specialize(node.default, env)
+            return ir.Alt(())  # no branch for this value: the case declines, as the interpreter does — never matches
         if isinstance(node, ir.Ref):
             passed, args = {}, []
             for parameter, argument in zip(grammar[node.name].params, node.args):
@@ -222,7 +228,8 @@ def monomorphize(grammar, namer):
     # reaching combinations the root does not, so seed each so its monomorphic copy is there for the driver to enter.
     for fixture in spec_tests.load():
         if fixture.production in grammar:
-            pending.append((fixture.production, {x: fixture.parameters.get(x) for x in relevant[fixture.production]}))
+            ambient = {x: fixture.parameters.get(x, ir.FINITE_DEFAULTS.get(x)) for x in relevant[fixture.production]}
+            pending.append((fixture.production, ambient))
     while pending:
         name, ambient = pending.pop()
         new_name = ir.specialized(name, ambient)
@@ -265,7 +272,7 @@ def matches_one_char(node, grammar, seen=frozenset()):
     if isinstance(node, ir.Diff):
         return matches_one_char(node.base, grammar, seen)
     if isinstance(node, ir.Alt):
-        return all(matches_one_char(item, grammar, seen) for item in node.items)
+        return bool(node.items) and all(matches_one_char(item, grammar, seen) for item in node.items)  # empty: no match
     if isinstance(node, ir.Case):
         return all(matches_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
     if isinstance(node, ir.Ref):

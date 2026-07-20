@@ -783,11 +783,13 @@ def run(grammar, production, data, parameters=None):
     body: a rule run at the top is still a rule, and whatever watches references — the coverage gate — must see it.
     """
     # A caller names the production polymorphically — the fixture's, the root's — and a monomorphized grammar holds only
-    # its specialized copies; resolve to the copy, its finite parameters moved into the name.
-    production, parameters = ir.entry(grammar, production, parameters or {})
+    # its specialized copies; resolve to the copy, its finite parameters moved into the name. The resume policy is read
+    # first, before that move takes it from the arguments, since recovery needs it whether it stays a parameter or not.
+    parameters = parameters or {}
+    resume = parameters.get("r", "n")
+    production, parameters = ir.entry(grammar, production, parameters)
     emitter = Emitter(data)
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in parameters.items()}
-    resume = emitter.env.get("r", "n")
     if "r" in grammar[production].params:
         emitter.env.setdefault("r", resume)  # a production run without a resume policy takes the zeroed one, no-resume
     entry = ir.Ref(production, tuple(ir.Lit(emitter.env.get(name)) for name in grammar[production].params))
@@ -818,5 +820,7 @@ def run(grammar, production, data, parameters=None):
             raise AssertionError(f"recovery at position {failed_at} consumed nothing: the parse cannot go on")
         failed_at = emitter.position
         # The parse has unwound past every rule that might have answered for it, so it is at the stream's own level and
-        # there is no indentation left to bound the recovery by.
-        node = ir.Ref(RECOVER, (ir.Lit(-1), ir.Lit(resume)))
+        # there is no indentation left to bound the recovery by. The resume policy resolves the same way the entry did —
+        # into the name where the grammar is monomorphized, so recovery re-enters the right copy rather than the base.
+        recover, recover_args = ir.entry(grammar, RECOVER, {"n": -1, "r": resume})
+        node = ir.Ref(recover, tuple(ir.Lit(recover_args[parameter]) for parameter in grammar[recover].params))

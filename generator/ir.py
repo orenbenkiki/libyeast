@@ -16,34 +16,39 @@ from dataclasses import dataclass, fields, is_dataclass, replace
 # The production the whole grammar hangs off: a YAML stream, and then the end of the input.
 ROOT = "l-yeast-stream"
 
-# The parameters `normalize.monomorphize` specializes away into a production's name: the ones passed lexically, as
-# arguments, so their value is settled where a production is entered. The context `c` is one; the chomping `t` is
-# another once `lift-chomping` has made it lexical rather than a match's stashed state. `n`, `m` and `f` are integers,
-# and `r` (resume) is state, so they stay parameters. A left-out finite parameter takes its default, of which there are
-# none while `c` and `t`, always passed, are the only ones.
-FINITE_PARAMS = ("c", "t")
-FINITE_DEFAULTS = {}
+# The parameters `normalize.monomorphize` specializes away into a production's name: the ones with finitely many values,
+# passed lexically so their value is settled where a production is entered. The context `c`, the chomping `t` (once
+# `lift-chomping` has made it lexical rather than a match's stashed state), and the resume policy `r` are the three;
+# `n`, `m` and `f` are integers and stay. A left-out finite parameter takes its default — an omitted resume policy is
+# the no-resume one — which `entry` fills, so the root and a fixture that names none reach the copy that fixes it.
+FINITE_PARAMS = ("c", "t", "r")
+FINITE_DEFAULTS = {"r": "n"}
 
 
 def specialized(base, bindings):
     """The name of the monomorphic copy of `base` that fixes `bindings` — its finite parameters, in `FINITE_PARAMS`
     order, each written `_<parameter>_<value>`. A parameter left unset (its value `None`, as a context is where none is
-    established) is not in the name, so a copy that fixes nothing keeps the base name and resolves like it."""
+    established) or at its default is not in the name, so the copy that fixes only defaults keeps the base name and
+    resolves like it — which keeps the root `l-yeast-stream` and lets a fixture that names no resume policy find it."""
     return base + "".join(
-        f"_{parameter}_{bindings[parameter]}" for parameter in FINITE_PARAMS if bindings.get(parameter) is not None
+        f"_{parameter}_{bindings[parameter]}"
+        for parameter in FINITE_PARAMS
+        if bindings.get(parameter) is not None and bindings.get(parameter) != FINITE_DEFAULTS.get(parameter)
     )
 
 
 def entry(grammar, name, parameters):
     """Resolve a call of `name` with `parameters` to the production `grammar` holds: its monomorphic copy if present —
-    the finite parameters moved out of the arguments and into the name — else `name` unchanged, with its arguments
-    whole. A left-out finite default is filled, so a fixture or the root finds its copy whether or not `grammar` has
-    been monomorphized."""
+    the finite parameters it fixes in its name moved out of the arguments — else `name` unchanged, arguments whole. A
+    left-out finite default is filled, so a fixture or the root finds its copy. Only the finite parameters the resolved
+    production no longer declares are dropped: a monomorphic copy has shed them, but the base name at its default is
+    still the polymorphic production, which declares and is passed them."""
     given = {parameter: parameters[parameter] for parameter in FINITE_PARAMS if parameter in parameters}
     for bindings in (given, {**FINITE_DEFAULTS, **given}):
         resolved = specialized(name, bindings)
         if resolved in grammar:
-            return resolved, {name: value for name, value in parameters.items() if name not in FINITE_PARAMS}
+            declared = set(grammar[resolved].params)
+            return resolved, {n: v for n, v in parameters.items() if n not in FINITE_PARAMS or n in declared}
     return name, dict(parameters)
 
 

@@ -71,25 +71,27 @@ All notable changes to this project are documented here. The format follows
   sets `t`, which the block scalar reads two productions on through the env, a set that is no switch — so it inverts the
   setter into a `(case) t` matching the indicator for a given `t`, and turns the block scalar into an ordered choice
   over strip/keep/clip, each branch fixing `t` to the literal it hands the header and the content alike. `monomorphize`
-  then specializes the finite parameters — the context `c` and the now-lexical `t` — away: every production it reaches
-  copied once per combination of their values, its `(case)`/`(flip)` on them evaluated to the copy's, and the values
-  fixed into the copy's name (`ns-plain-char_c_flow-in`) rather than passed, following references from the root and
-  every fixture entry point so only combinations that occur are made; `n`, `m`, `f`, and the runtime state `r` stay. It
-  rests on a rule the grammar now keeps: a finite parameter is only ever switched on, so where an implicit key's commit
-  softens by context — a key that will not parse being simply not this key — the grammar says so in a `(case) c`, its
-  key branches the bare item and its `else` the commit, and the parser's `(commit)` is the same hard cut everywhere.
-  `(case)` grew that `else` for it. `lower-optionals` and `lower-plus` drop the `x?` and complex `x+` spellings;
-  `trim-runs` recognizes a plain or quoted scalar's in-line run `(s-white* content)*` and rewrites it as a single
-  trimmed run that keeps inner whitespace and gives back trailing; `hoist-char-runs` factors a run over an
-  almost-character-set — a URI, a tag, quoted content, its handful of escapes and guards the exception — into a
-  character-set bulk with a slow path, seeing through a `(---)` difference to reach the set beneath, and splitting a
-  trimmed run the same way so its common runs are the two-set trimming scan (`trim-run (trim* uncommon trim-run)*`, the
-  leading `trim*` re-taking what the run before it gave back, which keeps the whitespace before a mid-scalar `:`);
-  `lower-star` turns each remaining complex `x*` into a right-recursive helper. `check_normalize` holds every step
-  token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases — and ends on
-  two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is
-  matched in bulk rather than one character per loop; and every repetition runs a character set — a `TrimStar` both
-  sets, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable production.
+  then specializes all three finite parameters — the context `c`, the now-lexical chomping `t`, and the resume policy
+  `r` — away: every production it reaches copied once per combination of their values, its `(case)`/`(flip)` on them
+  evaluated to the copy's, and the values fixed into the copy's name (`ns-plain-char_c_flow-in`) rather than passed,
+  following references from the root and every fixture entry point so only combinations that occur are made; a value at
+  its default (the no-resume `r`) is not in the name, so the root stays `l-yeast-stream`, and the recovery re-enters the
+  copy the resume policy names. Only the integers `n`, `m` and `f` stay parameters. It rests on a rule the grammar now
+  keeps: a finite parameter is only ever switched on, so where an implicit key's commit softens by context — a key that
+  will not parse being simply not this key — the grammar says so in a `(case) c`, its key branches the bare item and its
+  `else` the commit, and the parser's `(commit)` is the same hard cut everywhere. `(case)` grew that `else` for it.
+  `lower-optionals` and `lower-plus` drop the `x?` and complex `x+` spellings; `trim-runs` recognizes a plain or quoted
+  scalar's in-line run `(s-white* content)*` and rewrites it as a single trimmed run that keeps inner whitespace and
+  gives back trailing; `hoist-char-runs` factors a run over an almost-character-set — a URI, a tag, quoted content, its
+  handful of escapes and guards the exception — into a character-set bulk with a slow path, seeing through a `(---)`
+  difference to reach the set beneath, and splitting a trimmed run the same way so its common runs are the two-set
+  trimming scan (`trim-run (trim* uncommon trim-run)*`, the leading `trim*` re-taking what the run before it gave back,
+  which keeps the whitespace before a mid-scalar `:`); `lower-star` turns each remaining complex `x*` into a
+  right-recursive helper. `check_normalize` holds every step token-and-event identical over the whole corpus — 681
+  conformance fixtures and 402 YAML Test Suite cases — and ends on two own-gates over the result: every long text token,
+  a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per loop; and
+  every repetition runs a character set — a `TrimStar` both sets, a `Star` its element or, until determinize supplies
+  the guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run
