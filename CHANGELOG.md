@@ -93,11 +93,13 @@ All notable changes to this project are documented here. The format follows
   was; `lower-bounds` does the same for `(<<<)`, its `(match)` origin becoming `OpenMatch` … `CloseMatch` around the run
   it measures, an origin the production likewise carries on its frame; and `lower-windows` does the same for `(max)`,
   its character window becoming `OpenWindow` … `CloseWindow`, the overflow past the edge now failing the window's cut in
-  the run itself rather than a wrapper catching it. `check_normalize` holds every step token-and-event identical over
-  the whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases — and ends on two own-gates over the result:
-  every long text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one
-  character per loop; and every repetition runs a character set — a `TrimStar` both sets, a `Star` its element or, until
-  determinize supplies the guard that lowers them, a nullable production.
+  the run itself rather than a wrapper catching it; and `lower-binds` rewrites each `(if)(set)` as its
+  `(match)`-measured condition and the `(set)` that reads it, the one node that held a match scope becoming the ordinary
+  run and action it always was. `check_normalize` holds every step token-and-event identical over the whole corpus — 681
+  conformance fixtures and 402 YAML Test Suite cases — and ends on two own-gates over the result: every long text token,
+  a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per loop; and
+  every repetition runs a character set — a `TrimStar` both sets, a `Star` its element or, until determinize supplies
+  the guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

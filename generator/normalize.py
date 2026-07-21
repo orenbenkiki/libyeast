@@ -424,6 +424,26 @@ def lower_windows(grammar, namer):
     }
 
 
+def _lower_binds(node):
+    """`node` with each `(if)(set)` rewritten as its `(match)`-measured condition and the assignment that reads it.
+    Bottom-up, so a parent sees its already-lowered children."""
+    node = ir.rebuilt(node, _lower_binds)
+    if isinstance(node, ir.Bind):
+        return ir.Seq((ir.OpenMatch(), node.cond, ir.SetVar(node.param, node.value), ir.CloseMatch()))
+    return node
+
+
+def lower_binds(grammar, namer):
+    """Rewrite each `(if)(set)` as `OpenMatch, cond, SetVar(param, value), CloseMatch`: the parameter a bind sets from
+    what its condition matched becomes a plain `(set)` over the `(match)` origin the condition runs under, marked and
+    restored around it the way `(<<<)` is. Removes the `Bind` node kind — its condition and its assignment, one node
+    holding a match scope, become the ordinary run and action they always were."""
+    return {
+        name: dataclasses.replace(production, body=_lower_binds(production.body))
+        for name, production in grammar.items()
+    }
+
+
 def _trim_runs(node, grammar):
     """`node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
     rewritten as a `TrimStar` over `w | p` that trims `w`. Bottom-up, so a parent sees its already-rewritten children.
@@ -751,6 +771,7 @@ STEPS = [
     ("lower-tokens", lower_tokens),
     ("lower-bounds", lower_bounds),
     ("lower-windows", lower_windows),
+    ("lower-binds", lower_binds),
 ]
 
 

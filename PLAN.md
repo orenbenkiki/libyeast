@@ -253,7 +253,7 @@ none of them, and the validator rejects any that remain.
 1. *Structural.* Flatten `Seq`/`Alt`, drop `Empty`, collapse singletons. Lower `Token`/`Wrap` to token actions, `(<<<)`
    to the `(match)`-origin pair, and `(max)` to the window pair. Evaluate `Diff` and single-character `Look`/`NegLook`
    into plain char-sets. Lower `Star`/`Plus`/`Opt`/`Rep` into recursive `_<N>` productions. Lower
-   `SetVar`/`Bind`/`Lt`/`Le`/`StartOfLine`/`EndOfStream` into parameter actions and guards.
+   `SetVar`/`Lt`/`Le`/`StartOfLine`/`EndOfStream` into parameter actions and guards (`(if)(set)` already is one).
 1. *Alternative shape.* Split each `Seq` into head-matcher + tail until every alternative is `matcher; actions; tail`.
    Binarize to ≤2 calls. Hoist FIRST-sets into gates, handling a nullable call as FIRST∪FOLLOW. Turn a leading
    unconditional action into an empty-gate alternative.
