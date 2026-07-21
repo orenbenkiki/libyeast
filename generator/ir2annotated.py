@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Regenerate the yaml-grammar notation from the typed IR — the inverse of `annotated2ir.py`.
+"""
+Regenerate the yaml-grammar notation from the typed IR — the inverse of `annotated2ir.py`.
 
 `check_annotated_roundtrip.py` uses this to prove the translation is lossless: `annotated2ir` then `ir2annotated` must
 reproduce the vendored source exactly. Run directly to dump the regenerated grammar as YAML.

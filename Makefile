@@ -17,13 +17,14 @@ CLANG_FORMAT ?= $(shell python3 -c "import clang_format, os; \
 CLANG_TIDY ?= $(shell command -v clang-tidy 2>/dev/null \
                 || command -v "$$(brew --prefix llvm 2>/dev/null)/bin/clang-tidy" 2>/dev/null \
                 || echo clang-tidy)
-CPPCHECK   ?= cppcheck
-GCOVR      ?= gcovr
-MDFORMAT   ?= mdformat
-BLACK      ?= black
-GERSEMI    ?= gersemi
-SHFMT      ?= shfmt
-RUFF       ?= ruff
+CPPCHECK         ?= cppcheck
+GCOVR            ?= gcovr
+MDFORMAT         ?= mdformat
+BLACK            ?= black
+FORMAT_DOCSTRING ?= format-docstring
+GERSEMI          ?= gersemi
+SHFMT            ?= shfmt
+RUFF             ?= ruff
 
 # Platform split. gcov reader: Apple/Homebrew clang need llvm-cov; GCC uses gcov directly. Leak detection: Linux ASan
 # ships LeakSanitizer (enabled explicitly, it runs at each forked test's exit — per-test, isolated); Apple clang has no
@@ -95,8 +96,8 @@ STAR_DATA  := $(wildcard third_party/yaml-test-suite/*/in.yaml third_party/yaml-
 # Tool dependencies, verified by check-build-deps / check-dev-deps. Python is not a C build dep — the build uses the
 # committed generated files — so it rides with the dev tools, for the generator that verify and regen run.
 BUILD_DEP_TOOLS := cmake $(CC)
-DEV_DEP_TOOLS   := python3 python3:yaml $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK) $(GCOVR) $(MDFORMAT) $(BLACK) $(RUFF) \
-                   $(GERSEMI) $(SHFMT) doxygen $(firstword $(GCOV_EXE))
+DEV_DEP_TOOLS   := python3 python3:yaml $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK) $(GCOVR) $(MDFORMAT) $(BLACK) \
+                   $(FORMAT_DOCSTRING) $(RUFF) $(GERSEMI) $(SHFMT) doxygen $(firstword $(GCOV_EXE))
 
 .PHONY: all package install test test-debug test-release regen \
         verify verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
@@ -189,10 +190,17 @@ CLANG_FORMAT_CHECK = "$(CLANG_FORMAT)" --version | grep -q "version $(CLANG_FORM
 .stamps/vet-format-md: $(MD_FILES) | .stamps
 	$(MDFORMAT) --check --wrap 120 $(MD_FILES)
 	@touch $@
-# black reformats code but leaves comments and docstrings alone, so the 120-column rule needs ruff to be a rule at all —
-# and ruff catches the import that nothing uses any more, which black has no opinion about either.
+# black reformats code but leaves comments and docstrings alone: format-docstring wraps the docstrings and
+# wrap_long_comments the comments, and ruff holds the 120-column rule over what none of them touch and catches the
+# import that nothing uses. format-docstring has no check mode, so the check runs it on throwaway copies and fails if it
+# would have rewritten any — a non-zero exit meaning some docstring is not formatted.
 .stamps/vet-format-py: $(PY_FILES) | .stamps
 	$(BLACK) --check --line-length 120 $(PY_FILES)
+	@tmp=$$(mktemp -d); files=""; \
+	  for f in $(PY_FILES); do mkdir -p "$$tmp/$$(dirname $$f)"; cp "$$f" "$$tmp/$$f"; files="$$files $$tmp/$$f"; done; \
+	  $(FORMAT_DOCSTRING) --line-length 120 --fix-rst-backticks False $$files >/dev/null 2>&1; rc=$$?; \
+	  rm -rf "$$tmp"; test $$rc -eq 0 || { echo "docstrings need formatting — run make reformat-py"; exit 1; }
+	python3 scripts/wrap_long_comments.py --check $(PY_FILES)
 	$(RUFF) check --quiet --select E501,F401 --line-length 120 $(PY_FILES)
 	@touch $@
 .stamps/vet-format-cmake: $(CMAKE_FILES) | .stamps
@@ -429,6 +437,8 @@ reformat-md:
 	$(MDFORMAT) --wrap 120 $(MD_FILES)
 reformat-py:
 	$(BLACK) --line-length 120 $(PY_FILES)
+	$(FORMAT_DOCSTRING) --line-length 120 --fix-rst-backticks False $(PY_FILES) || [ $$? -eq 1 ]  # 1: it rewrote a file
+	python3 scripts/wrap_long_comments.py --apply $(PY_FILES)
 reformat-cmake:
 	$(GERSEMI) --no-warn-about-unknown-commands --line-length 120 --in-place $(CMAKE_FILES)
 reformat-sh:

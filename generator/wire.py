@@ -1,15 +1,16 @@
 # SPDX-License-Identifier: MIT
-"""The yeast wire format, in Python.
+r"""
+The yeast wire format, in Python.
 
-A token stream is written as, per token, a position comment and a code line — `# B: <byte>, C: <char>, L: <line>,
-c: <column>` then a code character and the token's text, escaped by codepoint. This is the same format `src/wire.c`
-reads and writes and that the conformance fixtures are in; here it is what the interpreter serializes its tokens into to
-be diffed against them.
+A token stream is written as, per token, a position comment and a code line — `# B: <byte>, C: <char>, L: <line>, c:
+<column>` then a code character and the token's text, escaped by codepoint. This is the same format `src/wire.c` reads
+and writes and that the conformance fixtures are in; here it is what the interpreter serializes its tokens into to be
+diffed against them.
 
 The text is escaped exactly as `src/wire.c` does: a printable ASCII byte other than a backslash stands for itself, and
-everything else becomes `\\xXX`, `\\uXXXX`, or `\\UXXXXXXXX` with lower-case hex. Marks advance a byte by its UTF-8
-length, a character by one, and a line at each break — CR, LF, or CR LF together — which resets the column, following
-the reference's own line counting.
+everything else becomes `\xXX`, `\uXXXX`, or `\UXXXXXXXX` with lower-case hex. Marks advance a byte by its UTF-8 length,
+a character by one, and a line at each break — CR, LF, or CR LF together — which resets the column, following the
+reference's own line counting.
 """
 
 import re
@@ -122,7 +123,8 @@ def serialize(tokens):
 
 
 def chain_fault(tokens):
-    """Return a one-line reason the tokens' marks do not chain, or None.
+    """
+    Return a one-line reason the tokens' marks do not chain, or None.
 
     Contiguous leaf tokens must chain: a token's start plus its text lands on the next token's start. Only the byte and
     character offsets are guaranteed to chain — a token may legitimately re-open a line, so its start column need not
@@ -141,11 +143,12 @@ def chain_fault(tokens):
 
 
 def is_clean(tokens, size):
-    """Whether `tokens` are a clean match of all `size` bytes: no error, and every byte accounted for.
+    """
+    Whether `tokens` are a clean match of all `size` bytes: no error, and every byte accounted for.
 
     A production that rejects its input says so with an error token; one that stops early says so by leaving the last
-    byte it consumed short of the end. Either way it did not cleanly match the whole of what it was given, which is
-    what a fixture's `invalid` claims.
+    byte it consumed short of the end. Either way it did not cleanly match the whole of what it was given, which is what
+    a fixture's `invalid` claims.
     """
     consumed = [token for token in tokens if token.code != ERROR]
     if len(consumed) != len(tokens):
@@ -155,7 +158,8 @@ def is_clean(tokens, size):
 
 
 def marker_fault(tokens, is_whole):
-    """Return a one-line reason the tokens' markers do not balance, or None.
+    """
+    Return a one-line reason the tokens' markers do not balance, or None.
 
     A `begin-` marker must get its `end-`, on the paths where the parse went wrong as much as on the ones where it did
     not: the fold that rebuilds the production tree has nothing to stand on otherwise, and a resumed parse would nest
@@ -185,10 +189,11 @@ def marker_fault(tokens, is_whole):
 
 
 def escape(raw, code=None):
-    """Escape raw `bytes` into wire text, as `src/wire.c` does. Under unparsed-invalid — `code` is its wire character —
-    the bytes begin no character, so each is written `\\xXX`. Under every other code (the default) they are UTF-8,
-    escaped by codepoint: printable ASCII but a backslash stands for itself, and everything else becomes `\\xXX`,
-    `\\uXXXX`, or `\\UXXXXXXXX` with lower-case hex.
+    r"""
+    Escape raw `bytes` into wire text, as `src/wire.c` does. Under unparsed-invalid — `code` is its wire character — the
+    bytes begin no character, so each is written `\xXX`. Under every other code (the default) they are UTF-8, escaped by
+    codepoint: printable ASCII but a backslash stands for itself, and everything else becomes `\xXX`, `\uXXXX`, or
+    `\UXXXXXXXX` with lower-case hex.
     """
     if code == CODE_CHAR["unparsed-invalid"]:
         return "".join(f"\\x{byte:02x}" for byte in raw)
@@ -207,8 +212,10 @@ def escape(raw, code=None):
 
 
 def advance(mark, text, code=None):
-    """The mark reached after consuming escaped `text` from `mark` — a byte per UTF-8 length, a line at each break.
-    Under unparsed-invalid each escape is one raw byte and one column, none of them a break."""
+    """
+    The mark reached after consuming escaped `text` from `mark` — a byte per UTF-8 length, a line at each break. Under
+    unparsed-invalid each escape is one raw byte and one column, none of them a break.
+    """
     index = 0
     pieces = units(text, code)
     while index < len(pieces):
@@ -226,9 +233,11 @@ def advance(mark, text, code=None):
 
 
 def units(text, code=None):
-    """Split escaped wire text into units — `(value, byte_length, escaped)` per character. Under unparsed-invalid each
+    """
+    Split escaped wire text into units — `(value, byte_length, escaped)` per character. Under unparsed-invalid each
     escape is a raw byte, so it is one byte; under every other code (the default) an escape is a codepoint, whose byte
-    length is its UTF-8 length."""
+    length is its UTF-8 length.
+    """
     invalid = code == CODE_CHAR["unparsed-invalid"]
     result = []
     index = 0

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that the Python wire code map matches the C one.
+"""
+Check that the Python wire code map matches the C one.
 
 `wire.CODE_CHAR` is the character each token code is written as; the authority is `src/wire.c`'s YS_WIRE table, which
 the C parser and the reference share. This parses that table and asserts the Python copy is exactly it, minus the three
@@ -35,8 +36,8 @@ def main():
         if in_c != in_python:
             errors.append(f"{code}: wire.c says {in_c!r}, wire.py says {in_python!r}")
         # `ys_code_char` answers '\0' where the wire spells nothing, and a line is NUL-terminated, so a code written as
-        # one would read back as an empty line. Every character being printable is what keeps the two apart, and is
-        # what a wire being text means in the first place.
+        # one would read back as an empty line. Every character being printable is what keeps the two apart, and is what
+        # a wire being text means in the first place.
         if in_c is not None and not 0x21 <= ord(in_c) <= 0x7E:
             errors.append(f"{code}: is written {in_c!r}, which is not a printable character a wire can carry")
 

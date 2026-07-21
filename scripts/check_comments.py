@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Enforce C comment style in the given .c/.h files.
+"""
+Enforce C comment style in the given .c/.h files.
 
 Rule: a /* ... */ comment is allowed only inline, i.e. with non-whitespace code following the closing */ on the same
 line (e.g. `foo(/* count */ 5)`). Every other comment — standalone, trailing, or multi-line — must use //.
@@ -12,7 +13,8 @@ import sys
 
 
 def block_comments(text):
-    """Yield (start_line, start_column, end_line, end_column) for each /* */ comment.
+    """
+    Yield (start_line, start_column, end_line, end_column) for each /* */ comment.
 
     Columns are 0-based, and the end column is at the '*' of the closing '*/'. Strings, character literals and // line
     comments are skipped, since a /* in one of those opens nothing.

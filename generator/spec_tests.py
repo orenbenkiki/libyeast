@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""libyeast's own conformance fixtures.
+"""
+libyeast's own conformance fixtures.
 
 `tests/spec/` holds libyeast's differential oracle: for each `<production>[.n=N][.c=C][.t=T][.r=R].<case>` an `.input`
 YAML fragment and an `.output` YEAST token stream the production must emit for it. The filename says which production to
@@ -59,7 +60,8 @@ class Fixture:
 
 
 def parse_name(filename):
-    """Decode a fixture filename into its production, parameters, case, and whether it is an invalid-input test.
+    """
+    Decode a fixture filename into its production, parameters, case, and whether it is an invalid-input test.
 
     `filename` is a bare `.input`/`.output` name; its extension is ignored.
     """
@@ -72,7 +74,8 @@ def parse_name(filename):
 
 
 def is_runnable(fixture, grammar):
-    """Return None if `grammar` can run `fixture`, else a one-line reason it cannot.
+    """
+    Return None if `grammar` can run `fixture`, else a one-line reason it cannot.
 
     Runnable means the grammar has the production and declares every parameter the filename supplies, and the filename
     supplies every parameter the grammar declares but for the ones `DEFAULTS` answers for. This is the structural test
@@ -104,7 +107,8 @@ def arguments(fixture, grammar):
 
 
 def bad_value(fixture):
-    """Return a one-line reason a parameter value is malformed, or None if every value is well-formed.
+    """
+    Return a one-line reason a parameter value is malformed, or None if every value is well-formed.
 
     Independent of the grammar: `n` is an integer (the root's is -1, the auto-detect base), `c` a context, `t` a
     chomping mode, `r` a resume policy, whatever production carries them.

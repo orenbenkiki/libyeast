@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""The normalization pipeline: the ordered, semantics-preserving transformations that carry the hand-authored grammar
+"""
+The normalization pipeline: the ordered, semantics-preserving transformations that carry the hand-authored grammar
 toward the canonical form a state machine falls out of.
 
 A transformation is a function from a grammar to a grammar — a grammar being the `{name: ir.Prod}` mapping
@@ -37,7 +38,8 @@ _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
 
 
 class Namer:
-    """Fresh helper-production names, `<base>_<N>`, the `<N>` the next unused per base across the whole pipeline.
+    """
+    Fresh helper-production names, `<base>_<N>`, the `<N>` the next unused per base across the whole pipeline.
 
     One is threaded through every step, so a base's count carries across them: a helper minted for `foo` is `foo_1`, the
     next `foo_2`, and one minted while a later step processes `foo_3` is `foo_4` — never `foo_3_1`, since the base is
@@ -83,9 +85,11 @@ def _substitute(node, param, value):
 
 
 def _finite_setter(node):
-    """`(param, [value, ...], {value: condition})` where `node` is an alternation of `Bind`s that each match a condition
+    """
+    `(param, [value, ...], {value: condition})` where `node` is an alternation of `Bind`s that each match a condition
     and set one finite parameter to a literal — a data-dependent setter of a finite parameter — else `None`. The values
-    are in the alternation's order, which is the order the choice lifting it must try them in."""
+    are in the alternation's order, which is the order the choice lifting it must try them in.
+    """
     if not isinstance(node, ir.Alt) or not node.items or not all(isinstance(item, ir.Bind) for item in node.items):
         return None
     params = {item.param for item in node.items}
@@ -98,8 +102,10 @@ def _finite_setter(node):
 
 
 def _dispatch(body, param, values):
-    """`body` with the tail that uses `param` — its first use to the end of the top-level sequence — replaced by an
-    ordered choice over `values`, each branch substituting the literal for `Param(param)`."""
+    """
+    `body` with the tail that uses `param` — its first use to the end of the top-level sequence — replaced by an ordered
+    choice over `values`, each branch substituting the literal for `Param(param)`.
+    """
     items = body.items if isinstance(body, ir.Seq) else (body,)
     first = next(index for index, item in enumerate(items) if _uses(item, param))
     prefix, tail = items[:first], items[first:]
@@ -108,13 +114,15 @@ def _dispatch(body, param, values):
 
 
 def lift_chomping(grammar, namer):
-    """Make a data-dependent finite parameter lexical, so it monomorphizes like the context. The chomping `t` is the
-    one: `c-chomping-indicator` matches an indicator and sets `t` — strip, keep, or clip — which the block scalar reads
-    two productions later, through the env. That set is not a switch, so `t` cannot be specialized. This inverts the
-    setter into a `(case) t` that matches the indicator for a given `t`, and turns each production that holds `t` as a
-    local out-parameter into an ordered choice over its values — each branch fixing `t` to a literal it hands the setter
-    and the reader alike. The parse tries the values in the setter's order, so exactly the one whose indicator is
-    present matches, and `t` flows as a value rather than stashed state."""
+    """
+    Make a data-dependent finite parameter lexical, so it monomorphizes like the context. The chomping `t` is the one:
+    `c-chomping-indicator` matches an indicator and sets `t` — strip, keep, or clip — which the block scalar reads two
+    productions later, through the env. That set is not a switch, so `t` cannot be specialized. This inverts the setter
+    into a `(case) t` that matches the indicator for a given `t`, and turns each production that holds `t` as a local
+    out-parameter into an ordered choice over its values — each branch fixing `t` to a literal it hands the setter and
+    the reader alike. The parse tries the values in the setter's order, so exactly the one whose indicator is present
+    matches, and `t` flows as a value rather than stashed state.
+    """
     setters = {name: setter for name in grammar if (setter := _finite_setter(grammar[name].body))}
     values = {param: ordered for param, ordered, _conditions in setters.values()}
     result = {}
@@ -132,10 +140,12 @@ def lift_chomping(grammar, namer):
 
 
 def _relevant_finite(grammar):
-    """For each production, the finite parameters its specialized subtree depends on — the ones a monomorphic copy must
-    fix in its name. A production's own body reads some directly (a `Case`/`Flip` on one, or one passed as itself); the
-    rest it inherits and hands down, so a callee's relevant parameters are relevant to the caller too, save the ones the
-    caller passes an argument for. A least fixed point, since a reference can reach back to its own production."""
+    """
+    For each production, the finite parameters its specialized subtree depends on — the ones a monomorphic copy must fix
+    in its name. A production's own body reads some directly (a `Case`/`Flip` on one, or one passed as itself); the rest
+    it inherits and hands down, so a callee's relevant parameters are relevant to the caller too, save the ones the
+    caller passes an argument for. A least fixed point, since a reference can reach back to its own production.
+    """
     reads, calls = {}, {}
     for name, production in grammar.items():
         direct, references = set(), []
@@ -166,15 +176,19 @@ def _relevant_finite(grammar):
 
 
 def monomorphize(grammar, namer):
-    """Specialize the lexical finite parameters — the context c — away. Each production is copied once per combination
-    of their values it is reached with — from the root, following references, so only combinations that occur are made
-    — its `Case` and `Flip` on them evaluated to the copy's values, its name `ir.specialized`, and those parameters
-    dropped from its signature. `n`, `m`, `f`, and the runtime state `t` and `r` stay parameters."""
+    """
+    Specialize the lexical finite parameters — the context c — away. Each production is copied once per combination of
+    their values it is reached with — from the root, following references, so only combinations that occur are made —
+    its `Case` and `Flip` on them evaluated to the copy's values, its name `ir.specialized`, and those parameters
+    dropped from its signature. `n`, `m`, `f`, and the runtime state `t` and `r` stay parameters.
+    """
     result, done, pending = {}, set(), []
 
     def finite_value(expression, env):
-        """A finite (c/t/r) value expression as its concrete value under `env`, inlining a value function — `in-flow`
-        maps one context to another — the way a call to it would."""
+        """
+        A finite (c/t/r) value expression as its concrete value under `env`, inlining a value function — `in-flow` maps
+        one context to another — the way a call to it would.
+        """
         if isinstance(expression, ir.Param):
             return env[expression.name]
         if isinstance(expression, ir.Lit):
@@ -188,8 +202,10 @@ def monomorphize(grammar, namer):
         raise ValueError(f"not a finite value: {expression!r}")
 
     def runtime_value(expression, env):
-        """A runtime (n/m/f) argument with its `Flip`s on a finite parameter and value functions — `seq-spaces` is `n`
-        or `n-1` by context — reduced under `env`, its arithmetic and runtime parameters left."""
+        """
+        A runtime (n/m/f) argument with its `Flip`s on a finite parameter and value functions — `seq-spaces` is `n` or
+        `n-1` by context — reduced under `env`, its arithmetic and runtime parameters left.
+        """
         if isinstance(expression, ir.Ref):
             callee = grammar[expression.name]
             inner = {
@@ -250,8 +266,10 @@ def monomorphize(grammar, namer):
 
 
 def _lower_optionals(node):
-    """`node` with each optional `x?` rewritten as the alternation `x | <empty>`. Bottom-up, so a parent sees its
-    already-lowered children."""
+    """
+    `node` with each optional `x?` rewritten as the alternation `x | <empty>`. Bottom-up, so a parent sees its
+    already-lowered children.
+    """
     node = ir.rebuilt(node, _lower_optionals)
     if isinstance(node, ir.Opt):
         return ir.Alt((node.item, ir.Empty()))
@@ -259,8 +277,10 @@ def _lower_optionals(node):
 
 
 def lower_optionals(grammar, namer):
-    """Rewrite each optional `x?` as the alternation `x | <empty>` — the same match, x greedily then nothing, with the
-    empty as the last, unconditional alternative the canonical form allows. Removes the `Opt` node kind."""
+    """
+    Rewrite each optional `x?` as the alternation `x | <empty>` — the same match, x greedily then nothing, with the
+    empty as the last, unconditional alternative the canonical form allows. Removes the `Opt` node kind.
+    """
     return {
         name: dataclasses.replace(production, body=_lower_optionals(production.body))
         for name, production in grammar.items()
@@ -268,11 +288,13 @@ def lower_optionals(grammar, namer):
 
 
 def matches_one_char(node, grammar, seen=frozenset()):
-    """Whether `node` matches exactly one character — a terminal char class. A `+`/`*` over one stays a single repeated
+    """
+    Whether `node` matches exactly one character — a terminal char class. A `+`/`*` over one stays a single repeated
     char-set match (one SIMD call); over anything else it breaks into a sequence or a recursion. A `Char`, `Range` or
     `Invalid` is one; a `Diff` is one when its base is (the exclusions only narrow it); an `Alt` is one when every
-    branch is (a union of char sets), so a lowered optional `x | <empty>` is not one; a `Ref` is one when its
-    production is."""
+    branch is (a union of char sets), so a lowered optional `x | <empty>` is not one; a `Ref` is one when its production
+    is.
+    """
     if isinstance(node, (ir.Char, ir.Range, ir.Invalid)):
         return True
     if isinstance(node, ir.Diff):
@@ -287,9 +309,11 @@ def matches_one_char(node, grammar, seen=frozenset()):
 
 
 def matches_empty(node, grammar, seen=frozenset()):
-    """Whether `node` can match the empty string. Conservative: a node it cannot prove non-empty is reported as matching
+    """
+    Whether `node` can match the empty string. Conservative: a node it cannot prove non-empty is reported as matching
     empty, so a caller under-acts. A `Star` over a node that matches empty cannot become a right-recursive helper — it
-    would spin on that empty match where the interpreter's own repetition stops."""
+    would spin on that empty match where the interpreter's own repetition stops.
+    """
     if isinstance(node, (ir.Char, ir.Range, ir.Invalid, ir.Diff)):
         return False
     if isinstance(node, ir.Ref):
@@ -312,8 +336,10 @@ def matches_empty(node, grammar, seen=frozenset()):
 
 
 def _lower_plus(node, grammar):
-    """`node` with each `x+` over a complex `x` rewritten as the sequence `x x*`, and each `x+` over a char class left
-    alone to stay one SIMD match. Bottom-up, so a parent sees its already-lowered children."""
+    """
+    `node` with each `x+` over a complex `x` rewritten as the sequence `x x*`, and each `x+` over a char class left
+    alone to stay one SIMD match. Bottom-up, so a parent sees its already-lowered children.
+    """
     node = ir.rebuilt(node, lambda child: _lower_plus(child, grammar))
     if isinstance(node, ir.Plus) and not matches_one_char(node.item, grammar):
         return ir.Seq((node.item, ir.Star(node.item)))
@@ -321,10 +347,12 @@ def _lower_plus(node, grammar):
 
 
 def lower_plus(grammar, namer):
-    """Rewrite each `x+` over a complex production as the sequence `x x*` — one match then zero or more, the same
+    """
+    Rewrite each `x+` over a complex production as the sequence `x x*` — one match then zero or more, the same
     one-or-more. A `x+` over a character class stays as it is, to map later to a single repeated-char-set SIMD call.
     Every complex `x+` in the grammar is over a production that consumes, so the sequence never matches `x` a second
-    time where `x+` would not."""
+    time where `x+` would not.
+    """
     return {
         name: dataclasses.replace(production, body=_lower_plus(production.body, grammar))
         for name, production in grammar.items()
@@ -332,12 +360,14 @@ def lower_plus(grammar, namer):
 
 
 def lower_star(grammar, namer):
-    """Rewrite each `x*` over a complex, always-consuming production as a fresh right-recursive helper
-    `_N ::= x _N | <empty>`, the star replaced by a reference to it. A `x*` over a character class stays as it is, to
-    map later to a single repeated-char-set SIMD call; one over a node that can match empty stays too, since the
-    recursion would spin on that empty match — it waits for the zero-width guard a later step brings. The helper carries
-    the owner production's parameters, threaded unchanged through the recursion, and anything else `x` reads flows
-    through the interpreter's env inheritance, as it did in place."""
+    """
+    Rewrite each `x*` over a complex, always-consuming production as a fresh right-recursive helper `_N ::= x _N |
+    <empty>`, the star replaced by a reference to it. A `x*` over a character class stays as it is, to map later to a
+    single repeated-char-set SIMD call; one over a node that can match empty stays too, since the recursion would spin
+    on that empty match — it waits for the zero-width guard a later step brings. The helper carries the owner
+    production's parameters, threaded unchanged through the recursion, and anything else `x` reads flows through the
+    interpreter's env inheritance, as it did in place.
+    """
     minted = {}
 
     def lower(owner, params, node):
@@ -360,8 +390,10 @@ def lower_star(grammar, namer):
 
 
 def _lower_tokens(node):
-    """`node` with each `(token)` and `(wrap)` rewritten as the sequence of actions it stands for. Bottom-up, so a
-    parent sees its already-lowered children."""
+    """
+    `node` with each `(token)` and `(wrap)` rewritten as the sequence of actions it stands for. Bottom-up, so a parent
+    sees its already-lowered children.
+    """
     node = ir.rebuilt(node, _lower_tokens)
     if isinstance(node, ir.Token):
         return ir.Seq((ir.PushCode(node.code), node.item, ir.PopCode()))
@@ -371,10 +403,12 @@ def _lower_tokens(node):
 
 
 def lower_tokens(grammar, namer):
-    """Rewrite each `(token)` as `PushCode(code), item, PopCode` and each `(wrap)` as `Emit(begin), item, Emit(end)`:
-    the run-code changes a token stands for become explicit actions over the run code its production carries on its
-    frame, and the markers a wrap stands for become the plain `(emit)`s they always were. Removes the `Token` and `Wrap`
-    node kinds — after it the run code is a runtime value, no longer a scope the tree shape implies."""
+    """
+    Rewrite each `(token)` as `PushCode(code), item, PopCode` and each `(wrap)` as `Emit(begin), item, Emit(end)`: the
+    run-code changes a token stands for become explicit actions over the run code its production carries on its frame,
+    and the markers a wrap stands for become the plain `(emit)`s they always were. Removes the `Token` and `Wrap` node
+    kinds — after it the run code is a runtime value, no longer a scope the tree shape implies.
+    """
     return {
         name: dataclasses.replace(production, body=_lower_tokens(production.body))
         for name, production in grammar.items()
@@ -382,8 +416,10 @@ def lower_tokens(grammar, namer):
 
 
 def _lower_bounds(node):
-    """`node` with each `(<<<)` rewritten as the pair of actions that mark and restore the `(match)` origin around its
-    run. Bottom-up, so a parent sees its already-lowered children."""
+    """
+    `node` with each `(<<<)` rewritten as the pair of actions that mark and restore the `(match)` origin around its run.
+    Bottom-up, so a parent sees its already-lowered children.
+    """
     node = ir.rebuilt(node, _lower_bounds)
     if isinstance(node, ir.Bound):
         return ir.Seq((ir.OpenMatch(), node.item, ir.CloseMatch()))
@@ -391,7 +427,8 @@ def _lower_bounds(node):
 
 
 def lower_bounds(grammar, namer):
-    """Rewrite each `(<<<)` as `OpenMatch, item, CloseMatch`: the `(match)` origin a bound marks for its run becomes an
+    """
+    Rewrite each `(<<<)` as `OpenMatch, item, CloseMatch`: the `(match)` origin a bound marks for its run becomes an
     explicit action over the origin its production carries on its frame, restored at the run's trailing edge. Removes
     the `Bound` node kind — after it the measuring origin is a runtime value, no longer a scope the tree shape implies.
     """
@@ -402,9 +439,10 @@ def lower_bounds(grammar, namer):
 
 
 def _lower_windows(node):
-    """`node` with each `(max)` rewritten as the pair of actions that open and restore its character window around the
-    run it bounds, or dropped where it is a bare length note. Bottom-up, so a parent sees its already-lowered
-    children."""
+    """
+    `node` with each `(max)` rewritten as the pair of actions that open and restore its character window around the run
+    it bounds, or dropped where it is a bare length note. Bottom-up, so a parent sees its already-lowered children.
+    """
     node = ir.rebuilt(node, _lower_windows)
     if isinstance(node, ir.Max):
         if node.item is None:
@@ -414,10 +452,12 @@ def _lower_windows(node):
 
 
 def lower_windows(grammar, namer):
-    """Rewrite each `(max)` as `OpenWindow(limit, message), item, CloseWindow`: the character window a `(max)` bounds
-    its run with becomes an explicit action over the window its production carries on its frame, restored at the run's
+    """
+    Rewrite each `(max)` as `OpenWindow(limit, message), item, CloseWindow`: the character window a `(max)` bounds its
+    run with becomes an explicit action over the window its production carries on its frame, restored at the run's
     trailing edge — the overflow past the edge failing the window's cut in `consume`, no longer a wrapper catching it.
-    Removes the `Max` node kind — after it the window is a runtime value, no longer a scope the tree shape implies."""
+    Removes the `Max` node kind — after it the window is a runtime value, no longer a scope the tree shape implies.
+    """
     return {
         name: dataclasses.replace(production, body=_lower_windows(production.body))
         for name, production in grammar.items()
@@ -425,8 +465,10 @@ def lower_windows(grammar, namer):
 
 
 def _lower_binds(node):
-    """`node` with each `(if)(set)` rewritten as its `(match)`-measured condition and the assignment that reads it.
-    Bottom-up, so a parent sees its already-lowered children."""
+    """
+    `node` with each `(if)(set)` rewritten as its `(match)`-measured condition and the assignment that reads it.
+    Bottom-up, so a parent sees its already-lowered children.
+    """
     node = ir.rebuilt(node, _lower_binds)
     if isinstance(node, ir.Bind):
         return ir.Seq((ir.OpenMatch(), node.cond, ir.SetVar(node.param, node.value), ir.CloseMatch()))
@@ -434,10 +476,12 @@ def _lower_binds(node):
 
 
 def lower_binds(grammar, namer):
-    """Rewrite each `(if)(set)` as `OpenMatch, cond, SetVar(param, value), CloseMatch`: the parameter a bind sets from
-    what its condition matched becomes a plain `(set)` over the `(match)` origin the condition runs under, marked and
+    """
+    Rewrite each `(if)(set)` as `OpenMatch, cond, SetVar(param, value), CloseMatch`: the parameter a bind sets from what
+    its condition matched becomes a plain `(set)` over the `(match)` origin the condition runs under, marked and
     restored around it the way `(<<<)` is. Removes the `Bind` node kind — its condition and its assignment, one node
-    holding a match scope, become the ordinary run and action they always were."""
+    holding a match scope, become the ordinary run and action they always were.
+    """
     return {
         name: dataclasses.replace(production, body=_lower_binds(production.body))
         for name, production in grammar.items()
@@ -445,7 +489,8 @@ def lower_binds(grammar, namer):
 
 
 def _trim_runs(node, grammar):
-    """`node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
+    """
+    `node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
     rewritten as a `TrimStar` over `w | p` that trims `w`. Bottom-up, so a parent sees its already-rewritten children.
     """
     node = ir.rebuilt(node, lambda child: _trim_runs(child, grammar))
@@ -463,12 +508,14 @@ def _trim_runs(node, grammar):
 
 
 def trim_runs(grammar, namer):
-    """Rewrite each `(s-white* content)*` — a run of content, its inner whitespace kept and its trailing whitespace
-    given back — as a `TrimStar` over `s-white | content` that trims `s-white`. This is the in-line run of a plain and
-    of a single- or double-quoted one, a long text token today matched one character per outer iteration; the `TrimStar`
-    is the maximal run a single scan takes, its trailing whitespace trimmed. `content` may be complex — a quoted escape,
-    a plain `#`/`:` behind its guard — which does not stop the run being one scan: the whitespace and the plain content
-    are its char-set bulk, the exceptions its slow path."""
+    """
+    Rewrite each `(s-white* content)*` — a run of content, its inner whitespace kept and its trailing whitespace given
+    back — as a `TrimStar` over `s-white | content` that trims `s-white`. This is the in-line run of a plain and of a
+    single- or double-quoted one, a long text token today matched one character per outer iteration; the `TrimStar` is
+    the maximal run a single scan takes, its trailing whitespace trimmed. `content` may be complex — a quoted escape, a
+    plain `#`/`:` behind its guard — which does not stop the run being one scan: the whitespace and the plain content
+    are its char-set bulk, the exceptions its slow path.
+    """
     return {
         name: dataclasses.replace(production, body=_trim_runs(production.body, grammar))
         for name, production in grammar.items()
@@ -476,14 +523,18 @@ def trim_runs(grammar, namer):
 
 
 class NotAlmostCharSet(Exception):
-    """A `*` over an alternation of character classes and complex alternatives whose first character a class also
-    accepts, or cannot be pinned down — factoring it to `common* (uncommon common*)*` would change the match, so it is
-    refused rather than guessed."""
+    """
+    A `*` over an alternation of character classes and complex alternatives whose first character a class also accepts,
+    or cannot be pinned down — factoring it to `common* (uncommon common*)*` would change the match, so it is refused
+    rather than guessed.
+    """
 
 
 def _first_chars(node, grammar, seen=frozenset()):
-    """The codepoints a match of `node` can begin with, or `None` where that set is not a concrete few — a range of
-    first characters, or a shape not analysed — which the caller treats as unsure rather than guessing through."""
+    """
+    The codepoints a match of `node` can begin with, or `None` where that set is not a concrete few — a range of first
+    characters, or a shape not analysed — which the caller treats as unsure rather than guessing through.
+    """
     if isinstance(node, ir.Char):
         return frozenset({node.cp})
     if isinstance(node, ir.Ref):
@@ -547,14 +598,16 @@ def _accepts(node, codepoint, grammar, seen=frozenset()):
 
 
 def hoist_char_runs(grammar, namer):
-    """Factor a `*` over an almost-character-set — an alternation of character classes and a few complex exceptions, the
+    """
+    Factor a `*` over an almost-character-set — an alternation of character classes and a few complex exceptions, the
     escapes of a quoted scalar, a URI, a tag — into `common* (uncommon common*)*`: the common characters matched in bulk
     runs (each a repeated-char-set match, later one SIMD call), dropping to the slow path only for an exception. A
     `TrimStar` factors the same way, keeping its trim a character set of its own: `trim-run (trim* uncommon trim-run)*`,
     so its common runs stay the two-set trimming scan a plain or quoted scalar's line compiles to. The equivalence holds
     only where an exception cannot begin with a character the common set also accepts, so that a greedy common run never
     takes one an ordered choice would have handed the exception; where that cannot be shown the factoring is refused
-    with `NotAlmostCharSet` rather than guessed."""
+    with `NotAlmostCharSet` rather than guessed.
+    """
 
     def resolved(node):
         while isinstance(node, ir.Ref):
@@ -570,8 +623,10 @@ def hoist_char_runs(grammar, namer):
         return node
 
     def flat_alternatives(node):
-        """`node`'s alternatives, flat: a char class kept whole, an alternation resolved and its own alternatives
-        flattened in, so a run's fast char set separates from its complex exceptions however the grammar nests them."""
+        """
+        `node`'s alternatives, flat: a char class kept whole, an alternation resolved and its own alternatives flattened
+        in, so a run's fast char set separates from its complex exceptions however the grammar nests them.
+        """
         if matches_one_char(node, grammar):
             return (node,)
         expanded = resolved(node)
@@ -580,10 +635,12 @@ def hoist_char_runs(grammar, namer):
         return (node,)
 
     def split(alternatives, owner):
-        """`alternatives` split into `(common, uncommon)` — a character set of the char-class alternatives, or `None`
-        where there is none, and one alternative of the complex ones, or `None` where there is none. Raises where a
-        complex alternative is not provably start-disjoint from the common set, so a greedy common run could take a
-        character an ordered choice would have handed the exception."""
+        """
+        `alternatives` split into `(common, uncommon)` — a character set of the char-class alternatives, or `None` where
+        there is none, and one alternative of the complex ones, or `None` where there is none. Raises where a complex
+        alternative is not provably start-disjoint from the common set, so a greedy common run could take a character an
+        ordered choice would have handed the exception.
+        """
         common_alts = tuple(item for item in alternatives if matches_one_char(item, grammar))
         uncommon_alts = tuple(item for item in alternatives if not matches_one_char(item, grammar))
         common = None if not common_alts else common_alts[0] if len(common_alts) == 1 else ir.Alt(common_alts)
@@ -650,8 +707,10 @@ def _ref_codes(node, active):
 
 
 def codes_at(grammar):
-    """For each production, the token codes active at its entry — the run code in force when it is called, gathered over
-    every call site by propagation from the root down through the `(token)` scopes."""
+    """
+    For each production, the token codes active at its entry — the run code in force when it is called, gathered over
+    every call site by propagation from the root down through the `(token)` scopes.
+    """
     entry = {name: set() for name in grammar}
     entry[ir.ROOT] = {_ROOT_CODE}
     worklist = [ir.ROOT]
@@ -680,11 +739,13 @@ def _is_lowered_star(name, grammar):
 
 
 def _content_tail(node, active, grammar, seen=frozenset()):
-    """How `node` ends its content matching under the `active` token code, at its surface — `"run"` where the last
-    content consumed is a char-set `*`/`+` (a bulk run, so consecutive content folds into it), `"bare"` where it is a
-    single character (so each one costs a loop iteration), or `None` where it consumes no surface content (behind a
-    `(wrap)`, through a helper's own loop, or under a non-content code). This tells an efficient content loop from one
-    that collects its run one character at a time."""
+    """
+    How `node` ends its content matching under the `active` token code, at its surface — `"run"` where the last content
+    consumed is a char-set `*`/`+` (a bulk run, so consecutive content folds into it), `"bare"` where it is a single
+    character (so each one costs a loop iteration), or `None` where it consumes no surface content (behind a `(wrap)`,
+    through a helper's own loop, or under a non-content code). This tells an efficient content loop from one that
+    collects its run one character at a time.
+    """
     if isinstance(node, (ir.Star, ir.Plus)):
         return "run" if active in CONTENT_CODES and matches_one_char(node.item, grammar) else None
     if isinstance(node, ir.TrimStar):
@@ -719,9 +780,11 @@ def _content_tail(node, active, grammar, seen=frozenset()):
 
 
 def content_run_offenders(grammar):
-    """The productions collecting a content run one character at a time — a `lower_star` helper whose iteration ends its
+    """
+    The productions collecting a content run one character at a time — a `lower_star` helper whose iteration ends its
     content on a bare character rather than a char-set `*`/`+`. Each is a place a long text token is not bulk-matched;
-    the check that reports them shrinks to empty as the char-run factoring reaches every one."""
+    the check that reports them shrinks to empty as the char-run factoring reaches every one.
+    """
     entry = codes_at(grammar)
     return [
         name
@@ -732,12 +795,14 @@ def content_run_offenders(grammar):
 
 
 def non_char_set_runs(grammar):
-    """The repetitions whose element is not the character set a bulk scan needs. A `TrimStar` must run and trim two
+    """
+    The repetitions whose element is not the character set a bulk scan needs. A `TrimStar` must run and trim two
     character sets — it is the two-set trimming scan a scalar's line compiles to — so a `full` or `trim` that is not one
     means the fast/slow split did not complete. A `Star` must run a character set too, save one allowed for now: a
     `Star` over a nullable production, which `lower_star` cannot make a recursive helper of and which waits for the
     zero-width guard determinize will bring. A `Star` over anything else non-character-set is a `lower_star` that should
-    have fired and did not."""
+    have fired and did not.
+    """
     faults = []
 
     def walk(name, node):
@@ -776,9 +841,10 @@ STEPS = [
 
 
 def stages(grammar):
-    """The grammar after each step, as `(label, grammar)` pairs, opening with `("base", grammar)` — what
-    `check_normalize` diffs the interpreter's token stream across, so a step that changes it is named. One `Namer` is
-    threaded through the steps, so the helper productions they mint number `<base>_<N>` off a count shared across them.
+    """
+    The grammar after each step, as `(label, grammar)` pairs, opening with `("base", grammar)` — what `check_normalize`
+    diffs the interpreter's token stream across, so a step that changes it is named. One `Namer` is threaded through the
+    steps, so the helper productions they mint number `<base>_<N>` off a count shared across them.
     """
     namer = Namer()
     result = [("base", grammar)]

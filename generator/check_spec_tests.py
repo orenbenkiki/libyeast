@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that libyeast's conformance fixtures are intact and well-formed.
+"""
+Check that libyeast's conformance fixtures are intact and well-formed.
 
 Every `.input` in `tests/spec/` must pair with an `.output` and every `.output` with an `.input`; every filename must
 decode to a production the grammar still has, with the parameters it declares and well-formed values; and every output

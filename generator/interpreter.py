@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""A backtracking interpreter of the grammar, run against libyeast's conformance fixtures.
+"""
+A backtracking interpreter of the grammar, run against libyeast's conformance fixtures.
 
 Slow and obviously correct: it matches a production against an input the way the grammar reads, character by character
 with backtracking, and emits the yeast token stream — so that libyeast's grammar is proved to produce the reference's
@@ -10,11 +11,11 @@ fixtures judge the grammar as it is now and the structurally-simplified grammar 
 It matches every node the IR defines, and a node it does not know raises rather than passing quietly — the fixture that
 reached one is reported as the crash it is. The character-level nodes (`Char`, `Range`, `Diff`, `Empty`, `Seq`, `Alt`,
 `Ref`), the repetitions (`Star`, `Plus`, `Opt`, `Rep`), the parameter machinery (`Case`, `Bind`, `SetVar`, the
-arithmetic, and the `Lt`/`Le`/`Max`/`Bound` predicates), and the assertions and lookahead (`StartOfLine`,
-`EndOfStream`, `Look`, `NegLook`, `LookBehind`, `ExcludeAt`). It produces tokens from the annotation nodes: `Token`
-gives its characters a code and cuts the run at both edges, `Wrap` brackets its match in `begin`/`end` markers, `Emit`
-is a marker on its own, and `Error` is an error token naming what was expected. `Recover` says where a failed `(cut)`
-stops unwinding.
+arithmetic, and the `Lt`/`Le`/`Max`/`Bound` predicates), and the assertions and lookahead (`StartOfLine`, `EndOfStream`,
+`Look`, `NegLook`, `LookBehind`, `ExcludeAt`). It produces tokens from the annotation nodes: `Token` gives its
+characters a code and cuts the run at both edges, `Wrap` brackets its match in `begin`/`end` markers, `Emit` is a marker
+on its own, and `Error` is an error token naming what was expected. `Recover` says where a failed `(cut)` stops
+unwinding.
 
 Matching is success-continuation style: `match` calls a continuation for each way a node matches, in greedy order, and
 the continuation reports whether the rest of the parse succeeded — so an alternation is re-entered when a later element
@@ -54,7 +55,8 @@ RECOVER = "l-recover"
 
 
 class CommitFailure(Exception):
-    """Raised when the parse fails after passing a `(cut)`.
+    """
+    Raised when the parse fails after passing a `(cut)`.
 
     It carries the cut's message `code`, and unwinds past the backtracking frames — which is what a commit is: none of
     them gets to try another way — to the handler that turns it into an error token and the unparsed recovery.
@@ -73,9 +75,11 @@ BYTE_ORDER_MARK = 0xFEFF  # consumed without ending the start of a line, unlike 
 
 
 def _decode_one(raw, offset):
-    """The codepoint of the UTF-8 sequence at `offset` and its byte length, or `(None, 1)` where the byte begins none.
-    RFC 3629, matching the C decoder: an invalid byte is one unit of one byte, so a run of them resyncs at the next
-    valid lead rather than swallowing what follows it."""
+    """
+    The codepoint of the UTF-8 sequence at `offset` and its byte length, or `(None, 1)` where the byte begins none. RFC
+    3629, matching the C decoder: an invalid byte is one unit of one byte, so a run of them resyncs at the next valid
+    lead rather than swallowing what follows it.
+    """
     lead = raw[offset]
     if lead < 0x80:
         return lead, 1
@@ -96,9 +100,11 @@ def _decode_one(raw, offset):
 
 
 def _decode(raw):
-    """`raw` as parallel lists: `chars` holds a codepoint per character and `None` per invalid byte, `byte_at` the byte
-    offset of each — with a final `byte_at` entry at the end of the input, so unit `i` spans
-    `raw[byte_at[i]:byte_at[i + 1]]`."""
+    """
+    `raw` as parallel lists: `chars` holds a codepoint per character and `None` per invalid byte, `byte_at` the byte
+    offset of each — with a final `byte_at` entry at the end of the input, so unit `i` spans `raw[byte_at[i]:byte_at[i +
+    1]]`.
+    """
     chars = []
     byte_at = []
     offset = 0
@@ -112,11 +118,12 @@ def _decode(raw):
 
 
 class Emitter:
-    """The token stream a run builds, and the input it reads to build it.
+    """
+    The token stream a run builds, and the input it reads to build it.
 
-    Characters consumed accumulate into a run carrying the current code; the run becomes a token wherever it is cut —
-    at a token annotation's edge or a marker. A checkpoint captures the whole of the state, so an alternative that
-    fails can be undone to the point before it, tokens and all.
+    Characters consumed accumulate into a run carrying the current code; the run becomes a token wherever it is cut — at
+    a token annotation's edge or a marker. A checkpoint captures the whole of the state, so an alternative that fails
+    can be undone to the point before it, tokens and all.
     """
 
     def __init__(self, raw):
@@ -179,8 +186,10 @@ class Emitter:
         del self.tokens[token_count:]
 
     def consume(self):
-        """Take the character or invalid byte at the position into the open run, opening one under the current code if
-        none is. An invalid byte is no break and no byte-order mark; it advances a byte and a column like any other."""
+        """
+        Take the character or invalid byte at the position into the open run, opening one under the current code if none
+        is. An invalid byte is no break and no byte-order mark; it advances a byte and a column like any other.
+        """
         if self.ceiling is not None and not self.probing and self.position >= self.ceiling:
             # A committed character past a `(max)` window's edge exhausts it, failing the cut the window names. The open
             # run is left as it is so the tokens up to here still emit; a lookahead is exempt and reads on freely.
@@ -206,8 +215,10 @@ class Emitter:
         return self.position + 1 < len(self.chars) and self.chars[self.position + 1] == wire.LINE_FEED
 
     def cut(self):
-        """End the open run, emitting it as a token if it took anything. Its text is the raw input bytes it spans,
-        escaped for the wire — the bytes as they are, whether characters or an unparsed-invalid run."""
+        """
+        End the open run, emitting it as a token if it took anything. Its text is the raw input bytes it spans, escaped
+        for the wire — the bytes as they are, whether characters or an unparsed-invalid run.
+        """
         if self.run is not None:
             character, start, start_position = self.run
             raw = self.raw[self.byte_at[start_position] : self.byte_at[self.position]]
@@ -216,7 +227,8 @@ class Emitter:
             self.run = None
 
     def marker(self, code):
-        """Emit a zero-width marker of `code`, cutting the open run before it, and track what it leaves open.
+        """
+        Emit a zero-width marker of `code`, cutting the open run before it, and track what it leaves open.
 
         A marker is paired by its code and never by the node that emitted it, which is how `check_markers` reads one
         too. A `(wrap)` is not the only thing that opens one: a block scalar opens with an `(emit)` because the position
@@ -254,7 +266,8 @@ def _skip_break(chars, position):
 
 
 def _detect_indent(emitter):
-    """The indentation of the first content line at or after the position, peeked without consuming.
+    """
+    The indentation of the first content line at or after the position, peeked without consuming.
 
     A block collection is already at the start of that line; a block scalar is mid-line, at the end of its header, so
     the header line and any empty lines are skipped first. Where no content line follows — a block scalar of empty lines
@@ -282,7 +295,8 @@ def _detect_indent(emitter):
 
 
 def evaluate(expression, emitter, grammar):
-    """Evaluate a value expression — a parameter, a literal, the matched text, or the arithmetic and dispatch over them.
+    """
+    Evaluate a value expression — a parameter, a literal, the matched text, or the arithmetic and dispatch over them.
 
     `Match()` is the input the enclosing `Bound`/`Bind` scope has consumed so far, which is what `Ord` and `Len` read.
     """
@@ -329,7 +343,8 @@ def _accept():
 
 
 def _probe(pattern, emitter, grammar):
-    """Whether `pattern` matches at the position, leaving the emitter untouched — a lookahead that keeps no effect.
+    """
+    Whether `pattern` matches at the position, leaving the emitter untouched — a lookahead that keeps no effect.
 
     A `(cut)` inside a lookahead is speculative, not a commit of the whole parse, so a `CommitFailure` here is caught
     and read as "did not match" rather than allowed to escape.
@@ -345,7 +360,8 @@ def _probe(pattern, emitter, grammar):
 
 
 def _repeat(item, emitter, grammar, k):
-    """Match `item` greedily zero or more times, then the continuation — backtracking to fewer repetitions if it fails.
+    """
+    Match `item` greedily zero or more times, then the continuation — backtracking to fewer repetitions if it fails.
 
     A zero-width match cannot repeat without looping, so it is taken once and no more.
     """
@@ -364,7 +380,8 @@ def _repeat(item, emitter, grammar, k):
 
 
 def _forbidden_here(emitter, grammar):
-    """Whether an in-scope `(exclude)` guard matches at a start of line here — where content must not begin.
+    """
+    Whether an in-scope `(exclude)` guard matches at a start of line here — where content must not begin.
 
     This is the reference's `forbidding`: a document forbids `c-forbidden` (a `---` or `...` line) throughout, so a
     plain scalar cannot run past the document boundary. The guard is checked only at a start of line, where such a
@@ -381,7 +398,8 @@ def _forbidden_here(emitter, grammar):
 
 
 def _fail(emitter, message):
-    """Emit the error where the parse stopped — `message`, or bare when empty — and close what it left open.
+    """
+    Emit the error where the parse stopped — `message`, or bare when empty — and close what it left open.
 
     The emitter is already at the end of what cleanly matched: at the last cut for a committed failure, at the start for
     an uncommitted one. A raise skips the frames that would have closed the `(wrap)`s the parse was inside, so they are
@@ -408,7 +426,8 @@ def _fail(emitter, message):
 
 
 def match(node, emitter, grammar, k):
-    """Match `node` from the emitter's position and call the continuation `k` for each way it matches, in greedy order.
+    """
+    Match `node` from the emitter's position and call the continuation `k` for each way it matches, in greedy order.
 
     Backtracking is success-continuation style: on a match the interpreter calls `k`, and `k` returns whether the rest
     of the parse succeeded from there. If it did, the match commits and this returns True, leaving the emitter in that
@@ -464,8 +483,8 @@ def match(node, emitter, grammar, k):
         saved_forbidden = emitter.forbidden  # inherited by the callee, and any (exclude) it adds is scoped to it
         # A production inherits the ambient parameters and overrides only the ones it declares, so `n` stays in scope
         # through a callee that does not name it — which is how the block header's indent detection still reads `n`. Its
-        # run code, `(match)` origin and `(max)` window are the ones in force where it was entered, which a `(token)`,
-        # a `(<<<)` and a `(max)` it lowers to restore past a nested one.
+        # run code, `(match)` origin and `(max)` window are the ones in force where it was entered, which a `(token)`, a
+        # `(<<<)` and a `(max)` it lowers to restore past a nested one.
         emitter.env = {
             **saved_env,
             **dict(zip(production.params, arguments)),
@@ -843,7 +862,8 @@ def match(node, emitter, grammar, k):
 
 
 def run(grammar, production, data, parameters=None):
-    """Run `production` on the UTF-8 `data`, returning the yeast tokens it emits — a rejection among them if it rejects.
+    """
+    Run `production` on the UTF-8 `data`, returning the yeast tokens it emits — a rejection among them if it rejects.
 
     `parameters` binds the production's parameters from the fixture's filename — `n`/`m` are integers, `c`/`t`/`r`
     strings. A production that declares `r` and is run without one resumes the way a zeroed `ys_options` does.

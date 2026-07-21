@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that the interpreter's emitter can be undone.
+"""
+Check that the interpreter's emitter can be undone.
 
 The whole of the backtracking rests on one promise, which `Emitter` makes in its own docstring: a checkpoint captures
 the whole of the state, so an alternative that fails can be undone to the point before it. Every `(any)`, every `(---)`
@@ -96,7 +97,8 @@ def _rewind_restores(errors):
 
 
 def _rewind_is_repeatable(errors):
-    """The same checkpoint rewound to twice restores the same state twice.
+    """
+    The same checkpoint rewound to twice restores the same state twice.
 
     This is what an alternation does — one checkpoint, rewound to once per branch — so a checkpoint that hands out its
     own mutable state rather than a copy of it lets one branch reach into what the next rewinds to.

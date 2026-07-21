@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that the interpreter reproduces every conformance fixture it covers.
+"""
+Check that the interpreter reproduces every conformance fixture it covers.
 
 For each fixture whose production rests on only the nodes the interpreter supports, run the production and compare its
 token stream to the fixture's, byte for byte. This is where libyeast's grammar is proved to emit the reference's tokens,
@@ -17,7 +18,8 @@ import wire
 
 
 def reproduced(grammar, fixtures=None):
-    """The fixtures `grammar` does not reproduce token for token, as error strings — empty when it reproduces them all.
+    """
+    The fixtures `grammar` does not reproduce token for token, as error strings — empty when it reproduces them all.
 
     Takes the grammar as an argument the way the interpreter does, so a structurally-transformed grammar is held to the
     same token streams the base one is: the fixtures are the base's frozen output, so reproducing them is the transform

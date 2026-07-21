@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Translate libyeast's annotated grammar into the typed IR (the IR).
+"""
+Translate libyeast's annotated grammar into the typed IR (the IR).
 
 Faithful 1:1: every yaml-grammar operator maps to exactly one IR node, with no flattening or normalization, so the
 round-trip through `ir2annotated.py` stays exact. Anything unexpected raises loudly rather than being dropped silently.

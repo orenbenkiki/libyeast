@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that the grammar's zero-width markers balance.
+"""
+Check that the grammar's zero-width markers balance.
 
 Every `begin-` marker must be closed by its own `end-`, on every path, and a rule must balance them the same way
 whichever path is taken through it — otherwise the token stream is a tree only sometimes, and the fold that rebuilds the
@@ -9,9 +10,9 @@ Nothing else catches this. The rule that every consumed character lies within a 
 which consume nothing at all; and a marker that is never emitted looks exactly like a marker that is not needed.
 
 The chomping decides where a block scalar ends — `b-chomped-last` closes it when there is content to close, and
-`l-keep-empty` when the content was empty and kept — so the markers balance per value of `t` rather than per branch.
-The check therefore specializes: it fixes each finite parameter — `c`, `t` and the resume policy `r` — to each of its
-values in turn, and requires balance for each.
+`l-keep-empty` when the content was empty and kept — so the markers balance per value of `t` rather than per branch. The
+check therefore specializes: it fixes each finite parameter — `c`, `t` and the resume policy `r` — to each of its values
+in turn, and requires balance for each.
 """
 
 import annotated2ir

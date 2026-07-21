@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Recover the official grammar from libyeast's, to prove we still speak its language.
+"""
+Recover the official grammar from libyeast's, to prove we still speak its language.
 
 libyeast's grammar adds two things the official one lacks: the token annotations, and a production for each indicator
 character so that an annotation has somewhere to attach. Both are undone here — an annotation is dropped and its child
@@ -17,8 +18,8 @@ import annotated2ir
 
 import yaml
 
-# The rules libyeast adds that match nothing at all. They exist only to emit a marker, so the official grammar can
-# leave them out and never notice: `x / end-block-scalar` is `x / <empty>`, which is `x?`, which is what it writes.
+# The rules libyeast adds that match nothing at all. They exist only to emit a marker, so the official grammar can leave
+# them out and never notice: `x / end-block-scalar` is `x / <empty>`, which is `x?`, which is what it writes.
 MARKER_ONLY = frozenset({"end-block-scalar"})
 
 # The rules libyeast adds around the official grammar: the root the parser runs, and the unparsed recovery it and a
@@ -64,12 +65,13 @@ INDICATORS = {
 
 
 def flatten(items):
-    """The items of a sequence, with nested sequences spliced in.
+    """
+    The items of a sequence, with nested sequences spliced in.
 
     Wrapping part of a sequence — the markers around a directive, say, but not around the comments that follow it —
     nests a sequence inside a sequence. Erasing the annotation leaves the nesting behind, where the official grammar
-    writes the items flat. Sequencing is associative, so splicing them back is a change of spelling, not of grammar,
-    and `normalize` applies it to the official grammar too, so neither side is flattered.
+    writes the items flat. Sequencing is associative, so splicing them back is a change of spelling, not of grammar, and
+    `normalize` applies it to the official grammar too, so neither side is flattered.
     """
     spliced = []
     for item in items:

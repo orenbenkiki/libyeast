@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Typed IR for the YAML grammar.
+"""
+Typed IR for the YAML grammar.
 
 `annotated2ir.py` reads the grammar into these nodes; `grammar2decoder.py` and the gate checks read them back out. This
 is a faithful 1:1 mirror of the yaml-grammar operator vocabulary — every operator maps to one node and nothing is
@@ -26,10 +27,12 @@ FINITE_DEFAULTS = {"r": "n"}
 
 
 def specialized(base, bindings):
-    """The name of the monomorphic copy of `base` that fixes `bindings` — its finite parameters, in `FINITE_PARAMS`
-    order, each written `_<parameter>_<value>`. A parameter left unset (its value `None`, as a context is where none is
+    """
+    The name of the monomorphic copy of `base` that fixes `bindings` — its finite parameters, in `FINITE_PARAMS` order,
+    each written `_<parameter>_<value>`. A parameter left unset (its value `None`, as a context is where none is
     established) or at its default is not in the name, so the copy that fixes only defaults keeps the base name and
-    resolves like it — which keeps the root `l-yeast-stream` and lets a fixture that names no resume policy find it."""
+    resolves like it — which keeps the root `l-yeast-stream` and lets a fixture that names no resume policy find it.
+    """
     return base + "".join(
         f"_{parameter}_{bindings[parameter]}"
         for parameter in FINITE_PARAMS
@@ -38,11 +41,13 @@ def specialized(base, bindings):
 
 
 def entry(grammar, name, parameters):
-    """Resolve a call of `name` with `parameters` to the production `grammar` holds: its monomorphic copy if present —
-    the finite parameters it fixes in its name moved out of the arguments — else `name` unchanged, arguments whole. A
+    """
+    Resolve a call of `name` with `parameters` to the production `grammar` holds: its monomorphic copy if present — the
+    finite parameters it fixes in its name moved out of the arguments — else `name` unchanged, arguments whole. A
     left-out finite default is filled, so a fixture or the root finds its copy. Only the finite parameters the resolved
     production no longer declares are dropped: a monomorphic copy has shed them, but the base name at its default is
-    still the polymorphic production, which declares and is passed them."""
+    still the polymorphic production, which declares and is passed them.
+    """
     given = {parameter: parameters[parameter] for parameter in FINITE_PARAMS if parameter in parameters}
     for bindings in (given, {**FINITE_DEFAULTS, **given}):
         resolved = specialized(name, bindings)
@@ -76,7 +81,8 @@ class Match:
 
 @dataclass(frozen=True)
 class AutoDetectIndent:
-    """`<auto-detect-indent>`: the indentation of the next line that holds a character other than a space, less `n`.
+    """
+    `<auto-detect-indent>`: the indentation of the next line that holds a character other than a space, less `n`.
 
     The current line counts only if the parse is at its start — so a block collection measures the line it stands on,
     and a block scalar measures past the rest of its header line, the break, and however many empty lines follow.
@@ -85,7 +91,8 @@ class AutoDetectIndent:
 
 @dataclass(frozen=True)
 class AutoDetectInLineIndent:
-    """`<auto-detect-in-line-indent>`: the spaces that follow, here, on this line — not a line's indentation.
+    """
+    `<auto-detect-in-line-indent>`: the spaces that follow, here, on this line — not a line's indentation.
 
     What a compact collection is indented by, measured from just after the `-` or the `?` that introduced it.
     """
@@ -180,8 +187,10 @@ class EndOfStream:
 
 @dataclass(frozen=True)
 class Invalid:
-    """`<invalid>`: one byte that begins no valid UTF-8 sequence. It belongs to no character set, so it matches nowhere
-    the grammar names a character — only the recovery rules reach for it, where a run of these is `unparsed-invalid`."""
+    """
+    `<invalid>`: one byte that begins no valid UTF-8 sequence. It belongs to no character set, so it matches nowhere the
+    grammar names a character — only the recovery rules reach for it, where a run of these is `unparsed-invalid`.
+    """
 
 
 @dataclass(frozen=True)
@@ -229,11 +238,13 @@ class Rep:
 
 @dataclass(frozen=True)
 class TrimStar:
-    """A maximal run of `full` whose trailing run of `trim` characters is given back — the normalized form of a
-    `(trim* content)*`, where `full` is `trim | content`. A plain scalar's in-line run is one: it keeps its inner spaces
-    and leaves the trailing ones, so `nb-ns-plain-in-line` — `(s-white* ns-plain-char)*` — becomes `TrimStar` over
-    `s-white | ns-plain-char`, trimming `s-white`; the single- and double-quoted in-line runs likewise. It matches the
-    empty string, so a run of nothing but `trim` characters consumes none of them."""
+    """
+    A maximal run of `full` whose trailing run of `trim` characters is given back — the normalized form of a `(trim*
+    content)*`, where `full` is `trim | content`. A plain scalar's in-line run is one: it keeps its inner spaces and
+    leaves the trailing ones, so `nb-ns-plain-in-line` — `(s-white* ns-plain-char)*` — becomes `TrimStar` over `s-white
+    | ns-plain-char`, trimming `s-white`; the single- and double-quoted in-line runs likewise. It matches the empty
+    string, so a run of nothing but `trim` characters consumes none of them.
+    """
 
     full: object
     trim: object
@@ -284,7 +295,8 @@ class ExcludeAt:
 
 @dataclass(frozen=True)
 class Max:
-    """`(max)`: a bound of `limit` characters — the implicit-key lookahead limit (§7.4.2).
+    """
+    `(max)`: a bound of `limit` characters — the implicit-key lookahead limit (§7.4.2).
 
     The vendored grammar writes it before a production, as a length note on what follows: `(max): N`. libyeast writes it
     around the production instead — `(max): [N, message, rule]` — where it is the bounded window a parser resolves the
@@ -316,8 +328,10 @@ class Le:
 
 @dataclass(frozen=True)
 class Case:
-    """`(case)`: dispatch on a parameter's value, each branch a grammar node, `default` the `else` for a value no branch
-    names — `None` where there is none, and then a value with no branch is a path that does not match."""
+    """
+    `(case)`: dispatch on a parameter's value, each branch a grammar node, `default` the `else` for a value no branch
+    names — `None` where there is none, and then a value with no branch is a path that does not match.
+    """
 
     var: str
     branches: tuple  # (Branch, ...), each holding a grammar node
@@ -343,9 +357,11 @@ class SetVar:
 
 @dataclass(frozen=True)
 class Increase:
-    """`(increase)`: increase indentation parameter `param` to the current column — `param = max(param, column)` — a
+    """
+    `(increase)`: increase indentation parameter `param` to the current column — `param = max(param, column)` — a
     zero-width action. It records the widest indentation seen so far, which is how a block scalar's leading empty lines
-    set the floor its first content line may not fall below."""
+    set the floor its first content line may not fall below.
+    """
 
     param: str
 
@@ -356,14 +372,15 @@ class Increase:
 # token — wherever a `Token` scope begins or ends, and wherever an `Emit` marker falls. So an annotation does not make
 # *a* token: it says what code the characters consumed within it carry, and where the runs are cut.
 #
-# A character consumed under no annotation at all carries the code `unparsed`, which is what the parser says about
-# input it could not parse. On the success path that is always a mistake, so `validate_grammar.py` holds every
+# A character consumed under no annotation at all carries the code `unparsed`, which is what the parser says about input
+# it could not parse. On the success path that is always a mistake, so `validate_grammar.py` holds every
 # character-consuming node to lying within some `Token`.
 
 
 @dataclass(frozen=True)
 class Token:
-    """`(token)`: the characters `item` consumes carry `code`, but for those a nested annotation claims.
+    """
+    `(token)`: the characters `item` consumes carry `code`, but for those a nested annotation claims.
 
     The run is cut at both edges, so the characters before, within and after `item` fall into separate tokens. `item`
     may yield several tokens (where it nests annotations of its own) or none at all (where it consumes nothing).
@@ -375,10 +392,11 @@ class Token:
 
 @dataclass(frozen=True)
 class Wrap:
-    """`(wrap)`: zero-width `begin` and `end` markers bracketing `item` — sugar for an `Emit` on either side of it.
+    """
+    `(wrap)`: zero-width `begin` and `end` markers bracketing `item` — sugar for an `Emit` on either side of it.
 
-    A node of its own, rather than the sequence it stands for, so that the two markers are paired by construction and
-    a `begin` cannot lose its `end`.
+    A node of its own, rather than the sequence it stands for, so that the two markers are paired by construction and a
+    `begin` cannot lose its `end`.
     """
 
     begin: str
@@ -395,37 +413,47 @@ class Emit:
 
 @dataclass(frozen=True)
 class PushCode:
-    """A zero-width action that cuts the run and sets the code its following characters carry to `code` — what a
-    `(token)` opens with, over the production's own, which `PopCode` restores at its trailing edge."""
+    """
+    A zero-width action that cuts the run and sets the code its following characters carry to `code` — what a `(token)`
+    opens with, over the production's own, which `PopCode` restores at its trailing edge.
+    """
 
     code: str
 
 
 @dataclass(frozen=True)
 class PopCode:
-    """A zero-width action that cuts the run and restores the code its following characters carry to the production's
-    own — `env["code"]`, the code it was entered under, held on its frame rather than a stack, since a `(token)` never
-    nests within one body. Paired with `PushCode`: `Token(code, item)` lowers to `PushCode(code), item, PopCode`."""
+    """
+    A zero-width action that cuts the run and restores the code its following characters carry to the production's own —
+    `env["code"]`, the code it was entered under, held on its frame rather than a stack, since a `(token)` never nests
+    within one body. Paired with `PushCode`: `Token(code, item)` lowers to `PushCode(code), item, PopCode`.
+    """
 
 
 @dataclass(frozen=True)
 class OpenMatch:
-    """A zero-width action that sets the origin a `(match)` measures from to the current position — what `(<<<)` marks
-    before the run it bounds. `CloseMatch` restores it at the trailing edge."""
+    """
+    A zero-width action that sets the origin a `(match)` measures from to the current position — what `(<<<)` marks
+    before the run it bounds. `CloseMatch` restores it at the trailing edge.
+    """
 
 
 @dataclass(frozen=True)
 class CloseMatch:
-    """A zero-width action that restores the `(match)` origin to the production's own — `env["match_start"]`, the origin
-    it was entered under, held on its frame not a stack, since a `(<<<)` never nests within one body. Paired with
-    `OpenMatch`: `Bound(item)` lowers to `OpenMatch, item, CloseMatch`."""
+    """
+    A zero-width action that restores the `(match)` origin to the production's own — `env["match_start"]`, the origin it
+    was entered under, held on its frame not a stack, since a `(<<<)` never nests within one body. Paired with
+    `OpenMatch`: `Bound(item)` lowers to `OpenMatch, item, CloseMatch`.
+    """
 
 
 @dataclass(frozen=True)
 class OpenWindow:
-    """A zero-width action that opens a `(max)` window `limit` characters wide, past which a committed consume fails the
+    """
+    A zero-width action that opens a `(max)` window `limit` characters wide, past which a committed consume fails the
     cut `message` names. Only the outermost applies — a nested one keeps the outer edge, being the buffer — and
-    `CloseWindow` restores it at the trailing edge."""
+    `CloseWindow` restores it at the trailing edge.
+    """
 
     limit: object
     message: str
@@ -433,14 +461,17 @@ class OpenWindow:
 
 @dataclass(frozen=True)
 class CloseWindow:
-    """A zero-width action that restores the `(max)` window to the production's own — `env["ceiling"]`, the window it
-    was entered under, held on its frame not a stack, since a `(max)` never nests within one body. Paired with
-    `OpenWindow`: `Max(limit, message, item)` lowers to `OpenWindow(limit, message), item, CloseWindow`."""
+    """
+    A zero-width action that restores the `(max)` window to the production's own — `env["ceiling"]`, the window it was
+    entered under, held on its frame not a stack, since a `(max)` never nests within one body. Paired with `OpenWindow`:
+    `Max(limit, message, item)` lowers to `OpenWindow(limit, message), item, CloseWindow`.
+    """
 
 
 @dataclass(frozen=True)
 class Cut:
-    """`(cut)`: a zero-width commit past which the parse does not backtrack; on a later failure it is the error, and
+    """
+    `(cut)`: a zero-width commit past which the parse does not backtrack; on a later failure it is the error, and
 
     `message` names the expectation to report — a key into `grammar/messages.yaml`.
     """
@@ -450,7 +481,8 @@ class Cut:
 
 @dataclass(frozen=True)
 class Commit:
-    """`(commit)`: match `item`, committing only to `item` being present — a `(cut)` scoped to what follows it.
+    """
+    `(commit)`: match `item`, committing only to `item` being present — a `(cut)` scoped to what follows it.
 
     Where a `(cut)` commits the whole parse from its point on, `(commit)` commits only that `item` can match at all: if
     `item` cannot (a quoted scalar that never closes, a flow collection that never ends), `message` is the error, as a
@@ -468,11 +500,12 @@ class Commit:
 
 @dataclass(frozen=True)
 class Error:
-    """`(error)`: a zero-width error token at this point, which also cuts the run of characters around it.
+    """
+    `(error)`: a zero-width error token at this point, which also cuts the run of characters around it.
 
     `message` names the expectation to report — a key into `grammar/messages.yaml`, as a `(cut)`'s does. Unlike a
-    `(cut)` it is a match rather than a commit: it emits and succeeds, so what the parser does about the input from
-    here is the grammar's to say, in the rule that holds it.
+    `(cut)` it is a match rather than a commit: it emits and succeeds, so what the parser does about the input from here
+    is the grammar's to say, in the rule that holds it.
     """
 
     message: str
@@ -480,7 +513,8 @@ class Error:
 
 @dataclass(frozen=True)
 class Recover:
-    """`(recover)`: where a `(cut)` inside `item` stops unwinding, when `recovery` says it stops here.
+    """
+    `(recover)`: where a `(cut)` inside `item` stops unwinding, when `recovery` says it stops here.
 
     A cut unwinds past every frame between it and whatever will answer for it. This is a rule saying "that is me": the
     error is emitted, the markers `item` opened are closed down to this point and no further, and `recovery` matches
@@ -511,7 +545,8 @@ ZERO_WIDTH = (ExcludeAt, Look, LookBehind, NegLook)
 
 
 def rebuilt(node, visit):
-    """`node` with every grammar node it holds replaced by `visit` of that node.
+    """
+    `node` with every grammar node it holds replaced by `visit` of that node.
 
     The generic walker the module's shape exists for: it reaches every node the same way, whatever node it is — a field
     of its own or an item of a tuple of them — so a caller recurses without special-casing any node. A `Lit` and a

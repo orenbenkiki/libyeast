@@ -47,7 +47,7 @@ fi
 if $lint; then
     need_llvm=true
     brew_pkgs="$brew_pkgs cppcheck shfmt"
-    pip_pkgs="$pip_pkgs clang-format==$(cat .clang-format-version).* mdformat mdformat-gfm black gersemi ruff"
+    pip_pkgs="$pip_pkgs clang-format==$(cat .clang-format-version).* mdformat mdformat-gfm black format-docstring gersemi ruff"
 fi
 if $cov; then
     need_llvm=true

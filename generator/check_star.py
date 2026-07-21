@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: MIT
-"""Fold libyeast's token stream up to the YAML Test Suite's events and check the two agree, case for case.
+"""
+Fold libyeast's token stream up to the YAML Test Suite's events and check the two agree, case for case.
 
 The community suite (`third_party/yaml-test-suite/`) states, per case, an `in.yaml` and either the `test.event` a
 conformant parser produces or an `error` marker where it must reject. libyeast is a token parser, so the check is the
-deterministic fold `star` defines: a valid case must fold to its events, an error case must come back a rejection,
-each matched as far as the token layer settles them.
+deterministic fold `star` defines: a valid case must fold to its events, an error case must come back a rejection, each
+matched as far as the token layer settles them.
 
 A case libyeast does not agree with is either a bug or a difference we chose; a chosen one must be declared in
 DIVERGENCES, with its reason, or this fails. A declared case that agrees again is a stale declaration and fails too, the
@@ -32,8 +33,10 @@ DIVERGENCES = {
 
 
 def _disagreement(grammar, directory):
-    """How libyeast's fold of `<directory>/in.yaml` disagrees with the case, or `None` if it agrees. A valid case must
-    fold to its `test.event`; an error case must come back a rejection."""
+    """
+    How libyeast's fold of `<directory>/in.yaml` disagrees with the case, or `None` if it agrees. A valid case must fold
+    to its `test.event`; an error case must come back a rejection.
+    """
     with open(os.path.join(directory, "in.yaml"), "rb") as handle:
         data = handle.read()
     is_error = os.path.exists(os.path.join(directory, "error"))
@@ -60,9 +63,11 @@ def cases():
 
 
 def disagreements(grammar, suite=None):
-    """The suite cases `grammar` folds differently from the suite and does not declare, as error strings — empty when it
+    """
+    The suite cases `grammar` folds differently from the suite and does not declare, as error strings — empty when it
     agrees green-or-declared. Takes the grammar as an argument, so a structurally-transformed grammar folds the whole
-    corpus to the same events the base one does."""
+    corpus to the same events the base one does.
+    """
     if suite is None:
         suite = cases()
     errors = []

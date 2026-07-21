@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Round-trip check: `annotated2ir` then `ir2annotated` must reproduce the vendored grammar exactly.
+"""
+Round-trip check: `annotated2ir` then `ir2annotated` must reproduce the vendored grammar exactly.
 
 Loads the vendored yaml-grammar, translates it to the IR and back, and asserts the regenerated data equals the source
 (compared as parsed data, not text). So a translation that loses a production, or quietly rewrites one, fails here

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check the committed decoder tables against the grammar.
+"""
+Check the committed decoder tables against the grammar.
 
 Verifies that every bit of every key agrees with a direct evaluation of the set it stands for, and that the committed
 `src/decoder_tables.h` is exactly what the grammar produces. Reports every problem found and exits non-zero if there are
@@ -25,7 +26,8 @@ def regenerated(model, grammar):
 
 
 def check_keys(model, grammar):
-    """Every set bit of every key must agree with a direct evaluation of the set it stands for.
+    """
+    Every set bit of every key must agree with a direct evaluation of the set it stands for.
 
     The keys and the set definitions are computed by different code, so this catches a packing bug that a round-trip
     through the generator alone would reproduce faithfully in both directions. One codepoint per segment is exhaustive:
@@ -44,7 +46,8 @@ def check_keys(model, grammar):
 
 
 def check_scanned_sets(model, grammar):
-    """No character set the grammar scans in a run may admit a line break.
+    """
+    No character set the grammar scans in a run may admit a line break.
 
     `ys_scan_set` reports how many bytes and how many characters a run covered, and the parser advances its column by
     the latter. That is exact only while a run cannot cross a line — which holds because every set under a `(***)`,

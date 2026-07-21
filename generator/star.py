@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: MIT
-"""Fold libyeast's yeast token stream up to the YAML Test Suite's event level, and check the two are compatible.
+"""
+Fold libyeast's yeast token stream up to the YAML Test Suite's event level, and check the two are compatible.
 
 The community YAML Test Suite (`third_party/yaml-test-suite/`, vendored data form) states, per case, an `in.yaml` input
 and the `test.event` stream a conformant parser produces for it — or an `error` marker where it must reject the input.
 libyeast is a token parser, a level below events, so the check is a deterministic **fold**: the yeast stream's
 `begin-`/`end-` markers rebuild the event tree and the leaf tokens fill it, and the question is whether that stream is
 *compatible* with the expected events — would it produce them, matched as far as the token layer settles them. Node and
-pair brackets, indicators, whitespace, indentation and breaks are presentation the events do not carry; they fold
-away. A scalar's value is reconstructed as far as the tokens mechanically give it — content joined, a `line-fold` a
-space and a `line-feed` a newline, an escape resolved — not by any value-layer decision above the tokens.
+pair brackets, indicators, whitespace, indentation and breaks are presentation the events do not carry; they fold away.
+A scalar's value is reconstructed as far as the tokens mechanically give it — content joined, a `line-fold` a space and
+a `line-feed` a newline, an escape resolved — not by any value-layer decision above the tokens.
 
 This is libyeast's independent net: the suite is derived from the same spec but written by other hands, so it catches a
 grammar bug libyeast's own fixtures, migrated from one reference, would share.
@@ -47,7 +48,7 @@ ESCAPES = {
 
 
 def _unescape_wire(text):
-    """The characters a wire token's escaped text stands for: a codepoint per `\\xHH`/`\\uHHHH`, else literal."""
+    r"""The characters a wire token's escaped text stands for: a codepoint per `\xHH`/`\uHHHH`, else literal."""
     return "".join(chr(value) for value, _length, _piece in wire.units(text))
 
 
@@ -70,10 +71,12 @@ def _uri_unescape(text):
 
 
 def _expand_tag(handle, suffix, tags):
-    """A tag's `handle` and `suffix` as the event shows it: its handle resolves through `tags` — the document's `%TAG`
+    """
+    A tag's `handle` and `suffix` as the event shows it: its handle resolves through `tags` — the document's `%TAG`
     directives over the default primary `!` and secondary `!!` — so `!!str` is `tag:yaml.org,2002:str`, a local `!foo`
     stays `!foo`, and a verbatim `!<uri>` is the URI it wrote. A URI's `%XX` escapes are decoded. A named handle with no
-    `%TAG` to resolve it is undefined, and using it is an error the resolution the fold stands in for reports."""
+    `%TAG` to resolve it is undefined, and using it is an error the resolution the fold stands in for reports.
+    """
     if handle.startswith("!<") and handle.endswith(">"):
         return _uri_unescape(handle[2:-1])  # a verbatim !<uri>, written with no handle span
     if handle not in tags:  # only a named `!x!` reaches here undefined; `!` and `!!` are always the defaults
@@ -107,7 +110,8 @@ class Event:
 
 
 def parse_events(text):
-    """Parse a `test.event` file into a list of `Event`s.
+    """
+    Parse a `test.event` file into a list of `Event`s.
 
     A line is `KIND rest`: a collection marker keeps only its kind (a flow `{}`/`[]` hint is presentation); `=VAL` and
     `=ALI` carry an optional `&anchor`, an optional `<tag>`, then a `<style><value>` where the style is one of `:'"|>`.
@@ -146,7 +150,7 @@ def parse_events(text):
 
 
 def _unescape_event(text):
-    """A `test.event` value's own escaping — `\\n`, `\\t`, `\\\\`, `\\r` — back to the characters it stands for."""
+    r"""A `test.event` value's own escaping — `\n`, `\t`, `\\`, `\r` — back to the characters it stands for."""
     out, index = [], 0
     while index < len(text):
         char = text[index]
@@ -171,7 +175,8 @@ DEFAULT_TAGS = {"!": "!", "!!": "tag:yaml.org,2002:"}
 
 
 def fold(tokens):
-    """Fold a yeast token stream into the events it would produce, or raise `Incompatible` if it holds an error token.
+    """
+    Fold a yeast token stream into the events it would produce, or raise `Incompatible` if it holds an error token.
 
     The stream is bracketed by an implicit `+STR`/`-STR`. A scalar's run of `text`/`meta`/`line-fold`/`line-feed` and
     escapes is gathered between its `begin-scalar` and `end-scalar` and its style read from the indicator that opens it;
@@ -285,7 +290,7 @@ def fold(tokens):
 
 
 def _resolve_escape(parts):
-    """A double-quoted `\\`-escape (its indicator and digits gathered in `parts`) as the character it denotes."""
+    r"""A double-quoted `\`-escape (its indicator and digits gathered in `parts`) as the character it denotes."""
     body = "".join(parts)
     if not body:
         return ""

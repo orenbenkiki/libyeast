@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that every step of the normalization pipeline preserves the grammar's meaning, step by step.
+"""
+Check that every step of the normalization pipeline preserves the grammar's meaning, step by step.
 
 A structural transformation is only allowed if it changes no token the interpreter emits and no event the fold produces.
 So after each step this runs the two nets the base grammar already passes, on that step's grammar: the fixtures — every

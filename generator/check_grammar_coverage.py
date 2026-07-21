@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that the conformance fixtures exercise every production of the grammar, both ways.
+"""
+Check that the conformance fixtures exercise every production of the grammar, both ways.
 
 Coverage is dynamic, not by name: a production counts when running a fixture actually reaches it — so a production with
 no fixture of its own (a `seq-spaces`, an `in-flow`) is covered by the fixtures that reach it, and one that nothing
@@ -75,7 +76,8 @@ NEVER_SURE = (
 
 
 def is_total(node, grammar, seen=frozenset()):
-    """Whether `node` matches at every position and for every parameter value, provably — or not at all.
+    """
+    Whether `node` matches at every position and for every parameter value, provably — or not at all.
 
     Proving it takes only the shape: a repetition or an optional can take nothing, a sequence is total when every item
     is, an alternation when any item is, a `(case)` when every branch it has is total. Anything that reads the input,
@@ -125,7 +127,8 @@ def is_total(node, grammar, seen=frozenset()):
 
 
 def exercised(grammar):
-    """The productions the reproducible fixtures reach, and the ones they see reject an input.
+    """
+    The productions the reproducible fixtures reach, and the ones they see reject an input.
 
     Returns `(reached, rejected)`. A production is reached when its body offers a solution or a value expression
     evaluates it; it is rejected when it fails to match, or when a `(cut)` inside it raises — a rule holding a cut never
@@ -171,10 +174,11 @@ def exercised(grammar):
 
 
 def fired():
-    """The error texts the fixtures' own expected output carries — the `(cut)`s and `(error)`s shown to reach it.
+    r"""
+    The error texts the fixtures' own expected output carries — the `(cut)`s and `(error)`s shown to reach it.
 
     These are the texts as the wire holds them, escaped, which is what a message must be escaped to be compared against:
-    a message naming a backslash is `\\x5c` here and a backslash in `messages.yaml`.
+    a message naming a backslash is `\x5c` here and a backslash in `messages.yaml`.
     """
     texts = set()
     for fixture in spec_tests.load():
@@ -192,19 +196,23 @@ _MONOMORPHIC_SUFFIX = (
 
 
 def _base(name):
-    """`name` with its monomorphic-copy suffixes stripped — `foo_c_flow-in_1` to `foo_1`. A copy is covered when its
-    base is: the fixtures test a base production, `monomorphize` is a token-faithful split of it (each copy reachable
-    and proved to change no token), and a copy differs only by a static context substitution, adding no logic to leave
+    """
+    `name` with its monomorphic-copy suffixes stripped — `foo_c_flow-in_1` to `foo_1`. A copy is covered when its base
+    is: the fixtures test a base production, `monomorphize` is a token-faithful split of it (each copy reachable and
+    proved to change no token), and a copy differs only by a static context substitution, adding no logic to leave
     untested. Covering every copy directly would take a fixture per production and context it appears in —
-    combinatorial, where `[ 'x' ]` reaching a copy `key: 'x'` does not is a hole in the corpus, not dead code."""
+    combinatorial, where `[ 'x' ]` reaching a copy `key: 'x'` does not is a hole in the corpus, not dead code.
+    """
     return _MONOMORPHIC_SUFFIX.sub("", name) if _MONOMORPHIC_SUFFIX else name
 
 
 def gaps(grammar):
-    """The productions `grammar` leaves unexercised and the messages nothing fires, as error strings — empty when the
+    """
+    The productions `grammar` leaves unexercised and the messages nothing fires, as error strings — empty when the
     fixtures reach and reject every production and carry every message. Takes the grammar as an argument, so it re-runs
     on a structurally-transformed grammar whose reshaped productions the same fixtures must still exercise; a
-    monomorphic copy is held covered when its base is."""
+    monomorphic copy is held covered when its base is.
+    """
     reached, rejected = exercised(grammar)
     reached_bases = {_base(name) for name in reached}
     rejected_bases = {_base(name) for name in rejected}

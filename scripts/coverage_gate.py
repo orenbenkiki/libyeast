@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Enforce the coverage-annotation contract from a gcovr JSON report.
+"""
+Enforce the coverage-annotation contract from a gcovr JSON report.
 
-Every executable line that tests do NOT cover must carry a `// UNTESTED` comment.
-Conversely, a `// UNTESTED` on a line that IS covered is stale. Either is an
-error, reported as `<path>:<line>: message` for editor go-to-line.
+Every executable line that tests do NOT cover must carry a `// UNTESTED` comment. Conversely, a `// UNTESTED` on a line
+that IS covered is stale. Either is an error, reported as `<path>:<line>: message` for editor go-to-line.
 
 Usage: coverage_gate.py <gcovr-json>
 """
@@ -39,8 +39,7 @@ def main():
         with open(path, encoding="utf-8") as source_handle:
             source = source_handle.readlines()
 
-        # A physical line can appear multiple times (macros/inlining); it counts
-        # as covered if any instance ran.
+        # A physical line can appear multiple times (macros/inlining); it counts as covered if any instance ran.
         counts = {}
         for line in entry.get("lines", []):
             number = line.get("line_number")

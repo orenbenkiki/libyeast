@@ -50,7 +50,7 @@ if $lint; then
     # then rejects. Its major is .clang-format-version, the one source the gate and both dev-deps scripts read.
     # clang-tidy is a linter, not a formatter, so its version is not load-bearing the same way.
     apt="$apt clang-tidy cppcheck shfmt"
-    pip="$pip clang-format==$(cat .clang-format-version).* mdformat mdformat-gfm black gersemi ruff"
+    pip="$pip clang-format==$(cat .clang-format-version).* mdformat mdformat-gfm black format-docstring gersemi ruff"
 fi
 if $cov; then
     apt="$apt llvm"

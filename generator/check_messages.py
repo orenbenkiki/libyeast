@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that the grammar's error sites and the message table agree.
+"""
+Check that the grammar's error sites and the message table agree.
 
 Every `(cut): CODE` and `(error): CODE` in `yeast-spec-1.2.yaml` must name a code defined in `grammar/messages.yaml`,
 and every message must be named by one of them. This keeps the error sites and their messages the single source they

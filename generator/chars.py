@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""The character model the decoder is built from, derived from the grammar IR.
+"""
+The character model the decoder is built from, derived from the grammar IR.
 
 The grammar names 57 literal characters and tests 19 distinct character sets, so those 76 are every question the parser
 can ask about a character. `Model.key` answers all of them at once: a 32-bit word holding the character's named-literal
@@ -23,7 +24,8 @@ LIT_NONE = 0  # not one of the grammar's named characters; the named characters 
 
 
 def denote(grammar, node, seen=()):
-    """The set of codepoints `node` denotes, or None if `node` is not a pure character node.
+    """
+    The set of codepoints `node` denotes, or None if `node` is not a pure character node.
 
     A token annotation says what the characters are called, not which they are, so it is looked straight through.
     """
@@ -96,7 +98,8 @@ def ranges(grammar):
 
 
 def representatives(grammar):
-    """One codepoint from each segment the grammar can tell apart, in order.
+    """
+    One codepoint from each segment the grammar can tell apart, in order.
 
     Every set is built from the grammar's literals and ranges, so a key is constant across the codepoints between two
     consecutive boundaries. Checking one codepoint per segment is therefore exhaustive, at a few dozen probes rather
@@ -111,7 +114,8 @@ def representatives(grammar):
 
 
 def tested_sets(grammar):
-    """The character sets the grammar tests, as an ordered `[(name, denotation)]`.
+    """
+    The character sets the grammar tests, as an ordered `[(name, denotation)]`.
 
     A tested set is a *maximal* character node — one whose parent is not itself a character node — so the ranges inside
     `c-printable`'s union do not count: nothing asks about them alone, only about `c-printable`. Sets denoting the same

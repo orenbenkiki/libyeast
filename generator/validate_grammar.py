@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Static validation of the grammar IR.
+"""
+Static validation of the grammar IR.
 
 Loads libyeast's grammar (via `annotated2ir`) and checks that:
   * every referenced production exists,
@@ -24,13 +25,14 @@ def walk(node):
 
 # The productions nothing references: the root the parser runs, and c-reserved — the reserved characters (§5.4), which
 # the grammar defines but never uses. The indicator characters (§5.3) each have a production too, and those *are*
-# referenced: libyeast reaches an indicator through the production that names it, so a token annotation has somewhere
-# to attach.
+# referenced: libyeast reaches an indicator through the production that names it, so a token annotation has somewhere to
+# attach.
 UNREFERENCED = frozenset({"l-yeast-stream", "c-reserved"})
 
 
 def consumed(node, is_annotated, references):
-    """Yield, for each character `node` consumes, whether a token annotation covers it; collect the references reached.
+    """
+    Yield, for each character `node` consumes, whether a token annotation covers it; collect the references reached.
 
     A lookahead consumes nothing and emits nothing, so what is inside one is neither counted nor followed. A `(---)`
     matches one character, so it counts as one; the characters it subtracts are operands, not matches.
@@ -49,11 +51,12 @@ def consumed(node, is_annotated, references):
 
 
 def check_annotated(grammar):
-    """Every character the parser consumes must lie within a token annotation.
+    """
+    Every character the parser consumes must lie within a token annotation.
 
-    A character consumed outside one is given the code `unparsed` — what the parser says about input it could not
-    parse — and would reach the caller as a token saying so. On the success path that is always an annotation someone
-    forgot, and nothing else would catch it until the token stream was compared against the reference.
+    A character consumed outside one is given the code `unparsed` — what the parser says about input it could not parse
+    — and would reach the caller as a token saying so. On the success path that is always an annotation someone forgot,
+    and nothing else would catch it until the token stream was compared against the reference.
 
     A production is reached with an annotation around it, or without one, or both; whichever it is propagates from the
     root through every reference, until it settles.

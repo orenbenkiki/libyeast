@@ -107,7 +107,8 @@ change here refuses it there; only the publishing of the docs is `main`'s alone.
     - `make verify-grammar-base-coverage` — the fixtures exercise every production of the base grammar
 - **`make vet`** — static code quality:
   - `make vet-format` — every formatter, check-only:
-    - `make vet-format-c` / `-md` / `-py` / `-cmake` / `-sh` — clang-format / mdformat / black / gersemi / shfmt
+    - `make vet-format-c` / `-md` / `-py` / `-cmake` / `-sh` — clang-format / mdformat / black + format-docstring +
+      wrap_long_comments / gersemi / shfmt
   - `make vet-comments` — the `/* */`-only-when-inline comment rule
   - `make vet-lint` — clang-tidy + cppcheck
   - `make vet-version` — guards the vcpkg port against version drift

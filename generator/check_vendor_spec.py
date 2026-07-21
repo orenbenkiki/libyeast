@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that libyeast's grammar is still the official grammar.
+"""
+Check that libyeast's grammar is still the official grammar.
 
 Erases libyeast's token annotations and indicator productions from `grammar/yeast-spec-1.2.yaml`, and compares what
 remains, production by production, against the vendored `yaml-spec-1.2.yaml`. A production that differs is either a

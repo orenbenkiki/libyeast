@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Emit the decoder's tables from the grammar IR — the data half of the decoder.
+"""
+Emit the decoder's tables from the grammar IR — the data half of the decoder.
 
 The UTF-8 mechanics are fixed by RFC 3629 and live hand-written in `decoder.c`; only the classification is grammar-
 derived, and all of it is here: the key of every ASCII character, the key of each character the grammar names, the bit
@@ -69,7 +70,8 @@ def non_ascii_group(codepoint):
 
 
 def check_groups(model, grammar):
-    """The key of every character the grammar does not name, by group name.
+    """
+    The key of every character the grammar does not name, by group name.
 
     A group is a set of characters the grammar cannot tell apart, and `decoder.c` classifies non-ASCII characters by
     UTF-8 byte pattern, knowing nothing of the grammar. Both stay correct only while the grammar keeps grouping
@@ -130,7 +132,8 @@ def defined(body):
 
 
 def sites(grammar):
-    """For each character the grammar names, where it is named: `{codepoint: ([defining], [using])}` production texts.
+    """
+    For each character the grammar names, where it is named: `{codepoint: ([defining], [using])}` production texts.
 
     A production defines a character when its whole body is that character, however the production annotates it; the
     characters no production defines are written inline, inside `ns-uri-char` and its like, so those are cited by where
@@ -175,13 +178,14 @@ def entries(out, rows):
         out.write(f"    {value + ',':<{width + 1}} // {comment}\n")
 
 
-# The header this generator owns, whole: it is committed, and `make verify-decoder` fails if it is not what the
-# grammar says it should be.
+# The header this generator owns, whole: it is committed, and `make verify-decoder` fails if it is not what the grammar
+# says it should be.
 TABLES = os.path.join(annotated2ir.TREE, "src", "decoder_tables.h")
 
 
 def emit(out, model, grammar, keys):
-    """Write the header.
+    """
+    Write the header.
 
     Its layout is this file's, not clang-format's: the tables read as tables only when their columns line up, and the
     citations are too long to survive a 120-column reflow. Hence the `clang-format off` — which obliges us to emit

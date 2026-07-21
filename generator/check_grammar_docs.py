@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
-"""Check that libyeast's grammar documents the tokens it emits.
+"""
+Check that libyeast's grammar documents the tokens it emits.
 
 The grammar it derives from is a document: every rule is preceded by its spec BNF, and a rule that needs explaining gets
 a section of prose. libyeast's additions deserve no less — a reader should not have to work out for themselves why
