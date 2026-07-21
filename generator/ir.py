@@ -261,6 +261,30 @@ class ConsumeSpan:
 
 
 @dataclass(frozen=True)
+class ConsumeLiteral:
+    """
+    A fixed sequence of characters, matched in one go and all or nothing — `---`, `...`, a directive's `YAML` or `TAG`.
+    What a run of literal characters in a sequence becomes in the canonical form: one comparison of a few bytes rather
+    than a state per character.
+    """
+
+    text: tuple  # the codepoints, in order
+
+
+@dataclass(frozen=True)
+class ConsumeCountedSpan:
+    """
+    Exactly `count` characters of `set`, consumed in one scan, matching nothing if fewer are there — what a `({N})`
+    repetition of a character class becomes in the canonical form. `count` is a literal where the grammar fixes it (an
+    escape's two, four or eight hex digits) or a parameter where the input does (`s-indent`'s `n` spaces), so one scan
+    that counts serves both.
+    """
+
+    set: object
+    count: object
+
+
+@dataclass(frozen=True)
 class ConsumeTrimmedSpan:
     """
     A maximal run of `full` characters whose trailing run of `trim` is given back, consumed in one scan — what a

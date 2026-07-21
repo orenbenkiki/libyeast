@@ -97,21 +97,28 @@ All notable changes to this project are documented here. The format follows
   `(match)`-measured condition and the `(set)` that reads it, the one node that held a match scope becoming the ordinary
   run and action it always was. `flatten` then splices nested `Seq`/`Alt`, drops the `Empty` no-ops a sequence carries,
   unwraps singleton `Seq`/`Alt`, and expands a fixed `(k)` repetition into its copies — leaving a `(n)` over a runtime
-  count for the determinize phase. `span-consumes` then rewrites each character-set `Star` as a `ConsumeSpan` and each
-  `TrimStar` as a `ConsumeTrimmedSpan` — the maximal runs a scalar's or a name's content compiles to, each the single
-  scan the canonical form spells. `lift-choices` gives every nested choice a production of its own, so a choice is only
-  ever a whole body — the canonical shape, where a production is either a terminal character set or an ordered list of
-  alternatives; a choice in a character class or a lookahead is a set or a pattern, not a decision, and stays where it
-  is. `binarize` then splits every alternative down to the canonical form's two production calls, cutting one with three
-  or more after its first: what follows becomes a fresh `_<N>` helper called in its place, cut the same way until none
-  is left over, so `A -> B C D` becomes `A -> B A_1` and `A_1 -> C D`. Two calls is one stack push per edge. The
-  coverage gate holds a minted helper covered by the base it came from, as it does a monomorphic copy: a helper is a
-  piece of the base's own body moved, so requiring more of it than of the body it came from would ask the corpus for
-  what the untransformed grammar never needed. `check_normalize` holds every step token-and-event identical over the
-  whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases — and ends on two own-gates over the result:
-  every long text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one
-  character per loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its
-  set, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable production.
+  count for the determinize phase. `span-consumes` then rewrites every run of characters as the single scan the
+  canonical form spells: a character-set `Star` becomes a `ConsumeSpan`, a `TrimStar` a `ConsumeTrimmedSpan`, a `({N})`
+  repetition a `ConsumeCountedSpan` — a run of exactly so many, which keeps an escape's eight hex digits and an indent's
+  `n` spaces each one scan rather than a state per character — and characters standing in a row a `ConsumeLiteral`, one
+  comparison that either stands or takes nothing, which is what `---`, `...`, a directive's `YAML` or `TAG`, and a
+  break's carriage return and line feed each become. `lift-choices` gives every nested choice a production of its own,
+  so a choice is only ever a whole body — the canonical shape, where a production is either a terminal character set or
+  an ordered list of alternatives; a choice in a character class or a lookahead is a set or a pattern, not a decision,
+  and stays where it is. `single-consumes` splits an alternative down to the one character its gate peeks, and
+  `binarize` down to the canonical form's two production calls, each moving what follows into a fresh `_<N>` helper
+  called in its place, so `A -> B C D` becomes `A -> B A_1` and `A_1 -> C D`. Two calls is one stack push per edge. What
+  a helper may hold is bounded by the scopes a production's frame carries: a `(<<<)` origin and a `(max)` window are not
+  passed, so a moved segment opens and closes them together, while a `(token)`'s code is — a helper split out of the
+  middle of one takes the code its caller was entered under as a parameter, so its close restores the outer code rather
+  than the pushed one, and a declared parameter beats the scope in force where a production is entered. The coverage
+  gate holds a minted helper covered by the base it came from, as it does a monomorphic copy: a helper is a piece of the
+  base's own body moved, so requiring more of it than of the body it came from would ask the corpus for what the
+  untransformed grammar never needed. `check_normalize` holds every step token-and-event identical over the whole corpus
+  — 681 conformance fixtures and 402 YAML Test Suite cases — and ends on two own-gates over the result: every long text
+  token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per loop;
+  and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its
+  element or, until determinize supplies the guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

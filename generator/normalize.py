@@ -522,14 +522,11 @@ def _flat_alt(items):
 
 def _flatten(node):
     """
-    `node` flattened: nested `Seq`/`Alt` spliced, `Empty` dropped from sequences, singletons unwrapped, and a fixed
-    `(k)` repetition expanded to `k` copies in a sequence. Bottom-up, so a parent sees its already-flattened children —
-    the copies a `(k)` makes flatten into the parent in the same pass. A `(n)` repetition over a runtime count is left
-    alone, its counting a gate the determinize phase resolves.
+    `node` flattened: nested `Seq`/`Alt` spliced, `Empty` dropped from sequences, and singletons unwrapped. Bottom-up,
+    so a parent sees its already-flattened children — which is also what leaves a repetition's element bare, for the
+    step that turns a run into a consume to recognize the character class under it.
     """
     node = ir.rebuilt(node, _flatten)
-    if isinstance(node, ir.Rep) and isinstance(node.count, ir.Lit):
-        return _flat_seq((node.item,) * node.count.value)
     if isinstance(node, ir.Seq):
         return _flat_seq(node.items)
     if isinstance(node, ir.Alt):
@@ -547,6 +544,68 @@ def flatten(grammar, namer):
     return {
         name: dataclasses.replace(production, body=_flatten(production.body)) for name, production in grammar.items()
     }
+
+
+# The scopes a production's frame holds the outer value of, whose close reads that value back off it. A `(token)`'s is
+# passable: a helper split out of the middle of one takes the outer code as a parameter, so a cut may fall inside it.
+# The `(match)` origin and the `(max)` window are not passed, so a segment moved out must open and close them together.
+_CODE_OPEN, _CODE_CLOSE = ir.PushCode, ir.PopCode
+_OPENS = (ir.OpenMatch, ir.OpenWindow)
+_CLOSES = (ir.CloseMatch, ir.CloseWindow)
+CODE = "code"  # the parameter a helper declares to be handed the run code its caller was entered under
+
+
+def _needs_code(items):
+    """Whether `items` closes a `(token)` scope it does not open — so a helper holding them must be passed the code."""
+    depth = 0
+    for item in items:
+        if isinstance(item, _CODE_OPEN):
+            depth += 1
+        elif isinstance(item, _CODE_CLOSE):
+            depth -= 1
+            if depth < 0:
+                return True
+    return False
+
+
+def _scope_start(items, index):
+    """
+    Where the segment holding `items[index]` begins — `index` itself, or the open of the innermost frame-held scope
+    around it, so that what is moved out to a helper carries that scope's open and close together.
+    """
+    depth, start = 0, 0
+    for position in range(index + 1):
+        if depth == 0:
+            start = position
+        if isinstance(items[position], _OPENS):
+            depth += 1
+        elif isinstance(items[position], _CLOSES):
+            depth -= 1
+    return start
+
+
+def _balanced_end(items, start):
+    """
+    The end of the longest run of `items` from `start` that opens no frame-held scope it does not also close, or `None`
+    where the very first item closes one opened before it.
+
+    A `(token)`, a `(<<<)` and a `(max)` lower to a pair that opens a scope and closes it by reading the production's
+    own value back off its frame. A helper holding one half of a pair would be entered under the opened value and read
+    that back instead of the outer one — a `(token)`'s characters would keep its code past its end. So what is moved out
+    to a helper is a whole segment between them, and the pair stays where it was, closing in the production that opened
+    it.
+    """
+    end, depth = None, 0
+    for index in range(start, len(items)):
+        if isinstance(items[index], _OPENS):
+            depth += 1
+        elif isinstance(items[index], _CLOSES):
+            depth -= 1
+        if depth < 0:
+            break  # this closes a scope opened before `start`, so the segment cannot reach it
+        if depth == 0:
+            end = index + 1
+    return end
 
 
 def lift_choices(grammar, namer):
@@ -587,6 +646,56 @@ def lift_choices(grammar, namer):
     return result
 
 
+def single_consumes(grammar, namer):
+    """
+    Split every alternative down to at most one single-character terminal — the one its gate peeks. An alternative with
+    two or more is cut after its first: what follows becomes a fresh `_<N>` helper called in its place, cut the same way
+    until none is left over, so `b-break` — a carriage return and a line feed — becomes two states, and an escape's
+    eight hex digits become eight.
+
+    A character run is not one of these. A `ConsumeSpan` or a `ConsumeTrimmedSpan` is a bulk scan the state performs,
+    not a character the gate had to peek to decide, so an alternative may hold any number of them; what a state has one
+    of is the gate, and so the gated character. The helper carries the owner's parameters, threaded unchanged.
+    """
+    minted, lookup = {}, dict(grammar)  # a helper is looked up too, since the split reclassifies what it put in place
+
+    def split(owner, number, params, alternative):
+        items = alternative.items if isinstance(alternative, ir.Seq) else (alternative,)
+        while True:
+            positions = [index for index, item in enumerate(items) if matches_one_char(item, lookup)]
+            if len(positions) < 2:
+                break
+            start = _scope_start(items, positions[1])  # the first terminal is this state's gated character; a
+            # `(token)` around the rest is cut through, its code passed on
+            end = _balanced_end(items, start)
+            if end is None or (start == 0 and end == len(items)):
+                break  # the whole alternative is one scope, so there is nothing to move out of it
+            if matches_one_char(_flat_seq(items[start:end]), lookup):
+                break  # a segment that is itself a character class moves to a helper that is one, which is no progress
+            segment = items[start:end]
+            # A segment that closes a `(token)` its caller opened is handed that caller's own code, so its close
+            # restores the outer one rather than the pushed one it was entered under.
+            inner = params + (CODE,) if _needs_code(segment) else params
+            arguments = tuple(ir.Param(parameter) for parameter in inner)
+            name = namer.fresh(owner)
+            reference = ir.Ref(name, arguments)
+            moved = split(name, number, inner, _flat_seq(segment))
+            minted[name] = lookup[name] = ir.Prod(number, name, inner, moved)
+            items = items[:start] + (reference,) + items[end:]
+        return _flat_seq(items)
+
+    result = {}
+    for name, production in grammar.items():
+        body, number, params = production.body, production.number, production.params
+        if isinstance(body, ir.Alt):
+            body = ir.Alt(tuple(split(name, number, params, item) for item in body.items))
+        else:
+            body = split(name, number, params, body)
+        result[name] = dataclasses.replace(production, body=body)
+    result.update(minted)
+    return result
+
+
 def binarize(grammar, namer):
     """
     Split every alternative down to at most two production calls, the canonical form's limit — two meaning "call the
@@ -599,22 +708,34 @@ def binarize(grammar, namer):
     own, which the alternative-shape rewrite lifts out. The helper carries the owner's parameters, threaded unchanged,
     the way `lower_star`'s does.
     """
-    minted = {}
+    minted, lookup = {}, dict(grammar)  # a helper is looked up too, since the split reclassifies what it put in place
 
     def is_call(node):
-        return isinstance(node, ir.Ref) and not matches_one_char(node, grammar)
+        return isinstance(node, ir.Ref) and not matches_one_char(node, lookup)
 
     def split(owner, number, params, alternative):
         items = alternative.items if isinstance(alternative, ir.Seq) else (alternative,)
-        positions = [index for index, item in enumerate(items) if is_call(item)]
-        if len(positions) < 3:
-            return alternative
-        cut = positions[0] + 1
-        name = namer.fresh(owner)
-        reference = ir.Ref(name, tuple(ir.Param(parameter) for parameter in params))
-        tail = split(name, number, params, _flat_seq(items[cut:]))
-        minted[name] = ir.Prod(number, name, params, tail)
-        return _flat_seq(items[:cut] + (reference,))
+        while True:
+            positions = [index for index, item in enumerate(items) if is_call(item)]
+            if len(positions) < 3:
+                break
+            start = _scope_start(items, positions[1])  # the first call stays; from the second on is the helper's
+            end = _balanced_end(items, start)
+            if end is None or (start == 0 and end == len(items)):
+                break  # the whole alternative is one scope, so there is nothing to move out of it
+            if sum(1 for item in items[start:end] if is_call(item)) < 2:
+                break  # nothing left to move that holds more calls than the reference replacing it
+            segment = items[start:end]
+            # A segment that closes a `(token)` its caller opened is handed that caller's own code, so its close
+            # restores the outer one rather than the pushed one it was entered under.
+            inner = params + (CODE,) if _needs_code(segment) else params
+            arguments = tuple(ir.Param(parameter) for parameter in inner)
+            name = namer.fresh(owner)
+            reference = ir.Ref(name, arguments)
+            moved = split(name, number, inner, _flat_seq(segment))
+            minted[name] = lookup[name] = ir.Prod(number, name, inner, moved)
+            items = items[:start] + (reference,) + items[end:]
+        return _flat_seq(items)
 
     result = {}
     for name, production in grammar.items():
@@ -934,25 +1055,66 @@ def content_run_offenders(grammar):
     ]
 
 
+def _literal_codepoint(node, grammar, seen=frozenset()):
+    """
+    The one codepoint `node` spells, or `None` where it is not a single literal character. A production named for a
+    character — `b-carriage-return`, `b-line-feed` — spells the one its body does, so a break's two stand together as
+    the fixed sequence they are.
+    """
+    if isinstance(node, ir.Char):
+        return node.cp
+    if isinstance(node, ir.Ref) and not node.args and node.name in grammar and node.name not in seen:
+        return _literal_codepoint(grammar[node.name].body, grammar, seen | {node.name})
+    return None
+
+
 def _span_consumes(node, grammar):
     """
     `node` with each character-set `Star` rewritten as `ConsumeSpan` and each `TrimStar` as `ConsumeTrimmedSpan`.
     Bottom-up, so a parent sees its already-rewritten children.
     """
     node = ir.rebuilt(node, lambda child: _span_consumes(child, grammar))
+    if isinstance(node, ir.Seq):
+        items, collapsed, index = node.items, [], 0
+        while index < len(items):
+            # Literal characters standing in a row are one fixed sequence to match, not a state each: `---`, `...`, a
+            # directive's `YAML` or `TAG`, and the carriage return and line feed of a break.
+            run = index
+            while run < len(items) and _literal_codepoint(items[run], grammar) is not None:
+                run += 1
+            if run - index > 1:
+                text = tuple(_literal_codepoint(item, grammar) for item in items[index:run])
+                collapsed.append(ir.ConsumeLiteral(text))
+                index = run
+                continue
+            # The same character class standing in a row is a counted run written out — a URI escape's two hex digits.
+            run = index
+            while run < len(items) and items[run] == items[index]:
+                run += 1
+            if run - index > 1 and matches_one_char(items[index], grammar):
+                collapsed.append(ir.ConsumeCountedSpan(items[index], ir.Lit(run - index)))
+                index = run
+                continue
+            collapsed.append(items[index])
+            index += 1
+        node = _flat_seq(tuple(collapsed))
     if isinstance(node, ir.TrimStar):
         return ir.ConsumeTrimmedSpan(node.full, node.trim)
     if isinstance(node, ir.Star) and matches_one_char(node.item, grammar):
         return ir.ConsumeSpan(node.item)
+    if isinstance(node, ir.Rep) and matches_one_char(node.item, grammar):
+        return ir.ConsumeCountedSpan(node.item, node.count)
     return node
 
 
 def span_consumes(grammar, namer):
     """
-    Rewrite each character-set `Star` as `ConsumeSpan` and each `TrimStar` as `ConsumeTrimmedSpan`: the maximal runs a
-    scalar's or a name's content compiles to become the consume actions the canonical form spells, each a single scan. A
-    `Star` over a nullable production is left for the determinize phase's zero-width guard. Removes the `TrimStar` node
-    kind and every character-set `Star`.
+    Rewrite each run over a character class as the consume action the canonical form spells, each a single scan: a
+    `Star` becomes a `ConsumeSpan`, a `TrimStar` a `ConsumeTrimmedSpan`, and a `({N})` repetition a `ConsumeCountedSpan`
+    — a maximal run, a maximal run that gives its trailing trim back, and a run of exactly so many. The counted one is
+    what keeps an escape's eight hex digits and an indent's `n` spaces each a single scan rather than a state per
+    character. A `Star` over a nullable production is left for the determinize phase's zero-width guard. Removes the
+    `TrimStar` and `Rep` node kinds and every character-set `Star`.
     """
     return {
         name: dataclasses.replace(production, body=_span_consumes(production.body, grammar))
@@ -1007,6 +1169,7 @@ STEPS = [
     ("flatten", flatten),
     ("span-consumes", span_consumes),
     ("lift-choices", lift_choices),
+    ("single-consumes", single_consumes),
     ("binarize", binarize),
 ]
 

@@ -62,6 +62,8 @@ ALWAYS = (
 )
 NEVER_SURE = (
     ir.Char,
+    ir.ConsumeCountedSpan,  # a run of exactly so many says no where the characters run out
+    ir.ConsumeLiteral,  # a fixed sequence says no where the input does not spell it
     ir.Diff,
     ir.EndOfStream,
     ir.Invalid,

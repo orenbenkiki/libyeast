@@ -484,14 +484,17 @@ def match(node, emitter, grammar, k):
         # A production inherits the ambient parameters and overrides only the ones it declares, so `n` stays in scope
         # through a callee that does not name it — which is how the block header's indent detection still reads `n`. Its
         # run code, `(match)` origin and `(max)` window are the ones in force where it was entered, which a `(token)`, a
-        # `(<<<)` and a `(max)` it lowers to restore past a nested one.
+        # `(<<<)` and a `(max)` it lowers to restore past a nested one. The scopes come before the arguments, so a
+        # production that declares one takes what it is passed instead of what is in force: a helper split out of the
+        # middle of a `(token)` is entered under the pushed code but must restore the outer one, which its caller passes
+        # it as the `code` it was itself entered under.
         emitter.env = {
             **saved_env,
-            **dict(zip(production.params, arguments)),
             "code": emitter.code,
             "match_start": emitter.match_start,
             "ceiling": emitter.ceiling,
             "ceiling_message": emitter.ceiling_message,
+            **dict(zip(production.params, arguments)),
         }
 
         def continue_out():
@@ -563,6 +566,32 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return k()
+    if isinstance(node, ir.ConsumeLiteral):
+        # The whole sequence or none of it: one comparison of a few characters, which either stands or leaves nothing
+        # taken. Each character is matched as itself, so the start-of-line guard applies exactly as it would alone.
+        checkpoint = emitter.checkpoint()
+        for codepoint in node.text:
+            if not match(ir.Char(codepoint), emitter, grammar, _accept):
+                emitter.rewind(checkpoint)
+                return False
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.ConsumeCountedSpan):
+        # Exactly `count` characters of the set, all or nothing: one scan that counts, and a count short of the mark
+        # matches nothing at all rather than leaving what it took. A non-positive count matches nothing, as a
+        # zero-length indent does.
+        count = evaluate(node.count, emitter, grammar)
+        checkpoint = emitter.checkpoint()
+        for _ in range(max(count, 0)):
+            if not match(node.set, emitter, grammar, _accept):
+                emitter.rewind(checkpoint)
+                return False
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.ConsumeSpan):  # a `Star` over a character class, as the canonical form spells it
         return _repeat(node.set, emitter, grammar, k)
     if isinstance(node, ir.ConsumeTrimmedSpan):  # a `TrimStar`, as the canonical form spells it
