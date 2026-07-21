@@ -549,6 +549,44 @@ def flatten(grammar, namer):
     }
 
 
+def lift_choices(grammar, namer):
+    """
+    Give every nested choice a production of its own, so a choice is only ever a whole production's body — the canonical
+    form's shape, where a production is either a terminal character set or an ordered list of alternatives. An `Alt`
+    anywhere but at the root of a body becomes a fresh `_<N>` helper, referenced in its place; the helper's own branches
+    are lifted the same way, so a choice nested three deep unfolds into three productions.
+
+    Only a choice in a sequence position is lifted — the branches of a control-flow alternation. An `Alt` inside a
+    character class, a difference or a lookahead is a set of characters or a pattern, not a decision, and is left where
+    it is. The helper carries the owner's parameters, threaded unchanged, the way `lower_star`'s does.
+    """
+    minted = {}
+
+    def lift(owner, number, params, node, is_root):
+        if isinstance(node, ir.Alt) and not is_root:
+            name = namer.fresh(owner)
+            minted[name] = ir.Prod(number, name, params, lift(name, number, params, node, True))
+            return ir.Ref(name, tuple(ir.Param(parameter) for parameter in params))
+        if isinstance(node, (ir.Alt, ir.Seq)):
+            return dataclasses.replace(node, items=tuple(lift(owner, number, params, i, False) for i in node.items))
+        if isinstance(node, (ir.Commit, ir.Star, ir.Plus)):
+            return dataclasses.replace(node, item=lift(owner, number, params, node.item, False))
+        if isinstance(node, ir.Recover):
+            return ir.Recover(
+                lift(owner, number, params, node.recovery, False), lift(owner, number, params, node.item, False)
+            )
+        return node
+
+    result = {
+        name: dataclasses.replace(
+            production, body=lift(name, production.number, production.params, production.body, True)
+        )
+        for name, production in grammar.items()
+    }
+    result.update(minted)
+    return result
+
+
 def binarize(grammar, namer):
     """
     Split every alternative down to at most two production calls, the canonical form's limit — two meaning "call the
@@ -968,6 +1006,7 @@ STEPS = [
     ("lower-binds", lower_binds),
     ("flatten", flatten),
     ("span-consumes", span_consumes),
+    ("lift-choices", lift_choices),
     ("binarize", binarize),
 ]
 
