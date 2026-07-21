@@ -563,6 +563,10 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return k()
+    if isinstance(node, ir.ConsumeSpan):  # a `Star` over a character class, as the canonical form spells it
+        return _repeat(node.set, emitter, grammar, k)
+    if isinstance(node, ir.ConsumeTrimmedSpan):  # a `TrimStar`, as the canonical form spells it
+        return match(ir.TrimStar(node.full, node.trim), emitter, grammar, k)
     if isinstance(node, ir.Star):
         return _repeat(node.item, emitter, grammar, k)
     if isinstance(node, ir.Plus):

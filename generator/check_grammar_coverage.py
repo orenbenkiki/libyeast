@@ -97,7 +97,7 @@ def is_total(node, grammar, seen=frozenset()):
         return True
     if isinstance(node, NEVER_SURE):
         return False
-    if isinstance(node, (ir.Star, ir.Opt, ir.TrimStar)):
+    if isinstance(node, (ir.Star, ir.Opt, ir.TrimStar, ir.ConsumeSpan, ir.ConsumeTrimmedSpan)):
         return True
     if isinstance(node, ir.Max):
         # A wrapping `(max)` says no where its production does; the vendored grammar's bare `(max)` is a length note.

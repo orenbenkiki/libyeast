@@ -251,6 +251,28 @@ class TrimStar:
 
 
 @dataclass(frozen=True)
+class ConsumeSpan:
+    """
+    A maximal run of `set` characters, consumed in one scan — what a `Star` over a character class becomes in the
+    canonical form, mapping to a single repeated-char-set match. Matches the empty string.
+    """
+
+    set: object
+
+
+@dataclass(frozen=True)
+class ConsumeTrimmedSpan:
+    """
+    A maximal run of `full` characters whose trailing run of `trim` is given back, consumed in one scan — what a
+    `TrimStar` becomes in the canonical form, the two-set trimming scan a plain or quoted scalar's line compiles to.
+    Matches the empty string.
+    """
+
+    full: object
+    trim: object
+
+
+@dataclass(frozen=True)
 class Look:
     """`(===)`: positive lookahead (zero-width)."""
 

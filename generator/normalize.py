@@ -855,23 +855,50 @@ def content_run_offenders(grammar):
     ]
 
 
+def _span_consumes(node, grammar):
+    """
+    `node` with each character-set `Star` rewritten as `ConsumeSpan` and each `TrimStar` as `ConsumeTrimmedSpan`.
+    Bottom-up, so a parent sees its already-rewritten children.
+    """
+    node = ir.rebuilt(node, lambda child: _span_consumes(child, grammar))
+    if isinstance(node, ir.TrimStar):
+        return ir.ConsumeTrimmedSpan(node.full, node.trim)
+    if isinstance(node, ir.Star) and matches_one_char(node.item, grammar):
+        return ir.ConsumeSpan(node.item)
+    return node
+
+
+def span_consumes(grammar, namer):
+    """
+    Rewrite each character-set `Star` as `ConsumeSpan` and each `TrimStar` as `ConsumeTrimmedSpan`: the maximal runs a
+    scalar's or a name's content compiles to become the consume actions the canonical form spells, each a single scan. A
+    `Star` over a nullable production is left for the determinize phase's zero-width guard. Removes the `TrimStar` node
+    kind and every character-set `Star`.
+    """
+    return {
+        name: dataclasses.replace(production, body=_span_consumes(production.body, grammar))
+        for name, production in grammar.items()
+    }
+
+
 def non_char_set_runs(grammar):
     """
-    The repetitions whose element is not the character set a bulk scan needs. A `TrimStar` must run and trim two
+    The runs whose element is not the character set a bulk scan needs. A `ConsumeTrimmedSpan` runs and trims two
     character sets — it is the two-set trimming scan a scalar's line compiles to — so a `full` or `trim` that is not one
-    means the fast/slow split did not complete. A `Star` must run a character set too, save one allowed for now: a
-    `Star` over a nullable production, which `lower_star` cannot make a recursive helper of and which waits for the
-    zero-width guard determinize will bring. A `Star` over anything else non-character-set is a `lower_star` that should
-    have fired and did not.
+    means the fast/slow split did not complete. A `ConsumeSpan` runs a character set too. A `Star` may still run one
+    that is nullable, which `lower_star` cannot make a recursive helper of and which waits for the zero-width guard
+    determinize will bring; a `Star` over anything else non-character-set is a `lower_star` that should have fired.
     """
     faults = []
 
     def walk(name, node):
-        if isinstance(node, ir.TrimStar):
+        if isinstance(node, ir.ConsumeTrimmedSpan):
             if not matches_one_char(node.full, grammar):
-                faults.append(f"{name}: a TrimStar runs a non-character-set `full`")
+                faults.append(f"{name}: a ConsumeTrimmedSpan runs a non-character-set `full`")
             if not matches_one_char(node.trim, grammar):
-                faults.append(f"{name}: a TrimStar trims a non-character-set `trim`")
+                faults.append(f"{name}: a ConsumeTrimmedSpan trims a non-character-set `trim`")
+        if isinstance(node, ir.ConsumeSpan) and not matches_one_char(node.set, grammar):
+            faults.append(f"{name}: a ConsumeSpan runs a non-character-set `set`")
         if (
             isinstance(node, ir.Star)
             and not matches_one_char(node.item, grammar)
@@ -899,6 +926,7 @@ STEPS = [
     ("lower-windows", lower_windows),
     ("lower-binds", lower_binds),
     ("flatten", flatten),
+    ("span-consumes", span_consumes),
 ]
 
 
