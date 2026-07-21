@@ -488,6 +488,67 @@ def lower_binds(grammar, namer):
     }
 
 
+def _flat_seq(items):
+    """
+    A `Seq` of `items`, flattened: a nested `Seq` spliced in, an `Empty` dropped as the no-op it is in a sequence, a
+    single survivor unwrapped, and an empty result an `Empty`.
+    """
+    flat = []
+    for item in items:
+        if isinstance(item, ir.Empty):
+            continue
+        if isinstance(item, ir.Seq):
+            flat.extend(item.items)
+        else:
+            flat.append(item)
+    if not flat:
+        return ir.Empty()
+    return flat[0] if len(flat) == 1 else ir.Seq(tuple(flat))
+
+
+def _flat_alt(items):
+    """
+    An `Alt` of `items`, flattened: a nested `Alt` spliced in (an ordered choice is associative), a single survivor
+    unwrapped. An empty `Alt` — the never-match — is kept, since it is not an `Empty`.
+    """
+    flat = []
+    for item in items:
+        if isinstance(item, ir.Alt):
+            flat.extend(item.items)
+        else:
+            flat.append(item)
+    return flat[0] if len(flat) == 1 else ir.Alt(tuple(flat))
+
+
+def _flatten(node):
+    """
+    `node` flattened: nested `Seq`/`Alt` spliced, `Empty` dropped from sequences, singletons unwrapped, and a fixed
+    `(k)` repetition expanded to `k` copies in a sequence. Bottom-up, so a parent sees its already-flattened children —
+    the copies a `(k)` makes flatten into the parent in the same pass. A `(n)` repetition over a runtime count is left
+    alone, its counting a gate the determinize phase resolves.
+    """
+    node = ir.rebuilt(node, _flatten)
+    if isinstance(node, ir.Rep) and isinstance(node.count, ir.Lit):
+        return _flat_seq((node.item,) * node.count.value)
+    if isinstance(node, ir.Seq):
+        return _flat_seq(node.items)
+    if isinstance(node, ir.Alt):
+        return _flat_alt(node.items)
+    return node
+
+
+def flatten(grammar, namer):
+    """
+    Flatten and simplify every production toward the canonical shape: splice nested `Seq`/`Alt`, drop the `Empty` no-ops
+    a sequence carries, unwrap singleton `Seq`/`Alt`, and expand a fixed `(k)` repetition into its `k` copies. Removes
+    the `Rep` node kind for a literal count; a `(n)` over a runtime count stays for the determinize phase, where
+    counting a run is a gate. Introduces no canonical node yet — it hands the peek/consume seam a flat tree to reshape.
+    """
+    return {
+        name: dataclasses.replace(production, body=_flatten(production.body)) for name, production in grammar.items()
+    }
+
+
 def _trim_runs(node, grammar):
     """
     `node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
@@ -837,6 +898,7 @@ STEPS = [
     ("lower-bounds", lower_bounds),
     ("lower-windows", lower_windows),
     ("lower-binds", lower_binds),
+    ("flatten", flatten),
 ]
 
 
