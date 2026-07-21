@@ -549,6 +549,47 @@ def flatten(grammar, namer):
     }
 
 
+def binarize(grammar, namer):
+    """
+    Split every alternative down to at most two production calls, the canonical form's limit — two meaning "call the
+    first, resume at the second", which is one stack push per edge. An alternative with three or more calls is cut after
+    its first: what follows becomes a fresh `_<N>` helper the alternative calls in its place, and the helper is cut the
+    same way until none is left over, so `A -> B C D` becomes `A -> B A_1` and `A_1 -> C D`.
+
+    A call is a reference to a production that is not a character class — a character-class reference is a terminal the
+    gate tests, not a call. Only the top level of an alternative is counted; a nested choice holds alternatives of its
+    own, which the alternative-shape rewrite lifts out. The helper carries the owner's parameters, threaded unchanged,
+    the way `lower_star`'s does.
+    """
+    minted = {}
+
+    def is_call(node):
+        return isinstance(node, ir.Ref) and not matches_one_char(node, grammar)
+
+    def split(owner, number, params, alternative):
+        items = alternative.items if isinstance(alternative, ir.Seq) else (alternative,)
+        positions = [index for index, item in enumerate(items) if is_call(item)]
+        if len(positions) < 3:
+            return alternative
+        cut = positions[0] + 1
+        name = namer.fresh(owner)
+        reference = ir.Ref(name, tuple(ir.Param(parameter) for parameter in params))
+        tail = split(name, number, params, _flat_seq(items[cut:]))
+        minted[name] = ir.Prod(number, name, params, tail)
+        return _flat_seq(items[:cut] + (reference,))
+
+    result = {}
+    for name, production in grammar.items():
+        body, number, params = production.body, production.number, production.params
+        if isinstance(body, ir.Alt):
+            body = ir.Alt(tuple(split(name, number, params, item) for item in body.items))
+        else:
+            body = split(name, number, params, body)
+        result[name] = dataclasses.replace(production, body=body)
+    result.update(minted)
+    return result
+
+
 def _trim_runs(node, grammar):
     """
     `node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
@@ -927,6 +968,7 @@ STEPS = [
     ("lower-binds", lower_binds),
     ("flatten", flatten),
     ("span-consumes", span_consumes),
+    ("binarize", binarize),
 ]
 
 
