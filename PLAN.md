@@ -281,19 +281,29 @@ the chomping tail: the clip case needs the first break and the rest retyped apar
 Those are Phase 04's, worked out there with the queue mechanism the flow fold proved. The 163 left are this phase's, one
 landing at a time, each corpus-diffed:
 
-1. Literal gates at their remaining sites, when each site's decision lands — the document markers take `c-forbidden`'s
-   white-or-break as their `then`, the directive keywords `ns-char` as their `barrier`; the boundary class itself is
-   pinned by fixtures already.
-1. An order-commitment certificate — the assurance ledger — for what no literal or disjointness decides: the
-   tag-property families, the block header's two orderings, the nullable document loops (`l-yaml-stream`'s twenty-one,
-   their follow pinned now and genuinely colliding), and the four fused fold scans.
-1. Gates for the ungated middles that remain — the flow entry separators, the comments, `s-l+block-collection` and kin.
-1. The two indentation gotchas — the zero-indent block sequence nested in a mapping, and flow context suspending
-   indentation — living in the `s-l+block-*` families.
+1. The smaller certificates first: a fallthrough guarded by `AtEndOfStream` begins with no character at all, so its
+   begins pin empty and the breaks-family tails — the comment ends, the chomped last breaks — certify by disjointness;
+   the directive keywords take `ns-char` as their `barrier` when their site lands; the tail-comment loops read one by
+   one.
+1. The block-structure surgery — measure lines once, guard the levels. One minted indent scan at each block-context line
+   start consumes a line's indentation into one `indent` token, its column measured; every block-structure decision — a
+   sequence or mapping entry, a compact, every nested loop's exit — stops consuming indentation and becomes a character
+   gate with `IndentEq`/`IndentLt` guards, zero-width and stack-free, so a dedent of any depth is guard refusals falling
+   through with nothing consumed and nothing to re-attribute. The complementary-guard lemma is the certificate these
+   need, already landed; the vocabulary named the guards from the start. Covers the `l+block-mapping`/`l+block-sequence`
+   loops, the compacts, `s-l+block-collection`/`s-l+block-indented`, and both indentation gotchas — the zero-indent
+   sequence in a mapping, and flow suspending indentation — several landings, sequences first.
+1. Per-site separation fusions where a decision hides past optional separation and the paths do not reconverge — the
+   properties' separate-then-tag, the flow key and value entries' separate-then-indicator — each read at its site, fused
+   fold-style without a retype, since the separation's codes agree either way. No generic absorption exists: the
+   continuations never open on the bare separation the exit's rival consumes.
+1. The assurance ledger, after the surgery settles the minted names: declared order-commitments with their reasons — the
+   fused fold scans, the document loops if the surgery leaves them standing, whatever order-only residue remains — a
+   staleness net refusing an entry the grammar lost or the analysis has since proved, and a counted line the gate
+   prints, like the vendored spec's declared deviations.
 1. The sweep of what the stream no longer reaches, and the fixture policy it forces — the stranded fold family is the
    first case — since the meter's floor is honest only past it.
-1. The validator made the gate, the assurance-gap ledger for what stands committed by order alone, and the deferred
-   trim-reuse pass.
+1. The validator made the gate, and the deferred trim-reuse pass.
 
 **The validator** is the target invariant and equals "done": every production is a terminal char-set or an ordered list
 of canonical alternatives; no `Star`/`Plus`/`Opt`/`Rep`/`Look`/`NegLook`/`Diff`/`Token`/`Wrap`/`Case` survives; every
