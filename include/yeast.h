@@ -203,7 +203,7 @@ typedef enum ys_code {
     YS_CODE_UNPARSED_INVALID, ///< A run of bytes encoding no valid Unicode character, and so naming no character the
                               ///< grammar could match — whatever the encoding they were read in. Its
                               ///< @ref ys_token::text is bytes rather than codepoints, which is why it has a code of
-                              ///< its own rather than being @ref YS_CODE_UNPARSED_TEXT: on the wire an escape under
+                              ///< its own rather than being @ref YS_CODE_UNPARSED_TEXT — on the wire an escape under
                               ///< this code spells the byte, and under any other the codepoint. Its text must encode no
                               ///< character throughout — every byte of it a place where none begins — as every other
                               ///< code's must encode them all, and ys_write_token() holds both to it. No parse emits it
@@ -516,7 +516,7 @@ YS_API int ys_read_token(ys_token_source *source, ys_token *token);
 /// @return @ref YS_OK if every close succeeded; @ref YS_FAILED_STREAM if the reader's close failed,
 /// @ref YS_FAILED_MEMORY if the allocator's did, @ref YS_FAILED_BOTH if both did. `errno` holds the first failure's
 /// reason — the reader's, where both failed, the second being the documented limit of what one `errno` can say. A
-/// caller needing both must record them in its own callbacks' @ref context.
+/// caller needing both must record them in its own callbacks' `context`.
 YS_API int ys_delete_token_source(ys_token_source *source);
 
 /// An opaque sink of yeast tokens — the mirror of @ref ys_token_source. ys_new_yeast_stream_writer() makes one that
