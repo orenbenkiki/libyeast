@@ -17,13 +17,14 @@ import spec_tests
 import wire
 
 
-def reproduced(grammar, fixtures=None):
+def reproduced(grammar, fixtures=None, deterministic=frozenset()):
     """
     The fixtures `grammar` does not reproduce token for token, as error strings — empty when it reproduces them all.
 
     Takes the grammar as an argument the way the interpreter does, so a structurally-transformed grammar is held to the
     same token streams the base one is: the fixtures are the base's frozen output, so reproducing them is the transform
-    changing no token.
+    changing no token. `deterministic` passes through to the interpreter, so a hybrid run is held to the same streams
+    too.
     """
     if fixtures is None:
         fixtures = spec_tests.load()
@@ -31,7 +32,7 @@ def reproduced(grammar, fixtures=None):
     for fixture in fixtures:
         try:
             arguments = spec_tests.arguments(fixture, grammar)
-            tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments)
+            tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments, deterministic=deterministic)
             actual = wire.serialize(tokens)
         except Exception as error:  # noqa: BLE001 — a crash is a divergence to report, not to abort the gate on
             actual = f"(crash: {type(error).__name__}: {error})"

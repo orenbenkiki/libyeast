@@ -32,7 +32,7 @@ DIVERGENCES = {
 }
 
 
-def _disagreement(grammar, directory):
+def _disagreement(grammar, directory, deterministic=frozenset()):
     """
     How libyeast's fold of `<directory>/in.yaml` disagrees with the case, or `None` if it agrees. A valid case must fold
     to its `test.event`; an error case must come back a rejection.
@@ -41,7 +41,7 @@ def _disagreement(grammar, directory):
         data = handle.read()
     is_error = os.path.exists(os.path.join(directory, "error"))
     try:
-        events = star.run_case(grammar, data)
+        events = star.run_case(grammar, data, deterministic=deterministic)
     except star.Incompatible:
         return None if is_error else "libyeast rejects a case the suite accepts"
     except Exception as error:  # noqa: BLE001 — a crash is a disagreement to report, not to abort the gate on
@@ -62,17 +62,18 @@ def cases():
     )
 
 
-def disagreements(grammar, suite=None):
+def disagreements(grammar, suite=None, deterministic=frozenset()):
     """
     The suite cases `grammar` folds differently from the suite and does not declare, as error strings — empty when it
     agrees green-or-declared. Takes the grammar as an argument, so a structurally-transformed grammar folds the whole
-    corpus to the same events the base one does.
+    corpus to the same events the base one does. `deterministic` passes through to the interpreter, so a hybrid run is
+    held to the same events too.
     """
     if suite is None:
         suite = cases()
     errors = []
     for case in suite:
-        disagreement = _disagreement(grammar, os.path.join(star.SUITE, case))
+        disagreement = _disagreement(grammar, os.path.join(star.SUITE, case), deterministic=deterministic)
         if case in DIVERGENCES:
             if disagreement is None:
                 errors.append(f"{case}: declared as a divergence, but now agrees with the suite")

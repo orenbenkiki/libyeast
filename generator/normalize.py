@@ -12,6 +12,7 @@ one seam every transformation slots into.
 
 import dataclasses
 
+import chars
 import ir
 import spec_tests
 
@@ -1119,6 +1120,108 @@ def ungated_alternatives(grammar):
             if consuming or alternative.first is not None:
                 ungated.append(f"{name}: an alternative with no character to go on")
     return ungated
+
+
+def _merged_spans(spans):
+    """`spans` as sorted, coalesced `(lo, hi)` codepoint intervals."""
+    merged = []
+    for lo, hi in sorted(spans):
+        if merged and lo <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    return merged
+
+
+def _subtracted_spans(spans, minus):
+    """`spans` with every interval of `minus` removed."""
+    for exclude_lo, exclude_hi in minus:
+        remaining = []
+        for lo, hi in spans:
+            if exclude_hi < lo or exclude_lo > hi:
+                remaining.append((lo, hi))
+                continue
+            if lo < exclude_lo:
+                remaining.append((lo, exclude_lo - 1))
+            if hi > exclude_hi:
+                remaining.append((exclude_hi + 1, hi))
+        spans = remaining
+    return spans
+
+
+def _denoted_spans(denotation):
+    """A `chars.denote` denotation as sorted, disjoint `(lo, hi)` codepoint intervals."""
+    kind = denotation[0]
+    if kind == "literal":
+        return [(denotation[1], denotation[1])]
+    if kind == "range":
+        return [(denotation[1], denotation[2])]
+    if kind == "union":
+        return _merged_spans([span for part in denotation[1] for span in _denoted_spans(part)])
+    if kind == "difference":
+        return _subtracted_spans(
+            _denoted_spans(denotation[1]),
+            _merged_spans([span for part in denotation[2] for span in _denoted_spans(part)]),
+        )
+    raise ValueError(f"unknown denotation {denotation!r}")
+
+
+def _peek_spans(peek, grammar):
+    """
+    The codepoint intervals `peek` accepts, `"invalid"` for the invalid-byte class — a unit no character class can also
+    hold, so it overlaps only itself — or `None` where the set is not pinned down.
+    """
+    if isinstance(peek, ir.Invalid):
+        return "invalid"
+    denotation = chars.denote(grammar, peek)
+    return None if denotation is None else _denoted_spans(denotation)
+
+
+def _spans_overlap(a, b):
+    """Whether the two `_peek_spans` results share a unit."""
+    if a == "invalid" or b == "invalid":
+        return a == b
+    position_a = position_b = 0
+    while position_a < len(a) and position_b < len(b):
+        if max(a[position_a][0], b[position_b][0]) <= min(a[position_a][1], b[position_b][1]):
+            return True
+        if a[position_a][1] < b[position_b][1]:
+            position_a += 1
+        else:
+            position_b += 1
+    return False
+
+
+def deterministic_productions(grammar):
+    """
+    The productions whose every decision is statically proved one-gate-decidable. A character-set terminal and a
+    single-alternative choice decide nothing. A choice whose alternatives all peek pairwise-disjoint character sets with
+    no guards can hold at most one gate at any position, so committing to the first that holds is the same parse
+    backtracking finds: the alternatives all start at the same position, and where one gate holds no other's `Look`
+    could. The interpreter enters exactly these committed; the count of productions left out is what the determinize
+    work drives to none.
+    """
+    deterministic = set()
+    for name, production in grammar.items():
+        body = production.body
+        if not isinstance(body, ir.Choice) or len(body.alternatives) == 1:
+            deterministic.add(name)  # a terminal, or a single way through: nothing to decide
+            continue
+        spans = []
+        for alternative in body.alternatives:
+            if alternative.gate.peek is None or alternative.gate.guards:
+                spans = None
+                break
+            spanned = _peek_spans(alternative.gate.peek, grammar)
+            if spanned is None:
+                spans = None
+                break
+            spans.append(spanned)
+        if spans is not None and not any(
+            _spans_overlap(one, other) for index, one in enumerate(spans) for other in spans[index + 1 :]
+        ):
+            deterministic.add(name)
+    return deterministic
 
 
 def unshaped_actions(grammar):

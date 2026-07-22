@@ -52,6 +52,17 @@ def _check():
             if named:
                 errors = named
                 break
+    final = stages[-1][1]
+    deterministic = normalize.deterministic_productions(final)
+    if not errors:  # the hybrid run is judged only where the backtracking one stands, so a fault names its mode
+        errors += [
+            f"[deterministic] fixture {error}"
+            for error in check_interpreter.reproduced(final, fixtures, deterministic=deterministic)
+        ]
+        errors += [
+            f"[deterministic] star {error}"
+            for error in check_star.disagreements(final, suite, deterministic=deterministic)
+        ]
     for error in check_grammar_coverage.gaps(stages[-1][1]):
         errors.append(f"[final] coverage {error}")
     # The content-run gate reads the `(token)` scopes lower-tokens dissolves, so it runs on the last grammar that still
@@ -68,13 +79,17 @@ def _check():
         "normalization fault(s) — a step that changes the grammar's meaning, a content run not matched in bulk, or a "
         "repetition that is not a character-set run",
         f"normalization pipeline: {len(normalize.STEPS)} step(s) preserve {len(fixtures)} fixtures and {len(suite)} "
-        f"suite cases, every long text token matched in bulk by a character-set run",
+        f"suite cases — backtracking, and hybrid with {len(deterministic)} production(s) entered committed — every "
+        f"long text token matched in bulk by a character-set run",
     )
     print("    " + " -> ".join(name for name, _transform in normalize.STEPS))
     # Not a fault: what the canonical form does not spell yet, printed so the number is watched down to none rather than
     # discovered later. The determinize phase is what resolves each of them.
     print(f"    {len(residue)} action(s) the canonical form does not spell: a leftover scope or a nullable repetition")
     print(f"    {len(normalize.ungated_alternatives(stages[-1][1]))} alternative(s) with no character to go on")
+    # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
+    # of productions still backtracking — driven to none, at which point it becomes a gate.
+    print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic")
 
 
 def main():

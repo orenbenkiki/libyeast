@@ -147,6 +147,10 @@ class Emitter:
         self.stack = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
         self.commitments = []  # one `[reached]` record per open committed region, innermost last — not checkpointed:
         # the push and pop actions restore it on their own failure paths, and a region once reached stays reached
+        self.deterministic = (
+            frozenset()
+        )  # the productions entered committed — first holding gate, no second try — which
+        # `run` sets from `normalize.deterministic_productions`; empty runs the whole grammar backtracking
 
     def checkpoint(self):
         return (
@@ -525,7 +529,18 @@ def match(node, emitter, grammar, k):
         if len(emitter.stack) > DEPTH_LIMIT - DEPTH_TRACE:
             print(f"    depth {len(emitter.stack)}: {node.name}", file=sys.stderr)
         try:
-            committed = match(production.body, emitter, grammar, continue_out)
+            body = production.body
+            if node.name in emitter.deterministic and isinstance(body, ir.Choice) and len(body.alternatives) > 1:
+                # A deterministic production commits: the first alternative whose gate holds is the parse, and its
+                # failure is the production's — no other is tried. The proved-disjoint gates are what make this the same
+                # parse backtracking finds; an empty gate is the unconditional fallthrough and always holds.
+                committed = False
+                for alternative in body.alternatives:
+                    if alternative.gate.peek is None or _probe(alternative.gate.peek, emitter, grammar):
+                        committed = match(alternative, emitter, grammar, continue_out)
+                        break
+            else:
+                committed = match(body, emitter, grammar, continue_out)
         finally:
             emitter.stack.pop()
         if not committed:
@@ -945,9 +960,12 @@ def match(node, emitter, grammar, k):
     raise NotImplementedError(f"interpreter does not support {type(node).__name__}")
 
 
-def run(grammar, production, data, parameters=None):
+def run(grammar, production, data, parameters=None, deterministic=frozenset()):
     """
     Run `production` on the UTF-8 `data`, returning the yeast tokens it emits — a rejection among them if it rejects.
+
+    `deterministic` names the productions entered committed — the first alternative whose gate holds, no second try — so
+    a grammar runs hybrid: committed where its decisions are proved, backtracking everywhere else. Empty backtracks all.
 
     `parameters` binds the production's parameters from the fixture's filename — `n`/`m` are integers, `c`/`t`/`r`
     strings. A production that declares `r` and is run without one resumes the way a zeroed `ys_options` does.
@@ -962,6 +980,7 @@ def run(grammar, production, data, parameters=None):
     resume = parameters.get("r", "n")
     production, parameters = ir.entry(grammar, production, parameters)
     emitter = Emitter(data)
+    emitter.deterministic = deterministic
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in parameters.items()}
     if "r" in grammar[production].params:
         emitter.env.setdefault("r", resume)  # a production run without a resume policy takes the zeroed one, no-resume

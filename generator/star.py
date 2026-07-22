@@ -304,7 +304,7 @@ class Incompatible(Exception):
     """The token stream cannot produce the expected events."""
 
 
-def run_case(grammar, data):
+def run_case(grammar, data, deterministic=frozenset()):
     """Fold the events libyeast produces for `data`, or raise `Incompatible` (an error token, or a crash)."""
-    tokens = interpreter.run(grammar, "l-yeast-stream", data, {})
+    tokens = interpreter.run(grammar, "l-yeast-stream", data, {}, deterministic=deterministic)
     return fold(tokens)
