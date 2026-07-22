@@ -209,11 +209,13 @@ is written to be simple enough to prove by eye, and checked two ways after it ru
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:
 
-- The **gate** is a conjunction, tested without consuming: an optional character-set peek and zero or more zero-width
-  guards. The alternative fires only if every part holds. An **empty** gate is the unconditional fallthrough, allowed
-  only as the last alternative.
+- The **gate** is a conjunction, tested without consuming: an optional peek — a character set, or a literal
+  `LiteralPeek(text, then, barrier)`: the bounded run the input must begin, its follow test one class the character
+  after it, if any, must match (`then`) or must not (`barrier`), the end of the input passing either — and zero or more
+  zero-width guards. The alternative fires only if every part holds. An **empty** gate is the unconditional fallthrough,
+  allowed only as the last alternative.
 - **actions** operate on the parser's own state (below). Consuming the peeked character is itself an action, not part of
-  the gate.
+  the gate — `ConsumePeeked` likewise takes a peeked literal on the gate's word, the bytes never scanned twice.
 - **P1, P2** are zero, one, or two production invocations. Two means *run P1 then P2*: push a frame whose return is P2,
   go to P1, and when P1 returns resume at P2 — so P1 is the call, P2 the continuation, and at most one push per edge.
   One is a tail-goto; none returns. There are no actions after P2: a production returns exactly when its P2 does. A
@@ -246,9 +248,11 @@ determinization.
   condition on an alternative; the sharp case that forces the gate to be a conjunction is indentation matching, where
   both the eat-another-space and the stop alternatives gate on `[space]` and are told apart only by `column < n`.
 
-The load-bearing rule: **no lookahead survives.** `Look`/`NegLook`/`LookBehind`/`ExcludeAt` over more than one character
-are transformed away — into a char-set gate, a cheap guard, or provisional speculation — so a canonical grammar holds
-none of them, and the validator rejects any that remain.
+The load-bearing rule: **no unbounded lookahead survives.** `Look`/`NegLook`/`LookBehind`/`ExcludeAt` over more than one
+character are transformed away — into a char-set gate, a literal peek, a cheap guard, or provisional speculation — so a
+canonical grammar holds none of them, and the validator rejects any that remain. The one bounded exception is the gate's
+own `LiteralPeek`: the longest literal plus one character of follow test, within the window the parser's fill already
+guarantees, lowered to a single comparison.
 
 **The pipeline**, one linear series, grouped only for reading:
 
@@ -277,10 +281,12 @@ the chomping tail: the clip case needs the first break and the rest retyped apar
 Those are Phase 04's, worked out there with the queue mechanism the flow fold proved. The 163 left are this phase's, one
 landing at a time, each corpus-diffed:
 
-1. The invalid-byte class in an alternation's peek — `l-unparsed`'s three.
-1. An order-commitment certificate, or a literal split one character deeper where a shared peek is decided by the
-   character after it — `b-break`'s CR LF against its lone CR, the directive keywords, the tag-property families, the
-   block header's two orderings.
+1. Literal gates at their remaining sites, when each site's decision lands — the document markers take `c-forbidden`'s
+   white-or-break as their `then`, the directive keywords `ns-char` as their `barrier` — with stream fixtures pinning
+   the boundary class the spec and the Clojure reference agree on: `---foo` and `---#foo` are content, `--- foo` a
+   boundary, `... foo` malformed.
+1. An order-commitment certificate for what no literal decides — the tag-property families, the block header's two
+   orderings.
 1. Follow sets sharpened per call site and first sets narrowed by guards — what the nullable document loops
    (`l-yaml-stream`'s twenty-one) and the guarded fallthroughs wait on, the four fused fold scans among them.
 1. Gates for the ungated middles the nullable chains leave unpinned — the flow entry separators, the comments,

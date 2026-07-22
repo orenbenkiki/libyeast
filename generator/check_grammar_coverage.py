@@ -49,6 +49,7 @@ ALWAYS = (
     ir.CloseWindow,
     ir.CommitProvisional,
     ir.ConsumeChar,  # the gate found the character, so taking it cannot fail
+    ir.ConsumePeeked,  # the gate found the literal, so taking it cannot fail
     ir.Cut,
     ir.Emit,
     ir.Empty,
@@ -73,6 +74,7 @@ NEVER_SURE = (
     ir.EndOfStream,
     ir.Invalid,
     ir.Le,
+    ir.LiteralPeek,  # a gate's literal form says no where the input does not begin it
     ir.Look,
     ir.LookBehind,
     ir.Lt,

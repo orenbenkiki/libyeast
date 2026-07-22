@@ -681,6 +681,19 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.ConsumePeeked):
+        # The gate's literal, taken on its word — though this slow oracle re-checks the word, so a gate that lies is a
+        # crash here rather than a wrong parse; the generated parser advances without a second look.
+        for offset, codepoint in enumerate(node.text):
+            if emitter.position + offset >= len(emitter.chars) or emitter.chars[emitter.position + offset] != codepoint:
+                raise AssertionError("a gated literal is not there: the gate let through what it should have refused")
+        checkpoint = emitter.checkpoint()
+        for _codepoint in node.text:
+            emitter.consume()
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.ConsumeLiteral):
         # The whole sequence or none of it: one comparison of a few characters, which either stands or leaves nothing
         # taken. Each character is matched as itself, so the start-of-line guard applies exactly as it would alone.
@@ -842,6 +855,16 @@ def match(node, emitter, grammar, k):
         return k() if _probe(node.item, emitter, grammar) else False
     if isinstance(node, ir.NegLook):
         return k() if not _probe(node.item, emitter, grammar) else False
+    if isinstance(node, ir.LiteralPeek):
+        # The literal ahead and its follow test — one bounded zero-width test, spelled here as the lookahead it means:
+        # each literal character as itself, a `then` as end-of-input-or-the-class, a `barrier` as a negative look, which
+        # passes at the end of the input on its own.
+        pattern = tuple(ir.Char(cp=codepoint) for codepoint in node.text)
+        if node.then is not None:
+            pattern += (ir.Alt(items=(ir.EndOfStream(), ir.Look(node.then))),)
+        if node.barrier is not None:
+            pattern += (ir.NegLook(node.barrier),)
+        return k() if _probe(ir.Seq(items=pattern), emitter, grammar) else False
     if isinstance(node, ir.ExcludeAt):
         saved_forbidden = emitter.forbidden
         emitter.forbidden = saved_forbidden + (node.item,)  # an ongoing guard, in scope until the production returns

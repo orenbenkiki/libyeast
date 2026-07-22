@@ -1195,6 +1195,8 @@ def _peek_spans(peek, grammar):
     """
     if isinstance(peek, ir.Invalid):
         return [(-1, -1)]
+    if isinstance(peek, ir.LiteralPeek):
+        return [(peek.text[0], peek.text[0])]  # the first character is the dispatch; the rest is the gate's own test
     if isinstance(peek, ir.Alt) and any(isinstance(item, ir.Invalid) for item in peek.items):
         rest = tuple(item for item in peek.items if not isinstance(item, ir.Invalid))
         spanned = _peek_spans(ir.Alt(items=rest), grammar) if rest else []
@@ -1232,7 +1234,7 @@ def _alternative_first(alternative, grammar, first_of):
             break
         if isinstance(action, _ZERO_WIDTH):
             continue
-        if isinstance(action, ir.ConsumeLiteral):
+        if isinstance(action, (ir.ConsumeLiteral, ir.ConsumePeeked)):
             spans.append((action.text[0], action.text[0]))
             consumed = True
             break
@@ -1562,12 +1564,31 @@ def deterministic_productions(grammar):
             if begins is None or any(_spans_overlap(spanned, begins) for spanned in spans):
                 continue  # what the last way can begin with is not pinned down, or collides with a gate
         if not any(
-            _spans_overlap(spans[one], spans[other]) and not _complementary_guards(gated[one], gated[other])
+            _spans_overlap(spans[one], spans[other])
+            and not _complementary_guards(gated[one], gated[other])
+            and not _literal_decided(gated[one])
             for one in range(len(spans))
             for other in range(one + 1, len(spans))
         ):
             deterministic.add(name)
     return deterministic
+
+
+def _literal_decided(earlier):
+    """
+    Whether `earlier` — the first of two alternatives sharing a first character — is decided by its own literal gate:
+    its peek is a `LiteralPeek` whose text its leading consume spells exactly. Where the gate refuses, the alternative
+    is never entered and the later one is tried, which is where backtracking's failed literal lands; where it holds, the
+    consume is the literal the gate found, committed the way the grammar means a literal — whole. The corpus's hybrid
+    run is what holds the greedy side of that reading to the reference.
+    """
+    peek = earlier.gate.peek
+    return (
+        isinstance(peek, ir.LiteralPeek)
+        and len(earlier.actions) > 0
+        and isinstance(earlier.actions[0], ir.ConsumePeeked)
+        and earlier.actions[0].text == peek.text
+    )
 
 
 def _complementary_guards(one, other):
@@ -1606,6 +1627,41 @@ def unshaped_actions(grammar):
 
         walk(production.body)
     return residue
+
+
+def gate_literals(grammar, namer):
+    """
+    The grammar with each alternative that consumes a literal its gate already pins gated on the literal whole: where
+    the peek is exactly the literal's first character, it widens to a `LiteralPeek` on the full text, so the decision is
+    the literal's presence — one bounded test, nothing consumed — and the consume behind it cannot fail. A gate that
+    stays one comparison in the generated parser, where splitting the literal would spend a state per character.
+    """
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            result[name] = production
+            continue
+        ways = []
+        for way in body.alternatives:
+            lead = way.actions[0] if way.actions else None
+            if (
+                way.gate.peek is not None
+                and not isinstance(way.gate.peek, ir.LiteralPeek)
+                and isinstance(lead, ir.ConsumeLiteral)
+                and len(lead.text) > 1
+                and _peek_spans(way.gate.peek, grammar) == [(lead.text[0], lead.text[0])]
+            ):
+                gate = dataclasses.replace(way.gate, peek=ir.LiteralPeek(text=lead.text, then=None, barrier=None))
+                consume = (ir.ConsumePeeked(text=lead.text),) + way.actions[1:]
+                way = dataclasses.replace(way, gate=gate, actions=consume)
+            ways.append(way)
+        alternatives = tuple(ways)
+        if alternatives == body.alternatives:
+            result[name] = production
+        else:
+            result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=alternatives))
+    return result
 
 
 def speculate_folds(grammar, namer):
@@ -2239,6 +2295,7 @@ STEPS = [
     ("factor-prefixes", factor_prefixes),
     ("gate-hoist-leftovers", gate_hoist),
     ("speculate-folds", speculate_folds),
+    ("gate-literals", gate_literals),
 ]
 
 

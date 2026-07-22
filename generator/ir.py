@@ -271,11 +271,41 @@ class ConsumeChar:
 
 
 @dataclass(frozen=True)
+class LiteralPeek:
+    """
+    A gate's literal form: the alternative is entered where the input begins with `text` and the first character after
+    it passes the follow test — `then`, a class it must belong to, or `barrier`, a class it must not; at most one is
+    given, and the end of the input passes either for free, being no character at all. Both `None` where the literal
+    alone decides. The polarity is each literal's own: the document markers are followed by white or a break —
+    `c-forbidden`'s trailing class, spelled positively — where a directive keyword must not go on as a name. Tested
+    without consuming, as every gate part is, and bounded by the longest literal the grammar holds, it lowers to the
+    generated parser's single comparison — where a per-character split would spend a state on each.
+    """
+
+    text: tuple
+    then: object
+    barrier: object
+
+
+@dataclass(frozen=True)
+class ConsumePeeked:
+    """
+    The literal the gate's `LiteralPeek` found, taken into the run. It consumes the literal's characters, always: the
+    gate has already found them there, so finding otherwise is a gate that did not do its job — the interpreter says so,
+    and the generated parser advances without scanning the bytes a second time. `ConsumeLiteral` stays the
+    test-and-consume for a literal no gate vouches for.
+    """
+
+    text: tuple
+
+
+@dataclass(frozen=True)
 class Gate:
     """
     What an alternative is entered on, tested without consuming: `peek`, the character class the next character must
-    belong to, or `None` where the alternative is not decided by one; and `guards`, the zero-width conditions that must
-    hold with it. A gate with neither is the unconditional fallthrough, which only the last alternative may carry.
+    belong to — or a `LiteralPeek`, the bounded run the input must begin — or `None` where the alternative is not
+    decided by one; and `guards`, the zero-width conditions that must hold with it. A gate with neither is the
+    unconditional fallthrough, which only the last alternative may carry.
     """
 
     peek: object = None

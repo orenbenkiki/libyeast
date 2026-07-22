@@ -194,15 +194,21 @@ All notable changes to this project are documented here. The format follows
   peek where their guards are complementary, `Lt(x, y)` against `Le(y, x)`, the indentation loop's own case. The first
   and follow sets behind all of this are computed over the shaped grammar as codepoint intervals, every answer erring
   wide — a certificate stands on disjointness, so too wide refuses safely; the invalid-byte class rides an alternation
-  peek as its own unit, which is what pins the unparsed recovery's any-byte loop. The corpus parses green in that hybrid
-  the whole way, so the meter is honest at every step: 1303 of 1565 productions run committed, and the 262 still
-  backtracking are the determinize work itself — the fold's old family standing beside its fused replacement, reached by
-  its own fixtures until a sweep takes what the stream no longer holds — a count driven to none that then becomes a
-  gate. `check_normalize` holds every step token-and-event identical over the whole corpus — 681 conformance fixtures
-  and 402 YAML Test Suite cases, backtracking and hybrid alike — and ends on two own-gates over the result: every long
-  text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per
-  loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its
-  element or, until determinize supplies the guard that lowers them, a nullable production.
+  peek as its own unit, which is what pins the unparsed recovery's any-byte loop. A gate holds a literal whole:
+  `LiteralPeek(text, then, barrier)` enters where the input begins the text and the character after it, if any, matches
+  `then` or avoids `barrier` — the end of the input passing either, the polarity each literal's own — and
+  `ConsumePeeked` takes what the gate found without scanning the bytes twice. The CR LF break certifies so, in place and
+  without a state per character, and the certificate reads a literal-gated alternative as backtracking's own: where the
+  gate refuses, the next way is exactly where the failed literal lands, and where it holds, the literal commits whole,
+  the way the grammar means one. The corpus parses green in that hybrid the whole way, so the meter is honest at every
+  step: 1304 of 1565 productions run committed, and the 261 still backtracking are the determinize work itself — the
+  fold's old family standing beside its fused replacement, reached by its own fixtures until a sweep takes what the
+  stream no longer holds — a count driven to none that then becomes a gate. `check_normalize` holds every step
+  token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases, backtracking
+  and hybrid alike — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or
+  the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set
+  — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the
+  guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run
