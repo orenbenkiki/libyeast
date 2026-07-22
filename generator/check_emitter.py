@@ -40,8 +40,10 @@ RESTORED = (  # in alphabetical order
 READ_ONLY = ("byte_at", "chars", "raw")  # in alphabetical order
 # Balanced by its own pushes and pops rather than by a checkpoint: the production stack the depth guard traces is the
 # live chain of entered productions, pushed on entry and popped on exit even as an exception unwinds, so a rewind —
-# which happens inside a production, its entry still standing — must leave it alone, not truncate it.
-TRANSIENT = ("stack",)
+# which happens inside a production, its entry still standing — must leave it alone, not truncate it. The committed
+# regions likewise: push and pop restore their records on their own failure paths, a region once reached stays reached
+# whatever backtracking does after, and recovery truncates what an abandoned parse left open.
+TRANSIENT = ("commitments", "stack")
 
 
 def _dirty(emitter):

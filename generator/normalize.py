@@ -31,7 +31,9 @@ _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
     ir.OpenMatch,
     ir.OpenWindow,
     ir.PopCode,
+    ir.PopMessage,
     ir.PushCode,
+    ir.PushMessage,
     ir.SetVar,
     ir.StartOfLine,
 )
@@ -614,6 +616,31 @@ def lower_binds(grammar, namer):
     }
 
 
+def _lower_commits(node):
+    """
+    `node` with each `(commit)` rewritten as the pair of actions it stands for. Bottom-up, so a parent sees its
+    already-lowered children.
+    """
+    node = ir.rebuilt(node, _lower_commits)
+    if isinstance(node, ir.Commit):
+        return ir.Seq((ir.PushMessage(node.message), node.item, ir.PopMessage()))
+    return node
+
+
+def lower_commits(grammar, namer):
+    """
+    Rewrite each `(commit)` as `PushMessage(message), item, PopMessage`: the committed region a commit scope stands for
+    becomes explicit actions bracketing exactly `item`, so a failure inside the unclosed region raises `message` and one
+    past the close backtracks softly, as the scope did. The extent survives every later split by being written in the
+    grammar rather than implied by the tree shape; a helper may hold one half of the pair, since the pop pairs with its
+    push dynamically and reads no frame value back. Removes the `Commit` node kind.
+    """
+    return {
+        name: dataclasses.replace(production, body=_lower_commits(production.body))
+        for name, production in grammar.items()
+    }
+
+
 def _flat_seq(items):
     """
     A `Seq` of `items`, flattened: a nested `Seq` spliced in, an `Empty` dropped as the no-op it is in a sequence, a
@@ -884,6 +911,17 @@ def binarize(grammar, namer):
 _GUARDS = (ir.StartOfLine, ir.EndOfStream, ir.Look, ir.NegLook, ir.LookBehind, ir.ExcludeAt, ir.Lt, ir.Le)
 
 
+def _gate_lead(actions):
+    """
+    The first action a gate may go on — the first one that consumes, or a `PushMessage` standing before it: a committed
+    region's first character is not a gate's to refuse, since entering and failing must raise the region's message.
+    """
+    return next(
+        (action for action in actions if isinstance(action, ir.PushMessage) or not isinstance(action, _ZERO_WIDTH)),
+        None,
+    )
+
+
 def alternative_shape(grammar, namer):
     """
     Shape every production into the form the state machine reads: a terminal character class, or a `Choice` of
@@ -897,8 +935,8 @@ def alternative_shape(grammar, namer):
     character class nothing consumes before — a char-set `x+` included, its peek `[x]` proving the `ConsumeSpan` it
     becomes takes at least one; a run or a call left un-peeked is for the gate hoisting to reach.
 
-    A `(commit)`, a `(recover)` and a repetition over a nullable production are none of these, and stay as actions where
-    they stand — the residue the determinize phase resolves, which `unshaped_actions` counts so it is seen shrinking.
+    A `(recover)` and a repetition over a nullable production are none of these, and stay as actions where they stand —
+    the residue the determinize phase resolves, which `unshaped_actions` counts so it is seen shrinking.
     """
     minted = {}
 
@@ -920,6 +958,8 @@ def alternative_shape(grammar, namer):
 
         peek = None
         for position, action in enumerate(actions):  # the gate goes on the first character consumed, where it is one
+            if isinstance(action, ir.PushMessage):
+                break  # a committed region: a gate refusing its first character would soften the error it must raise
             if isinstance(action, _ZERO_WIDTH):
                 continue
             if matches_one_char(action, lookup):
@@ -961,10 +1001,10 @@ def gate_hoist(grammar, namer):
     nothing before it takes that union as its own peek.
 
     The peek only has to hold wherever the call could match, so a union that is too wide is safe and a first set that
-    cannot be pinned down leaves the gate as it was: a nullable production, a run that may take nothing, a `(commit)` or
-    a repetition still awaiting determinize. Hoisting moves the test in front of the actions, which is why an
-    alternative whose actions reach a `(cut)` before the call is left alone — the cut commits, and a gate that refuses
-    first would take that commitment away.
+    cannot be pinned down leaves the gate as it was: a nullable production, a run that may take nothing, or a repetition
+    still awaiting determinize. Hoisting moves the test in front of the actions, which is why an alternative that opens
+    a committed region — a `PushMessage`, or a `(cut)` before the call — is left alone: the commitment must be entered,
+    and a gate that refuses first would soften the error it names into a skip.
     """
     first_of = {}
 
@@ -993,7 +1033,7 @@ def gate_hoist(grammar, namer):
     def alternative_first(alternative, seen):
         if alternative.gate.peek is not None:
             return alternative.gate.peek
-        lead = next((action for action in alternative.actions if not isinstance(action, _ZERO_WIDTH)), None)
+        lead = _gate_lead(alternative.actions)
         if lead is None:
             for reference in (alternative.first, alternative.second):
                 if reference is not None:
@@ -1006,7 +1046,7 @@ def gate_hoist(grammar, namer):
     def hoisted(alternative):
         if alternative.gate.peek is not None:
             return alternative
-        lead = next((action for action in alternative.actions if not isinstance(action, _ZERO_WIDTH)), None)
+        lead = _gate_lead(alternative.actions)
         if isinstance(lead, ir.ConsumeLiteral):
             return dataclasses.replace(alternative, gate=ir.Gate(ir.Char(lead.text[0]), alternative.gate.guards))
         if lead is not None or alternative.first is None:
@@ -1048,9 +1088,10 @@ def ungated_alternatives(grammar):
 
 def unshaped_actions(grammar):
     """
-    The actions that are not yet what the canonical form spells — a `(commit)`, a `(recover)`, or a repetition over a
-    nullable production, each still a scope holding a match of its own rather than a gate and a call. They are what the
-    determinize phase has left to resolve, counted here so the number is seen rather than assumed.
+    The actions that are not yet what the canonical form spells — a `(recover)`, or a repetition over a nullable
+    production, each still a scope holding a match of its own rather than a gate and a call. They are what the
+    determinize phase has left to resolve, counted here so the number is seen rather than assumed; a `(commit)` is
+    counted too, as the net that would catch one the lowering missed.
     """
     residue = []
     for name, production in grammar.items():
@@ -1484,6 +1525,7 @@ STEPS = [
     ("lower-bounds", lower_bounds),
     ("lower-windows", lower_windows),
     ("lower-binds", lower_binds),
+    ("lower-commits", lower_commits),
     ("flatten", flatten),
     ("span-consumes", span_consumes),
     ("lift-choices", lift_choices),

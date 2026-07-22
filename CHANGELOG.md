@@ -101,53 +101,60 @@ All notable changes to this project are documented here. The format follows
   does the same for `(max)`, its character window becoming `OpenWindow` … `CloseWindow`, the overflow past the edge now
   failing the window's cut in the run itself rather than a wrapper catching it; and `lower-binds` rewrites each
   `(if)(set)` as its `(match)`-measured condition and the `(set)` that reads it, the one node that held a match scope
-  becoming the ordinary run and action it always was. `flatten` then splices nested `Seq`/`Alt`, drops the `Empty`
-  no-ops a sequence carries, unwraps singleton `Seq`/`Alt`, and expands a fixed `(k)` repetition into its copies —
-  leaving a `(n)` over a runtime count for the determinize phase. `span-consumes` then rewrites every run of characters
-  as the single scan the canonical form spells: a character-set `Star` becomes a `ConsumeSpan`, a `TrimStar` a
-  `ConsumeTrimmedSpan`, a `({N})` repetition a `ConsumeCountedSpan` — a run of exactly so many, which keeps an escape's
-  eight hex digits and an indent's `n` spaces each one scan rather than a state per character — and characters standing
-  in a row a `ConsumeLiteral`, one comparison that either stands or takes nothing, which is what `---`, `...`, a
-  directive's `YAML` or `TAG`, and a break's carriage return and line feed each become. `lift-choices` gives every
-  nested choice a production of its own, so a choice is only ever a whole body — the canonical shape, where a production
-  is either a terminal character set or an ordered list of alternatives; a choice in a character class or a lookahead is
-  a set or a pattern, not a decision, and stays where it is. `single-consumes` splits an alternative down to the one
-  gate-needing terminal its gate peeks — a single character, or a char-set `x+`, whose at-least-one is exactly what a
-  gate on `[x]` proves — and `binarize` down to the canonical form's two production calls, each moving what follows into
-  a fresh `_<N>` helper called in its place, so `A -> B C D` becomes `A -> B A_1` and `A_1 -> C D`. Two calls is one
-  stack push per edge. What a helper may hold is bounded by the scopes a production's frame carries: a `(<<<)` origin
-  and a `(max)` window are not passed, so a moved segment opens and closes them together, while a `(token)`'s code is —
-  a helper split out of the middle of one takes the code its caller was entered under as a parameter, so its close
-  restores the outer code rather than the pushed one, and a declared parameter beats the scope in force where a
-  production is entered. `alternative-shape` then writes each production the way the state machine reads it: a terminal
-  character class, or a `Choice` of `Alternative`s, each a `Gate` to enter on — the character the next one must be, and
-  the zero-width conditions that must hold with it — the actions it performs, and up to two productions, the call and
-  the continuation to resume at when it returns, which is one frame pushed per edge. Nothing follows the continuation,
-  since a production returns exactly when it does, so an alternative is cut at its first call and what follows becomes a
-  continuation of its own — a scalar's `end` marker after its last call included, which is how it gets a state to sit
-  in. A gated character is taken by a `ConsumeChar`, which consumes exactly one, always: the gate has found it, so one
-  that finds nothing is a gate that did not do its job, and the interpreter and the generated parser both say so rather
-  than matching nothing. A char-set `x+` becomes its gate's peek with a `ConsumeSpan` behind it — the gate proves the
-  span takes at least one, so a plus costs no node of its own — while a `x*` stays an action, a scan that cannot fail
-  needing no decision. What the canonical form does not spell yet — a `(commit)`, a `(recover)`, a repetition over a
-  nullable production — stays an action where it stands, and the check counts them, so the 67 the determinize phase has
-  to resolve are watched down rather than discovered. `gate-hoist` then gives an alternative that goes on a call the
-  characters that call can begin with, so the decision is made where it is taken rather than one production down — a
-  first set falls straight out of the shaped form, being the union of a production's alternatives' peeks. A union too
-  wide is safe, since the peek only has to hold wherever the call could match, and one that cannot be pinned down leaves
-  the gate as it was; an alternative whose actions reach a `(cut)` before the call is left alone, since the cut has
-  committed and a gate refusing first would take that commitment away. A character to go on is carried by 827 of the
-  1772 alternatives that consume or call; the 945 without one are determinize's to give. A hoisted gate makes the
-  decision the production it calls used to make — where the character is not one that call can begin with, the call
-  never happens — so the coverage gate counts the gate saying no as that production saying no, or gating a rule
-  correctly would make it look untested. The coverage gate holds a minted helper covered by the base it came from, as it
-  does a monomorphic copy: a helper is a piece of the base's own body moved, so requiring more of it than of the body it
-  came from would ask the corpus for what the untransformed grammar never needed. `check_normalize` holds every step
-  token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases — and ends on
-  two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is
-  matched in bulk rather than one character per loop; and every run consumes a character set — a `ConsumeTrimmedSpan`
-  both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard that lowers them, a
-  nullable production.
+  becoming the ordinary run and action it always was. `lower-commits` dissolves the last scope: a `(commit)` becomes
+  `PushMessage(message) … PopMessage`, the committed region bracketed exactly where the scope stood — a failure that
+  unwinds past an unclosed push raises its message, one past the pop backtracks softly, the `reached` flag of the old
+  scope now the pop having run. The extent is written in the grammar rather than implied by the tree shape, so it
+  survives every later split; a helper may hold one half of the pair, the pop pairing with its push dynamically and
+  reading no frame value back, which is what lets it be cut where a `(token)`'s code must be passed. A gate is never
+  hoisted past a `PushMessage` — refusing entry to a region the grammar committed to must stay the error it names, not
+  soften into a skip — which `gate-hoist` and the alternative shaping both hold to. `flatten` then splices nested
+  `Seq`/`Alt`, drops the `Empty` no-ops a sequence carries, unwraps singleton `Seq`/`Alt`, and expands a fixed `(k)`
+  repetition into its copies — leaving a `(n)` over a runtime count for the determinize phase. `span-consumes` then
+  rewrites every run of characters as the single scan the canonical form spells: a character-set `Star` becomes a
+  `ConsumeSpan`, a `TrimStar` a `ConsumeTrimmedSpan`, a `({N})` repetition a `ConsumeCountedSpan` — a run of exactly so
+  many, which keeps an escape's eight hex digits and an indent's `n` spaces each one scan rather than a state per
+  character — and characters standing in a row a `ConsumeLiteral`, one comparison that either stands or takes nothing,
+  which is what `---`, `...`, a directive's `YAML` or `TAG`, and a break's carriage return and line feed each become.
+  `lift-choices` gives every nested choice a production of its own, so a choice is only ever a whole body — the
+  canonical shape, where a production is either a terminal character set or an ordered list of alternatives; a choice in
+  a character class or a lookahead is a set or a pattern, not a decision, and stays where it is. `single-consumes`
+  splits an alternative down to the one gate-needing terminal its gate peeks — a single character, or a char-set `x+`,
+  whose at-least-one is exactly what a gate on `[x]` proves — and `binarize` down to the canonical form's two production
+  calls, each moving what follows into a fresh `_<N>` helper called in its place, so `A -> B C D` becomes `A -> B A_1`
+  and `A_1 -> C D`. Two calls is one stack push per edge. What a helper may hold is bounded by the scopes a production's
+  frame carries: a `(<<<)` origin and a `(max)` window are not passed, so a moved segment opens and closes them
+  together, while a `(token)`'s code is — a helper split out of the middle of one takes the code its caller was entered
+  under as a parameter, so its close restores the outer code rather than the pushed one, and a declared parameter beats
+  the scope in force where a production is entered. `alternative-shape` then writes each production the way the state
+  machine reads it: a terminal character class, or a `Choice` of `Alternative`s, each a `Gate` to enter on — the
+  character the next one must be, and the zero-width conditions that must hold with it — the actions it performs, and up
+  to two productions, the call and the continuation to resume at when it returns, which is one frame pushed per edge.
+  Nothing follows the continuation, since a production returns exactly when it does, so an alternative is cut at its
+  first call and what follows becomes a continuation of its own — a scalar's `end` marker after its last call included,
+  which is how it gets a state to sit in. A gated character is taken by a `ConsumeChar`, which consumes exactly one,
+  always: the gate has found it, so one that finds nothing is a gate that did not do its job, and the interpreter and
+  the generated parser both say so rather than matching nothing. A char-set `x+` becomes its gate's peek with a
+  `ConsumeSpan` behind it — the gate proves the span takes at least one, so a plus costs no node of its own — while a
+  `x*` stays an action, a scan that cannot fail needing no decision. What the canonical form does not spell yet — a
+  `(recover)`, or a repetition over a nullable production — stays an action where it stands, and the check counts them,
+  so the 12 the determinize phase has to resolve are watched down rather than discovered. `gate-hoist` then gives an
+  alternative that goes on a call the characters that call can begin with, so the decision is made where it is taken
+  rather than one production down — a first set falls straight out of the shaped form, being the union of a production's
+  alternatives' peeks. A union too wide is safe, since the peek only has to hold wherever the call could match, and one
+  that cannot be pinned down leaves the gate as it was; an alternative whose actions reach a `(cut)` before the call is
+  left alone, since the cut has committed and a gate refusing first would take that commitment away. A character to go
+  on is carried by 836 of the 1797 alternatives that consume or call; the 961 without one are determinize's to give. A
+  hoisted gate makes the decision the production it calls used to make — where the character is not one that call can
+  begin with, the call never happens — so the coverage gate counts the gate saying no as that production saying no, or
+  gating a rule correctly would make it look untested. The coverage gate holds a minted helper covered by the base it
+  came from, as it does a monomorphic copy: a helper is a piece of the base's own body moved, so requiring more of it
+  than of the body it came from would ask the corpus for what the untransformed grammar never needed. `check_normalize`
+  holds every step token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite
+  cases — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed
+  recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set — a
+  `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard
+  that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

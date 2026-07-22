@@ -145,6 +145,8 @@ class Emitter:
         self.ceiling_message = None  # the cut message a consume past the ceiling raises — the window's, held with it
         self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
         self.stack = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
+        self.commitments = []  # one `[reached]` record per open committed region, innermost last — not checkpointed:
+        # the push and pop actions restore it on their own failure paths, and a region once reached stays reached
 
     def checkpoint(self):
         return (
@@ -862,6 +864,27 @@ def match(node, emitter, grammar, k):
         if k():
             return True
         raise CommitFailure(node.message)  # committed: unwind past the backtracking, this is the error
+    if isinstance(node, ir.PushMessage):
+        # A committed region opens: the record pairs with the `PopMessage` that closes it, which marks it reached. A
+        # failure that unwinds back here with the region never closed is the error; through a closed one it backtracks
+        # like any other match — the commitment does not reach past its close. A `(commit)` scope's terms exactly, the
+        # close standing where the scope's end stood.
+        record = [False]
+        emitter.commitments.append(record)
+        if k():
+            return True
+        popped = emitter.commitments.pop()
+        assert popped is record, "a committed region closed out of order"
+        if record[0]:
+            return False
+        raise CommitFailure(node.message)
+    if isinstance(node, ir.PopMessage):
+        record = emitter.commitments.pop()
+        record[0] = True  # reached: the region's commitment is kept, whatever backtracking does after
+        if k():
+            return True
+        emitter.commitments.append(record)  # backtracked into the region: it is open again, though already kept
+        return False
     if isinstance(node, ir.Commit):
         # A `(cut)` scoped to `item`: it is the error only where `item` never reaches its own end. `reached` is set the
         # first time `item` matches through to the continuation, so a continuation that then fails backtracks the whole
@@ -886,13 +909,14 @@ def match(node, emitter, grammar, k):
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Recover):
-        depth, code, forbidden, env, ceiling, ceiling_message = (
+        depth, code, forbidden, env, ceiling, ceiling_message, commitments = (
             len(emitter.pending),
             emitter.code,
             emitter.forbidden,
             dict(emitter.env),
             emitter.ceiling,
             emitter.ceiling_message,
+            len(emitter.commitments),
         )
         try:
             return match(node.item, emitter, grammar, k)
@@ -907,6 +931,7 @@ def match(node, emitter, grammar, k):
             emitter.env = env
             emitter.ceiling = ceiling
             emitter.ceiling_message = ceiling_message
+            del emitter.commitments[commitments:]  # the regions the abandoned parse left open
             emitter.error(MESSAGES[failure.code])
             while len(emitter.pending) > depth:
                 emitter.marker(emitter.pending[-1])  # close what `item` opened, down to here and no further

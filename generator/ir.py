@@ -525,6 +525,29 @@ class PopCode:
 
 
 @dataclass(frozen=True)
+class PushMessage:
+    """
+    A zero-width action that opens a committed region under `message` — what a `(commit)` opens with. From here to the
+    `PopMessage` that closes it, the input must carry the parse through: a failure that unwinds past this point with the
+    region never closed raises `message`, where one that unwinds through a closed region backtracks like any other. A
+    gate is never hoisted past one — refusing entry to a region the grammar committed to must stay the error it names.
+    """
+
+    message: str
+
+
+@dataclass(frozen=True)
+class PopMessage:
+    """
+    A zero-width action that closes the committed region the innermost `PushMessage` opened — reaching it is what makes
+    the region's commitment kept, so a later failure backtracks through it softly. Paired with `PushMessage`:
+    `Commit(message, item)` lowers to `PushMessage(message), item, PopMessage`. The pair may be cut across a minted
+    helper: it reads nothing off the frame, pairing with its push dynamically, so unlike a `(token)`'s code there is no
+    outer value to pass.
+    """
+
+
+@dataclass(frozen=True)
 class OpenMatch:
     """
     A zero-width action that sets the origin a `(match)` measures from to the current position — what `(<<<)` marks

@@ -73,7 +73,7 @@ def _check():
     print("    " + " -> ".join(name for name, _transform in normalize.STEPS))
     # Not a fault: what the canonical form does not spell yet, printed so the number is watched down to none rather than
     # discovered later. The determinize phase is what resolves each of them.
-    print(f"    {len(residue)} action(s) awaiting determinize: a (commit), a (recover), or a nullable repetition")
+    print(f"    {len(residue)} action(s) awaiting determinize: a (recover) or a nullable repetition")
     print(f"    {len(normalize.ungated_alternatives(stages[-1][1]))} alternative(s) with no character to go on")
 
 
