@@ -1218,15 +1218,41 @@ def _spans_overlap(a, b):
     return False
 
 
+def _node_begins(node, grammar, first_of):
+    """
+    What a match of `node` can begin with and whether it may match empty — `(spans, nullable)`, the spans `None` where
+    not pinned down. A reference answers from the first table; a character class from its denotation; a difference from
+    its base, less every exclusion that is a single character class — the interpreter probes exclusions before the base,
+    so a match begins with nothing they accept, which makes the subtraction exact — and no narrower where an exclusion
+    is not. Anything else is not pinned down, erring wide as every answer here does.
+    """
+    if isinstance(node, ir.Ref):
+        return first_of(node.name)
+    if isinstance(node, ir.Diff):
+        begins, nullable = _node_begins(node.base, grammar, first_of)
+        if begins is None:
+            return None, nullable
+        for excluded in node.minus:
+            if matches_one_char(excluded, grammar):
+                cut = _peek_spans(excluded, grammar)
+                if cut is not None:
+                    begins = _subtracted_spans(begins, cut)
+        return begins, nullable
+    if matches_one_char(node, grammar):
+        return _peek_spans(node, grammar), False
+    return None, True
+
+
 def _alternative_first(alternative, grammar, first_of):
     """
     The spans a match of `alternative` can begin with and whether it can match empty — `(spans, nullable)`, the spans
     `None` where they are not pinned down. Where there is a peek it is the sound first set, the alternative being
     entered only where it holds; nullability is read off the content either way, erring toward "may match empty", as
-    every answer here errs wide — a follow set built from these certifies by disjointness, so too wide refuses safely.
+    every answer here errs wide — a follow set built from these certifies by disjointness, so too wide refuses safely. A
+    recovery does not widen the answer: it rides the call's edge and resumes at the frame's return, so it changes what
+    may follow the production, never what the alternative begins with entered fresh — the follow computation hands the
+    recovery its due on the same edge.
     """
-    if alternative.recover is not None:
-        return None, True  # a recovery can pick up mid-failure: what this can begin with is not worth pinning down
     spans, consumed, unknown = [], False, False
     for action in alternative.actions:
         if isinstance(action, ir.ConsumeChar):
@@ -1251,6 +1277,14 @@ def _alternative_first(alternative, grammar, first_of):
                 consumed = True
                 break
             continue  # a run that may take nothing: what follows can begin here too
+        if isinstance(action, ir.Diff):
+            part, part_nullable = _node_begins(action, grammar, first_of)
+            unknown = unknown or part is None
+            spans.extend(part or [])
+            if part_nullable:
+                continue  # may take nothing: what follows can begin here too
+            consumed = True
+            break
         if matches_one_char(action, grammar):
             part = _peek_spans(action, grammar)
             unknown = unknown or part is None

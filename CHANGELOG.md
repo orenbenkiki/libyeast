@@ -200,17 +200,23 @@ All notable changes to this project are documented here. The format follows
   `ConsumePeeked` takes what the gate found without scanning the bytes twice. The CR LF break certifies so, in place and
   without a state per character, and the certificate reads a literal-gated alternative as backtracking's own: where the
   gate refuses, the next way is exactly where the failed literal lands, and where it holds, the literal commits whole,
-  the way the grammar means one. The corpus parses green in that hybrid the whole way, so the meter is honest at every
-  step: 1304 of 1565 productions run committed, and the 261 still backtracking are the determinize work itself — the
-  fold's old family standing beside its fused replacement, reached by its own fixtures until a sweep takes what the
-  stream no longer holds — a count driven to none that then becomes a gate. `check_normalize` holds every step
-  token-and-event identical over the whole corpus — 688 conformance fixtures and 402 YAML Test Suite cases, seven of
-  them pinning the document-marker boundary the spec's `c-forbidden` spells and the Clojure reference agrees on:
-  `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary, `... foo` malformed — backtracking
-  and hybrid alike — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or
-  the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set
-  — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the
-  guard that lowers them, a nullable production.
+  the way the grammar means one. The first sets reach through what used to fog them: a difference begins with what its
+  base does, less every exclusion that is one character class — the interpreter probes exclusions before the base, which
+  makes the subtraction exact — and a recovery widens nothing, riding the call's edge to resume at the frame's return,
+  changing what may follow but never what an alternative begins with entered fresh. Those two facts emptied the
+  unpinned-fallthrough category whole: every follow set the certificates consult is pinned, and the hoisting mints the
+  gates it had been starved of — the quoted continuation lines gating on printable-non-white the way their seam grapheme
+  always meant. The corpus parses green in that hybrid the whole way, so the meter is honest at every step: 1333 of 1592
+  productions run committed, and the 259 still backtracking are the determinize work itself — the fold's old family
+  standing beside its fused replacement, reached by its own fixtures until a sweep takes what the stream no longer holds
+  — a count driven to none that then becomes a gate. `check_normalize` holds every step token-and-event identical over
+  the whole corpus — 688 conformance fixtures and 402 YAML Test Suite cases, seven of them pinning the document-marker
+  boundary the spec's `c-forbidden` spells and the Clojure reference agrees on: `---foo`, `---#foo`, `----` and their
+  `...` kin are content, `--- foo` a boundary, `... foo` malformed — backtracking and hybrid alike — and ends on two
+  own-gates over the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is matched
+  in bulk rather than one character per loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets,
+  a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable
+  production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

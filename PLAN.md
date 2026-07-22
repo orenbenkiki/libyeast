@@ -284,12 +284,10 @@ landing at a time, each corpus-diffed:
 1. Literal gates at their remaining sites, when each site's decision lands — the document markers take `c-forbidden`'s
    white-or-break as their `then`, the directive keywords `ns-char` as their `barrier`; the boundary class itself is
    pinned by fixtures already.
-1. An order-commitment certificate for what no literal decides — the tag-property families, the block header's two
-   orderings.
-1. Follow sets sharpened per call site and first sets narrowed by guards — what the nullable document loops
-   (`l-yaml-stream`'s twenty-one) and the guarded fallthroughs wait on, the four fused fold scans among them.
-1. Gates for the ungated middles the nullable chains leave unpinned — the flow entry separators, the comments,
-   `s-l+block-collection` and kin.
+1. An order-commitment certificate — the assurance ledger — for what no literal or disjointness decides: the
+   tag-property families, the block header's two orderings, the nullable document loops (`l-yaml-stream`'s twenty-one,
+   their follow pinned now and genuinely colliding), and the four fused fold scans.
+1. Gates for the ungated middles that remain — the flow entry separators, the comments, `s-l+block-collection` and kin.
 1. The two indentation gotchas — the zero-indent block sequence nested in a mapping, and flow context suspending
    indentation — living in the `s-l+block-*` families.
 1. The sweep of what the stream no longer reaches, and the fixture policy it forces — the stranded fold family is the
