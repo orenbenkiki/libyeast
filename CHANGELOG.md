@@ -160,14 +160,18 @@ All notable changes to this project are documented here. The format follows
   production whose decisions are statically proved one-gate-decidable — a terminal and a single-alternative choice
   decide nothing, and alternatives peeking pairwise-disjoint character sets with no guards can hold at most one gate, so
   committing to the first that holds is the parse backtracking finds — and the interpreter enters exactly those
-  committed, no second try, backtracking everywhere else. The corpus parses green in that hybrid the whole way, so the
-  meter is honest at every step: 1206 of 1525 productions run committed, and the 319 still backtracking are the
-  determinize work itself, a count driven to none that then becomes a gate. `check_normalize` holds every step
-  token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases, backtracking
-  and hybrid alike — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or
-  the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set
-  — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the
-  guard that lowers them, a nullable production.
+  committed, no second try, backtracking everywhere else. A trailing fallthrough of inert zero-width actions — the empty
+  way out of a loop — certifies too, where the production's follow set is pinned down and disjoint from every peek: the
+  fallthrough stands for what can only follow, so where a gate holds its way cannot succeed, entered fresh or
+  backtracked into. The first and follow sets behind that are computed over the shaped grammar as codepoint intervals,
+  every answer erring wide — a certificate stands on disjointness, so too wide refuses safely. The corpus parses green
+  in that hybrid the whole way, so the meter is honest at every step: 1229 of 1525 productions run committed, and the
+  296 still backtracking are the determinize work itself, a count driven to none that then becomes a gate.
+  `check_normalize` holds every step token-and-event identical over the whole corpus — 681 conformance fixtures and 402
+  YAML Test Suite cases, backtracking and hybrid alike — and ends on two own-gates over the result: every long text
+  token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per loop;
+  and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its
+  element or, until determinize supplies the guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run
