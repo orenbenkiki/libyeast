@@ -580,7 +580,10 @@ def match(node, emitter, grammar, k):
         # say.
         parts = () if node.gate.peek is None else (ir.Look(node.gate.peek),)
         parts += tuple(node.gate.guards) + tuple(node.actions)
-        parts += tuple(item for item in (node.first, node.second) if item is not None)
+        # A recovery riding the edge is the `(recover)` scope over the call it protects — the same handler, its resume
+        # point the frame's own return, which is exactly the continuation the call already has here.
+        first = node.first if node.recover is None else ir.Recover(node.recover, node.first)
+        parts += tuple(item for item in (first, node.second) if item is not None)
         return match(ir.Seq(parts), emitter, grammar, k)
     if isinstance(node, ir.ConsumeChar):
         if emitter.position >= len(emitter.chars):

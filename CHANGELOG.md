@@ -136,15 +136,21 @@ All notable changes to this project are documented here. The format follows
   always: the gate has found it, so one that finds nothing is a gate that did not do its job, and the interpreter and
   the generated parser both say so rather than matching nothing. A char-set `x+` becomes its gate's peek with a
   `ConsumeSpan` behind it — the gate proves the span takes at least one, so a plus costs no node of its own — while a
-  `x*` stays an action, a scan that cannot fail needing no decision. What the canonical form does not spell yet — a
-  `(recover)`, or a repetition over a nullable production — stays an action where it stands, and the check counts them,
-  so the 12 the determinize phase has to resolve are watched down rather than discovered. `gate-hoist` then gives an
+  `x*` stays an action, a scan that cannot fail needing no decision. `lower-recovers` then moves each `(recover)` from
+  the action it stood in onto the edge it protects: the alternative calls the guarded production as its `first` and
+  names the recovery in `recover`, so the frame pushed for the call is the one a cut unwinds to — the handler is the
+  frame, the resume point its own return, and the calls the alternative already had move behind it, into a minted
+  continuation helper where there were two. Failure carries no continuation of its own: a dead-end is an error, the
+  unwind searches the stack for the nearest recovery-carrying frame, and the parse resumes at that frame's return as
+  though the guarded call had matched — which is why a recovery rides the push where a message brackets a region. With
+  it the residue is fully spelled: no scope and no repetition stands where the canonical form wants a gate, an action or
+  a call, and the count the check keeps is the net that puts a leftover back on the board. `gate-hoist` then gives an
   alternative that goes on a call the characters that call can begin with, so the decision is made where it is taken
   rather than one production down — a first set falls straight out of the shaped form, being the union of a production's
   alternatives' peeks. A union too wide is safe, since the peek only has to hold wherever the call could match, and one
   that cannot be pinned down leaves the gate as it was; an alternative whose actions reach a `(cut)` before the call is
   left alone, since the cut has committed and a gate refusing first would take that commitment away. A character to go
-  on is carried by 836 of the 1797 alternatives that consume or call; the 961 without one are determinize's to give. A
+  on is carried by 842 of the 1803 alternatives that consume or call; the 961 without one are determinize's to give. A
   hoisted gate makes the decision the production it calls used to make — where the character is not one that call can
   begin with, the call never happens — so the coverage gate counts the gate saying no as that production saying no, or
   gating a rule correctly would make it look untested. The coverage gate holds a minted helper covered by the base it

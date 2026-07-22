@@ -288,13 +288,17 @@ class Alternative:
     One way a production may go: a `Gate` to enter on, the `actions` it performs, and up to two productions it hands
     control to. `first` is the call and `second` the continuation — run `first`, and when it returns resume at `second`
     — so a frame is pushed once per edge. `second` alone is a tail call; neither is a return. Nothing follows `second`,
-    which is why a sequence's trailing actions become a continuation of their own.
+    which is why a sequence's trailing actions become a continuation of their own. `recover` rides the push: where it
+    names a recovery production, a cut unwinding out of `first` stops at this frame — the error is emitted, the markers
+    `first` opened are closed down to here, `recover` matches what this rule gives up, and the parse resumes at the
+    frame's own return as though `first` had matched. A recovery that does not match sends the cut on up.
     """
 
     gate: object
     actions: tuple = ()
     first: object = None
     second: object = None
+    recover: object = None
 
 
 @dataclass(frozen=True)

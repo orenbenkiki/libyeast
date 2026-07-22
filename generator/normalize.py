@@ -936,7 +936,7 @@ def alternative_shape(grammar, namer):
     becomes takes at least one; a run or a call left un-peeked is for the gate hoisting to reach.
 
     A `(recover)` and a repetition over a nullable production are none of these, and stay as actions where they stand —
-    the residue the determinize phase resolves, which `unshaped_actions` counts so it is seen shrinking.
+    the recover for `lower_recovers` to move onto its edge, the rest counted by `unshaped_actions`.
     """
     minted = {}
 
@@ -989,6 +989,41 @@ def alternative_shape(grammar, namer):
             items = alternative.items if isinstance(alternative, ir.Seq) else (alternative,)
             shaped.extend(shape(name, number, params, tuple(items)).alternatives)
         result[name] = dataclasses.replace(production, body=ir.Choice(tuple(shaped)))
+    result.update(minted)
+    return result
+
+
+def lower_recovers(grammar, namer):
+    """
+    Move each `(recover)` from the action it stands in onto the edge it protects: the alternative calls the guarded
+    production as its `first` and names the recovery in `recover`, so the frame pushed for the call is the one a cut
+    unwinds to — the handler is the frame, and the resume point its own return. The calls the alternative already had
+    move behind it: one becomes the continuation as it is, two move into a minted `_<N>` helper the edge resumes at.
+    Only the canonical shape moves — a `Recover` standing as the sole action, its item and recovery plain references;
+    anything else stays, for `unshaped_actions` to count.
+    """
+    minted = {}
+
+    def lowered(owner, production, alternative):
+        if len(alternative.actions) != 1 or not isinstance(alternative.actions[0], ir.Recover):
+            return alternative
+        scope = alternative.actions[0]
+        if not isinstance(scope.item, ir.Ref) or not isinstance(scope.recovery, ir.Ref):
+            return alternative
+        second = alternative.first
+        if alternative.second is not None:  # two calls to resume at move to a helper the edge resumes at as one
+            name = namer.fresh(owner)
+            body = ir.Choice((ir.Alternative(ir.Gate(None, ()), (), alternative.first, alternative.second),))
+            minted[name] = ir.Prod(production.number, name, production.params, body)
+            second = ir.Ref(name, tuple(ir.Param(parameter) for parameter in production.params))
+        return dataclasses.replace(alternative, actions=(), first=scope.item, second=second, recover=scope.recovery)
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = ir.Choice(tuple(lowered(name, production, alternative) for alternative in body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
     result.update(minted)
     return result
 
@@ -1088,10 +1123,9 @@ def ungated_alternatives(grammar):
 
 def unshaped_actions(grammar):
     """
-    The actions that are not yet what the canonical form spells — a `(recover)`, or a repetition over a nullable
-    production, each still a scope holding a match of its own rather than a gate and a call. They are what the
-    determinize phase has left to resolve, counted here so the number is seen rather than assumed; a `(commit)` is
-    counted too, as the net that would catch one the lowering missed.
+    The actions that are not what the canonical form spells — a `(commit)` or `(recover)` scope a lowering left
+    standing, or a repetition over a nullable production. The count is zero, and stays counted as the net that puts a
+    leftover back on the board rather than letting a step assume it away.
     """
     residue = []
     for name, production in grammar.items():
@@ -1532,6 +1566,7 @@ STEPS = [
     ("single-consumes", single_consumes),
     ("binarize", binarize),
     ("alternative-shape", alternative_shape),
+    ("lower-recovers", lower_recovers),
     ("gate-hoist", gate_hoist),
 ]
 
