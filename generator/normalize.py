@@ -1553,7 +1553,48 @@ def factor_prefixes(grammar, namer):
     return result
 
 
+# The assurance ledger: productions entered committed on a declaration rather than a proof, each with the reason its
+# gate order is the grammar's meaning. An entry is held two ways — the hybrid corpus parses with it committed, so a
+# wrong declaration diverges from backtracking on the spot, and `declared_faults` refuses a stale name or one the
+# analysis has since proved, so the ledger never quietly outgrows its reasons. Helper names are the pipeline's own and
+# shift when the steps before them change; the staleness fault is what makes that loud rather than silent.
+DECLARED_COMMITS = {
+    "c-b-block-header_t_keep_7": "chomp-first subsumes: on '+' it takes every header indicator-first takes, and '+1'"
+    " besides — order-block-headers is what stood it first",
+    "c-b-block-header_t_strip_7": "chomp-first subsumes: on '-' it takes every header indicator-first takes, and"
+    " '-1' besides — order-block-headers is what stood it first",
+    "c-b-block-header_t_clip_1": "clip has no chomping character, so its two orderings are one language — an"
+    " optional digit and the comment — and either way is the parse",
+    "c-indentation-indicator_1": "a digit standing at the indicator is the indicator — no way through the header"
+    " reads it as anything else, so the empty way serves only where no digit stands",
+}
+
+
+def declared_faults(grammar):
+    """
+    The assurance-ledger entries that no longer hold their ground: a declared name the grammar does not hold, or one the
+    analysis proves on its own — a declaration gone stale either way, refused so the ledger's reasons stay true.
+    """
+    proved = _proved_productions(grammar)
+    faults = []
+    for name in sorted(DECLARED_COMMITS):
+        if name not in grammar:
+            faults.append(f"{name}: declared committed, but the grammar holds no such production")
+        elif name in proved:
+            faults.append(f"{name}: declared committed, but the analysis proves it — the declaration is stale")
+    return faults
+
+
 def deterministic_productions(grammar):
+    """
+    The productions entered committed: every one the analysis proves one-gate-decidable, and the assurance ledger's
+    declared few beside them — `DECLARED_COMMITS`, each carrying the reason its order is the grammar's meaning, held to
+    backtracking by the hybrid corpus and to freshness by `declared_faults`.
+    """
+    return _proved_productions(grammar) | {name for name in DECLARED_COMMITS if name in grammar}
+
+
+def _proved_productions(grammar):
     """
     The productions whose every decision is statically proved one-gate-decidable. A character-set terminal and a
     single-alternative choice decide nothing. A choice whose alternatives peek pairwise-disjoint character sets can hold
@@ -1566,8 +1607,8 @@ def deterministic_productions(grammar):
     or a call whose first set no gate could pin — where everything it can begin with, its own first set widened by the
     production's follow set where it may match empty, is pinned down and disjoint from every peek: where a gate holds,
     the last way cannot succeed, entered fresh or backtracked into, and for a last alternative entered-and-failed is the
-    same as not entered. The interpreter enters exactly these committed; the count of productions left out is what the
-    determinize work drives to none.
+    same as not entered. The count of productions neither proved here nor declared in the ledger is what the determinize
+    work drives to none.
     """
     first = _first_table(grammar)
     follow = _follow_spans(grammar, first)
@@ -1783,6 +1824,33 @@ def gate_literals(grammar, namer):
             alternatives = tuple(ways)
             if alternatives != body.alternatives:
                 result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=alternatives))
+    return result
+
+
+def order_block_headers(grammar, namer):
+    """
+    The grammar with the block header's two orderings tried chomping first wherever both open on the same gate. The
+    chomp-first way takes every header the indicator-first way takes — an empty indentation indicator stands on either
+    side of the chomping character, setting `m` the same and emitting nothing — and it alone takes `+1`, the indicator
+    standing after the chomp. The swap changes which way backtracking finds, never what it finds: both orderings spell
+    the same tokens, which the corpus holds; and it is what makes the header's declared commit sound — entered first,
+    the chomp-first way is the parse wherever the gate holds.
+    """
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        swapped = production
+        if isinstance(body, ir.Choice) and len(body.alternatives) == 2:
+            one, other = body.alternatives
+            if (
+                one.first is not None
+                and one.first.name.startswith("c-indentation-indicator")
+                and other.first is not None
+                and other.first.name.startswith("c-chomping-indicator")
+                and one.gate == other.gate
+            ):
+                swapped = dataclasses.replace(production, body=ir.Choice(alternatives=(other, one)))
+        result[name] = swapped
     return result
 
 
@@ -2418,6 +2486,7 @@ STEPS = [
     ("gate-hoist-leftovers", gate_hoist),
     ("speculate-folds", speculate_folds),
     ("gate-literals", gate_literals),
+    ("order-block-headers", order_block_headers),
 ]
 
 

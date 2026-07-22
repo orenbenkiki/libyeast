@@ -218,17 +218,23 @@ All notable changes to this project are documented here. The format follows
   behind them. The directive keywords carry their name barrier — `YAML` and `TAG` are the whole name only where no
   `ns-char` follows, the reserved directive's own greedy name claiming a longer one, and a seen keyword commits, its
   version's faults the grammar's own cut to judge — so `%YAMLX` is a reserved directive named `YAMLX` where `%YAML`
-  alone is the committed keyword's error. The corpus parses green in that hybrid the whole way, so the meter is honest
-  at every step: 1342 of 1592 productions run committed, and the 250 still backtracking are the determinize work itself
-  — the fold's old family standing beside its fused replacement, reached by its own fixtures until a sweep takes what
-  the stream no longer holds — a count driven to none that then becomes a gate. `check_normalize` holds every step
-  token-and-event identical over the whole corpus — 688 conformance fixtures and 402 YAML Test Suite cases, seven of
-  them pinning the document-marker boundary the spec's `c-forbidden` spells and the Clojure reference agrees on:
-  `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary, `... foo` malformed — backtracking
-  and hybrid alike — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or
-  the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set
-  — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the
-  guard that lowers them, a nullable production.
+  alone is the committed keyword's error. The block header reads chomping first — the chomp-first ordering takes every
+  header the indicator-first one takes, an empty indentation indicator standing on either side and emitting nothing, and
+  it alone takes `+1`, so the swap changes which way backtracking finds and never what it finds. And what no
+  disjointness can prove now stands declared: the assurance ledger commits a production on a written reason — the
+  header's chomp-first subsumption, clip's two orderings being one language, a digit at the indicator being the
+  indicator — each entry held to backtracking by the hybrid corpus, refused when its name goes stale or the analysis
+  catches up, and counted on its own gate line so the declared few never grow quietly. The corpus parses green in that
+  hybrid the whole way, so the meter is honest at every step: 1346 of 1592 productions run committed, and the 246 still
+  backtracking are the determinize work itself — the fold's old family standing beside its fused replacement, reached by
+  its own fixtures until a sweep takes what the stream no longer holds — a count driven to none that then becomes a
+  gate. `check_normalize` holds every step token-and-event identical over the whole corpus — 688 conformance fixtures
+  and 402 YAML Test Suite cases, seven of them pinning the document-marker boundary the spec's `c-forbidden` spells and
+  the Clojure reference agrees on: `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary,
+  `... foo` malformed — backtracking and hybrid alike — and ends on two own-gates over the result: every long text
+  token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per loop;
+  and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its
+  element or, until determinize supplies the guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

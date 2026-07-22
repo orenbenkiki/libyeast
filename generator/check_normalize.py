@@ -74,6 +74,8 @@ def _check():
         errors.append(f"[char-set-runs] {fault}")
     for fault in normalize.provisional_faults(stages[-1][1]):
         errors.append(f"[provisional] {fault}")
+    for fault in normalize.declared_faults(stages[-1][1]):
+        errors.append(f"[ledger] {fault}")
     residue = normalize.unshaped_actions(stages[-1][1])
 
     gate.report(
@@ -92,6 +94,10 @@ def _check():
     # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
     # of productions still backtracking — driven to none, at which point it becomes a gate.
     print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic")
+    # The assurance ledger: committed on a declared reason rather than a proof, each entry held to backtracking by the
+    # hybrid run above and to freshness by its own net — watched here so the declared few never grow quietly.
+    declared = sum(1 for name in normalize.DECLARED_COMMITS if name in final)
+    print(f"    {declared} production(s) committed by declaration — the assurance ledger")
 
 
 def main():
