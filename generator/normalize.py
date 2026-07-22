@@ -1600,7 +1600,7 @@ def deterministic_productions(grammar):
         if not any(
             _spans_overlap(spans[one], spans[other])
             and not _complementary_guards(gated[one], gated[other])
-            and not _literal_decided(gated[one])
+            and not _literal_decided(gated[one], grammar)
             for one in range(len(spans))
             for other in range(one + 1, len(spans))
         ):
@@ -1608,21 +1608,36 @@ def deterministic_productions(grammar):
     return deterministic
 
 
-def _literal_decided(earlier):
+def _literal_decided(earlier, grammar):
     """
     Whether `earlier` — the first of two alternatives sharing a first character — is decided by its own literal gate:
-    its peek is a `LiteralPeek` whose text its leading consume spells exactly. Where the gate refuses, the alternative
-    is never entered and the later one is tried, which is where backtracking's failed literal lands; where it holds, the
-    consume is the literal the gate found, committed the way the grammar means a literal — whole. The corpus's hybrid
-    run is what holds the greedy side of that reading to the reference.
+    its peek is a `LiteralPeek` whose text its way in spells exactly, by its own leading consume or down the single-way
+    productions it opens on. Where the gate refuses, the alternative is never entered and the later one is tried, which
+    is where backtracking's failed literal lands; where it holds, the consume is the literal the gate found, committed
+    the way the grammar means a literal — whole, and past any follow test the gate carries. The corpus's hybrid run is
+    what holds the greedy side of that reading to the reference, the marker fixtures with it.
     """
     peek = earlier.gate.peek
-    return (
-        isinstance(peek, ir.LiteralPeek)
-        and len(earlier.actions) > 0
-        and isinstance(earlier.actions[0], ir.ConsumePeeked)
-        and earlier.actions[0].text == peek.text
-    )
+    return isinstance(peek, ir.LiteralPeek) and _spells_peek(earlier, peek.text, grammar, frozenset())
+
+
+def _spells_peek(alternative, text, grammar, seen):
+    """
+    Whether `alternative`'s way in consumes exactly `text` — its own leading consume, or the one found down its
+    single-way calls whose actions are all zero-width. A spine level's own gate does not matter here: a gate is a
+    necessary condition on entry, and what the way in consumes is the same behind any of them.
+    """
+    lead = next((action for action in alternative.actions if not isinstance(action, _ZERO_WIDTH)), None)
+    if lead is not None:
+        return isinstance(lead, ir.ConsumePeeked) and lead.text == text
+    reference = alternative.first
+    if reference is None or reference.name in seen or reference.name not in grammar:
+        return False
+    body = grammar[reference.name].body
+    if not isinstance(body, ir.Choice) or len(body.alternatives) != 1:
+        return False
+    [entry] = body.alternatives
+    return _spells_peek(entry, text, grammar, seen | {reference.name})
 
 
 def _complementary_guards(one, other):
@@ -1663,38 +1678,93 @@ def unshaped_actions(grammar):
     return residue
 
 
+# The follow test a hoisted marker gate carries, declared by literal: a document marker cuts a document only where
+# white, a break, or the end of the input follows — `c-forbidden`'s trailing class, the end of the input passing a
+# `then` on its own — and anything else leaves the characters to the content the spec gives them.
+_BOUNDARIES = {
+    (0x2D, 0x2D, 0x2D): ir.Alt(items=(ir.Ref(name="b-char", args=()), ir.Ref(name="s-white", args=()))),
+    (0x2E, 0x2E, 0x2E): ir.Alt(items=(ir.Ref(name="b-char", args=()), ir.Ref(name="s-white", args=()))),
+}
+
+
 def gate_literals(grammar, namer):
     """
-    The grammar with each alternative that consumes a literal its gate already pins gated on the literal whole: where
-    the peek is exactly the literal's first character, it widens to a `LiteralPeek` on the full text, so the decision is
-    the literal's presence — one bounded test, nothing consumed — and the consume behind it cannot fail. A gate that
-    stays one comparison in the generated parser, where splitting the literal would spend a state per character.
+    The grammar with every literal decision gated on the literal whole, in two motions. First, in place: an alternative
+    that consumes a literal its gate already pins — the leading consume past any zero-width actions — takes a
+    `LiteralPeek` on the full text, the consume behind it a `ConsumePeeked` that cannot fail. Then, hoisted: an
+    alternative whose whole way in is a call opening on a literal-gated production takes that production's own
+    `LiteralPeek` as its peek — verbatim where the callee's carries a follow test, and from `_BOUNDARIES` where it does
+    not. The follow test is declared, never derived: a first set cannot see the line structure that decides these — a
+    bare document's first characters include the block sequence's own dash, so a class derived from the continuation
+    admits `----` to the marker reading the spec gives a plain scalar, which the marker fixtures catch. The hoist only
+    narrows: a callee's entry gate is the alternative's own necessary condition, so what it refuses could never have
+    matched — and where the literal and its follow test hold but the way still dies deeper, the grammar's own forbidden
+    rule is what denies the rival reading. Runs to a fixpoint, so a gate climbs as many call levels as spell it.
     """
-    result = {}
-    for name, production in grammar.items():
-        body = production.body
-        if not isinstance(body, ir.Choice):
-            result[name] = production
-            continue
-        ways = []
-        for way in body.alternatives:
-            lead = way.actions[0] if way.actions else None
-            if (
-                way.gate.peek is not None
-                and not isinstance(way.gate.peek, ir.LiteralPeek)
-                and isinstance(lead, ir.ConsumeLiteral)
-                and len(lead.text) > 1
-                and _peek_spans(way.gate.peek, grammar) == [(lead.text[0], lead.text[0])]
-            ):
-                gate = dataclasses.replace(way.gate, peek=ir.LiteralPeek(text=lead.text, then=None, barrier=None))
-                consume = (ir.ConsumePeeked(text=lead.text),) + way.actions[1:]
-                way = dataclasses.replace(way, gate=gate, actions=consume)
-            ways.append(way)
-        alternatives = tuple(ways)
-        if alternatives == body.alternatives:
-            result[name] = production
-        else:
-            result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=alternatives))
+    result = dict(grammar)
+
+    def literal_entry(reference, seen=frozenset()):
+        # the literal peek a call's spine opens on — the callee's own, or one found down its single-way calls whose
+        # actions are all zero-width — else None
+        if reference is None or reference.name in seen or reference.name not in result:
+            return None
+        body = result[reference.name].body
+        if not isinstance(body, ir.Choice) or len(body.alternatives) != 1:
+            return None
+        [way] = body.alternatives
+        peek = way.gate.peek
+        if isinstance(peek, ir.LiteralPeek):
+            return peek
+        if any(not isinstance(action, _ZERO_WIDTH) for action in way.actions):
+            return None
+        return literal_entry(way.first, seen | {reference.name})
+
+    changed = True
+    while changed:
+        changed = False
+        for name, production in list(result.items()):
+            body = production.body
+            if not isinstance(body, ir.Choice):
+                continue
+            ways = []
+            for index, way in enumerate(body.alternatives):
+                lead = next((action for action in way.actions if not isinstance(action, _ZERO_WIDTH)), None)
+                if (
+                    way.gate.peek is not None
+                    and not isinstance(way.gate.peek, ir.LiteralPeek)
+                    and isinstance(lead, ir.ConsumeLiteral)
+                    and len(lead.text) > 1
+                    and _peek_spans(way.gate.peek, grammar) == [(lead.text[0], lead.text[0])]
+                ):
+                    gate = dataclasses.replace(way.gate, peek=ir.LiteralPeek(text=lead.text, then=None, barrier=None))
+                    swapped = tuple(
+                        ir.ConsumePeeked(text=action.text) if action is lead else action for action in way.actions
+                    )
+                    way = dataclasses.replace(way, gate=gate, actions=swapped)
+                    changed = True
+                entry = literal_entry(way.first)
+                if (
+                    entry is not None
+                    and way.gate.peek is not None
+                    and not isinstance(way.gate.peek, ir.LiteralPeek)
+                    and all(isinstance(action, _ZERO_WIDTH) for action in way.actions)
+                    and _peek_spans(way.gate.peek, grammar) == [(entry.text[0], entry.text[0])]
+                ):
+                    hoisted = entry
+                    if entry.then is None and entry.barrier is None:
+                        # A declared follow test refuses entries the way in would have taken to a committed error, so it
+                        # may narrow a gate only where a later alternative catches what it refuses — the fall through
+                        # backtracking's failed rival lands on. A way that stands alone keeps its own gate and its own
+                        # failure surface, the suffix's seen-marker commit being the fixture-pinned case.
+                        declared = _BOUNDARIES.get(entry.text) if index + 1 < len(body.alternatives) else None
+                        hoisted = None if declared is None else dataclasses.replace(entry, then=declared)
+                    if hoisted is not None:
+                        way = dataclasses.replace(way, gate=dataclasses.replace(way.gate, peek=hoisted))
+                        changed = True
+                ways.append(way)
+            alternatives = tuple(ways)
+            if alternatives != body.alternatives:
+                result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=alternatives))
     return result
 
 
