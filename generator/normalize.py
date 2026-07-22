@@ -1079,20 +1079,31 @@ def gate_hoist(grammar, namer):
             return ir.Char(lead.text[0])
         return lead if matches_one_char(lead, grammar) else None
 
+    spans_cache = {}
+
+    def first_of_spans(reference):
+        return _production_first(reference, grammar, spans_cache, frozenset())
+
     def hoisted(alternative):
         if alternative.gate.peek is not None:
             return alternative
         lead = _gate_lead(alternative.actions)
         if isinstance(lead, ir.ConsumeLiteral):
             return dataclasses.replace(alternative, gate=ir.Gate(ir.Char(lead.text[0]), alternative.gate.guards))
-        if lead is not None or alternative.first is None:
-            return alternative
-        if any(isinstance(action, ir.Cut) for action in alternative.actions):
-            return alternative  # the cut has committed by the time the call runs; a gate must not undo that
-        peek = production_first(alternative.first.name, frozenset())
-        if peek is None:
-            return alternative
-        return dataclasses.replace(alternative, gate=ir.Gate(peek, alternative.gate.guards))
+        if any(isinstance(action, (ir.Cut, ir.PushMessage)) for action in alternative.actions):
+            return alternative  # committed on entry: a gate refusing first would take that commitment away
+        if lead is None and alternative.first is not None:
+            peek = production_first(alternative.first.name, frozenset())
+            if peek is not None:
+                return dataclasses.replace(alternative, gate=ir.Gate(peek, alternative.gate.guards))
+        # What the call-first hoisting could not reach — a nullable callee, a run before the call, a chain of both — is
+        # peeked as the alternative's whole begin set, actions, call and continuation together, where that is pinned
+        # down and cannot match empty: an empty match must stay enterable with no character left to peek, so a nullable
+        # alternative keeps its empty gate for the follow-set certificate to decide.
+        begins, nullable = _alternative_first(alternative, grammar, first_of_spans)
+        if begins and not nullable and begins[0][0] >= 0:  # a begin set holding the invalid unit is not a peek
+            return dataclasses.replace(alternative, gate=ir.Gate(_spans_node(begins), alternative.gate.guards))
+        return alternative
 
     result = {}
     for name, production in grammar.items():
@@ -1120,6 +1131,12 @@ def ungated_alternatives(grammar):
             if consuming or alternative.first is not None:
                 ungated.append(f"{name}: an alternative with no character to go on")
     return ungated
+
+
+def _spans_node(spans):
+    """`spans` as the character-class node a gate peeks — a `Char` per point, a `Range` per run, an `Alt` of several."""
+    pieces = tuple(ir.Char(lo) if lo == hi else ir.Range(lo, hi) for lo, hi in spans)
+    return pieces[0] if len(pieces) == 1 else ir.Alt(pieces)
 
 
 def _merged_spans(spans):
@@ -1188,11 +1205,6 @@ def _spans_overlap(a, b):
         else:
             position_b += 1
     return False
-
-
-# The actions a fallthrough alternative may hold and still be the plain empty way out: unconditional and zero-width —
-# emissions and frame restores, never a lookahead, a guard or a consume, whose presence would make taking it a decision.
-_INERT_FALLTHROUGH = (ir.CloseMatch, ir.CloseWindow, ir.Emit, ir.Empty, ir.Increase, ir.PopCode, ir.PushCode, ir.SetVar)
 
 
 def _alternative_first(alternative, grammar, first_of):
@@ -1336,13 +1348,19 @@ def deterministic_productions(grammar):
     single-alternative choice decide nothing. A choice whose alternatives all peek pairwise-disjoint character sets with
     no guards can hold at most one gate at any position, so committing to the first that holds is the same parse
     backtracking finds: the alternatives all start at the same position, and where one gate holds no other's `Look`
-    could. The same stands with a trailing fallthrough of inert zero-width actions — the empty way out of a loop — where
-    the production's follow set is pinned down and disjoint from every peek: the fallthrough stands for what can only
-    follow, so where a gate holds the fallthrough's way cannot succeed, whether entered fresh or backtracked into. The
+    could. The same stands with an ungated last alternative — the empty way out of a loop, or a call whose first set no
+    gate could pin — where everything it can begin with, its own first set widened by the production's follow set where
+    it may match empty, is pinned down and disjoint from every peek: where a gate holds, the last way cannot succeed,
+    entered fresh or backtracked into, and for a last alternative entered-and-failed is the same as not entered. The
     interpreter enters exactly these committed; the count of productions left out is what the determinize work drives to
     none.
     """
     follow = _follow_spans(grammar)
+    cache = {}
+
+    def first_of(reference):
+        return _production_first(reference, grammar, cache, frozenset())
+
     deterministic = set()
     for name, production in grammar.items():
         body = production.body
@@ -1350,17 +1368,9 @@ def deterministic_productions(grammar):
             deterministic.add(name)  # a terminal, a single way through, or no way at all: nothing to decide
             continue
         gated = list(body.alternatives)
-        fallthrough = gated[-1]
-        if (
-            fallthrough.gate.peek is None
-            and not fallthrough.gate.guards
-            and fallthrough.first is None
-            and fallthrough.second is None
-            and all(isinstance(action, _INERT_FALLTHROUGH) for action in fallthrough.actions)
-        ):
+        last = gated[-1] if gated[-1].gate.peek is None else None
+        if last is not None:
             gated = gated[:-1]
-        else:
-            fallthrough = None
         spans = []
         for alternative in gated:
             if alternative.gate.peek is None or alternative.gate.guards:
@@ -1373,10 +1383,12 @@ def deterministic_productions(grammar):
             spans.append(spanned)
         if spans is None:
             continue
-        if fallthrough is not None:
-            followed = follow[name]
-            if followed is None or any(_spans_overlap(spanned, followed) for spanned in spans):
-                continue  # the empty way out is told apart by what follows, which is not pinned down or collides
+        if last is not None:
+            begins, nullable = _alternative_first(last, grammar, first_of)
+            if nullable and begins is not None:
+                begins = None if follow[name] is None else _merged_spans(begins + follow[name])
+            if begins is None or any(_spans_overlap(spanned, begins) for spanned in spans):
+                continue  # what the last way can begin with is not pinned down, or collides with a gate
         if not any(_spans_overlap(one, other) for index, one in enumerate(spans) for other in spans[index + 1 :]):
             deterministic.add(name)
     return deterministic
