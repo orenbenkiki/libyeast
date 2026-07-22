@@ -112,9 +112,9 @@ YamlReference's `Code` constructors** (already declared as `ys_code` in the publ
 the single stream do three jobs at once:
 
 - **The load API** — `compose → resolve → serialize` is a downstream fold over yeast. YAMLStar already owns that back
-  half and already eats these tokens, so the JSON path is a front-end swap, not new code (phase 06).
+  half and already eats these tokens, so the JSON path is a front-end swap, not new code (phase 05).
 - **A debug view** — folding the balanced `Begin`/`End` markers rebuilds the nested productions tree, rendered by the
-  package's own `yaml2html` (migrated from YamlReference; phase 05). Identical codes make the port a faithful copy,
+  package's own `yaml2html` (migrated from YamlReference; phase 04). Identical codes make the port a faithful copy,
   validated against YamlReference's own rendering.
 - **The differential oracles** — identical codes make the yeast comparison against YamlReference token-for-token; the
   folded load output is checked value-for-value against YAMLStar (§3).
@@ -193,12 +193,12 @@ divergence apart — where the YAML Test Suite follows YAMLStar past the spec, a
 03 to carry through its provable steps.
 
 Still to be scoped, when something needs it: the yeast→HTML debug view — the divergence microscope, bootstrapped on
-YamlReference's `yaml2html`, later the oracle for the package's own port (Phase 05) — and the differential fuzz corpus
+YamlReference's `yaml2html`, later the oracle for the package's own port (Phase 04) — and the differential fuzz corpus
 CI runs beside the fold.
 
-### Phase 03 — Normalize · the grammar-to-canonical pipeline
+### Phase 03 — Normalize · the grammar-to-canonical pipeline, every decision committed
 
-*Risk: High — the prize · ~3–6 mo.* This is where the backtracking grammar becomes a committed one, and it is done not
+*Risk: High — the prize · ~5–9 mo.* This is where the backtracking grammar becomes a committed one, and it is done not
 as one leap but as a **series of small, individually-provable, semantics-preserving transformations** that carry the raw
 IR to a canonical form a state machine falls out of. It runs over the grammar frozen at Phase 02's gate: every step
 preserves the interpreter's token stream, so a grammar bug is Phase 02's to have caught, never this pipeline's to
@@ -233,13 +233,11 @@ determinization.
   `OpenMatch`/`CloseMatch` (mark and restore the `(match)` origin the production likewise carries on its frame), and
   `OpenWindow(limit, message)`/`CloseWindow` (open and restore the `(max)` character window it likewise carries, past
   which a committed `Consume` fails the window's cut). These are what `Token`/`Wrap`/`Emit`/`(<<<)`/`(max)` lower to.
-- **Provisional run** — `OpenProvisional`, `RetypeProvisional(payload, breaks)` (a retype rewrites the open run by
-  class: a token whose characters were consumed as a line break takes `breaks`, any other takes `payload`, and a code
-  named `None` leaves its class alone — so the block scalar's held run, content and the breaks between it, retypes in
-  one action; `breaks` because `break` is Python's), `InjectBefore(code)` (a zero-width marker put ahead of the run, at
-  most one per run), `CommitProvisional`. One-for-one with the `ys_queue` run, and only one run is open at a time. There
-  is no discard: a failed hypothesis retypes, it never drops tokens. All four are zero-width to the analyses, so a
-  production carrying them certifies by its gates alone.
+- **Provisional run** — `OpenProvisional`, `MarkProvisional`, `InjectBefore(codes, at)`,
+  `RetypeProvisional(rest, breaks, region)`, `CommitProvisional`, spelled in full under *The provisional mechanism*
+  below, which is also where each speculation's use of them is written out. One-for-one with the `ys_queue` run, and
+  only one run is open at a time. There is no discard: a failed hypothesis retypes, it never drops tokens. All five are
+  zero-width to the analyses, so a production carrying them certifies by its gates alone.
 - **Parameters** — `SetIndentToColumn`, `IncreaseIndentToColumn` (`f = max(f, column)`, what `(increase)` lowers to for
   the block-scalar floor), `AdjustIndent(expr)`, `SetIndentFromDigit`. Only `n`, `m` and `f` are runtime; `c` and `t`
   are specialized away and never appear. Counting indentation is a loop of `[space]` gates with an accumulator action,
@@ -267,29 +265,34 @@ guarantees, lowered to a single comparison.
    unconditional action into an empty-gate alternative.
 1. *Determinize* — the hard tier, still small steps. Fold residual one-token lookahead into gates. Left-factor shared
    prefixes into a common gate and a branch, repeated until each decision is one-character-decidable. Insert provisional
-   speculation for the two unbounded cases — the simple-key line and the block-scalar opening empty lines — and for the
-   line-bounded folding decision, worked out below. Handle the two indentation gotchas the mechanical steps miss — a
-   zero-indent block sequence nested directly in a mapping, and flow context, which suspends indentation entirely.
-   Discharge commit-safety per decision point, logging any residual as an assurance gap.
+   speculation wherever no character decides — the folding decision, the document prefix and the simple-key line, the
+   plain scalar's next line, and the block scalar's empty lines — each spending the actions *The provisional mechanism*
+   below formalizes. Handle the two indentation gotchas the mechanical steps miss — a zero-indent block sequence nested
+   directly in a mapping, and flow context, which suspends indentation entirely. Discharge commit-safety per decision
+   point, logging any residual as an assurance gap.
 1. *Finish.* Dead-production elimination; assert every terminal is a pure char-set; run the validator.
 
-**Determinize, what remains.** Of the 263 the meter counts, 100 are the deferrals': 36 the implicit key's, 33 the
-next-line speculation's — whether a scalar continues at all, where `InjectBefore` and the scalar-ended retypes live —
-and 31 the block scalar's empties and chomping, the block `b-l-folded` sites among them, since their held run reaches
-the chomping tail: the clip case needs the first break and the rest retyped apart, past what
-`RetypeProvisional(payload, breaks)` spells, and the loop productions are `t`-shared where the tail's codes are not.
-Those are Phase 04's, worked out there with the queue mechanism the flow fold proved. The 163 left are this phase's, one
-landing at a time, each corpus-diffed:
+**Determinize, what remains.** The meter counts 246 of 1592 productions still backtracking, over 78 distinct base names
+— every one of them this phase's, driven to none, at which point the meter becomes a gate. They fall into the landings
+below, one at a time, each corpus-diffed. The speculations among them are the deep end, and they are one piece of work
+rather than several: the five cases spend one vocabulary, formalized under *The provisional mechanism*, so the mechanism
+lands once and each site is then a table row and a rewrite.
 
-1. The smaller certificates first: the directive keywords take `ns-char` as their `barrier` when their site lands.
-1. The document-prefix speculation — the third provisional case, and `InjectBefore`'s first exercise. The comment loops
-   between documents hold whites both readings claim, and the leaf codes agree while the `begin-document` marker's
-   position does not: before the whites where a document owns them, after where a comment line does. So the line opens a
-   provisional run, the whites are held, and the first non-white decides — `#` or a break commits them outside as the
-   comment line's, anything else injects `begin-document` ahead of the run and commits, the whites become the
-   document's, and the document is entered knowing its begin already stands — a minted entry that does not emit it
-   again, the same discipline as the fold's consumed prefix. Covers `l-document-prefix_consuming` and
-   `l-trail-comments`.
+1. The document-prefix speculation — the positional injection's first exercise. The comment loops between documents hold
+   whites both readings claim: the spans agree, and what the decision settles is their codes and where the markers stand
+   — `white` where a comment line owns the whites, `indent` where a block collection does, with `begin-document` and the
+   node markers behind it standing ahead of them. So the line opens a provisional run and holds the whites; `#`, a break
+   or the end of the input decides the comment, and anything else is a document, whose own shape the `:` decides or
+   refuses. That is the run the simple-key speculation resolves, so the two are one landing rather than two in that
+   order — bounded eager buffering for the key line, resolving key-vs-scalar at the `:` or the break that refuses it,
+   inside the `(max) 1024` window the grammar already carries. Covers `l-document-prefix_consuming`, `l-trail-comments`,
+   and the implicit-key sites.
+1. The plain scalar's next line — whether a multi-line scalar continues at all, the same held-break read, landing with
+   the key's since both resolve at a line's end.
+1. The block scalar's empty lines, opening and trailing alike: hold the run, and on resolution either make it content or
+   inject the scalar's end ahead of it and leave it breaks. The block `b-l-folded` sites fuse here, per chomping — the
+   loop productions are `t`-shared where the tail's codes are not — and clip is what needs the mark, its first break
+   retyped apart from the rest.
 1. The block-structure surgery — measure lines once, guard the levels. One minted indent scan at each block-context line
    start consumes a line's indentation into one `indent` token, its column measured; every block-structure decision — a
    sequence or mapping entry, a compact, every nested loop's exit — stops consuming indentation and becomes a character
@@ -300,8 +303,11 @@ landing at a time, each corpus-diffed:
    sequence in a mapping, and flow suspending indentation — several landings, sequences first.
 1. Per-site separation fusions where a decision hides past optional separation and the paths do not reconverge — the
    properties' separate-then-tag, the flow key and value entries' separate-then-indicator — each read at its site, fused
-   fold-style without a retype, since the separation's codes agree either way. No generic absorption exists: the
-   continuations never open on the bare separation the exit's rival consumes.
+   fold-style without a retype where the separation's codes agree either way. That agreement is read off the reference
+   per site before the fusion is built, never assumed: the document prefix's whites looked like they agreed and did not,
+   `white` under one reading and `indent` under the other, and a site whose codes disagree wants a retype and belongs
+   with the speculations. No generic absorption exists: the continuations never open on the bare separation the exit's
+   rival consumes.
 1. The assurance ledger, after the surgery settles the minted names: declared order-commitments with their reasons — the
    fused fold scans, the document loops if the surgery leaves them standing, whatever order-only residue remains — a
    staleness net refusing an entry the grammar lost or the analysis has since proved, and a counted line the gate
@@ -309,6 +315,84 @@ landing at a time, each corpus-diffed:
 1. The sweep of what the stream no longer reaches, and the fixture policy it forces — the stranded fold family is the
    first case — since the meter's floor is honest only past it.
 1. The validator made the gate, and the deferred trim-reuse pass.
+
+**The provisional mechanism**, formalized — the one shape every speculation takes. A run is a contiguous stretch of
+pending tokens: built, held, and handed back to no one until it resolves. Their spans are fixed the moment their
+characters are consumed, the parser never rewinding input, so what a resolution settles is only the codes those tokens
+carry and which decided markers stand among them. It never drops a held token and never grows one out of held
+characters. So the readings a run decides between must agree token for token and span for span, and every difference
+between them must be a zero-width marker — that is the mechanism's one obligation, and the cases below are where each
+speculation discharges it.
+
+**The positions.** A run has a `start`, where it opened, and may take one `mark` inside it; the two cut the held tokens
+into the region before the mark and the region from the mark on. One mark to a run is what every case needs. A mark is a
+parse position, recorded where its action stands, and not a property of any token — two of the three cases that take one
+stand just past the first break, and the third stands past a line's whites, in a run holding no break at all.
+
+**The actions.**
+
+- `OpenProvisional` opens a run at the queue's current position. A second open inside an open run is a fault; runs never
+  nest.
+- `MarkProvisional` records the queue's current position as the run's mark. Outside a run, or a second time within one,
+  it is a fault.
+- `InjectBefore(codes, at)` inserts `codes` — a tuple of zero-width markers, in order — at `at`, the run's `start` or
+  its `mark`. What it inserts is decided at once: not held, and reached by no later retype, which is what makes an
+  injection at the mark unambiguous, landing past everything before the mark and ahead of everything after it. Injecting
+  at `mark` where none was taken is a fault.
+- `RetypeProvisional(rest, breaks, region)` rewrites the codes of the held tokens in `region` — `all`, `before_mark` or
+  `after_mark` — by kind: a token whose text begins with a carriage return or a line feed takes `breaks`, one whose text
+  begins with anything else takes `rest`, and a code named `None` leaves its kind alone. A marker or an error carries no
+  text and keeps its code either way. Naming `before_mark` or `after_mark` where no mark was taken is a fault.
+- `CommitProvisional` resolves the run and its mark together: the held tokens are decided and may be handed back.
+
+Injections and retypes commute — a retype reaches only held tokens, an injection only adds decided ones — so a
+resolution issues them in whatever order reads best at its site.
+
+**Runs never nest**, and no case asks them to: where a held run meets a character that would open another, that
+character has already resolved the outer one. The multi-line flow key is the proof — `[1,` and then a break cannot be a
+key at all, a key being one line by the spec's own restriction, so the break that opens the fold's run is the same break
+that resolves the prefix's.
+
+**The balance net** grows to match: its walk carries `closed`, `open` and `marked` where it carried a third state for
+the one injection a run was allowed, and faults on an open inside a run, a mark outside one or a second mark, a retype
+or an injection outside a run, a marked region or a mark injection where no mark was taken, and a commit with no run
+open. The one-injection-to-a-run limit goes; the tuple and the two positions are what it had stood in for.
+
+**The runtime** follows: `ys_queue_inject` takes the position and the tuple, and the interpreter's undo trail — which
+journals a retype, an injection and where the run stood — journals the mark beside them, so backtracking rewinds through
+a marked run as it does through any other.
+
+**The cases, part one — what each resolves to under the formalism.** Every row is read off the reference interpreter.
+
+| Speculation                                    | What the run holds                                                 | What decides it                                                                                      | Injections                                                                                                       | Retype                                                                                     |
+| ---------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| The flow fold, `s-flow-folded` — landed        | the break, and the follower's indent and whites                    | a break is an empty line; anything else, the input's end included, is content                        | none                                                                                                             | content: `(None, line-fold, all)`; empty: none                                             |
+| The document prefix and the implicit key       | the line's whites, and where a key may stand, the key's own tokens | `#`, a break or the input's end is the comment's; a `:` makes the line a key, a break refuses it one | a document: `(begin-document …, start)`, the node markers its shape needs behind it; a key: `(begin-pair, mark)` | a key or a block collection: `(indent, None, before_mark)`; otherwise none                 |
+| The plain scalar's next line                   | the line's breaks                                                  | content at the follower continues the scalar; a marker, a dedent or the input's end ends it          | ends: `(end-scalar end-node, start)`                                                                             | continues on one break: `(None, line-fold, all)`; on more: `(None, line-feed, after_mark)` |
+| The block scalar's opening empties             | the breaks before any content, and the indents between them        | content at the scalar's indentation; anything else leaves the scalar empty                           | empty: `(end-scalar, start)`                                                                                     | content: `(None, line-feed, all)`; empty: none                                             |
+| The block scalar's trailing empties, `t=strip` | the trailing breaks                                                | the chomping its header fixed                                                                        | `(end-scalar, start)`                                                                                            | none                                                                                       |
+| The same, `t=clip`                             | the trailing breaks                                                | the chomping its header fixed                                                                        | `(end-scalar, mark)`                                                                                             | `(None, line-feed, before_mark)`                                                           |
+| The same, `t=keep`                             | the trailing breaks                                                | the chomping its header fixed                                                                        | none                                                                                                             | `(None, line-feed, all)`, the scalar's end emitted past the commit                         |
+
+**The cases, part two — how each is reached from the grammar as it stands.**
+
+1. *The flow fold* is landed, as `speculate-folds`; the site is fused by name already and only the two signatures move
+   under it — the retype naming `all`, the injection unused.
+1. *The document prefix and the implicit key* are one landing, the run being one. The comment loops fuse at their line
+   start: open the run, consume the whites, mark past them. `#`, a break or the input's end continues the loop and
+   commits, the whites staying the comment's; anything else leaves the loop for a minted document entry that emits none
+   of what the injection supplies and does not consume the whites a second time — the fold's consumed-prefix discipline.
+   The key rides that same run to the `:` that makes it one or the break that refuses it, inside the `(max) 1024` window
+   `ns-s-implicit-yaml-key` and `c-s-implicit-json-key` already carry. Covers `l-document-prefix_consuming_1`,
+   `l-trail-comments_1`, and the implicit-key sites.
+1. *The plain scalar's next line* opens its run at the break that ends a content line, the follower's gate deciding it;
+   the minted continuation does not emit the scalar's end where the injection supplied it.
+1. *The block scalar's empties*, opening and trailing alike, want the loop productions split per chomping first — they
+   are `t`-shared where the tail's codes are not — after which each branch's resolution is one row above.
+
+What is left to prove is coverage: the rows are read off hand-built inputs, and no site is known to want a second mark
+or a second injection position. The corpus is what settles that, and the balance net is what refuses one appearing
+quietly.
 
 **The validator** is the target invariant and equals "done": every production is a terminal char-set or an ordered list
 of canonical alternatives; no `Star`/`Plus`/`Opt`/`Rep`/`Look`/`NegLook`/`Diff`/`Token`/`Wrap`/`Case` survives; every
@@ -319,34 +403,17 @@ pipeline introduces and given a second mode. It is a slow, backtracking executor
 non-issue — and it runs in two modes off one flag:
 
 - **Backtracking mode** is the baseline. Diff its token stream before and after *every* step against the yaml-test
-  suite; a step that changes any output is rejected. This is the net for all sixteen steps, and the interpreter doubles
-  as an early differential oracle against YamlReference.
+  suite; a step that changes any output is rejected. This is the net for all 27 steps, and the interpreter doubles as an
+  early differential oracle against YamlReference.
 - **Committed mode** respects the gates and never backtracks. After the determinize steps, both modes must agree on the
   corpus; a divergence means a gate is not commit-safe — the one thing the structural invariants and the backtracking
   interpreter cannot catch on their own.
 
-**Exit** — a canonical grammar the validator passes, on which the interpreter agrees in both modes across the corpus, so
-that emitting the C state machine (Phase 05) is mechanical rather than clever.
+**Exit** — a canonical grammar the validator passes, on which the interpreter agrees in both modes across the corpus,
+every speculation resolving its run correctly with the deferral exercised deliberately, so that emitting the C state
+machine (Phase 04) is mechanical rather than clever.
 
-### Phase 04 — Deferral · The two provisional cases, worked out concretely
-
-*Risk: Medium · ~2–3 mo.* Phase 03's determinize step says "insert provisional speculation for the two unbounded cases"
-in one line; this is that line worked out. The queue and its undecided run are already built (`src/parser.h`), so what
-is left is the exact sequence of `OpenProvisional`/`RetypeProvisional`/`InjectBefore`/`CommitProvisional` actions for
-each case, and the proof — via the interpreter's committed mode — that each resolves the run correctly.
-
-1. Implement bounded eager buffering for the simple-key line; resolve key-vs-scalar on line completion or `:`. The
-   next-line speculation — whether a multi-line scalar continues at all — is the same line-bounded read and lands with
-   it.
-1. Implement the block scalar's empty lines, opening and between folds alike: hold the run, and on resolution either
-   make it content or inject `end-scalar` ahead of it and make it breaks. The block `b-l-folded` sites fuse here, per
-   chomping — the loop productions are `t`-shared where the tail's codes are not — and the retype vocabulary is settled
-   where clip needs the held break and the rest retyped apart.
-1. Verify end-to-end token output against the oracle, with the deferral exercised deliberately.
-
-**Exit** — the two deferrals resolve correctly, pull-driven, oracle-clean.
-
-### Phase 05 — C codegen · Emit the C library
+### Phase 04 — C codegen · Emit the C library
 
 *Risk: Low · ~1–2 mo.* The easy end of every compiler. Turn the lowered IR into a switch-on-state character loop with
 arena allocation.
@@ -368,7 +435,7 @@ arena allocation.
 
 **Exit** — a self-contained C `.so`, plus the bundled `yaml2html` tool, passing suite + differential + fuzz.
 
-### Phase 06 — ABI layer · Drop-in for libyamlstar
+### Phase 05 — ABI layer · Drop-in for libyamlstar
 
 *Risk: Low · ~3–5 wks.* The existing YAMLStar ABI was designed as a swappable seam — thin, JSON-string in/out, no
 exposed structs — so this is nearly free. Every existing binding works unchanged.
@@ -385,7 +452,7 @@ exposed structs — so this is nearly free. Every existing binding works unchang
 
 **Exit** — the new `.so` slots in where the GraalVM blob sat; all bindings green.
 
-### Phase 07 — Harden · Fuzz, tune, and reach libyaml-class speed
+### Phase 06 — Harden · Fuzz, tune, and reach libyaml-class speed
 
 *Risk: Medium · ~2–4 mo.* Correct-but-slow is not the goal. Close the algorithmic gaps naive codegen leaves and prove
 robustness under hostile input.
@@ -408,9 +475,9 @@ robustness under hostile input.
 | A step in the normalization pipeline silently changes the language   | 03      | ▪▪▪▪     | Reference IR interpreter diffs the token stream before and after every step; the committed mode catches an unsafe gate the backtracking mode cannot; dual differential oracles against YamlReference and YAMLStar; log assurance gaps.             |
 | Semantic rules beyond the BNF encoded wrongly / incompletely         | 02      | ▪▪▪▪     | The grammar is the semantic spec; `check_vendor_spec` tags each rule grammar-vs-deviation; fixtures enforce; fuzz the corners the YAML Test Suite misses.                                                                                          |
 | The first working slice is a big leap from IR to emitting tokens     | 01      | ▪▪▪      | Decompose into many small, individually-verified sub-steps; grow the production subset one at a time, staying green; hand-checked expected outputs before the YamlReference and YAMLStar oracles exist.                                            |
-| Naive codegen is correct but super-linear                            | 03 / 07 | ▪▪▪      | Commit-safety discharged per decision point in phase 03; profiling and hot-state tuning in phase 07.                                                                                                                                               |
+| Naive codegen is correct but super-linear                            | 03 / 06 | ▪▪▪      | Commit-safety discharged per decision point in phase 03; profiling and hot-state tuning in phase 06.                                                                                                                                               |
 | A pipeline step is subtly non-semantics-preserving and slips the net | 03      | ▪▪▪      | Keep every step small enough to prove by eye; assert its structural post-condition; the interpreter corpus-diff is the behavioural backstop.                                                                                                       |
-| Arena/backtracking scratch leaks or corrupts                         | 05      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                       |
+| Arena/backtracking scratch leaks or corrupts                         | 04      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                       |
 | Incumbency: 1.1 quirks are load-bearing in real configs              | —       | ▪▪       | Out of scope to "fix" silently; position as a conformance upgrade, document behavioural deltas from libyaml/1.1.                                                                                                                                   |
 
 ## §6 — Future work
@@ -452,6 +519,15 @@ Wanted, but not planned, and not on the way to anything else:
 - **libc version portability** — deal with the libc-version issues a shared library faces: which symbol versions the
   built `.so` pulls in and their minimums, so a binary built against a newer toolchain still loads on an older target.
   The ABI-compat goal — a libyamlstar drop-in — depends on this not being quietly broken by a libc symbol-version bump.
+
+- **Optimization and benchmarking of the C implementation**, past the tuning that reaches libyaml-class speed. A
+  standing benchmark suite over representative corpora — deep nesting, long scalars, wide collections, flow-heavy and
+  block-heavy documents — run per build so a regression is caught where it is introduced rather than noticed later.
+  Beside libyaml, the interesting comparison is against **JSON parsers**: JSON is a subset of YAML and its parsers are
+  the fastest structured-text readers there are, so the ratio between them is the honest measure of what YAML's
+  indentation, folding and deferral actually cost. It also says which of those costs are the grammar's and which are the
+  generated machine's — a JSON-shaped document read by libyeast exercises almost none of the speculation, so the gap
+  that remains on one is the automaton's own overhead.
 
 - Binaries as well as library - yaml2yeast (resume policy in ARGV), yeast2yaml (filtering policy in ARGV), yeast2html
   (based on YamlReference), yaml2event, yeast2event...
