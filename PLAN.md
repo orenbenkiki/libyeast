@@ -282,9 +282,8 @@ Those are Phase 04's, worked out there with the queue mechanism the flow fold pr
 landing at a time, each corpus-diffed:
 
 1. Literal gates at their remaining sites, when each site's decision lands — the document markers take `c-forbidden`'s
-   white-or-break as their `then`, the directive keywords `ns-char` as their `barrier` — with stream fixtures pinning
-   the boundary class the spec and the Clojure reference agree on: `---foo` and `---#foo` are content, `--- foo` a
-   boundary, `... foo` malformed.
+   white-or-break as their `then`, the directive keywords `ns-char` as their `barrier`; the boundary class itself is
+   pinned by fixtures already.
 1. An order-commitment certificate for what no literal decides — the tag-property families, the block header's two
    orderings.
 1. Follow sets sharpened per call site and first sets narrowed by guards — what the nullable document loops

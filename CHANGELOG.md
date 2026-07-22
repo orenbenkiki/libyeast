@@ -204,7 +204,9 @@ All notable changes to this project are documented here. The format follows
   step: 1304 of 1565 productions run committed, and the 261 still backtracking are the determinize work itself — the
   fold's old family standing beside its fused replacement, reached by its own fixtures until a sweep takes what the
   stream no longer holds — a count driven to none that then becomes a gate. `check_normalize` holds every step
-  token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases, backtracking
+  token-and-event identical over the whole corpus — 688 conformance fixtures and 402 YAML Test Suite cases, seven of
+  them pinning the document-marker boundary the spec's `c-forbidden` spells and the Clojure reference agrees on:
+  `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary, `... foo` malformed — backtracking
   and hybrid alike — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or
   the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set
   — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the
