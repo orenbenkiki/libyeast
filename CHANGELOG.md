@@ -179,15 +179,29 @@ All notable changes to this project are documented here. The format follows
   each way, handed the code where a leftover closes a `(token)` the prefix opened; a second gate hoisting then gives
   each leftover the characters it can go on, one character deeper than the gate the alternatives shared. One round
   reaches the fixpoint: what stands after it differs in its emissions before the decision or is committed to by order —
-  the deep end the certificates are still to reach. The first and follow sets behind all of this are computed over the
-  shaped grammar as codepoint intervals, every answer erring wide — a certificate stands on disjointness, so too wide
-  refuses safely. The corpus parses green in that hybrid the whole way, so the meter is honest at every step: 1297 of
-  1557 productions run committed, and the 260 still backtracking are the determinize work itself, a count driven to none
-  that then becomes a gate. `check_normalize` holds every step token-and-event identical over the whole corpus — 681
-  conformance fixtures and 402 YAML Test Suite cases, backtracking and hybrid alike — and ends on two own-gates over the
-  result: every long text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than
-  one character per loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its
-  set, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable production.
+  the deep end the certificates are still to reach. The provisional run is what reaches past a character:
+  `OpenProvisional`, `RetypeProvisional(payload, breaks)` — a retype rewriting the held run by class, a break-consumed
+  token to one code, any other to the second, `None` keeping a class its own — `InjectBefore(code)` and
+  `CommitProvisional`, one-for-one with the `ys_queue` runtime already built, zero-width to every analysis, held
+  balanced by a net that walks the run's state through the call graph, and undone in the interpreter through a trail its
+  rewind pops — retyped codes, an injected marker, where the run stood — so backtracking rewinds through any provisional
+  action and a hybrid run rewinds through a commit. `speculate-folds` spends them first: the flow fold's break is
+  emitted provisionally and the next line read through — an indent and whites whose codes no outcome changes — to the
+  one character that decides it, a break committing the trimmed way, anything else, the stream's end included, retyping
+  the held break to `line-fold` with the follower's prefix already consumed. The site is fused by name, the first step
+  to name a production rather than a shape — fusion being forced, a content line's spaces being the follower's, read
+  before the decision, by a runtime that never rewinds input — and a certificate lemma lets two alternatives share a
+  peek where their guards are complementary, `Lt(x, y)` against `Le(y, x)`, the indentation loop's own case. The first
+  and follow sets behind all of this are computed over the shaped grammar as codepoint intervals, every answer erring
+  wide — a certificate stands on disjointness, so too wide refuses safely. The corpus parses green in that hybrid the
+  whole way, so the meter is honest at every step: 1302 of 1565 productions run committed, and the 263 still
+  backtracking are the determinize work itself — the fold's old family standing beside its fused replacement, reached by
+  its own fixtures until a sweep takes what the stream no longer holds — a count driven to none that then becomes a
+  gate. `check_normalize` holds every step token-and-event identical over the whole corpus — 681 conformance fixtures
+  and 402 YAML Test Suite cases, backtracking and hybrid alike — and ends on two own-gates over the result: every long
+  text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per
+  loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its
+  element or, until determinize supplies the guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

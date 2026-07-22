@@ -1514,12 +1514,14 @@ def deterministic_productions(grammar):
     at most one gate at any position, so committing to the first that holds is the same parse backtracking finds: the
     alternatives all start at the same position, and where one gate holds no other's `Look` could. A guard on a gate is
     allowed — it only narrows the one candidate its peek admits, so it decides nothing between alternatives, and its
-    refusal falls through exactly as backtracking does. The same stands with an ungated last alternative — the empty way
-    out of a loop, or a call whose first set no gate could pin — where everything it can begin with, its own first set
-    widened by the production's follow set where it may match empty, is pinned down and disjoint from every peek: where
-    a gate holds, the last way cannot succeed, entered fresh or backtracked into, and for a last alternative
-    entered-and-failed is the same as not entered. The interpreter enters exactly these committed; the count of
-    productions left out is what the determinize work drives to none.
+    refusal falls through exactly as backtracking does. Two alternatives may even share a peek where their guards are
+    complementary — one `Lt(x, y)`, the other `Le(y, x)` — since exactly one of the pair holds and the shared character
+    decides nothing the guards do not. The same stands with an ungated last alternative — the empty way out of a loop,
+    or a call whose first set no gate could pin — where everything it can begin with, its own first set widened by the
+    production's follow set where it may match empty, is pinned down and disjoint from every peek: where a gate holds,
+    the last way cannot succeed, entered fresh or backtracked into, and for a last alternative entered-and-failed is the
+    same as not entered. The interpreter enters exactly these committed; the count of productions left out is what the
+    determinize work drives to none.
     """
     first = _first_table(grammar)
     follow = _follow_spans(grammar, first)
@@ -1554,9 +1556,31 @@ def deterministic_productions(grammar):
                 begins = None if follow[name] is None else _merged_spans(begins + follow[name])
             if begins is None or any(_spans_overlap(spanned, begins) for spanned in spans):
                 continue  # what the last way can begin with is not pinned down, or collides with a gate
-        if not any(_spans_overlap(one, other) for index, one in enumerate(spans) for other in spans[index + 1 :]):
+        if not any(
+            _spans_overlap(spans[one], spans[other]) and not _complementary_guards(gated[one], gated[other])
+            for one in range(len(spans))
+            for other in range(one + 1, len(spans))
+        ):
             deterministic.add(name)
     return deterministic
+
+
+def _complementary_guards(one, other):
+    """
+    Whether the two alternatives can never both be entered, whatever the position: one's gate carries `Lt(x, y)` and the
+    other's `Le(y, x)` over the same two expressions, and over integers exactly one of those holds — so a peek the two
+    share still decides, the guard pair separating what the character cannot. The indentation loop is the case that
+    needs this: eat-another-space and the column-reached stop both gate on a space, told apart only by the column
+    against `n`.
+    """
+    for forward, reverse in ((one, other), (other, one)):
+        for guard in forward.gate.guards:
+            if isinstance(guard, ir.Lt) and any(
+                isinstance(candidate, ir.Le) and candidate.a == guard.b and candidate.b == guard.a
+                for candidate in reverse.gate.guards
+            ):
+                return True
+    return False
 
 
 def unshaped_actions(grammar):
@@ -1577,6 +1601,105 @@ def unshaped_actions(grammar):
 
         walk(production.body)
     return residue
+
+
+def speculate_folds(grammar, namer):
+    """
+    The grammar with `s-flow-folded`'s folding decision made committed — the first step to name a production rather than
+    a shape. The fold's break is emitted provisionally, a `break`, and the next line is read through: its indent and
+    whites carry the same codes whatever the outcome, so the one character past them decides — a break is an empty line,
+    committing the trimmed way with the held break kept a `break`; anything else, the end of the stream included,
+    retypes it a `line-fold` and commits, the follower's prefix already consumed. Past the commitment the empty-line
+    loop decides every further break at its own gate. The site's fusion is forced: a content line's spaces are the
+    follower's prefix, the decision reads them first, and the runtime never rewinds input. The productions the site
+    called stay in the grammar, reached by their own fixtures; what falls out of the stream's reach is a later sweep's.
+    """
+    site = "s-flow-folded_2"
+    old = grammar.get(site)
+    if old is None or len(old.body.alternatives) != 1:
+        raise AssertionError(f"{site}: the fold site the rewrite names is not the single way it was")
+    [way] = old.body.alternatives
+    if (
+        way.first is None
+        or way.first.name != "b-l-folded_c_flow-in"
+        or way.second is None
+        or way.second.name != "s-flow-folded_4"
+    ):
+        raise AssertionError(f"{site}: the fold site no longer sequences b-l-folded with the line prefix")
+    n, code, origin = ir.Param(name="n"), ir.Param(name=CODE), ir.Param(name="match_start")
+    breaks = way.gate.peek  # the site's own break class, kept as it is
+    space, tab, white = ir.Char(cp=0x20), ir.Char(cp=0x09), ir.Ref(name="s-white", args=())
+    below_n = ir.Lt(a=ir.Len(arg=ir.Match()), b=n)  # the column, spaces alone consumed since the line began
+    at_n = ir.Le(a=n, b=ir.Len(arg=ir.Match()))
+
+    def alternative(peek=None, guards=(), actions=(), first=None, second=None):
+        gate = ir.Gate(peek=peek, guards=tuple(guards))
+        return ir.Alternative(gate=gate, actions=tuple(actions), first=first, second=second, recover=None)
+
+    def production(name, params, *alternatives):
+        return ir.Prod(number=old.number, name=name, params=tuple(params), body=ir.Choice(alternatives=alternatives))
+
+    def ref(name, *args):
+        return ir.Ref(name=name, args=tuple(args))
+
+    names = [namer.fresh(site) for _index in range(8)]
+    scan_enter, scan, whites, decide, empties, empties_scan, empties_whites, empties_decide = names
+
+    def line_scan(name, on_empty, on_content, after_whites):
+        # One fresh line, its column measured from the `(<<<)` origin the enter production set at its start: spaces
+        # below `n` are the indent; at `n` the rest are whites; a break at any column is an empty line; and past the
+        # gates, content or the stream's end at exactly `n` ends the scan with the prefix consumed. Under `n` with
+        # anything but a break there is no way, exactly where the empty line's short indent and the follower's full
+        # prefix both refuse.
+        edge = (ir.CloseMatch(), ir.PopCode())
+        return production(
+            name,
+            ("n", CODE, "match_start"),
+            alternative(peek=space, guards=(below_n,), actions=(ir.ConsumeChar(),), first=ref(name, n, code, origin)),
+            alternative(peek=space, guards=(at_n,), actions=edge, first=ref(after_whites, n)),
+            alternative(peek=tab, guards=(at_n,), actions=edge, first=ref(after_whites, n)),
+            alternative(peek=breaks, actions=edge + on_empty, first=ref("b-as-line-feed"), second=ref(empties, n)),
+            alternative(guards=(at_n,), actions=edge + on_content),
+        )
+
+    def line_whites(name, then):
+        rest = (ir.PushCode(code="white"), ir.ConsumeSpan(set=white), ir.PopCode())
+        return production(name, ("n",), alternative(peek=white, actions=rest, first=ref(then, n)))
+
+    def line_enter(name, then):
+        opened = (ir.PushCode(code="indent"), ir.OpenMatch())
+        return production(name, ("n",), alternative(actions=opened, first=ref(then, n, code, origin)))
+
+    retype = (ir.RetypeProvisional(payload=None, breaks="line-fold"), ir.CommitProvisional())
+    result = dict(grammar)
+    result[site] = production(
+        site,
+        old.params,
+        alternative(
+            peek=breaks, actions=(ir.OpenProvisional(),), first=ref("b-non-content"), second=ref(scan_enter, n)
+        ),
+    )
+    result[scan_enter] = line_enter(scan_enter, scan)
+    result[scan] = line_scan(scan, on_empty=(ir.CommitProvisional(),), on_content=retype, after_whites=whites)
+    result[whites] = line_whites(whites, decide)
+    result[decide] = production(
+        decide,
+        ("n",),
+        alternative(
+            peek=breaks, actions=(ir.CommitProvisional(),), first=ref("b-as-line-feed"), second=ref(empties, n)
+        ),
+        alternative(actions=retype),
+    )
+    result[empties] = line_enter(empties, empties_scan)
+    result[empties_scan] = line_scan(empties_scan, on_empty=(), on_content=(), after_whites=empties_whites)
+    result[empties_whites] = line_whites(empties_whites, empties_decide)
+    result[empties_decide] = production(
+        empties_decide,
+        ("n",),
+        alternative(peek=breaks, first=ref("b-as-line-feed"), second=ref(empties, n)),
+        alternative(actions=(ir.Empty(),)),
+    )
+    return result
 
 
 # The provisional-run actions, and the states the balance walk tracks them through: no run open, a run open, and a run
@@ -2110,6 +2233,7 @@ STEPS = [
     ("split-conflicts", split_conflicts),
     ("factor-prefixes", factor_prefixes),
     ("gate-hoist-leftovers", gate_hoist),
+    ("speculate-folds", speculate_folds),
 ]
 
 

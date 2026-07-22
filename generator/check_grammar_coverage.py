@@ -47,6 +47,7 @@ AMBIENT = {"r": len(annotated2ir.RESUMES)}
 ALWAYS = (
     ir.CloseMatch,
     ir.CloseWindow,
+    ir.CommitProvisional,
     ir.ConsumeChar,  # the gate found the character, so taking it cannot fail
     ir.Cut,
     ir.Emit,
@@ -55,10 +56,13 @@ ALWAYS = (
     ir.ExcludeAt,
     ir.Flip,
     ir.Increase,
+    ir.InjectBefore,
     ir.OpenMatch,
+    ir.OpenProvisional,
     ir.OpenWindow,
     ir.PopCode,
     ir.PushCode,
+    ir.RetypeProvisional,
     ir.SetVar,
 )
 NEVER_SURE = (
