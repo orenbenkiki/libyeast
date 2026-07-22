@@ -111,14 +111,25 @@ All notable changes to this project are documented here. The format follows
   a helper may hold is bounded by the scopes a production's frame carries: a `(<<<)` origin and a `(max)` window are not
   passed, so a moved segment opens and closes them together, while a `(token)`'s code is — a helper split out of the
   middle of one takes the code its caller was entered under as a parameter, so its close restores the outer code rather
-  than the pushed one, and a declared parameter beats the scope in force where a production is entered. The coverage
-  gate holds a minted helper covered by the base it came from, as it does a monomorphic copy: a helper is a piece of the
-  base's own body moved, so requiring more of it than of the body it came from would ask the corpus for what the
-  untransformed grammar never needed. `check_normalize` holds every step token-and-event identical over the whole corpus
-  — 681 conformance fixtures and 402 YAML Test Suite cases — and ends on two own-gates over the result: every long text
-  token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per loop;
-  and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its
-  element or, until determinize supplies the guard that lowers them, a nullable production.
+  than the pushed one, and a declared parameter beats the scope in force where a production is entered.
+  `alternative-shape` then writes each production the way the state machine reads it: a terminal character class, or a
+  `Choice` of `Alternative`s, each a `Gate` to enter on — the character the next one must be, and the zero-width
+  conditions that must hold with it — the actions it performs, and up to two productions, the call and the continuation
+  to resume at when it returns, which is one frame pushed per edge. Nothing follows the continuation, since a production
+  returns exactly when it does, so an alternative is cut at its first call and what follows becomes a continuation of
+  its own — a scalar's `end` marker after its last call included, which is how it gets a state to sit in. A gated
+  character is taken by a `ConsumeChar`, which consumes exactly one, always: the gate has found it, so one that finds
+  nothing is a gate that did not do its job, and the interpreter and the generated parser both say so rather than
+  matching nothing. What the canonical form does not spell yet — a `(commit)`, a `(recover)`, a repetition over a
+  nullable production — stays an action where it stands, and the check counts them, so the 97 the determinize phase has
+  to resolve are watched down rather than discovered. The coverage gate holds a minted helper covered by the base it
+  came from, as it does a monomorphic copy: a helper is a piece of the base's own body moved, so requiring more of it
+  than of the body it came from would ask the corpus for what the untransformed grammar never needed. `check_normalize`
+  holds every step token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite
+  cases — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed
+  recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set — a
+  `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard
+  that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

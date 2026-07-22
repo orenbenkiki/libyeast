@@ -566,6 +566,29 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return k()
+    if isinstance(node, ir.Choice):
+        for alternative in node.alternatives:
+            if match(alternative, emitter, grammar, k):
+                return True
+        return False
+    if isinstance(node, ir.Alternative):
+        # The gate is a test and nothing more, so the peek is matched as a lookahead and the character it found is taken
+        # by the `ConsumeChar` among the actions. Backtracking makes trying the parts in order the same as testing the
+        # gate first and committing to it; what a gate means to a parser that does not backtrack is determinize's to
+        # say.
+        parts = () if node.gate.peek is None else (ir.Look(node.gate.peek),)
+        parts += tuple(node.gate.guards) + tuple(node.actions)
+        parts += tuple(item for item in (node.first, node.second) if item is not None)
+        return match(ir.Seq(parts), emitter, grammar, k)
+    if isinstance(node, ir.ConsumeChar):
+        if emitter.position >= len(emitter.chars):
+            raise AssertionError("a gated character is not there: the gate let through what it should have refused")
+        checkpoint = emitter.checkpoint()
+        emitter.consume()
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.ConsumeLiteral):
         # The whole sequence or none of it: one comparison of a few characters, which either stands or leaves nothing
         # taken. Each character is matched as itself, so the start-of-line guard applies exactly as it would alone.

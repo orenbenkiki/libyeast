@@ -61,6 +61,7 @@ def _check():
         errors.append(f"[content-runs] {offender}: a long text token is collected one character at a time")
     for fault in normalize.non_char_set_runs(stages[-1][1]):
         errors.append(f"[char-set-runs] {fault}")
+    residue = normalize.unshaped_actions(stages[-1][1])
 
     gate.report(
         errors,
@@ -70,6 +71,9 @@ def _check():
         f"suite cases, every long text token matched in bulk by a character-set run",
     )
     print("    " + " -> ".join(name for name, _transform in normalize.STEPS))
+    # Not a fault: what the canonical form does not spell yet, printed so the number is watched down to none rather than
+    # discovered later. The determinize phase is what resolves each of them.
+    print(f"    {len(residue)} action(s) awaiting determinize: a (commit), a (recover), or a nullable repetition")
 
 
 def main():

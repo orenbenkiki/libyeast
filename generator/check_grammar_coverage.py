@@ -47,6 +47,7 @@ AMBIENT = {"r": len(annotated2ir.RESUMES)}
 ALWAYS = (
     ir.CloseMatch,
     ir.CloseWindow,
+    ir.ConsumeChar,  # the gate found the character, so taking it cannot fail
     ir.Cut,
     ir.Emit,
     ir.Empty,
@@ -121,6 +122,15 @@ def is_total(node, grammar, seen=frozenset()):
         if len(node.branches) < AMBIENT.get(node.var, 0):
             return False  # a value of an ambient parameter with no branch is a path that is taken, and says no
         return all(is_total(branch.item, grammar, seen) for branch in node.branches)
+    if isinstance(node, ir.Choice):
+        return any(is_total(alternative, grammar, seen) for alternative in node.alternatives)
+    if isinstance(node, ir.Alternative):
+        # An alternative is entered on its gate, so one that peeks a character or holds a guard may say no; one that
+        # holds neither is entered always, and then what may say no is its actions and the productions it hands to.
+        if node.gate.peek is not None or node.gate.guards:
+            return False
+        parts = node.actions + tuple(item for item in (node.first, node.second) if item is not None)
+        return all(is_total(part, grammar, seen) for part in parts)
     if isinstance(node, ir.Ref):
         if node.name in seen:
             return True

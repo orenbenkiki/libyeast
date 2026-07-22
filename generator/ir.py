@@ -261,6 +261,53 @@ class ConsumeSpan:
 
 
 @dataclass(frozen=True)
+class ConsumeChar:
+    """
+    The one character the gate peeked, taken into the run. It consumes exactly one, always: the gate has already found
+    it there, so a `ConsumeChar` that finds nothing is a gate that did not do its job, and the interpreter says so
+    rather than matching nothing. The generated parser carries the same assertion.
+    """
+
+
+@dataclass(frozen=True)
+class Gate:
+    """
+    What an alternative is entered on, tested without consuming: `peek`, the character class the next character must
+    belong to, or `None` where the alternative is not decided by one; and `guards`, the zero-width conditions that must
+    hold with it. A gate with neither is the unconditional fallthrough, which only the last alternative may carry.
+    """
+
+    peek: object = None
+    guards: tuple = ()
+
+
+@dataclass(frozen=True)
+class Alternative:
+    """
+    One way a production may go: a `Gate` to enter on, the `actions` it performs, and up to two productions it hands
+    control to. `first` is the call and `second` the continuation — run `first`, and when it returns resume at `second`
+    — so a frame is pushed once per edge. `second` alone is a tail call; neither is a return. Nothing follows `second`,
+    which is why a sequence's trailing actions become a continuation of their own.
+    """
+
+    gate: object
+    actions: tuple = ()
+    first: object = None
+    second: object = None
+
+
+@dataclass(frozen=True)
+class Choice:
+    """
+    A production's body as the state machine reads it: its `alternatives` in order, the first whose gate holds being the
+    one taken. It replaces `Alt` where a body has been shaped, so a choice that is canonical is never mistaken for one
+    that is not.
+    """
+
+    alternatives: tuple
+
+
+@dataclass(frozen=True)
 class ConsumeLiteral:
     """
     A fixed sequence of characters, matched in one go and all or nothing — `---`, `...`, a directive's `YAML` or `TAG`.

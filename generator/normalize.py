@@ -749,6 +749,94 @@ def binarize(grammar, namer):
     return result
 
 
+_GUARDS = (ir.StartOfLine, ir.EndOfStream, ir.Look, ir.NegLook, ir.LookBehind, ir.ExcludeAt, ir.Lt, ir.Le)
+
+
+def alternative_shape(grammar, namer):
+    """
+    Shape every production into the form the state machine reads: a terminal character class, or a `Choice` of
+    `Alternative`s, each a `Gate` to enter on, the actions it performs, and up to two productions — the call and the
+    continuation to resume at when it returns.
+
+    Nothing may follow the continuation, since a production returns exactly when it does, so an alternative is cut at
+    its first call and everything after becomes a fresh `_<N>` helper the continuation names — a sequence's trailing
+    actions included, which is how the `end` marker after a scalar's last call gets a state to sit in. The gate takes
+    the zero-width conditions an alternative opens with, and peeks the character it goes on where that is a single
+    character class nothing consumes before; a run or a call left un-peeked is for the gate hoisting to reach.
+
+    A `(commit)`, a `(recover)` and a repetition over a nullable production are none of these, and stay as actions where
+    they stand — the residue the determinize phase resolves, which `unshaped_actions` counts so it is seen shrinking.
+    """
+    minted = {}
+
+    def is_call(node):
+        return isinstance(node, ir.Ref) and not matches_one_char(node, lookup)
+
+    lookup = dict(grammar)
+
+    def shape(owner, number, params, items):
+        guards, index = [], 0
+        while index < len(items) and isinstance(items[index], _GUARDS):
+            guards.append(items[index])
+            index += 1
+        rest = items[index:]
+        call = next((position for position, item in enumerate(rest) if is_call(item)), None)
+        actions = list(rest if call is None else rest[:call])
+        first = None if call is None else rest[call]
+        tail = () if call is None else rest[call + 1 :]
+
+        peek = None
+        for position, action in enumerate(actions):  # the gate goes on the first character consumed, where it is one
+            if isinstance(action, _ZERO_WIDTH):
+                continue
+            if matches_one_char(action, lookup):
+                peek, actions[position] = action, ir.ConsumeChar()
+            break
+
+        second = None
+        if tail:
+            name = namer.fresh(owner)
+            inner = params + (CODE,) if _needs_code(tail) else params
+            minted[name] = lookup[name] = ir.Prod(number, name, inner, shape(name, number, inner, tail))
+            second = ir.Ref(name, tuple(ir.Param(parameter) for parameter in inner))
+        return ir.Choice((ir.Alternative(ir.Gate(peek, tuple(guards)), tuple(actions), first, second),))
+
+    result = {}
+    for name, production in grammar.items():
+        body, number, params = production.body, production.number, production.params
+        if matches_one_char(body, grammar):
+            result[name] = production  # a terminal production is a character class, and stays one
+            continue
+        alternatives = body.items if isinstance(body, ir.Alt) else (body,)
+        shaped = []
+        for alternative in alternatives:
+            items = alternative.items if isinstance(alternative, ir.Seq) else (alternative,)
+            shaped.extend(shape(name, number, params, tuple(items)).alternatives)
+        result[name] = dataclasses.replace(production, body=ir.Choice(tuple(shaped)))
+    result.update(minted)
+    return result
+
+
+def unshaped_actions(grammar):
+    """
+    The actions that are not yet what the canonical form spells — a `(commit)`, a `(recover)`, or a repetition over a
+    nullable production, each still a scope holding a match of its own rather than a gate and a call. They are what the
+    determinize phase has left to resolve, counted here so the number is seen rather than assumed.
+    """
+    residue = []
+    for name, production in grammar.items():
+
+        def walk(node, name=name):
+            if isinstance(node, ir.Alternative):
+                for action in node.actions:
+                    if isinstance(action, (ir.Commit, ir.Recover, ir.Star, ir.Plus)):
+                        residue.append(f"{name}: a {type(action).__name__} action")
+            ir.rebuilt(node, lambda child: walk(child) or child)
+
+        walk(production.body)
+    return residue
+
+
 def _trim_runs(node, grammar):
     """
     `node` with each `(w* p)*` — a run of content whose inner whitespace is kept and trailing whitespace given back —
@@ -1171,6 +1259,7 @@ STEPS = [
     ("lift-choices", lift_choices),
     ("single-consumes", single_consumes),
     ("binarize", binarize),
+    ("alternative-shape", alternative_shape),
 ]
 
 
