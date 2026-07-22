@@ -590,6 +590,48 @@ class CloseWindow:
 
 
 @dataclass(frozen=True)
+class OpenProvisional:
+    """
+    A zero-width action that opens the provisional run: the tokens emitted from here on are undecided — built and held,
+    none handed back — until a `CommitProvisional` resolves them. One-for-one with `ys_queue_open_run`; only one run is
+    open at a time.
+    """
+
+
+@dataclass(frozen=True)
+class RetypeProvisional:
+    """
+    A zero-width action that rewrites the open run's codes by class: a token whose characters were consumed as a line
+    break takes `breaks`, any other takes `payload`, and a class whose code is `None` keeps its own. The run stays open.
+    One-for-one with the rewrite over `ys_queue_run`; there is no discard — a failed hypothesis retypes, it never drops
+    tokens. (`breaks` rather than the runtime's `break`, which Python reserves.)
+    """
+
+    payload: object
+    breaks: object
+
+
+@dataclass(frozen=True)
+class InjectBefore:
+    """
+    A zero-width action that puts a decided marker of `code` ahead of the open run, and of everything undecided —
+    `end-scalar` for the block scalar whose empty lines were chomped away, `begin-mapping` for the line that turned out
+    to be a key. One-for-one with `ys_queue_inject`; at most one per run.
+    """
+
+    code: str
+
+
+@dataclass(frozen=True)
+class CommitProvisional:
+    """
+    A zero-width action that resolves the open run: its tokens are decided and may be handed back. One-for-one with
+    `ys_queue_resolve_run`. Paired with `OpenProvisional` dynamically, as a committed region's push and pop are — the
+    run is the queue's, not a frame's, so the pair may be cut across productions.
+    """
+
+
+@dataclass(frozen=True)
 class Cut:
     """
     `(cut)`: a zero-width commit past which the parse does not backtrack; on a later failure it is the error, and

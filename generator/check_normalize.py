@@ -72,12 +72,14 @@ def _check():
         errors.append(f"[content-runs] {offender}: a long text token is collected one character at a time")
     for fault in normalize.non_char_set_runs(stages[-1][1]):
         errors.append(f"[char-set-runs] {fault}")
+    for fault in normalize.provisional_faults(stages[-1][1]):
+        errors.append(f"[provisional] {fault}")
     residue = normalize.unshaped_actions(stages[-1][1])
 
     gate.report(
         errors,
-        "normalization fault(s) — a step that changes the grammar's meaning, a content run not matched in bulk, or a "
-        "repetition that is not a character-set run",
+        "normalization fault(s) — a step that changes the grammar's meaning, a content run not matched in bulk, a "
+        "repetition that is not a character-set run, or a provisional run that does not balance",
         f"normalization pipeline: {len(normalize.STEPS)} step(s) preserve {len(fixtures)} fixtures and {len(suite)} "
         f"suite cases — backtracking, and hybrid with {len(deterministic)} production(s) entered committed — every "
         f"long text token matched in bulk by a character-set run",

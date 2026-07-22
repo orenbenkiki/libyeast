@@ -21,20 +21,24 @@ import spec_tests
 _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
     ir.CloseMatch,
     ir.CloseWindow,
+    ir.CommitProvisional,
     ir.Cut,
     ir.Emit,
     ir.Empty,
     ir.EndOfStream,
     ir.Error,
     ir.Increase,
+    ir.InjectBefore,
     ir.Le,
     ir.Lt,
     ir.OpenMatch,
+    ir.OpenProvisional,
     ir.OpenWindow,
     ir.PopCode,
     ir.PopMessage,
     ir.PushCode,
     ir.PushMessage,
+    ir.RetypeProvisional,
     ir.SetVar,
     ir.StartOfLine,
 )
@@ -1573,6 +1577,107 @@ def unshaped_actions(grammar):
 
         walk(production.body)
     return residue
+
+
+# The provisional-run actions, and the states the balance walk tracks them through: no run open, a run open, and a run
+# open that has taken its one injection.
+_PROVISIONAL = (ir.OpenProvisional, ir.RetypeProvisional, ir.InjectBefore, ir.CommitProvisional)
+_RUN_CLOSED, _RUN_OPEN, _RUN_INJECTED = "closed", "open", "injected"
+
+
+def _run_state_after(action, state, name, faults):
+    """The run state after `action` meets `state`, recording a fault where they do not fit."""
+    if isinstance(action, ir.OpenProvisional):
+        if state != _RUN_CLOSED:
+            faults.add(f"{name}: an OpenProvisional inside an open run")
+            return state
+        return _RUN_OPEN
+    if isinstance(action, ir.RetypeProvisional):
+        if state == _RUN_CLOSED:
+            faults.add(f"{name}: a RetypeProvisional outside a run")
+        return state
+    if isinstance(action, ir.InjectBefore):
+        if state == _RUN_CLOSED:
+            faults.add(f"{name}: an InjectBefore outside a run")
+        elif state == _RUN_INJECTED:
+            faults.add(f"{name}: a second InjectBefore in one run")
+        return _RUN_INJECTED if state == _RUN_OPEN else state
+    if isinstance(action, ir.CommitProvisional):
+        if state == _RUN_CLOSED:
+            faults.add(f"{name}: a CommitProvisional with no run open")
+            return state
+        return _RUN_CLOSED
+    return state
+
+
+def provisional_faults(grammar):
+    """
+    The provisional-run actions that do not balance: an open inside an open run, a retype or inject outside one, a
+    second injection, or a production carrying the actions that no root ever reaches. The run is the queue's, one for
+    the whole parse, so its state flows through calls rather than frames: each production maps the states it is entered
+    under to the states it can return in, the fixpoint seeded at the roots — the productions no body references — with
+    no run open. The walk errs wide: a state joins wherever any path could carry it, a recovery is walked from every
+    state its call spans, and a fault here is a step's to avoid, never an input's to trigger.
+    """
+    faults = set()
+    referenced = set()
+
+    def note(node):
+        if isinstance(node, ir.Ref):
+            referenced.add(node.name)
+        ir.rebuilt(node, lambda child: note(child) or child)
+
+    for production in grammar.values():
+        note(production.body)
+    exits = {name: {} for name in grammar}  # per production: the states it is entered under -> the states it returns in
+    for name in grammar:
+        if name not in referenced:
+            exits[name][_RUN_CLOSED] = set()
+    grew = [True]  # a new entry or a grown exit set both demand another round, from wherever they are noticed
+
+    def call_exits(reference, state):
+        # what the callee can return in when entered under `state`, registering the entry where it is new
+        if state not in exits[reference.name]:
+            exits[reference.name][state] = set()
+            grew[0] = True
+        return exits[reference.name][state]
+
+    while grew[0]:
+        grew[0] = False
+        for name, entry in [(name, entry) for name, entries in exits.items() for entry in entries]:
+            body = grammar[name].body
+            if not isinstance(body, ir.Choice):
+                outs = {entry}  # a terminal char-set: the run state passes through untouched
+            else:
+                outs = set()
+                for alternative in body.alternatives:
+                    state = entry
+                    for action in alternative.actions:
+                        state = _run_state_after(action, state, name, faults)
+                    states = {state}
+                    if alternative.first is not None:
+                        states = set(call_exits(alternative.first, state))
+                        if alternative.recover is not None:  # a recovery can pick up from any state the call spans
+                            for spanned in {state} | states:
+                                states |= call_exits(alternative.recover, spanned)
+                    if alternative.second is not None:
+                        states = {out for spanned in states for out in call_exits(alternative.second, spanned)}
+                    outs |= states
+            if not outs <= exits[name][entry]:
+                exits[name][entry] |= outs
+                grew[0] = True
+
+    def holds_provisional(node):
+        if isinstance(node, _PROVISIONAL):
+            return True
+        found = []
+        ir.rebuilt(node, lambda child: found.append(holds_provisional(child)) or child)
+        return any(found)
+
+    for name, production in grammar.items():
+        if holds_provisional(production.body) and not exits[name]:
+            faults.add(f"{name}: provisional actions no root reaches")
+    return sorted(faults)
 
 
 def _trim_runs(node, grammar):
