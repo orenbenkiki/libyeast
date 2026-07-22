@@ -1251,8 +1251,13 @@ def _alternative_first(alternative, grammar, first_of):
     every answer here errs wide — a follow set built from these certifies by disjointness, so too wide refuses safely. A
     recovery does not widen the answer: it rides the call's edge and resumes at the frame's return, so it changes what
     may follow the production, never what the alternative begins with entered fresh — the follow computation hands the
-    recovery its due on the same edge.
+    recovery its due on the same edge. A way guarded by the end of the input begins with no character, so its begins pin
+    empty — but it does match empty, there where no character is left, and the gate hoisting must keep it enterable with
+    nothing to peek; that nothing follows the end is the certificate's own knowledge, applied where the fallthrough's
+    begins would otherwise widen by the follow set.
     """
+    if any(isinstance(guard, ir.EndOfStream) for guard in alternative.gate.guards):
+        return [], True
     spans, consumed, unknown = [], False, False
     for action in alternative.actions:
         if isinstance(action, ir.ConsumeChar):
@@ -1593,7 +1598,10 @@ def deterministic_productions(grammar):
             continue
         if last is not None:
             begins, nullable = _alternative_first(last, grammar, first_of)
-            if nullable and begins is not None:
+            # An empty match is followed by whatever comes next, so the begins widen by the follow set — except behind
+            # an end-of-input guard, where the empty match exists only where nothing follows at all.
+            ends = any(isinstance(guard, ir.EndOfStream) for guard in last.gate.guards)
+            if nullable and not ends and begins is not None:
                 begins = None if follow[name] is None else _merged_spans(begins + follow[name])
             if begins is None or any(_spans_overlap(spanned, begins) for spanned in spans):
                 continue  # what the last way can begin with is not pinned down, or collides with a gate
