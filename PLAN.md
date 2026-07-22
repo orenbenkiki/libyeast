@@ -281,10 +281,15 @@ the chomping tail: the clip case needs the first break and the rest retyped apar
 Those are Phase 04's, worked out there with the queue mechanism the flow fold proved. The 163 left are this phase's, one
 landing at a time, each corpus-diffed:
 
-1. The smaller certificates first: a fallthrough guarded by `AtEndOfStream` begins with no character at all, so its
-   begins pin empty and the breaks-family tails — the comment ends, the chomped last breaks — certify by disjointness;
-   the directive keywords take `ns-char` as their `barrier` when their site lands; the tail-comment loops read one by
-   one.
+1. The smaller certificates first: the directive keywords take `ns-char` as their `barrier` when their site lands.
+1. The document-prefix speculation — the third provisional case, and `InjectBefore`'s first exercise. The comment loops
+   between documents hold whites both readings claim, and the leaf codes agree while the `begin-document` marker's
+   position does not: before the whites where a document owns them, after where a comment line does. So the line opens a
+   provisional run, the whites are held, and the first non-white decides — `#` or a break commits them outside as the
+   comment line's, anything else injects `begin-document` ahead of the run and commits, the whites become the
+   document's, and the document is entered knowing its begin already stands — a minted entry that does not emit it
+   again, the same discipline as the fold's consumed prefix. Covers `l-document-prefix_consuming` and
+   `l-trail-comments`.
 1. The block-structure surgery — measure lines once, guard the levels. One minted indent scan at each block-context line
    start consumes a line's indentation into one `indent` token, its column measured; every block-structure decision — a
    sequence or mapping entry, a compact, every nested loop's exit — stops consuming indentation and becomes a character
