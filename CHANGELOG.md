@@ -150,7 +150,7 @@ All notable changes to this project are documented here. The format follows
   alternatives' peeks. A union too wide is safe, since the peek only has to hold wherever the call could match, and one
   that cannot be pinned down leaves the gate as it was; an alternative whose actions reach a `(cut)` before the call is
   left alone, since the cut has committed and a gate refusing first would take that commitment away. A character to go
-  on is carried by 968 of the 1803 alternatives that consume or call; the 835 without one are determinize's to give. An
+  on is carried by 1125 of the 1803 alternatives that consume or call; the 678 without one are determinize's to give. An
   alternative the call hoisting cannot reach — a nullable callee, a run before the call, a chain of both — is peeked as
   its whole begin set, actions, call and continuation together, where that is pinned down and cannot match empty: an
   empty match must stay enterable with no character left to peek, so a nullable alternative keeps its empty gate for the
@@ -170,7 +170,7 @@ All notable changes to this project are documented here. The format follows
   into, and for a last alternative entered-and-failed is the same as not entered. The first and follow sets behind that
   are computed over the shaped grammar as codepoint intervals, every answer erring wide — a certificate stands on
   disjointness, so too wide refuses safely. The corpus parses green in that hybrid the whole way, so the meter is honest
-  at every step: 1230 of 1525 productions run committed, and the 295 still backtracking are the determinize work itself,
+  at every step: 1259 of 1525 productions run committed, and the 266 still backtracking are the determinize work itself,
   a count driven to none that then becomes a gate. `check_normalize` holds every step token-and-event identical over the
   whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases, backtracking and hybrid alike — and ends on two
   own-gates over the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is matched

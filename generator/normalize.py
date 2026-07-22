@@ -1079,10 +1079,10 @@ def gate_hoist(grammar, namer):
             return ir.Char(lead.text[0])
         return lead if matches_one_char(lead, grammar) else None
 
-    spans_cache = {}
+    first = _first_table(grammar)
 
     def first_of_spans(reference):
-        return _production_first(reference, grammar, spans_cache, frozenset())
+        return first[reference]
 
     def hoisted(alternative):
         if alternative.gate.peek is not None:
@@ -1263,43 +1263,47 @@ def _alternative_first(alternative, grammar, first_of):
     return (None if unknown else _merged_spans(spans)), nullable
 
 
-def _production_first(name, grammar, cache, active):
+def _first_table(grammar):
     """
-    The spans a match of `name` can begin with and whether it can match empty — `(spans, nullable)`, the spans `None`
-    where not pinned down. A cycle reports unknown-and-nullable, the widest answer, so a result computed through one is
-    over-approximated and safe to cache.
+    The first set and nullability of every production, `{name: (spans, nullable)}` — the spans `None` where not pinned
+    down. The least fixpoint of the begin-set equations, so a cycle contributes what its members prove rather than
+    poisoning them unknown: spans only grow, toward `None` for not-pinned-down, and nullability only rises, so the
+    iteration stops. Every constructor errs wide, so the fixpoint over-approximates what a match can begin with.
     """
-    if name in cache:
-        return cache[name]
-    if name in active:
-        return None, True
-    body = grammar[name].body
-    if not isinstance(body, ir.Choice):
-        cache[name] = _peek_spans(body, grammar), False  # a terminal character set
-        return cache[name]
+    table = {name: ([], False) for name in grammar}
 
     def first_of(reference):
-        return _production_first(reference, grammar, cache, active | {name})
+        return table[reference]
 
-    spans, unknown, nullable = [], False, False
-    for alternative in body.alternatives:
-        part, part_nullable = _alternative_first(alternative, grammar, first_of)
-        unknown = unknown or part is None
-        spans.extend(part or [])
-        nullable = nullable or part_nullable
-    cache[name] = (None if unknown else _merged_spans(spans)), nullable
-    return cache[name]
+    changed = True
+    while changed:
+        changed = False
+        for name, production in grammar.items():
+            body = production.body
+            if not isinstance(body, ir.Choice):
+                computed = _peek_spans(body, grammar), False  # a terminal character set
+            else:
+                spans, unknown, nullable = [], False, False
+                for alternative in body.alternatives:
+                    part, part_nullable = _alternative_first(alternative, grammar, first_of)
+                    unknown = unknown or part is None
+                    spans.extend(part or [])
+                    nullable = nullable or part_nullable
+                computed = (None if unknown else _merged_spans(spans)), nullable
+            if computed != table[name]:
+                table[name] = computed
+                changed = True
+    return table
 
 
-def _follow_spans(grammar):
+def _follow_spans(grammar, first):
     """
-    What can follow each production's return, as `{name: spans}` — `None` where it is not pinned down. A fixpoint over
-    the call edges: a call is followed by its continuation's first set, and by the caller's own follow where there is no
-    continuation or it may match empty; a continuation, and a recovery — which resumes at the same return — inherit the
-    caller's follow. A production entered from the top is followed by the end of the input alone, which no character set
-    collides with, so roots contribute nothing.
+    What can follow each production's return, as `{name: spans}` — `None` where it is not pinned down, `first` the
+    `_first_table`. A fixpoint over the call edges: a call is followed by its continuation's first set, and by the
+    caller's own follow where there is no continuation or it may match empty; a continuation, and a recovery — which
+    resumes at the same return — inherit the caller's follow. A production entered from the top is followed by the end
+    of the input alone, which no character set collides with, so roots contribute nothing.
     """
-    cache = {}
     follow = {name: [] for name in grammar}
     top = set()
 
@@ -1327,7 +1331,7 @@ def _follow_spans(grammar):
                 call, continuation, recovery = alternative.first, alternative.second, alternative.recover
                 if call is not None:
                     if continuation is not None:
-                        followed, nullable = _production_first(continuation.name, grammar, cache, frozenset())
+                        followed, nullable = first[continuation.name]
                         if followed is None or (nullable and inherited is None):
                             followed = None
                         elif nullable:
@@ -1355,11 +1359,11 @@ def deterministic_productions(grammar):
     interpreter enters exactly these committed; the count of productions left out is what the determinize work drives to
     none.
     """
-    follow = _follow_spans(grammar)
-    cache = {}
+    first = _first_table(grammar)
+    follow = _follow_spans(grammar, first)
 
     def first_of(reference):
-        return _production_first(reference, grammar, cache, frozenset())
+        return first[reference]
 
     deterministic = set()
     for name, production in grammar.items():

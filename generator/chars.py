@@ -46,6 +46,29 @@ def denote(grammar, node, seen=()):
         return ("difference", base, tuple(minus))
     if isinstance(node, ir.Ref) and not node.args and node.name in grammar and node.name not in seen:
         return denote(grammar, grammar[node.name].body, seen + (node.name,))
+    if isinstance(node, ir.Choice):
+        # A character class the alternative shape has been written over: each alternative peeks a character, takes it
+        # with a `ConsumeChar`, and does nothing else but emit — so the choice denotes the union of its peeks. The base
+        # grammar holds no `Choice`, so the decoder's own tables never read this branch.
+        parts = []
+        for alternative in node.alternatives:
+            if (
+                alternative.gate.peek is None
+                or alternative.gate.guards
+                or alternative.first is not None
+                or alternative.second is not None
+                or not any(isinstance(action, ir.ConsumeChar) for action in alternative.actions)
+                or not all(
+                    isinstance(action, (ir.ConsumeChar, ir.PushCode, ir.PopCode, ir.Emit, ir.Empty))
+                    for action in alternative.actions
+                )
+            ):
+                return None
+            part = denote(grammar, alternative.gate.peek, seen)
+            if part is None:
+                return None
+            parts.append(part)
+        return None if not parts else parts[0] if len(parts) == 1 else ("union", tuple(parts))
     return None
 
 
