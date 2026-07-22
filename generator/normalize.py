@@ -475,9 +475,9 @@ def _lower_plus(node, grammar):
 def lower_plus(grammar, namer):
     """
     Rewrite each `x+` over a complex production as the sequence `x x*` — one match then zero or more, the same
-    one-or-more. A `x+` over a character class stays as it is, to map later to a single repeated-char-set SIMD call.
-    Every complex `x+` in the grammar is over a production that consumes, so the sequence never matches `x` a second
-    time where `x+` would not.
+    one-or-more. A `x+` over a character class stays as it is, for the alternative shape to spell as a gate on `[x]` and
+    a single span scan. Every complex `x+` in the grammar is over a production that consumes, so the sequence never
+    matches `x` a second time where `x+` would not.
     """
     return {
         name: dataclasses.replace(production, body=_lower_plus(production.body, grammar))
@@ -774,10 +774,11 @@ def lift_choices(grammar, namer):
 
 def single_consumes(grammar, namer):
     """
-    Split every alternative down to at most one single-character terminal — the one its gate peeks. An alternative with
-    two or more is cut after its first: what follows becomes a fresh `_<N>` helper called in its place, cut the same way
-    until none is left over, so `b-break` — a carriage return and a line feed — becomes two states, and an escape's
-    eight hex digits become eight.
+    Split every alternative down to at most one gate-needing terminal — the one its gate peeks. That is a
+    single-character terminal, or a char-set `x+`, whose at-least-one is exactly what a gate on `[x]` proves. An
+    alternative with two or more is cut after its first: what follows becomes a fresh `_<N>` helper called in its place,
+    cut the same way until none is left over, so `b-break` — a carriage return and a line feed — becomes two states, and
+    an escape's eight hex digits become eight.
 
     A character run is not one of these. A `ConsumeSpan` or a `ConsumeTrimmedSpan` is a bulk scan the state performs,
     not a character the gate had to peek to decide, so an alternative may hold any number of them; what a state has one
@@ -785,10 +786,15 @@ def single_consumes(grammar, namer):
     """
     minted, lookup = {}, dict(grammar)  # a helper is looked up too, since the split reclassifies what it put in place
 
+    def needs_gate(item):
+        # a char-set `x+` needs the gate as much as a single character: its gate is what proves it takes at least one
+        target = item.item if isinstance(item, ir.Plus) else item
+        return matches_one_char(target, lookup)
+
     def split(owner, number, params, alternative):
         items = alternative.items if isinstance(alternative, ir.Seq) else (alternative,)
         while True:
-            positions = [index for index, item in enumerate(items) if matches_one_char(item, lookup)]
+            positions = [index for index, item in enumerate(items) if needs_gate(item)]
             if len(positions) < 2:
                 break
             start = _scope_start(items, positions[1])  # the first terminal is this state's gated character; a
@@ -888,7 +894,8 @@ def alternative_shape(grammar, namer):
     its first call and everything after becomes a fresh `_<N>` helper the continuation names — a sequence's trailing
     actions included, which is how the `end` marker after a scalar's last call gets a state to sit in. The gate takes
     the zero-width conditions an alternative opens with, and peeks the character it goes on where that is a single
-    character class nothing consumes before; a run or a call left un-peeked is for the gate hoisting to reach.
+    character class nothing consumes before — a char-set `x+` included, its peek `[x]` proving the `ConsumeSpan` it
+    becomes takes at least one; a run or a call left un-peeked is for the gate hoisting to reach.
 
     A `(commit)`, a `(recover)` and a repetition over a nullable production are none of these, and stay as actions where
     they stand — the residue the determinize phase resolves, which `unshaped_actions` counts so it is seen shrinking.
@@ -917,6 +924,9 @@ def alternative_shape(grammar, namer):
                 continue
             if matches_one_char(action, lookup):
                 peek, actions[position] = action, ir.ConsumeChar()
+            elif isinstance(action, ir.Plus) and matches_one_char(action.item, lookup):
+                # a char-set `x+`: the gate peeks `[x]`, which proves the span takes at least one character
+                peek, actions[position] = action.item, ir.ConsumeSpan(action.item)
             break
 
         second = None

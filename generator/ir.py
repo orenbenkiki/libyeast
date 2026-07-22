@@ -254,7 +254,8 @@ class TrimStar:
 class ConsumeSpan:
     """
     A maximal run of `set` characters, consumed in one scan — what a `Star` over a character class becomes in the
-    canonical form, mapping to a single repeated-char-set match. Matches the empty string.
+    canonical form, mapping to a single repeated-char-set match. Matches the empty string; one that stands for a `Plus`
+    sits behind a gate peeking `set`, which is what proves it takes at least one.
     """
 
     set: object
