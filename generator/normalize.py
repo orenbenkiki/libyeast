@@ -1190,10 +1190,15 @@ def _denoted_spans(denotation):
 def _peek_spans(peek, grammar):
     """
     The codepoint intervals `peek` accepts, or `None` where the set is not pinned down. The invalid-byte class is the
-    interval `(-1, -1)` — a unit no character class can also hold, so it overlaps only itself.
+    interval `(-1, -1)` — a unit no character class can also hold, so it overlaps only itself — and an alternation
+    holding it beside character classes, the recovery's any-byte peek, is the classes' intervals with that unit.
     """
     if isinstance(peek, ir.Invalid):
         return [(-1, -1)]
+    if isinstance(peek, ir.Alt) and any(isinstance(item, ir.Invalid) for item in peek.items):
+        rest = tuple(item for item in peek.items if not isinstance(item, ir.Invalid))
+        spanned = _peek_spans(ir.Alt(items=rest), grammar) if rest else []
+        return None if spanned is None else _merged_spans([(-1, -1)] + spanned)
     denotation = chars.denote(grammar, peek)
     return None if denotation is None else _denoted_spans(denotation)
 

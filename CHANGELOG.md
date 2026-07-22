@@ -193,8 +193,9 @@ All notable changes to this project are documented here. The format follows
   before the decision, by a runtime that never rewinds input — and a certificate lemma lets two alternatives share a
   peek where their guards are complementary, `Lt(x, y)` against `Le(y, x)`, the indentation loop's own case. The first
   and follow sets behind all of this are computed over the shaped grammar as codepoint intervals, every answer erring
-  wide — a certificate stands on disjointness, so too wide refuses safely. The corpus parses green in that hybrid the
-  whole way, so the meter is honest at every step: 1302 of 1565 productions run committed, and the 263 still
+  wide — a certificate stands on disjointness, so too wide refuses safely; the invalid-byte class rides an alternation
+  peek as its own unit, which is what pins the unparsed recovery's any-byte loop. The corpus parses green in that hybrid
+  the whole way, so the meter is honest at every step: 1303 of 1565 productions run committed, and the 262 still
   backtracking are the determinize work itself — the fold's old family standing beside its fused replacement, reached by
   its own fixtures until a sweep takes what the stream no longer holds — a count driven to none that then becomes a
   gate. `check_normalize` holds every step token-and-event identical over the whole corpus — 681 conformance fixtures
