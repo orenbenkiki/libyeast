@@ -834,7 +834,7 @@ def single_consumes(grammar, namer):
             segment = items[start:end]
             # A segment that closes a `(token)` its caller opened is handed that caller's own code, so its close
             # restores the outer one rather than the pushed one it was entered under.
-            inner = params + (CODE,) if _needs_code(segment) else params
+            inner = params + (CODE,) if _needs_code(segment) and CODE not in params else params
             arguments = tuple(ir.Param(parameter) for parameter in inner)
             name = namer.fresh(owner)
             reference = ir.Ref(name, arguments)
@@ -887,7 +887,7 @@ def binarize(grammar, namer):
             segment = items[start:end]
             # A segment that closes a `(token)` its caller opened is handed that caller's own code, so its close
             # restores the outer one rather than the pushed one it was entered under.
-            inner = params + (CODE,) if _needs_code(segment) else params
+            inner = params + (CODE,) if _needs_code(segment) and CODE not in params else params
             arguments = tuple(ir.Param(parameter) for parameter in inner)
             name = namer.fresh(owner)
             reference = ir.Ref(name, arguments)
@@ -972,7 +972,7 @@ def alternative_shape(grammar, namer):
         second = None
         if tail:
             name = namer.fresh(owner)
-            inner = params + (CODE,) if _needs_code(tail) else params
+            inner = params + (CODE,) if _needs_code(tail) and CODE not in params else params
             minted[name] = lookup[name] = ir.Prod(number, name, inner, shape(name, number, inner, tail))
             second = ir.Ref(name, tuple(ir.Param(parameter) for parameter in inner))
         return ir.Choice((ir.Alternative(ir.Gate(peek, tuple(guards)), tuple(actions), first, second),))
