@@ -1506,15 +1506,16 @@ def factor_prefixes(grammar, namer):
 def deterministic_productions(grammar):
     """
     The productions whose every decision is statically proved one-gate-decidable. A character-set terminal and a
-    single-alternative choice decide nothing. A choice whose alternatives all peek pairwise-disjoint character sets with
-    no guards can hold at most one gate at any position, so committing to the first that holds is the same parse
-    backtracking finds: the alternatives all start at the same position, and where one gate holds no other's `Look`
-    could. The same stands with an ungated last alternative — the empty way out of a loop, or a call whose first set no
-    gate could pin — where everything it can begin with, its own first set widened by the production's follow set where
-    it may match empty, is pinned down and disjoint from every peek: where a gate holds, the last way cannot succeed,
-    entered fresh or backtracked into, and for a last alternative entered-and-failed is the same as not entered. The
-    interpreter enters exactly these committed; the count of productions left out is what the determinize work drives to
-    none.
+    single-alternative choice decide nothing. A choice whose alternatives peek pairwise-disjoint character sets can hold
+    at most one gate at any position, so committing to the first that holds is the same parse backtracking finds: the
+    alternatives all start at the same position, and where one gate holds no other's `Look` could. A guard on a gate is
+    allowed — it only narrows the one candidate its peek admits, so it decides nothing between alternatives, and its
+    refusal falls through exactly as backtracking does. The same stands with an ungated last alternative — the empty way
+    out of a loop, or a call whose first set no gate could pin — where everything it can begin with, its own first set
+    widened by the production's follow set where it may match empty, is pinned down and disjoint from every peek: where
+    a gate holds, the last way cannot succeed, entered fresh or backtracked into, and for a last alternative
+    entered-and-failed is the same as not entered. The interpreter enters exactly these committed; the count of
+    productions left out is what the determinize work drives to none.
     """
     first = _first_table(grammar)
     follow = _follow_spans(grammar, first)
@@ -1534,10 +1535,9 @@ def deterministic_productions(grammar):
             gated = gated[:-1]
         spans = []
         for alternative in gated:
-            if alternative.gate.peek is None or alternative.gate.guards:
-                spans = None
-                break
-            spanned = _peek_spans(alternative.gate.peek, grammar)
+            # a guard is allowed: it only narrows the one candidate its peek admits, and with pairwise-disjoint peeks
+            # there is never a second, so a guard refusing falls through exactly as backtracking does
+            spanned = _peek_spans(alternative.gate.peek, grammar) if alternative.gate.peek is not None else None
             if spanned is None:
                 spans = None
                 break

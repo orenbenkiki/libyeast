@@ -365,6 +365,13 @@ def _probe(pattern, emitter, grammar):
     return matched
 
 
+def _gate_holds(gate, emitter, grammar):
+    """Whether `gate` holds at the position — the peeked character found, and every zero-width guard true."""
+    if gate.peek is not None and not _probe(gate.peek, emitter, grammar):
+        return False
+    return all(_probe(guard, emitter, grammar) for guard in gate.guards)
+
+
 def _repeat(item, emitter, grammar, k):
     """
     Match `item` greedily zero or more times, then the continuation — backtracking to fewer repetitions if it fails.
@@ -533,10 +540,11 @@ def match(node, emitter, grammar, k):
             if node.name in emitter.deterministic and isinstance(body, ir.Choice) and len(body.alternatives) > 1:
                 # A deterministic production commits: the first alternative whose gate holds is the parse, and its
                 # failure is the production's — no other is tried. The proved-disjoint gates are what make this the same
-                # parse backtracking finds; an empty gate is the unconditional fallthrough and always holds.
+                # parse backtracking finds; an empty gate is the unconditional fallthrough and always holds, and a guard
+                # refusing tries the next alternative, as its zero-width prefix fails it in backtracking.
                 committed = False
                 for alternative in body.alternatives:
-                    if alternative.gate.peek is None or _probe(alternative.gate.peek, emitter, grammar):
+                    if _gate_holds(alternative.gate, emitter, grammar):
                         committed = match(alternative, emitter, grammar, continue_out)
                         break
             else:
