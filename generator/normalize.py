@@ -1443,6 +1443,66 @@ def split_conflicts(grammar, namer):
     return result
 
 
+# Where a common prefix must stop: a frame-scoped pair's half, which a helper may not hold alone, and a length-ambiguous
+# run, whose backtracking order a factoring must not reshuffle.
+_PREFIX_STOP = (ir.OpenMatch, ir.OpenWindow, ir.CloseMatch, ir.CloseWindow, ir.ConsumeSpan, ir.ConsumeTrimmedSpan)
+# The fixed-width consumes a prefix may hold: each takes exactly what it takes or fails, identically in every
+# alternative that shares it, so factoring it out reorders nothing.
+_PREFIX_CONSUMES = (ir.ConsumeChar, ir.ConsumeLiteral, ir.ConsumeCountedSpan)
+
+
+def factor_prefixes(grammar, namer):
+    """
+    Factor the common prefix out of every choice whose alternatives all peek the same characters — the shape
+    `split-conflicts` confines an overlap to. The prefix is the longest run of identical leading actions that are
+    zero-width or fixed-width consumes; a length-ambiguous run stops it, backtracking over it being an order a factoring
+    must not reshuffle, as does a frame-scoped pair's half. It must consume at least the peeked character, or nothing
+    would move past the shared gate. What remains of each alternative — leftover actions, calls and recovery — moves to
+    a minted `_<N>` decision production the prefix calls, alternatives in their order, handed the code where a leftover
+    closes a `(token)` the prefix opened; the gate hoisting then gives each leftover the characters it can go on, one
+    character deeper than the gate the alternatives shared.
+    """
+    minted = {}
+
+    def factor(name, production):
+        body = production.body
+        alternatives = body.alternatives
+        if len(alternatives) < 2:
+            return body
+        peek = alternatives[0].gate.peek
+        if peek is None or any(a.gate.peek != peek or a.gate.guards for a in alternatives):
+            return body
+        prefix = []
+        for elements in zip(*(a.actions for a in alternatives)):
+            action = elements[0]
+            if any(element != action for element in elements[1:]) or isinstance(action, _PREFIX_STOP):
+                break
+            if not isinstance(action, _ZERO_WIDTH) and not isinstance(action, _PREFIX_CONSUMES):
+                break
+            prefix.append(action)
+        if not any(isinstance(action, _PREFIX_CONSUMES) for action in prefix):
+            return body
+        leftovers = tuple(
+            dataclasses.replace(a, gate=ir.Gate(None, ()), actions=a.actions[len(prefix) :]) for a in alternatives
+        )
+        inner = production.params
+        if any(_needs_code(leftover.actions) for leftover in leftovers) and CODE not in inner:
+            inner = inner + (CODE,)
+        helper = namer.fresh(name)
+        minted[helper] = ir.Prod(production.number, helper, inner, ir.Choice(leftovers))
+        arguments = tuple(ir.Param(parameter) for parameter in inner)
+        return ir.Choice((ir.Alternative(ir.Gate(peek, ()), tuple(prefix), ir.Ref(helper, arguments), None),))
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = factor(name, production)
+        result[name] = dataclasses.replace(production, body=body)
+    result.update(minted)
+    return result
+
+
 def deterministic_productions(grammar):
     """
     The productions whose every decision is statically proved one-gate-decidable. A character-set terminal and a
@@ -1943,6 +2003,8 @@ STEPS = [
     ("lower-recovers", lower_recovers),
     ("gate-hoist", gate_hoist),
     ("split-conflicts", split_conflicts),
+    ("factor-prefixes", factor_prefixes),
+    ("gate-hoist-leftovers", gate_hoist),
 ]
 
 
