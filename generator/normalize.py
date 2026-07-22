@@ -1686,12 +1686,18 @@ def unshaped_actions(grammar):
     return residue
 
 
-# The follow test a hoisted marker gate carries, declared by literal: a document marker cuts a document only where
-# white, a break, or the end of the input follows — `c-forbidden`'s trailing class, the end of the input passing a
-# `then` on its own — and anything else leaves the characters to the content the spec gives them.
+# The follow test a hoisted literal gate carries, declared by literal as `(then, barrier)`, each in its natural
+# polarity. A document marker cuts a document only where white, a break, or the end of the input follows —
+# `c-forbidden`'s trailing class, the end of the input passing a `then` on its own. A directive keyword is the whole
+# name only where no name character follows — the reserved directive's own greedy `ns-char+` is what claims a longer one
+# — and anything past a boundary is the grammar's to judge, the seen keyword being its commit.
+_MARKER_BOUNDARY = ir.Alt(items=(ir.Ref(name="b-char", args=()), ir.Ref(name="s-white", args=())))
+_NAME_BARRIER = ir.Ref(name="ns-char", args=())
 _BOUNDARIES = {
-    (0x2D, 0x2D, 0x2D): ir.Alt(items=(ir.Ref(name="b-char", args=()), ir.Ref(name="s-white", args=()))),
-    (0x2E, 0x2E, 0x2E): ir.Alt(items=(ir.Ref(name="b-char", args=()), ir.Ref(name="s-white", args=()))),
+    tuple(b"---"): (_MARKER_BOUNDARY, None),
+    tuple(b"..."): (_MARKER_BOUNDARY, None),
+    tuple(b"YAML"): (None, _NAME_BARRIER),
+    tuple(b"TAG"): (None, _NAME_BARRIER),
 }
 
 
@@ -1765,7 +1771,11 @@ def gate_literals(grammar, namer):
                         # backtracking's failed rival lands on. A way that stands alone keeps its own gate and its own
                         # failure surface, the suffix's seen-marker commit being the fixture-pinned case.
                         declared = _BOUNDARIES.get(entry.text) if index + 1 < len(body.alternatives) else None
-                        hoisted = None if declared is None else dataclasses.replace(entry, then=declared)
+                        if declared is None:
+                            hoisted = None
+                        else:
+                            then, barrier = declared
+                            hoisted = dataclasses.replace(entry, then=then, barrier=barrier)
                     if hoisted is not None:
                         way = dataclasses.replace(way, gate=dataclasses.replace(way.gate, peek=hoisted))
                         changed = True
