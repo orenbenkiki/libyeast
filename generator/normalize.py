@@ -1346,6 +1346,103 @@ def _follow_spans(grammar, first):
     return {name: (None if name in top else follow[name]) for name in grammar}
 
 
+def _segment_signatures(spans_by_alternative):
+    """
+    The characters each subset of alternatives shares, as `{signature: spans}`: every alternative's spans are cut at
+    every boundary into segments, each accepted by one exact set of alternatives — the signature, member positions in
+    order — and a segment's characters join its signature's spans. A singleton signature holds the characters only one
+    alternative accepts.
+    """
+    points = set()
+    for spans in spans_by_alternative:
+        for lo, hi in spans:
+            points.add(lo)
+            points.add(hi + 1)
+    cuts = sorted(points)
+    grouped = {}
+    for index in range(len(cuts) - 1):
+        lo, hi = cuts[index], cuts[index + 1] - 1
+        signature = tuple(
+            position
+            for position, spans in enumerate(spans_by_alternative)
+            if any(span_lo <= lo <= span_hi for span_lo, span_hi in spans)
+        )
+        if signature:
+            grouped.setdefault(signature, []).append((lo, hi))
+    return {signature: _merged_spans(spans) for signature, spans in grouped.items()}
+
+
+def split_conflicts(grammar, namer):
+    """
+    Split every choice whose gates overlap into one the first character decides alone. The characters only one
+    alternative accepts stay its own, the peek narrowed to them; the characters a set of alternatives share go to a
+    minted `_<N>` production holding those alternatives in their order, peeks narrowed to the shared characters, called
+    behind a gate on exactly them — so the original's gates become disjoint and the overlap is confined to the helper,
+    whose alternatives all peek the same characters, ready for their common prefix to be factored. Each conflict call
+    stands where its first member stood, which preserves the order the members and a trailing fallthrough are tried in;
+    an alternative two signatures share is copied into both. A trailing ungated fallthrough stays where it was; a choice
+    holding a guard, an ungated alternative elsewhere, or a peek that is not a pinned character set is left alone, as is
+    one whose whole overlap is all of it — splitting that would mint a copy of itself.
+    """
+    minted = {}
+
+    def split(name, production):
+        body = production.body
+        alternatives = list(body.alternatives)
+        fallthrough = None
+        if alternatives and alternatives[-1].gate.peek is None and not alternatives[-1].gate.guards:
+            fallthrough = alternatives[-1]
+            alternatives = alternatives[:-1]
+        if len(alternatives) < 2:
+            return body
+        spans_by_alternative = []
+        for alternative in alternatives:
+            if alternative.gate.peek is None or alternative.gate.guards:
+                return body
+            spanned = _peek_spans(alternative.gate.peek, grammar)
+            if spanned is None:
+                return body
+            spans_by_alternative.append(spanned)
+        grouped = _segment_signatures(spans_by_alternative)
+        conflicts = {signature: spans for signature, spans in grouped.items() if len(signature) > 1}
+        if not conflicts:
+            return body
+        exclusive = {}
+        for signature, spans in grouped.items():
+            if len(signature) == 1:
+                exclusive.setdefault(signature[0], []).extend(spans)
+        if not exclusive and len(conflicts) == 1 and fallthrough is None:
+            return body  # the whole choice is one shared set
+        arguments = tuple(ir.Param(parameter) for parameter in production.params)
+        rewritten = []
+        for position, alternative in enumerate(alternatives):
+            for signature in sorted(signature for signature in conflicts if signature[0] == position):
+                shared = _spans_node(conflicts[signature])
+                members = tuple(
+                    dataclasses.replace(alternatives[member], gate=ir.Gate(shared, alternatives[member].gate.guards))
+                    for member in signature
+                )
+                helper = namer.fresh(name)
+                minted[helper] = ir.Prod(production.number, helper, production.params, ir.Choice(members))
+                rewritten.append(ir.Alternative(ir.Gate(shared, ()), (), ir.Ref(helper, arguments), None))
+            spans = _merged_spans(exclusive.get(position, []))
+            if spans:
+                narrowed = ir.Gate(_spans_node(spans), alternative.gate.guards)
+                rewritten.append(dataclasses.replace(alternative, gate=narrowed))
+        if fallthrough is not None:
+            rewritten.append(fallthrough)
+        return ir.Choice(tuple(rewritten))
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = split(name, production)
+        result[name] = dataclasses.replace(production, body=body)
+    result.update(minted)
+    return result
+
+
 def deterministic_productions(grammar):
     """
     The productions whose every decision is statically proved one-gate-decidable. A character-set terminal and a
@@ -1845,6 +1942,7 @@ STEPS = [
     ("alternative-shape", alternative_shape),
     ("lower-recovers", lower_recovers),
     ("gate-hoist", gate_hoist),
+    ("split-conflicts", split_conflicts),
 ]
 
 

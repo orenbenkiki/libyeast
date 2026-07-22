@@ -167,15 +167,19 @@ All notable changes to this project are documented here. The format follows
   alternative — the empty way out of a loop, or a call whose first set no gate could pin — certifies too, where
   everything it can begin with, its own first set widened by the production's follow set where it may match empty, is
   pinned down and disjoint from every peek: where a gate holds the last way cannot succeed, entered fresh or backtracked
-  into, and for a last alternative entered-and-failed is the same as not entered. The first and follow sets behind that
-  are computed over the shaped grammar as codepoint intervals, every answer erring wide — a certificate stands on
-  disjointness, so too wide refuses safely. The corpus parses green in that hybrid the whole way, so the meter is honest
-  at every step: 1259 of 1525 productions run committed, and the 266 still backtracking are the determinize work itself,
-  a count driven to none that then becomes a gate. `check_normalize` holds every step token-and-event identical over the
-  whole corpus — 681 conformance fixtures and 402 YAML Test Suite cases, backtracking and hybrid alike — and ends on two
-  own-gates over the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is matched
-  in bulk rather than one character per loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets,
-  a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable
+  into, and for a last alternative entered-and-failed is the same as not entered. `split-conflicts` then confines every
+  overlap the gates still hold: the characters only one alternative accepts stay its own, and the characters a set of
+  alternatives share go to a minted production holding those alternatives in their order, called behind a gate on
+  exactly them — the original's gates become disjoint, and the overlap waits in a helper whose alternatives all peek the
+  same characters, ready for their common prefix to be factored. The first and follow sets behind that are computed over
+  the shaped grammar as codepoint intervals, every answer erring wide — a certificate stands on disjointness, so too
+  wide refuses safely. The corpus parses green in that hybrid the whole way, so the meter is honest at every step: 1284
+  of 1557 productions run committed, and the 273 still backtracking are the determinize work itself, a count driven to
+  none that then becomes a gate. `check_normalize` holds every step token-and-event identical over the whole corpus —
+  681 conformance fixtures and 402 YAML Test Suite cases, backtracking and hybrid alike — and ends on two own-gates over
+  the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather
+  than one character per loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a
+  `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable
   production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
