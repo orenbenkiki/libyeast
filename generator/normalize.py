@@ -335,6 +335,132 @@ def matches_empty(node, grammar, seen=frozenset()):
     return True
 
 
+_NEVER_CONSUMES = (
+    ir.StartOfLine,
+    ir.EndOfStream,
+    ir.Look,
+    ir.NegLook,
+    ir.LookBehind,
+    ir.ExcludeAt,
+    ir.Lt,
+    ir.Le,
+    ir.SetVar,
+    ir.Increase,
+    ir.Emit,
+    ir.Cut,
+    ir.Error,
+)
+
+
+def hoist_empty(grammar, namer):
+    """
+    Take the empty match out of what a repetition repeats, so nothing repeats what may consume nothing. A `x*` or `x+`
+    over a nullable `x` cannot become a recursive helper — the recursion would spin where `x` takes nothing — so `x` is
+    split into the matches that consume and the matches that do not, and the repetition keeps only the first. The empty
+    is not lost: a repetition already means "as many as there are, including none", so it absorbs it.
+
+    Splitting a sequence takes an ordered choice over which of its parts is the first to consume, the parts before it
+    held to their empty match — which is where a `<start-of-line>` or an `<end-of-stream>` comes up, those being what
+    `s-separate-in-line` and `b-comment` match empty *by*. The order is the order the parse already tried them in, so a
+    greedy match still finds the same one first.
+    """
+    minted, lookup = {}, dict(grammar)
+
+    def nullable(node):
+        return matches_empty(node, lookup)
+
+    def consuming_name(name):
+        """
+        The production matching what `name` matches and consumes; minted from its body the first time it is asked for,
+        so a recursion through it resolves to the same one. While its body is being built it stands in as something that
+        reads a character, which is what it is — a consuming production matches no empty, whatever its body turns out to
+        be.
+        """
+        fresh = f"{name}_consuming"
+        if fresh in minted:
+            return fresh
+        original = grammar[name]
+        minted[fresh] = None
+        lookup[fresh] = ir.Prod(original.number, fresh, original.params, ir.Invalid())
+        body = consuming(original.body)
+        if body is None:
+            del minted[fresh], lookup[fresh]
+            return None
+        minted[fresh] = lookup[fresh] = ir.Prod(original.number, fresh, original.params, body)
+        return fresh
+
+    def empty(node):
+        """`node` held to its empty match — the guards it matches empty by — or `None` where it cannot match one."""
+        if isinstance(node, (ir.Empty, ir.Star, ir.Opt)):
+            return ir.Empty()
+        if isinstance(node, _NEVER_CONSUMES):
+            return node
+        if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Commit)):
+            held = empty(node.item)
+            return None if held is None else dataclasses.replace(node, item=held)
+        if isinstance(node, ir.Seq):
+            parts = [empty(item) for item in node.items]
+            return None if any(part is None for part in parts) else _flat_seq(tuple(parts))
+        if isinstance(node, ir.Alt):
+            return next((held for held in (empty(item) for item in node.items) if held is not None), None)
+        if isinstance(node, ir.Ref):
+            return ir.Ref(node.name, node.args) if nullable(node) else None
+        return None  # anything that reads the input matches no empty
+
+    def consuming(node):
+        """`node` held to the matches that consume a character, or `None` where it has none."""
+        if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid, ir.Rep, ir.TrimStar)):
+            return node if not nullable(node) else None
+        if isinstance(node, (ir.Empty, ir.Star, ir.Opt) + _NEVER_CONSUMES):
+            return None if not isinstance(node, (ir.Star, ir.Opt)) else consuming(node.item)
+        if isinstance(node, (ir.Token, ir.Wrap, ir.Bound, ir.Commit)):
+            inner = consuming(node.item)
+            return None if inner is None else dataclasses.replace(node, item=inner)
+        if isinstance(node, ir.Plus):
+            inner = consuming(node.item)
+            return None if inner is None else ir.Plus(inner)
+        if isinstance(node, ir.Alt):
+            kept = tuple(item for item in (consuming(item) for item in node.items) if item is not None)
+            return None if not kept else (kept[0] if len(kept) == 1 else ir.Alt(kept))
+        if isinstance(node, ir.Seq):
+            branches = []
+            for index, item in enumerate(node.items):
+                inner = consuming(item)
+                if inner is not None:
+                    held = [empty(before) for before in node.items[:index]]
+                    if any(part is None for part in held):
+                        break  # a part before this one must consume, so it is the first that can
+                    branches.append(_flat_seq(tuple(held) + (inner,) + node.items[index + 1 :]))
+                if not nullable(item):
+                    break  # this part must consume, so nothing after it can be the first that does
+            return None if not branches else (branches[0] if len(branches) == 1 else ir.Alt(tuple(branches)))
+        if isinstance(node, ir.Ref):
+            if not nullable(node):
+                return node
+            fresh = consuming_name(node.name)
+            return None if fresh is None else ir.Ref(fresh, node.args)
+        return None
+
+    def lift(node):
+        node = ir.rebuilt(node, lift)
+        if isinstance(node, (ir.Star, ir.Plus)) and nullable(node.item):
+            inner = consuming(node.item)
+            return ir.Star(inner) if inner is not None else ir.Empty()  # it consumed nothing, so it repeats nothing
+        return node
+
+    result = {name: dataclasses.replace(production, body=lift(production.body)) for name, production in grammar.items()}
+    lifted = set()  # a minted body holds repetitions of its own, and lifting them may mint again
+    while True:
+        pending = [name for name, production in minted.items() if production is not None and name not in lifted]
+        if not pending:
+            break
+        for name in pending:
+            lifted.add(name)
+            minted[name] = dataclasses.replace(minted[name], body=lift(minted[name].body))
+    result.update({name: production for name, production in minted.items() if production is not None})
+    return result
+
+
 def _lower_plus(node, grammar):
     """
     `node` with each `x+` over a complex `x` rewritten as the sequence `x x*`, and each `x+` over a char class left
@@ -1339,6 +1465,7 @@ STEPS = [
     ("lift-chomping", lift_chomping),
     ("monomorphize", monomorphize),
     ("lower-optionals", lower_optionals),
+    ("hoist-empty", hoist_empty),
     ("lower-plus", lower_plus),
     ("trim-runs", trim_runs),
     ("hoist-char-runs", hoist_char_runs),

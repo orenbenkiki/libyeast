@@ -80,47 +80,53 @@ All notable changes to this project are documented here. The format follows
   keeps: a finite parameter is only ever switched on, so where an implicit key's commit softens by context — a key that
   will not parse being simply not this key — the grammar says so in a `(case) c`, its key branches the bare item and its
   `else` the commit, and the parser's `(commit)` is the same hard cut everywhere. `(case)` grew that `else` for it.
-  `lower-optionals` and `lower-plus` drop the `x?` and complex `x+` spellings; `trim-runs` recognizes a plain or quoted
-  scalar's in-line run `(s-white* content)*` and rewrites it as a single trimmed run that keeps inner whitespace and
-  gives back trailing; `hoist-char-runs` factors a run over an almost-character-set — a URI, a tag, quoted content, its
-  handful of escapes and guards the exception — into a character-set bulk with a slow path, seeing through a `(---)`
-  difference to reach the set beneath, and splitting a trimmed run the same way so its common runs are the two-set
-  trimming scan (`trim-run (trim* uncommon trim-run)*`, the leading `trim*` re-taking what the run before it gave back,
-  which keeps the whitespace before a mid-scalar `:`); `lower-star` turns each remaining complex `x*` into a
-  right-recursive helper; `lower-tokens` dissolves the `(token)` and `(wrap)` scopes into actions — a `(token)` becomes
-  `PushCode(code)` … `PopCode` around its item, the run code an explicit value the production carries on its frame and a
-  nested token restores past rather than a scope the tree shape implies, and a `(wrap)` the pair of `(emit)`s it always
-  was; `lower-bounds` does the same for `(<<<)`, its `(match)` origin becoming `OpenMatch` … `CloseMatch` around the run
-  it measures, an origin the production likewise carries on its frame; and `lower-windows` does the same for `(max)`,
-  its character window becoming `OpenWindow` … `CloseWindow`, the overflow past the edge now failing the window's cut in
-  the run itself rather than a wrapper catching it; and `lower-binds` rewrites each `(if)(set)` as its
-  `(match)`-measured condition and the `(set)` that reads it, the one node that held a match scope becoming the ordinary
-  run and action it always was. `flatten` then splices nested `Seq`/`Alt`, drops the `Empty` no-ops a sequence carries,
-  unwraps singleton `Seq`/`Alt`, and expands a fixed `(k)` repetition into its copies — leaving a `(n)` over a runtime
-  count for the determinize phase. `span-consumes` then rewrites every run of characters as the single scan the
-  canonical form spells: a character-set `Star` becomes a `ConsumeSpan`, a `TrimStar` a `ConsumeTrimmedSpan`, a `({N})`
-  repetition a `ConsumeCountedSpan` — a run of exactly so many, which keeps an escape's eight hex digits and an indent's
-  `n` spaces each one scan rather than a state per character — and characters standing in a row a `ConsumeLiteral`, one
-  comparison that either stands or takes nothing, which is what `---`, `...`, a directive's `YAML` or `TAG`, and a
-  break's carriage return and line feed each become. `lift-choices` gives every nested choice a production of its own,
-  so a choice is only ever a whole body — the canonical shape, where a production is either a terminal character set or
-  an ordered list of alternatives; a choice in a character class or a lookahead is a set or a pattern, not a decision,
-  and stays where it is. `single-consumes` splits an alternative down to the one character its gate peeks, and
-  `binarize` down to the canonical form's two production calls, each moving what follows into a fresh `_<N>` helper
-  called in its place, so `A -> B C D` becomes `A -> B A_1` and `A_1 -> C D`. Two calls is one stack push per edge. What
-  a helper may hold is bounded by the scopes a production's frame carries: a `(<<<)` origin and a `(max)` window are not
-  passed, so a moved segment opens and closes them together, while a `(token)`'s code is — a helper split out of the
-  middle of one takes the code its caller was entered under as a parameter, so its close restores the outer code rather
-  than the pushed one, and a declared parameter beats the scope in force where a production is entered.
-  `alternative-shape` then writes each production the way the state machine reads it: a terminal character class, or a
-  `Choice` of `Alternative`s, each a `Gate` to enter on — the character the next one must be, and the zero-width
-  conditions that must hold with it — the actions it performs, and up to two productions, the call and the continuation
-  to resume at when it returns, which is one frame pushed per edge. Nothing follows the continuation, since a production
-  returns exactly when it does, so an alternative is cut at its first call and what follows becomes a continuation of
-  its own — a scalar's `end` marker after its last call included, which is how it gets a state to sit in. A gated
-  character is taken by a `ConsumeChar`, which consumes exactly one, always: the gate has found it, so one that finds
-  nothing is a gate that did not do its job, and the interpreter and the generated parser both say so rather than
-  matching nothing. What the canonical form does not spell yet — a `(commit)`, a `(recover)`, a repetition over a
+  `lower-optionals` and `lower-plus` drop the `x?` and complex `x+` spellings. `hoist-empty` takes the empty match out
+  of what a repetition repeats, so nothing repeats what may consume nothing: a `x*` or `x+` over a nullable `x` cannot
+  become a recursive helper, since the recursion would spin where `x` takes nothing, so `x` is split into the matches
+  that consume and the matches that do not and the repetition keeps the first — the empty is not lost, a repetition
+  already meaning "as many as there are, including none". Splitting a sequence takes an ordered choice over which of its
+  parts is the first to consume, the parts before it held to their empty match, which is where a `<start-of-line>` or an
+  `<end-of-stream>` comes up — those being what `s-separate-in-line` and `b-comment` match empty *by*. `trim-runs`
+  recognizes a plain or quoted scalar's in-line run `(s-white* content)*` and rewrites it as a single trimmed run that
+  keeps inner whitespace and gives back trailing; `hoist-char-runs` factors a run over an almost-character-set — a URI,
+  a tag, quoted content, its handful of escapes and guards the exception — into a character-set bulk with a slow path,
+  seeing through a `(---)` difference to reach the set beneath, and splitting a trimmed run the same way so its common
+  runs are the two-set trimming scan (`trim-run (trim* uncommon trim-run)*`, the leading `trim*` re-taking what the run
+  before it gave back, which keeps the whitespace before a mid-scalar `:`); `lower-star` turns each remaining complex
+  `x*` into a right-recursive helper; `lower-tokens` dissolves the `(token)` and `(wrap)` scopes into actions — a
+  `(token)` becomes `PushCode(code)` … `PopCode` around its item, the run code an explicit value the production carries
+  on its frame and a nested token restores past rather than a scope the tree shape implies, and a `(wrap)` the pair of
+  `(emit)`s it always was; `lower-bounds` does the same for `(<<<)`, its `(match)` origin becoming `OpenMatch` …
+  `CloseMatch` around the run it measures, an origin the production likewise carries on its frame; and `lower-windows`
+  does the same for `(max)`, its character window becoming `OpenWindow` … `CloseWindow`, the overflow past the edge now
+  failing the window's cut in the run itself rather than a wrapper catching it; and `lower-binds` rewrites each
+  `(if)(set)` as its `(match)`-measured condition and the `(set)` that reads it, the one node that held a match scope
+  becoming the ordinary run and action it always was. `flatten` then splices nested `Seq`/`Alt`, drops the `Empty`
+  no-ops a sequence carries, unwraps singleton `Seq`/`Alt`, and expands a fixed `(k)` repetition into its copies —
+  leaving a `(n)` over a runtime count for the determinize phase. `span-consumes` then rewrites every run of characters
+  as the single scan the canonical form spells: a character-set `Star` becomes a `ConsumeSpan`, a `TrimStar` a
+  `ConsumeTrimmedSpan`, a `({N})` repetition a `ConsumeCountedSpan` — a run of exactly so many, which keeps an escape's
+  eight hex digits and an indent's `n` spaces each one scan rather than a state per character — and characters standing
+  in a row a `ConsumeLiteral`, one comparison that either stands or takes nothing, which is what `---`, `...`, a
+  directive's `YAML` or `TAG`, and a break's carriage return and line feed each become. `lift-choices` gives every
+  nested choice a production of its own, so a choice is only ever a whole body — the canonical shape, where a production
+  is either a terminal character set or an ordered list of alternatives; a choice in a character class or a lookahead is
+  a set or a pattern, not a decision, and stays where it is. `single-consumes` splits an alternative down to the one
+  character its gate peeks, and `binarize` down to the canonical form's two production calls, each moving what follows
+  into a fresh `_<N>` helper called in its place, so `A -> B C D` becomes `A -> B A_1` and `A_1 -> C D`. Two calls is
+  one stack push per edge. What a helper may hold is bounded by the scopes a production's frame carries: a `(<<<)`
+  origin and a `(max)` window are not passed, so a moved segment opens and closes them together, while a `(token)`'s
+  code is — a helper split out of the middle of one takes the code its caller was entered under as a parameter, so its
+  close restores the outer code rather than the pushed one, and a declared parameter beats the scope in force where a
+  production is entered. `alternative-shape` then writes each production the way the state machine reads it: a terminal
+  character class, or a `Choice` of `Alternative`s, each a `Gate` to enter on — the character the next one must be, and
+  the zero-width conditions that must hold with it — the actions it performs, and up to two productions, the call and
+  the continuation to resume at when it returns, which is one frame pushed per edge. Nothing follows the continuation,
+  since a production returns exactly when it does, so an alternative is cut at its first call and what follows becomes a
+  continuation of its own — a scalar's `end` marker after its last call included, which is how it gets a state to sit
+  in. A gated character is taken by a `ConsumeChar`, which consumes exactly one, always: the gate has found it, so one
+  that finds nothing is a gate that did not do its job, and the interpreter and the generated parser both say so rather
+  than matching nothing. What the canonical form does not spell yet — a `(commit)`, a `(recover)`, a repetition over a
   nullable production — stays an action where it stands, and the check counts them, so the 97 the determinize phase has
   to resolve are watched down rather than discovered. `gate-hoist` then gives an alternative that goes on a call the
   characters that call can begin with, so the decision is made where it is taken rather than one production down — a
