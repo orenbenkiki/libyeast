@@ -133,6 +133,10 @@ class Emitter:
         self.mark = wire.Mark(0, 0, 1, 0)
         self.tokens = []
         self.run = None  # (code character, start mark, start position) of the open run, or None
+        self.provisional = None  # where the open provisional run begins in `tokens`, or None — only one is open
+        self.trail = []  # the provisional undo journal — retyped codes, an injected marker, where the run stood at an
+        # open or a commit: the only token mutations that are not appends, which a rewind pops to undo what a
+        # token-count truncation cannot
         self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it, restoring the
         # production's own on the way out — which it reads back from `env["code"]`, the code the production was entered
         # under, the way the C parser reads it off the frame rather than a second stack.
@@ -157,6 +161,7 @@ class Emitter:
             self.position,
             self.mark,
             len(self.tokens),
+            len(self.trail),
             self.run,
             self.code,
             dict(self.env),
@@ -174,6 +179,7 @@ class Emitter:
             self.position,
             self.mark,
             token_count,
+            trail_length,
             self.run,
             self.code,
             env,
@@ -189,6 +195,17 @@ class Emitter:
         # branch, so handing a branch the checkpoint's own dictionary would let its `(set)` reach back into what the
         # branch after it rewinds to. Everything else here is either a value or a length, and cannot be written through.
         self.env = dict(env)
+        # The journal is undone before the token list is cut back: its entries are the only mutations that are not
+        # appends, and popping them newest first restores every index they were recorded at.
+        while len(self.trail) > trail_length:
+            entry = self.trail.pop()
+            if entry[0] == "retype":
+                self.tokens[entry[1]] = entry[2]
+            elif entry[0] == "inject":
+                del self.tokens[entry[1]]
+                self.provisional = entry[1]
+            else:  # "run": where the provisional run stood before an open or a commit moved it
+                self.provisional = entry[1]
         del self.tokens[token_count:]
 
     def consume(self):
@@ -252,6 +269,53 @@ class Emitter:
         """Emit an error token: `message` as its text, at the position, spanning no input. Cuts the open run first."""
         self.cut()
         self.tokens.append(wire.Token(wire.ERROR, self.mark, wire.escape(message.encode("utf-8"))))
+
+    def open_provisional(self):
+        """
+        Open the provisional run: the tokens emitted from here on are undecided until a commit resolves them. Cuts the
+        open character run first, so what was consumed before this point stays decided.
+        """
+        assert self.provisional is None, "a provisional run opened inside one"
+        self.cut()
+        self.trail.append(("run", self.provisional))
+        self.provisional = len(self.tokens)
+
+    def retype_provisional(self, payload, breaks):
+        """
+        Rewrite the open provisional run's codes by class: `breaks` for a token whose characters were consumed as a line
+        break, `payload` for one that consumed anything else, a code of `None` keeping its class as it is. A marker or
+        an error, having no consumed characters, keeps its code either way. Cuts the open character run first, so it is
+        a token the rewrite sees.
+        """
+        assert self.provisional is not None, "a retype outside a provisional run"
+        self.cut()
+        for index in range(self.provisional, len(self.tokens)):
+            token = self.tokens[index]
+            if not token.text or token.code == wire.ERROR:
+                continue
+            is_break = wire.units(token.text, token.code)[0][0] in (wire.CARRIAGE_RETURN, wire.LINE_FEED)
+            code = breaks if is_break else payload
+            if code is None or wire.CODE_CHAR[code] == token.code:
+                continue
+            self.trail.append(("retype", index, token))
+            self.tokens[index] = wire.Token(wire.CODE_CHAR[code], token.start, token.text)
+
+    def inject_before(self, code):
+        """
+        Put a decided zero-width marker of `code` ahead of the open provisional run, and of everything undecided — at
+        the run's own start, which is where the runtime's injection stands. The run begins one token later for it.
+        """
+        assert self.provisional is not None, "an injection outside a provisional run"
+        start = self.tokens[self.provisional].start if self.provisional < len(self.tokens) else self.mark
+        self.trail.append(("inject", self.provisional))
+        self.tokens.insert(self.provisional, wire.Token(wire.CODE_CHAR[code], start, ""))
+        self.provisional += 1
+
+    def commit_provisional(self):
+        """Resolve the open provisional run: its tokens are decided, and so is everything emitted after."""
+        assert self.provisional is not None, "a commit with no provisional run open"
+        self.trail.append(("run", self.provisional))
+        self.provisional = None
 
 
 def _leading_spaces(emitter):
@@ -882,6 +946,34 @@ def match(node, emitter, grammar, k):
         checkpoint = emitter.checkpoint()
         emitter.ceiling = emitter.env["ceiling"]  # the production's own `(max)` window, held on its frame
         emitter.ceiling_message = emitter.env["ceiling_message"]
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.OpenProvisional):
+        checkpoint = emitter.checkpoint()
+        emitter.open_provisional()
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.RetypeProvisional):
+        checkpoint = emitter.checkpoint()
+        emitter.retype_provisional(node.payload, node.breaks)
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.InjectBefore):
+        checkpoint = emitter.checkpoint()
+        emitter.inject_before(node.code)
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.CommitProvisional):
+        checkpoint = emitter.checkpoint()
+        emitter.commit_provisional()
         if k():
             return True
         emitter.rewind(checkpoint)

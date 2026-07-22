@@ -34,8 +34,10 @@ RESTORED = (  # in alphabetical order
     "pending",
     "position",
     "probing",
+    "provisional",
     "run",
     "tokens",
+    "trail",
 )
 READ_ONLY = ("byte_at", "chars", "deterministic", "raw")  # in alphabetical order
 # Balanced by its own pushes and pops rather than by a checkpoint: the production stack the depth guard traces is the
@@ -57,6 +59,11 @@ def _dirty(emitter):
     emitter.ceiling = 5
     emitter.ceiling_message = "IMPLICIT_KEY_TOO_LONG"
     emitter.probing += 1
+    emitter.open_provisional()
+    emitter.consume()
+    emitter.retype_provisional("meta", None)
+    emitter.inject_before("end-scalar")
+    emitter.commit_provisional()
 
 
 def _state(emitter):
@@ -66,6 +73,8 @@ def _state(emitter):
         emitter.mark,
         list(emitter.tokens),
         emitter.run,
+        emitter.provisional,
+        list(emitter.trail),
         emitter.code,
         dict(emitter.env),
         emitter.match_start,
