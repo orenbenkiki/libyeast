@@ -231,9 +231,13 @@ determinization.
   `OpenMatch`/`CloseMatch` (mark and restore the `(match)` origin the production likewise carries on its frame), and
   `OpenWindow(limit, message)`/`CloseWindow` (open and restore the `(max)` character window it likewise carries, past
   which a committed `Consume` fails the window's cut). These are what `Token`/`Wrap`/`Emit`/`(<<<)`/`(max)` lower to.
-- **Provisional run** — `OpenProvisional`, `RetypeProvisional(payload, break)` (the block scalar's held run carries both
-  content and the breaks between it, so retyping names two codes), `InjectBefore(code)`, `CommitProvisional`.
-  One-for-one with the `ys_queue` run. There is no discard: a failed hypothesis retypes, it never drops tokens.
+- **Provisional run** — `OpenProvisional`, `RetypeProvisional(payload, breaks)` (a retype rewrites the open run by
+  class: a token whose characters were consumed as a line break takes `breaks`, any other takes `payload`, and a code
+  named `None` leaves its class alone — so the block scalar's held run, content and the breaks between it, retypes in
+  one action; `breaks` because `break` is Python's), `InjectBefore(code)` (a zero-width marker put ahead of the run, at
+  most one per run), `CommitProvisional`. One-for-one with the `ys_queue` run, and only one run is open at a time. There
+  is no discard: a failed hypothesis retypes, it never drops tokens. All four are zero-width to the analyses, so a
+  production carrying them certifies by its gates alone.
 - **Parameters** — `SetIndentToColumn`, `IncreaseIndentToColumn` (`f = max(f, column)`, what `(increase)` lowers to for
   the block-scalar floor), `AdjustIndent(expr)`, `SetIndentFromDigit`. Only `n`, `m` and `f` are runtime; `c` and `t`
   are specialized away and never appear. Counting indentation is a loop of `[space]` gates with an accumulator action,
@@ -259,11 +263,32 @@ none of them, and the validator rejects any that remain.
    unconditional action into an empty-gate alternative.
 1. *Determinize* — the hard tier, still small steps. Fold residual one-token lookahead into gates. Left-factor shared
    prefixes into a common gate and a branch, repeated until each decision is one-character-decidable. Insert provisional
-   speculation for the two unbounded cases — the simple-key line and the block-scalar opening empty lines. Handle the
-   two indentation gotchas the mechanical steps miss — a zero-indent block sequence nested directly in a mapping, and
-   flow context, which suspends indentation entirely. Discharge commit-safety per decision point, logging any residual
-   as an assurance gap.
+   speculation for the two unbounded cases — the simple-key line and the block-scalar opening empty lines — and for the
+   line-bounded folding decision, worked out below. Handle the two indentation gotchas the mechanical steps miss — a
+   zero-indent block sequence nested directly in a mapping, and flow context, which suspends indentation entirely.
+   Discharge commit-safety per decision point, logging any residual as an assurance gap.
 1. *Finish.* Dead-production elimination; assert every terminal is a pure char-set; run the validator.
+
+**The provisional mechanism, still to build.** The queue actions enter the IR and the interpreter first: the four nodes
+above join the zero-width set and the validator's vocabulary; a balance net in the style of `unshaped_actions` checks
+that every path from an open reaches exactly one commit before another open, that a retype or inject stands only inside
+a run, and that a run injects at most once; and the interpreter's emitter grows the run's start index and an undo trail
+— a retype records each old code, an inject its insertion index, `checkpoint()` the trail's length, and `rewind()`
+replays the suffix in reverse before truncating the tokens — so backtracking rewinds through any provisional action, a
+hybrid run rewinds through a commit, and both modes share one code path. Then `speculate-folds`, the first step to name
+productions rather than shapes: it fuses each call site sequencing a `b-l-folded` specialization with the follower whose
+prefix the decision reads through — `s-flow-folded_2` first, then `l-nb-folded-lines_1` and `l-nb-same-first_1` — fusion
+being forced, since when the next line holds content its spaces are the follower's, and the runtime never rewinds input.
+The fused shape holds one provisional token, the first break: open the run, consume the break under `break`, scan up to
+`n` spaces and (in flow) the whites behind them — codes and boundaries the same on every path, `k` spaces and the
+characters deciding them, never the outcome — and one gate settles it: a break retypes the held one to `break`, commits,
+and enters the empty-line loop where every further break decides at its own gate; content or the stream's end at exactly
+`n` retypes it to `line-fold` and commits, the follower's remainder continuing past its consumed prefix; anything else
+fails out to the caller, whose rewind the trail honors. Each site lands alone, corpus-diffed; the block sites sit in a
+wider fan — spaced lines and chomping begin at the same break — and if they pull in the `l-nb-same-lines` web, the
+landing stops there and what remains is re-scoped rather than forced. The callers — `ns-plain-multi-line`,
+`s-double-next-line`, `s-single-next-line` and kin — stay on the meter: whether the scalar continues at all is the
+next-line speculation, the implicit-key work where `InjectBefore` and the scalar-ended retypes live.
 
 **The validator** is the target invariant and equals "done": every production is a terminal char-set or an ordered list
 of canonical alternatives; no `Star`/`Plus`/`Opt`/`Rep`/`Look`/`NegLook`/`Diff`/`Token`/`Wrap`/`Case` survives; every
