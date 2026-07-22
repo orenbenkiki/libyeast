@@ -165,6 +165,15 @@ def exercised(grammar):
             if not matched:
                 rejected.add(name)
             return matched
+        if isinstance(node, ir.Alternative) and node.gate.peek is not None:
+            # A hoisted gate makes the decision the production it calls used to make: where the character is not one
+            # that call can begin with, the gate refuses and the call never happens. So the gate saying no counts as
+            # that production saying no — otherwise gating a rule correctly would make it look untested.
+            if not interpreter._probe(node.gate.peek, emitter, grammar_arg):
+                for reference in (node.first, node.second):
+                    if isinstance(reference, ir.Ref) and reference.name in grammar_arg:
+                        rejected.add(reference.name)
+                return False
         return base_match(node, emitter, grammar_arg, continuation)
 
     def evaluate(expression, emitter, grammar_arg):

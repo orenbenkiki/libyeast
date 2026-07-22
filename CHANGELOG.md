@@ -122,14 +122,22 @@ All notable changes to this project are documented here. The format follows
   nothing is a gate that did not do its job, and the interpreter and the generated parser both say so rather than
   matching nothing. What the canonical form does not spell yet — a `(commit)`, a `(recover)`, a repetition over a
   nullable production — stays an action where it stands, and the check counts them, so the 97 the determinize phase has
-  to resolve are watched down rather than discovered. The coverage gate holds a minted helper covered by the base it
-  came from, as it does a monomorphic copy: a helper is a piece of the base's own body moved, so requiring more of it
-  than of the body it came from would ask the corpus for what the untransformed grammar never needed. `check_normalize`
-  holds every step token-and-event identical over the whole corpus — 681 conformance fixtures and 402 YAML Test Suite
-  cases — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed
-  recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set — a
-  `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard
-  that lowers them, a nullable production.
+  to resolve are watched down rather than discovered. `gate-hoist` then gives an alternative that goes on a call the
+  characters that call can begin with, so the decision is made where it is taken rather than one production down — a
+  first set falls straight out of the shaped form, being the union of a production's alternatives' peeks. A union too
+  wide is safe, since the peek only has to hold wherever the call could match, and one that cannot be pinned down leaves
+  the gate as it was; an alternative whose actions reach a `(cut)` before the call is left alone, since the cut has
+  committed and a gate refusing first would take that commitment away. Two alternatives in three now carry a character
+  to go on. A hoisted gate makes the decision the production it calls used to make — where the character is not one that
+  call can begin with, the call never happens — so the coverage gate counts the gate saying no as that production saying
+  no, or gating a rule correctly would make it look untested. The coverage gate holds a minted helper covered by the
+  base it came from, as it does a monomorphic copy: a helper is a piece of the base's own body moved, so requiring more
+  of it than of the body it came from would ask the corpus for what the untransformed grammar never needed.
+  `check_normalize` holds every step token-and-event identical over the whole corpus — 681 conformance fixtures and 402
+  YAML Test Suite cases — and ends on two own-gates over the result: every long text token, a scalar's text or a name's
+  or the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a character
+  set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies
+  the guard that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

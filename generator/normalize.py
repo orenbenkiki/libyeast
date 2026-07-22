@@ -817,6 +817,99 @@ def alternative_shape(grammar, namer):
     return result
 
 
+def gate_hoist(grammar, namer):
+    """
+    Give an alternative that goes on a call the characters that call can begin with, so the decision is made where it is
+    taken rather than one production down. A production's first set falls straight out of the shaped form — it is the
+    union of its alternatives' peeks — so a call's is read off the production it names, and an alternative that consumes
+    nothing before it takes that union as its own peek.
+
+    The peek only has to hold wherever the call could match, so a union that is too wide is safe and a first set that
+    cannot be pinned down leaves the gate as it was: a nullable production, a run that may take nothing, a `(commit)` or
+    a repetition still awaiting determinize. Hoisting moves the test in front of the actions, which is why an
+    alternative whose actions reach a `(cut)` before the call is left alone — the cut commits, and a gate that refuses
+    first would take that commitment away.
+    """
+    first_of = {}
+
+    def production_first(name, seen):
+        if name in seen or name not in grammar:
+            return None  # a recursion says nothing about what it starts with
+        if name in first_of:
+            return first_of[name]
+        body = grammar[name].body
+        if matches_one_char(body, grammar):
+            return body  # a terminal production is its own first set
+        if not isinstance(body, ir.Choice):
+            return None
+        peeks = []
+        for alternative in body.alternatives:
+            peek = alternative_first(alternative, seen | {name})
+            if peek is None:
+                return None  # one alternative it may start anywhere with makes the whole union unknown
+            if peek not in peeks:
+                peeks.append(peek)
+        found = peeks[0] if len(peeks) == 1 else ir.Alt(tuple(peeks))
+        if not seen:
+            first_of[name] = found
+        return found
+
+    def alternative_first(alternative, seen):
+        if alternative.gate.peek is not None:
+            return alternative.gate.peek
+        lead = next((action for action in alternative.actions if not isinstance(action, _ZERO_WIDTH)), None)
+        if lead is None:
+            for reference in (alternative.first, alternative.second):
+                if reference is not None:
+                    return production_first(reference.name, seen)
+            return None  # it consumes nothing, so what follows it decides — a first set does not say
+        if isinstance(lead, ir.ConsumeLiteral):
+            return ir.Char(lead.text[0])
+        return lead if matches_one_char(lead, grammar) else None
+
+    def hoisted(alternative):
+        if alternative.gate.peek is not None:
+            return alternative
+        lead = next((action for action in alternative.actions if not isinstance(action, _ZERO_WIDTH)), None)
+        if isinstance(lead, ir.ConsumeLiteral):
+            return dataclasses.replace(alternative, gate=ir.Gate(ir.Char(lead.text[0]), alternative.gate.guards))
+        if lead is not None or alternative.first is None:
+            return alternative
+        if any(isinstance(action, ir.Cut) for action in alternative.actions):
+            return alternative  # the cut has committed by the time the call runs; a gate must not undo that
+        peek = production_first(alternative.first.name, frozenset())
+        if peek is None:
+            return alternative
+        return dataclasses.replace(alternative, gate=ir.Gate(peek, alternative.gate.guards))
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = ir.Choice(tuple(hoisted(alternative) for alternative in body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
+    return result
+
+
+def ungated_alternatives(grammar):
+    """
+    The alternatives no gate decides — those entered without a character to go on, which the determinize phase must
+    settle by other means. An alternative that consumes nothing is one on purpose, the unconditional fallthrough a
+    choice ends with, and is not counted.
+    """
+    ungated = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for alternative in production.body.alternatives:
+            if alternative.gate.peek is not None:
+                continue
+            consuming = [action for action in alternative.actions if not isinstance(action, _ZERO_WIDTH)]
+            if consuming or alternative.first is not None:
+                ungated.append(f"{name}: an alternative with no character to go on")
+    return ungated
+
+
 def unshaped_actions(grammar):
     """
     The actions that are not yet what the canonical form spells — a `(commit)`, a `(recover)`, or a repetition over a
@@ -1260,6 +1353,7 @@ STEPS = [
     ("single-consumes", single_consumes),
     ("binarize", binarize),
     ("alternative-shape", alternative_shape),
+    ("gate-hoist", gate_hoist),
 ]
 
 
