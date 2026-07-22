@@ -269,26 +269,28 @@ none of them, and the validator rejects any that remain.
    Discharge commit-safety per decision point, logging any residual as an assurance gap.
 1. *Finish.* Dead-production elimination; assert every terminal is a pure char-set; run the validator.
 
-**The provisional mechanism, still to build.** The queue actions enter the IR and the interpreter first: the four nodes
-above join the zero-width set and the validator's vocabulary; a balance net in the style of `unshaped_actions` checks
-that every path from an open reaches exactly one commit before another open, that a retype or inject stands only inside
-a run, and that a run injects at most once; and the interpreter's emitter grows the run's start index and an undo trail
-— a retype records each old code, an inject its insertion index, `checkpoint()` the trail's length, and `rewind()`
-replays the suffix in reverse before truncating the tokens — so backtracking rewinds through any provisional action, a
-hybrid run rewinds through a commit, and both modes share one code path. Then `speculate-folds`, the first step to name
-productions rather than shapes: it fuses each call site sequencing a `b-l-folded` specialization with the follower whose
-prefix the decision reads through — `s-flow-folded_2` first, then `l-nb-folded-lines_1` and `l-nb-same-first_1` — fusion
-being forced, since when the next line holds content its spaces are the follower's, and the runtime never rewinds input.
-The fused shape holds one provisional token, the first break: open the run, consume the break under `break`, scan up to
-`n` spaces and (in flow) the whites behind them — codes and boundaries the same on every path, `k` spaces and the
-characters deciding them, never the outcome — and one gate settles it: a break retypes the held one to `break`, commits,
-and enters the empty-line loop where every further break decides at its own gate; content or the stream's end at exactly
-`n` retypes it to `line-fold` and commits, the follower's remainder continuing past its consumed prefix; anything else
-fails out to the caller, whose rewind the trail honors. Each site lands alone, corpus-diffed; the block sites sit in a
-wider fan — spaced lines and chomping begin at the same break — and if they pull in the `l-nb-same-lines` web, the
-landing stops there and what remains is re-scoped rather than forced. The callers — `ns-plain-multi-line`,
-`s-double-next-line`, `s-single-next-line` and kin — stay on the meter: whether the scalar continues at all is the
-next-line speculation, the implicit-key work where `InjectBefore` and the scalar-ended retypes live.
+**Determinize, what remains.** Of the 263 the meter counts, 100 are the deferrals': 36 the implicit key's, 33 the
+next-line speculation's — whether a scalar continues at all, where `InjectBefore` and the scalar-ended retypes live —
+and 31 the block scalar's empties and chomping, the block `b-l-folded` sites among them, since their held run reaches
+the chomping tail: the clip case needs the first break and the rest retyped apart, past what
+`RetypeProvisional(payload, breaks)` spells, and the loop productions are `t`-shared where the tail's codes are not.
+Those are Phase 04's, worked out there with the queue mechanism the flow fold proved. The 163 left are this phase's, one
+landing at a time, each corpus-diffed:
+
+1. The invalid-byte class in an alternation's peek — `l-unparsed`'s three.
+1. An order-commitment certificate, or a literal split one character deeper where a shared peek is decided by the
+   character after it — `b-break`'s CR LF against its lone CR, the directive keywords, the tag-property families, the
+   block header's two orderings.
+1. Follow sets sharpened per call site and first sets narrowed by guards — what the nullable document loops
+   (`l-yaml-stream`'s twenty-one) and the guarded fallthroughs wait on, the four fused fold scans among them.
+1. Gates for the ungated middles the nullable chains leave unpinned — the flow entry separators, the comments,
+   `s-l+block-collection` and kin.
+1. The two indentation gotchas — the zero-indent block sequence nested in a mapping, and flow context suspending
+   indentation — living in the `s-l+block-*` families.
+1. The sweep of what the stream no longer reaches, and the fixture policy it forces — the stranded fold family is the
+   first case — since the meter's floor is honest only past it.
+1. The validator made the gate, the assurance-gap ledger for what stands committed by order alone, and the deferred
+   trim-reuse pass.
 
 **The validator** is the target invariant and equals "done": every production is a terminal char-set or an ordered list
 of canonical alternatives; no `Star`/`Plus`/`Opt`/`Rep`/`Look`/`NegLook`/`Diff`/`Token`/`Wrap`/`Case` survives; every
@@ -315,9 +317,13 @@ in one line; this is that line worked out. The queue and its undecided run are a
 is left is the exact sequence of `OpenProvisional`/`RetypeProvisional`/`InjectBefore`/`CommitProvisional` actions for
 each case, and the proof — via the interpreter's committed mode — that each resolves the run correctly.
 
-1. Implement bounded eager buffering for the simple-key line; resolve key-vs-scalar on line completion or `:`.
-1. Implement the block scalar's opening empty lines: hold the run, and on resolution either make it content or inject
-   `end-scalar` ahead of it and make it breaks.
+1. Implement bounded eager buffering for the simple-key line; resolve key-vs-scalar on line completion or `:`. The
+   next-line speculation — whether a multi-line scalar continues at all — is the same line-bounded read and lands with
+   it.
+1. Implement the block scalar's empty lines, opening and between folds alike: hold the run, and on resolution either
+   make it content or inject `end-scalar` ahead of it and make it breaks. The block `b-l-folded` sites fuse here, per
+   chomping — the loop productions are `t`-shared where the tail's codes are not — and the retype vocabulary is settled
+   where clip needs the held break and the rest retyped apart.
 1. Verify end-to-end token output against the oracle, with the deferral exercised deliberately.
 
 **Exit** — the two deferrals resolve correctly, pull-driven, oracle-clean.
