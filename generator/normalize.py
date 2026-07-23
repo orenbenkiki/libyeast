@@ -1856,101 +1856,13 @@ def order_block_headers(grammar, namer):
 
 def speculate_folds(grammar, namer):
     """
-    The grammar with `s-flow-folded`'s folding decision made committed — the first step to name a production rather than
-    a shape. The fold's break is emitted provisionally, a `break`, and the next line is read through: its indent and
-    whites carry the same codes whatever the outcome, so the one character past them decides — a break is an empty line,
-    committing the trimmed way with the held break kept a `break`; anything else, the end of the stream included,
-    retypes it a `line-fold` and commits, the follower's prefix already consumed. Past the commitment the empty-line
-    loop decides every further break at its own gate. The site's fusion is forced: a content line's spaces are the
-    follower's prefix, the decision reads them first, and the runtime never rewinds input. The productions the site
-    called stay in the grammar, reached by their own fixtures; what falls out of the stream's reach is a later sweep's.
+    The grammar with the flow fold determinized — the determinizer's cycle run as a pipeline step: detect the conflict,
+    generate its provisional productions from the decision it reads off the grammar, replace the site. Held to the
+    corpus here like every other step. Imported at call time, so the two modules pair without a load-time cycle.
     """
-    site = "s-flow-folded_2"
-    old = grammar.get(site)
-    if old is None or len(old.body.alternatives) != 1:
-        raise AssertionError(f"{site}: the fold site the rewrite names is not the single way it was")
-    [way] = old.body.alternatives
-    if (
-        way.first is None
-        or way.first.name != "b-l-folded_c_flow-in"
-        or way.second is None
-        or way.second.name != "s-flow-folded_4"
-    ):
-        raise AssertionError(f"{site}: the fold site no longer sequences b-l-folded with the line prefix")
-    n, code, origin = ir.Param(name="n"), ir.Param(name=CODE), ir.Param(name="match_start")
-    breaks = way.gate.peek  # the site's own break class, kept as it is
-    space, tab, white = ir.Char(cp=0x20), ir.Char(cp=0x09), ir.Ref(name="s-white", args=())
-    below_n = ir.Lt(a=ir.Len(arg=ir.Match()), b=n)  # the column, spaces alone consumed since the line began
-    at_n = ir.Le(a=n, b=ir.Len(arg=ir.Match()))
+    import determinize
 
-    def alternative(peek=None, guards=(), actions=(), first=None, second=None):
-        gate = ir.Gate(peek=peek, guards=tuple(guards))
-        return ir.Alternative(gate=gate, actions=tuple(actions), first=first, second=second, recover=None)
-
-    def production(name, params, *alternatives):
-        return ir.Prod(number=old.number, name=name, params=tuple(params), body=ir.Choice(alternatives=alternatives))
-
-    def ref(name, *args):
-        return ir.Ref(name=name, args=tuple(args))
-
-    names = [namer.fresh(site) for _index in range(8)]
-    scan_enter, scan, whites, decide, empties, empties_scan, empties_whites, empties_decide = names
-
-    def line_scan(name, on_empty, on_content, after_whites):
-        # One fresh line, its column measured from the `(<<<)` origin the enter production set at its start: spaces
-        # below `n` are the indent; at `n` the rest are whites; a break at any column is an empty line; and past the
-        # gates, content or the stream's end at exactly `n` ends the scan with the prefix consumed. Under `n` with
-        # anything but a break there is no way, exactly where the empty line's short indent and the follower's full
-        # prefix both refuse.
-        edge = (ir.CloseMatch(), ir.PopCode())
-        return production(
-            name,
-            ("n", CODE, "match_start"),
-            alternative(peek=space, guards=(below_n,), actions=(ir.ConsumeChar(),), first=ref(name, n, code, origin)),
-            alternative(peek=space, guards=(at_n,), actions=edge, first=ref(after_whites, n)),
-            alternative(peek=tab, guards=(at_n,), actions=edge, first=ref(after_whites, n)),
-            alternative(peek=breaks, actions=edge + on_empty, first=ref("b-as-line-feed"), second=ref(empties, n)),
-            alternative(guards=(at_n,), actions=edge + on_content),
-        )
-
-    def line_whites(name, then):
-        rest = (ir.PushCode(code="white"), ir.ConsumeSpan(set=white), ir.PopCode())
-        return production(name, ("n",), alternative(peek=white, actions=rest, first=ref(then, n)))
-
-    def line_enter(name, then):
-        opened = (ir.PushCode(code="indent"), ir.OpenMatch())
-        return production(name, ("n",), alternative(actions=opened, first=ref(then, n, code, origin)))
-
-    retype = (ir.RetypeProvisional(rest=None, breaks="line-fold", region="all"), ir.CommitProvisional())
-    result = dict(grammar)
-    result[site] = production(
-        site,
-        old.params,
-        alternative(
-            peek=breaks, actions=(ir.OpenProvisional(),), first=ref("b-non-content"), second=ref(scan_enter, n)
-        ),
-    )
-    result[scan_enter] = line_enter(scan_enter, scan)
-    result[scan] = line_scan(scan, on_empty=(ir.CommitProvisional(),), on_content=retype, after_whites=whites)
-    result[whites] = line_whites(whites, decide)
-    result[decide] = production(
-        decide,
-        ("n",),
-        alternative(
-            peek=breaks, actions=(ir.CommitProvisional(),), first=ref("b-as-line-feed"), second=ref(empties, n)
-        ),
-        alternative(actions=retype),
-    )
-    result[empties] = line_enter(empties, empties_scan)
-    result[empties_scan] = line_scan(empties_scan, on_empty=(), on_content=(), after_whites=empties_whites)
-    result[empties_whites] = line_whites(empties_whites, empties_decide)
-    result[empties_decide] = production(
-        empties_decide,
-        ("n",),
-        alternative(peek=breaks, first=ref("b-as-line-feed"), second=ref(empties, n)),
-        alternative(actions=(ir.Empty(),)),
-    )
-    return result
+    return determinize.determinize(grammar, namer)
 
 
 # The provisional-run actions, and the states the balance walk tracks them through: no run open, a run open, and a run

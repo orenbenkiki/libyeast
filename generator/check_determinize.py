@@ -1,79 +1,60 @@
 # SPDX-License-Identifier: MIT
 """
-Check that the determinizer derives the flow fold's decision, and that it is the one the pipeline already commits.
+Check the determinizer's analysis on the flow fold — the piece under the transform, held to a known decision.
 
-`speculate-folds` is the fold hand-built: a step that opens a provisional run over the break and retypes it to
-`line-fold` where content follows. It is held to the whole corpus by `check_normalize`, in both interpreter modes. So it
-is the oracle. This runs the determinizer on the same conflict in the grammar as it stands just before that step, and
-asserts the decision it derives — hold the break, retype it to the content path's own code — equals the
-`RetypeProvisional` the step encodes. The engine reads the decision off the alternatives; the oracle's corpus test is
-then the engine's, for this case.
+`determinize.determinize` is the whole cycle, and `check_normalize` holds it to the corpus. This is the unit beneath:
+that the analysis, run on the fold conflict in the grammar just before the step, reads the decision the fold is known to
+need — hold the break, retype it to `line-fold`. It fixes the expected value rather than comparing to the transform's
+own output, which the transform now derives from this same analysis; the corpus is what proves the two agree.
 """
 
-import threading
 import sys
+import threading
 
 import annotated2ir
 import determinize
 import gate
-import ir
 import normalize
 
 STACK_BYTES = 256 * 1024 * 1024
 RECURSION_LIMIT = 200000
 
 # The fold's conflict: the folding break, taken one way as a trimmed empty line and the other as a folded space, on one
-# gate. `normalize.deterministic_productions` leaves it out, and `speculate-folds` is what resolves it.
+# gate. It stands non-deterministic until `determinize` resolves it.
 FOLD_CONFLICT = "b-l-folded_c_flow-in"
 FOLD_STEP = "speculate-folds"
 
+# What the fold is known to decide: hold the break, and retype it to `line-fold` where content follows, over the whole
+# run with no mark. `rest` is `None` — the fold holds no non-break token.
+EXPECTED_RETYPE = (None, "line-fold", "all")
 
-def _before_and_after(step_name):
-    """The grammar just before `step_name` runs, and just after — the conflict as it stands, and the oracle's output."""
+
+def _grammar_before(step_name):
+    """The grammar as it stands just before `step_name` runs — the conflict the determinizer is handed."""
     namer = normalize.Namer()
     grammar = annotated2ir.load()
-    before = None
     for name, transform in normalize.STEPS:
         if name == step_name:
-            before = grammar
+            return grammar
         grammar = transform(grammar, namer)
-        if name == step_name:
-            return before, grammar
     raise AssertionError(f"{step_name}: no such pipeline step")
 
 
-def _oracle_retype(after):
-    """The `RetypeProvisional` `speculate-folds` emits, as `(rest, breaks, region)` — the decision it commits."""
-    for production in after.values():
-        if not isinstance(production.body, ir.Choice):
-            continue
-        for alternative in production.body.alternatives:
-            for action in alternative.actions:
-                if isinstance(action, ir.RetypeProvisional):
-                    return (action.rest, action.breaks, action.region)
-    return None
-
-
 def _check():
-    before, after = _before_and_after(FOLD_STEP)
+    before = _grammar_before(FOLD_STEP)
     errors = []
 
     if not determinize.divergent_holds(before, FOLD_CONFLICT):
-        errors.append(f"{FOLD_CONFLICT}: the determinizer found no held token where the fold holds the break")
+        errors.append(f"{FOLD_CONFLICT}: the analysis found no held token where the fold holds the break")
 
-    # The whole decision, derived: the held break, and the code the content path — the folded way, which accepts where a
-    # content line follows — gives it. Nothing here is told to the engine; it walks the conflict and reads it.
     derived = determinize.derive_retype(before, FOLD_CONFLICT)
-    oracle = _oracle_retype(after)
-    if oracle is None:
-        errors.append(f"{FOLD_STEP}: emits no RetypeProvisional to check the derivation against")
-    elif derived != oracle:
-        errors.append(f"{FOLD_CONFLICT}: derived retype {derived} is not the oracle's {oracle}")
+    if derived != EXPECTED_RETYPE:
+        errors.append(f"{FOLD_CONFLICT}: derived retype {derived} is not the fold's known {EXPECTED_RETYPE}")
 
     gate.report(
         errors,
-        "determinizer derivation gap(s) — a decision the engine does not read where the pipeline commits one",
-        f"determinizer: the fold's decision — hold the break, retype it {oracle} — is the one {FOLD_STEP} commits",
+        "determinizer analysis gap(s) — a decision the engine does not read where the fold is known to need one",
+        f"determinizer: the fold's decision — hold the break, retype it {EXPECTED_RETYPE} — is read off the conflict",
     )
 
 

@@ -10,10 +10,12 @@ character on which the paths' gates first differ is the *discriminator*, where t
 at its next consume, branching at a choice and following a single way, with revisit detection so a nullable loop
 terminates rather than spins.
 
-This is the analysis, not the emission: it reads off the decisions the provisional actions must encode. Turning those
-into productions — the scan, the decide, the loop — is the emission pass, not yet built. The one obligation the analysis
-rests on is the mechanism's: the readings a run decides between agree token for token, so every difference between them
-is a held code or a zero-width marker, never a dropped or grown token.
+`determinize` is the whole cycle for the fold — detect the conflict, generate the provisional productions from the
+decision, replace the site — a grammar-to-grammar transform the pipeline runs and `check_normalize` holds to the corpus,
+the same harness every other step answers to. The emission is the fold's shape for now; deriving it for an arbitrary
+conflict is the pass's sequel. The one obligation the analysis rests on is the mechanism's: the readings a run decides
+between agree token for token, so every difference between them is a held code or a zero-width marker, never a dropped
+or grown token.
 """
 
 import collections
@@ -40,6 +42,9 @@ Config = collections.namedtuple("Config", ("frames", "code", "origin"))
 # A parked configuration and what it will consume next: `spans` the character set of a consume, or `None` for an
 # accepting path that consumes nothing more.
 Parked = collections.namedtuple("Parked", ("config", "spans"))
+
+# The line-break characters: a held token whose span lies within them retypes by the `breaks` slot, any other by `rest`.
+_BREAKS = (0x0A, 0x0D)
 
 
 def _is_terminal(grammar, name):
@@ -185,10 +190,6 @@ def _shared_codepoint(parked):
     return None
 
 
-def _BREAKS():
-    return (0x0A, 0x0D)
-
-
 def content_origin(grammar, root):
     """
     The origin that survives where content follows — the conflict's resolution when the run is not the chomped-away way.
@@ -227,8 +228,108 @@ def derive_retype(grammar, root):
     rest = breaks = None
     for span, codes in holds.items():
         target = codes.get(survivor)
-        if span[0] in _BREAKS() and span[1] in _BREAKS():
+        if span[0] in _BREAKS and span[1] in _BREAKS:
             breaks = target
         else:
             rest = target
     return (rest, breaks, "all")
+
+
+def determinize(grammar, namer):
+    """
+    The grammar with the flow fold determinized — detected, generated, and replaced by the engine rather than hand-cut.
+
+    The fold's site sequences `b-l-folded` with the line prefix that follows it; the conflict is `b-l-folded`, whose
+    break is taken one way as a trimmed empty line and the other as a folded space, on one gate. The run opens over the
+    break and holds it, the next line is read through — its indent and whites carry the same codes whatever the outcome
+    — and the one character past them decides: a break is an empty line, committing the trimmed way with the held break
+    kept a `break`; anything else, the end of the stream included, retypes it and commits, the follower's prefix already
+    consumed. The retype is not named here — `derive_retype` reads it off the conflict. Past the commitment the
+    empty-line loop decides every further break at its own gate. The productions the site called stay in the grammar,
+    reached by their own fixtures; what falls out of the stream's reach is a later sweep's.
+    """
+    conflict = "b-l-folded_c_flow-in"
+    site = "s-flow-folded_2"
+    old = grammar.get(site)
+    if old is None or len(old.body.alternatives) != 1:
+        raise AssertionError(f"{site}: the fold site the rewrite names is not the single way it was")
+    [way] = old.body.alternatives
+    if way.first is None or way.first.name != conflict or way.second is None or way.second.name != "s-flow-folded_4":
+        raise AssertionError(f"{site}: the fold site no longer sequences {conflict} with the line prefix")
+
+    code_param = normalize.CODE
+    n, code, origin = ir.Param(name="n"), ir.Param(name=code_param), ir.Param(name="match_start")
+    breaks = way.gate.peek  # the site's own break class, kept as it is
+    space, tab, white = ir.Char(cp=0x20), ir.Char(cp=0x09), ir.Ref(name="s-white", args=())
+    below_n = ir.Lt(a=ir.Len(arg=ir.Match()), b=n)  # the column, spaces alone consumed since the line began
+    at_n = ir.Le(a=n, b=ir.Len(arg=ir.Match()))
+
+    def alternative(peek=None, guards=(), actions=(), first=None, second=None):
+        gate = ir.Gate(peek=peek, guards=tuple(guards))
+        return ir.Alternative(gate=gate, actions=tuple(actions), first=first, second=second, recover=None)
+
+    def production(name, params, *alternatives):
+        return ir.Prod(number=old.number, name=name, params=tuple(params), body=ir.Choice(alternatives=alternatives))
+
+    def ref(name, *args):
+        return ir.Ref(name=name, args=tuple(args))
+
+    names = [namer.fresh(site) for _index in range(8)]
+    scan_enter, scan, whites, decide, empties, empties_scan, empties_whites, empties_decide = names
+
+    def line_scan(name, on_empty, on_content, after_whites):
+        # One fresh line, its column measured from the `(<<<)` origin the enter production set at its start: spaces
+        # below `n` are the indent; at `n` the rest are whites; a break at any column is an empty line; and past the
+        # gates, content or the stream's end at exactly `n` ends the scan with the prefix consumed. Under `n` with
+        # anything but a break there is no way, exactly where the empty line's short indent and the follower's full
+        # prefix refuse.
+        edge = (ir.CloseMatch(), ir.PopCode())
+        return production(
+            name,
+            ("n", code_param, "match_start"),
+            alternative(peek=space, guards=(below_n,), actions=(ir.ConsumeChar(),), first=ref(name, n, code, origin)),
+            alternative(peek=space, guards=(at_n,), actions=edge, first=ref(after_whites, n)),
+            alternative(peek=tab, guards=(at_n,), actions=edge, first=ref(after_whites, n)),
+            alternative(peek=breaks, actions=edge + on_empty, first=ref("b-as-line-feed"), second=ref(empties, n)),
+            alternative(guards=(at_n,), actions=edge + on_content),
+        )
+
+    def line_whites(name, then):
+        rest = (ir.PushCode(code="white"), ir.ConsumeSpan(set=white), ir.PopCode())
+        return production(name, ("n",), alternative(peek=white, actions=rest, first=ref(then, n)))
+
+    def line_enter(name, then):
+        opened = (ir.PushCode(code="indent"), ir.OpenMatch())
+        return production(name, ("n",), alternative(actions=opened, first=ref(then, n, code, origin)))
+
+    rest_code, breaks_code, region = derive_retype(grammar, conflict)
+    retype = (ir.RetypeProvisional(rest=rest_code, breaks=breaks_code, region=region), ir.CommitProvisional())
+    result = dict(grammar)
+    result[site] = production(
+        site,
+        old.params,
+        alternative(
+            peek=breaks, actions=(ir.OpenProvisional(),), first=ref("b-non-content"), second=ref(scan_enter, n)
+        ),
+    )
+    result[scan_enter] = line_enter(scan_enter, scan)
+    result[scan] = line_scan(scan, on_empty=(ir.CommitProvisional(),), on_content=retype, after_whites=whites)
+    result[whites] = line_whites(whites, decide)
+    result[decide] = production(
+        decide,
+        ("n",),
+        alternative(
+            peek=breaks, actions=(ir.CommitProvisional(),), first=ref("b-as-line-feed"), second=ref(empties, n)
+        ),
+        alternative(actions=retype),
+    )
+    result[empties] = line_enter(empties, empties_scan)
+    result[empties_scan] = line_scan(empties_scan, on_empty=(), on_content=(), after_whites=empties_whites)
+    result[empties_whites] = line_whites(empties_whites, empties_decide)
+    result[empties_decide] = production(
+        empties_decide,
+        ("n",),
+        alternative(peek=breaks, first=ref("b-as-line-feed"), second=ref(empties, n)),
+        alternative(actions=(ir.Empty(),)),
+    )
+    return result

@@ -304,7 +304,7 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 # The normalization pipeline preserves meaning, step by step: after each transformation carrying the grammar toward the
 # canonical form, the fixtures are still reproduced token for token and the folded suite still agrees green-or-declared,
 # and the final grammar is still wholly exercised. Token and event identity is the whole proof — a step that changes
-# either is rejected, named. Empty for now, so this passes exactly when the base grammar's own nets do.
+# either is rejected, named. It runs the determinizer as its fold step, whose own check `verify` lists ahead of this.
 .stamps/verify-normalize: $(FIXTURES) $(STAR_DATA) $(MESSAGES) $(ANNOTATED) $(GEN_SRC) | .stamps
 	python3 generator/check_normalize.py
 	@touch $@
