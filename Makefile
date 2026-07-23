@@ -101,8 +101,8 @@ DEV_DEP_TOOLS   := python3 python3:yaml $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK
 
 .PHONY: all package install test test-debug test-release regen \
         verify verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
-        verify-emitter verify-provisional verify-fixtures verify-grammar verify-star verify-normalize verify-wire verify-decoder \
-        verify-grammar-base verify-grammar-base-coverage \
+        verify-emitter verify-provisional verify-determinize verify-fixtures verify-grammar verify-star \
+        verify-normalize verify-wire verify-decoder verify-grammar-base verify-grammar-base-coverage \
         vet vet-format vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh \
         vet-comments vet-lint vet-version vet-packaging vet-$(TODO_X) \
         gh-pages gh-pages-docs gh-pages-coverage \
@@ -329,6 +329,13 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	python3 generator/check_provisional.py
 	@touch $@
 
+# The determinizer derives a conflict's provisional decision by subset construction over its live alternatives. This
+# runs it on the flow fold and checks the decision it reads — hold the break, retype it to the content path's code —
+# equals the RetypeProvisional the hand-built speculate-folds commits, whose corpus test is then the engine's for it.
+.stamps/verify-determinize: $(ANNOTATED) $(GEN_SRC) | .stamps
+	python3 generator/check_determinize.py
+	@touch $@
+
 # Error messages: every `(cut)` in the grammar names a message defined in messages.yaml, and every message is named by a
 # cut — so the cut sites and their text stay the one source the interpreter and the generated C table both derive from.
 .stamps/verify-messages: $(ANNOTATED) $(MESSAGES) $(GEN_SRC) | .stamps
@@ -397,6 +404,7 @@ verify-wire: .stamps/verify-wire
 verify-messages: .stamps/verify-messages
 verify-emitter: .stamps/verify-emitter
 verify-provisional: .stamps/verify-provisional
+verify-determinize: .stamps/verify-determinize
 verify-fixtures: .stamps/verify-fixtures
 verify-star: .stamps/verify-star
 verify-normalize: .stamps/verify-normalize
@@ -409,7 +417,8 @@ verify-grammar: verify-grammar-base verify-grammar-base-coverage
 # machinery, then the fixtures (intact, then reproduced), then the independent star suite folded through the
 # interpreter, and last the generator-to-C consistency the eventual C parser rests on.
 verify: verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
-        verify-emitter verify-provisional verify-fixtures verify-grammar verify-star verify-normalize verify-wire verify-decoder
+        verify-emitter verify-provisional verify-determinize verify-fixtures verify-grammar verify-star \
+        verify-normalize verify-wire verify-decoder
 
 # Static code quality.
 vet-format-c: .stamps/vet-format-c
