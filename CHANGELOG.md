@@ -179,50 +179,55 @@ All notable changes to this project are documented here. The format follows
   each way, handed the code where a leftover closes a `(token)` the prefix opened; a second gate hoisting then gives
   each leftover the characters it can go on, one character deeper than the gate the alternatives shared. One round
   reaches the fixpoint: what stands after it differs in its emissions before the decision or is committed to by order —
-  the deep end the certificates are still to reach. The provisional run is what reaches past a character:
-  `OpenProvisional`, `RetypeProvisional(payload, breaks)` — a retype rewriting the held run by class, a break-consumed
-  token to one code, any other to the second, `None` keeping a class its own — `InjectBefore(code)` and
-  `CommitProvisional`, one-for-one with the `ys_queue` runtime already built, zero-width to every analysis, held
-  balanced by a net that walks the run's state through the call graph, and undone in the interpreter through a trail its
-  rewind pops — retyped codes, an injected marker, where the run stood — so backtracking rewinds through any provisional
-  action and a hybrid run rewinds through a commit. `speculate-folds` spends them first: the flow fold's break is
-  emitted provisionally and the next line read through — an indent and whites whose codes no outcome changes — to the
-  one character that decides it, a break committing the trimmed way, anything else, the stream's end included, retyping
-  the held break to `line-fold` with the follower's prefix already consumed. The site is fused by name, the first step
-  to name a production rather than a shape — fusion being forced, a content line's spaces being the follower's, read
-  before the decision, by a runtime that never rewinds input — and a certificate lemma lets two alternatives share a
-  peek where their guards are complementary, `Lt(x, y)` against `Le(y, x)`, the indentation loop's own case. The first
-  and follow sets behind all of this are computed over the shaped grammar as codepoint intervals, every answer erring
-  wide — a certificate stands on disjointness, so too wide refuses safely; the invalid-byte class rides an alternation
-  peek as its own unit, which is what pins the unparsed recovery's any-byte loop. A gate holds a literal whole:
-  `LiteralPeek(text, then, barrier)` enters where the input begins the text and the character after it, if any, matches
-  `then` or avoids `barrier` — the end of the input passing either, the polarity each literal's own — and
-  `ConsumePeeked` takes what the gate found without scanning the bytes twice. The CR LF break certifies so, in place and
-  without a state per character, and the certificate reads a literal-gated alternative as backtracking's own: where the
-  gate refuses, the next way is exactly where the failed literal lands, and where it holds, the literal commits whole,
-  the way the grammar means one. The first sets reach through what used to fog them: a difference begins with what its
-  base does, less every exclusion that is one character class — the interpreter probes exclusions before the base, which
-  makes the subtraction exact — and a recovery widens nothing, riding the call's edge to resume at the frame's return,
-  changing what may follow but never what an alternative begins with entered fresh. Those two facts emptied the
-  unpinned-fallthrough category whole: every follow set the certificates consult is pinned, and the hoisting mints the
-  gates it had been starved of — the quoted continuation lines gating on printable-non-white the way their seam grapheme
-  always meant. A literal gate climbs to where the decision is made: an alternative whose whole way in is a call opening
-  on a literal-gated production takes that gate as its own, the follow test declared rather than derived — a first set
-  cannot see the line structure that decides a marker, and a derived class admitted `----` to the marker reading the
-  spec gives a plain scalar, which the hybrid net and the marker fixtures caught on the spot — so the explicit document
-  commits on `---`-then-boundary at the stream's own choice, `c-forbidden`'s class carried as the gate's `then`, and the
-  certificate reads a literal spelled through single-way calls as one spelled in place. A way guarded by the end of the
-  input begins with no character, so its begins pin empty — while staying nullable, the gate hoisting keeping an empty
-  match enterable with nothing left to peek, and only the certificate knowing that nothing follows the end — which
-  certifies the break-or-end tails whole, the comment ends and the chomped last breaks, the comment chain cascading
-  behind them. The directive keywords carry their name barrier — `YAML` and `TAG` are the whole name only where no
-  `ns-char` follows, the reserved directive's own greedy name claiming a longer one, and a seen keyword commits, its
-  version's faults the grammar's own cut to judge — so `%YAMLX` is a reserved directive named `YAMLX` where `%YAML`
-  alone is the committed keyword's error. The block header reads chomping first — the chomp-first ordering takes every
-  header the indicator-first one takes, an empty indentation indicator standing on either side and emitting nothing, and
-  it alone takes `+1`, so the swap changes which way backtracking finds and never what it finds. And what no
-  disjointness can prove now stands declared: the assurance ledger commits a production on a written reason — the
-  header's chomp-first subsumption, clip's two orderings being one language, a digit at the indicator being the
+  the deep end the certificates are still to reach. The provisional run is what reaches past a character: a run of held
+  tokens, its `start` and one `MarkProvisional` cutting it into the region before the mark and the region from it on,
+  opened by `OpenProvisional` and resolved by `CommitProvisional`, with two actions that read it —
+  `RetypeProvisional(rest, breaks, region)` rewriting the held tokens in a region by kind, a break-consumed token to one
+  code, any other to the second, `None` keeping a kind its own; and `InjectBefore(codes, at)` inserting decided markers,
+  in order, at the run's start or its mark. One obligation makes the mechanism sound: no held token is dropped or grown,
+  so the readings a run decides between agree token for token and every difference between them is a zero-width marker.
+  The five are one-for-one with the `ys_queue` runtime and zero-width to every analysis, held balanced by a net that
+  walks the run's state — closed, open, marked — through the call graph, refusing a mark or an injection or a retype
+  that names a mark none was taken, and undone in the interpreter through a trail its rewind pops — a retyped code, an
+  injected marker — the run start and its mark values the checkpoint restores, so backtracking rewinds through any
+  provisional action and a hybrid run rewinds through a commit. `speculate-folds` spends them first: the flow fold's
+  break is emitted provisionally and the next line read through — an indent and whites whose codes no outcome changes —
+  to the one character that decides it, a break committing the trimmed way, anything else, the stream's end included,
+  retyping the held break to `line-fold` with the follower's prefix already consumed. The site is fused by name, the
+  first step to name a production rather than a shape — fusion being forced, a content line's spaces being the
+  follower's, read before the decision, by a runtime that never rewinds input — and a certificate lemma lets two
+  alternatives share a peek where their guards are complementary, `Lt(x, y)` against `Le(y, x)`, the indentation loop's
+  own case. The first and follow sets behind all of this are computed over the shaped grammar as codepoint intervals,
+  every answer erring wide — a certificate stands on disjointness, so too wide refuses safely; the invalid-byte class
+  rides an alternation peek as its own unit, which is what pins the unparsed recovery's any-byte loop. A gate holds a
+  literal whole: `LiteralPeek(text, then, barrier)` enters where the input begins the text and the character after it,
+  if any, matches `then` or avoids `barrier` — the end of the input passing either, the polarity each literal's own —
+  and `ConsumePeeked` takes what the gate found without scanning the bytes twice. The CR LF break certifies so, in place
+  and without a state per character, and the certificate reads a literal-gated alternative as backtracking's own: where
+  the gate refuses, the next way is exactly where the failed literal lands, and where it holds, the literal commits
+  whole, the way the grammar means one. The first sets reach through what used to fog them: a difference begins with
+  what its base does, less every exclusion that is one character class — the interpreter probes exclusions before the
+  base, which makes the subtraction exact — and a recovery widens nothing, riding the call's edge to resume at the
+  frame's return, changing what may follow but never what an alternative begins with entered fresh. Those two facts
+  emptied the unpinned-fallthrough category whole: every follow set the certificates consult is pinned, and the hoisting
+  mints the gates it had been starved of — the quoted continuation lines gating on printable-non-white the way their
+  seam grapheme always meant. A literal gate climbs to where the decision is made: an alternative whose whole way in is
+  a call opening on a literal-gated production takes that gate as its own, the follow test declared rather than derived
+  — a first set cannot see the line structure that decides a marker, and a derived class admitted `----` to the marker
+  reading the spec gives a plain scalar, which the hybrid net and the marker fixtures caught on the spot — so the
+  explicit document commits on `---`-then-boundary at the stream's own choice, `c-forbidden`'s class carried as the
+  gate's `then`, and the certificate reads a literal spelled through single-way calls as one spelled in place. A way
+  guarded by the end of the input begins with no character, so its begins pin empty — while staying nullable, the gate
+  hoisting keeping an empty match enterable with nothing left to peek, and only the certificate knowing that nothing
+  follows the end — which certifies the break-or-end tails whole, the comment ends and the chomped last breaks, the
+  comment chain cascading behind them. The directive keywords carry their name barrier — `YAML` and `TAG` are the whole
+  name only where no `ns-char` follows, the reserved directive's own greedy name claiming a longer one, and a seen
+  keyword commits, its version's faults the grammar's own cut to judge — so `%YAMLX` is a reserved directive named
+  `YAMLX` where `%YAML` alone is the committed keyword's error. The block header reads chomping first — the chomp-first
+  ordering takes every header the indicator-first one takes, an empty indentation indicator standing on either side and
+  emitting nothing, and it alone takes `+1`, so the swap changes which way backtracking finds and never what it finds.
+  And what no disjointness can prove now stands declared: the assurance ledger commits a production on a written reason
+  — the header's chomp-first subsumption, clip's two orderings being one language, a digit at the indicator being the
   indicator — each entry held to backtracking by the hybrid corpus, refused when its name goes stale or the analysis
   catches up, and counted on its own gate line so the declared few never grow quietly. The corpus parses green in that
   hybrid the whole way, so the meter is honest at every step: 1346 of 1592 productions run committed, and the 246 still
