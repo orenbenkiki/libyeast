@@ -93,15 +93,25 @@ returns a "not implemented" error — so what exists is the project framework an
   all. `make verify-spec` erases the annotations and the indicator productions, sets libyeast's own rules aside, and
   checks that what remains is the vendored grammar, production for production — so what libyeast adds cannot quietly
   become what libyeast changes, and a departure must be declared, with its reason, in `check_vendor_spec.py`.
-- **Parser generator** — `generator/`: `ir.py` (the typed grammar IR), `annotated2ir.py` (read
-  `grammar/yeast-spec-1.2.yaml` into the IR), `ir2annotated.py` (the inverse), `ir2spec.py` (erase libyeast's additions
-  and recover the official grammar), `chars.py` (the character model the decoder is built from), `grammar2decoder.py`
-  (emit `src/decoder_tables.h`), `wire.py` (the yeast wire format in Python), `spec_tests.py` (the conformance
-  fixtures), `interpreter.py` (a backtracking interpreter of the grammar, run against those fixtures), and the gate
-  checks `check_annotated_roundtrip.py`, `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`,
-  `check_grammar_docs.py`, `check_messages.py`, `check_decoder.py`, `check_spec_tests.py`, `check_wire.py`,
-  `check_emitter.py`, `check_interpreter.py` and `check_grammar_coverage.py`, which report through `gate.py`. This is
-  where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
+- **Parser generator** — `generator/`: `ir.py` (the typed grammar IR — every node a dataclass, and every node spelling
+  the productions it references via `references()`, so reachability is read off the nodes themselves), `annotated2ir.py`
+  (read `grammar/yeast-spec-1.2.yaml` into the IR), `ir2annotated.py` (the inverse), `ir2spec.py` (erase libyeast's
+  additions and recover the official grammar), `chars.py` (the character model the decoder is built from),
+  `grammar2decoder.py` (emit `src/decoder_tables.h`), `wire.py` (the yeast wire format in Python), `spec_tests.py` (the
+  conformance fixtures), `interpreter.py` (a backtracking interpreter of the grammar, run against those fixtures),
+  `normalize.py` (the ordered pipeline of semantics-preserving transformations toward the canonical form, each step's
+  output purged of the productions no parse can enter — reachability closed from the root's copy under each resume
+  policy, the machine's start states), `determinize.py` (the divergence analysis that derives a conflict's provisional
+  decision), `star.py` (the YAML Test Suite folded to events), and the gate checks `check_annotated_roundtrip.py`,
+  `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`, `check_grammar_docs.py`, `check_messages.py`,
+  `check_decoder.py`, `check_spec_tests.py`, `check_wire.py`, `check_emitter.py`, `check_provisional.py`,
+  `check_interpreter.py`, `check_grammar_coverage.py`, `check_star.py`, `check_normalize.py` and `check_determinize.py`,
+  which report through `gate.py`. A fixture whose production the purge takes out of a pipeline stage is not dropped:
+  `check_normalize` pins it to the last stage whose grammar can run it, holds it there token for token, and credits
+  coverage from where it stands — so the stranded fixtures (a family a speculation replaced, a bare monomorphic copy
+  only a fixture enters, `c-reserved`, which the spec defines and nothing references) go on guarding the last grammar
+  that reaches them. This is where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 +
+  PyYAML.
 - **YamlReference** — `third_party/yamlreference/`: the Haskell YAML 1.2 reference parser, vendored to be read. Its
   grammar carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code`
   comes from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of
@@ -114,8 +124,8 @@ returns a "not implemented" error — so what exists is the project framework an
   globbed, with `CONFIGURE_DEPENDS` to reconfigure when the set changes, so a new file cannot be left out of the build
   or slip past the gate — which a hand-kept list is exactly what allows.
 - **Gate** — `Makefile` wraps CMake as the incremental pre-commit gate `make pc`, a pure aggregator of five sub-gates:
-  `all` (the build), `test` (Debug + Release tests and the `// UNTESTED` coverage gate), `verify` (the eleven generator
-  gates, `verify-roundtrip` through `verify-grammar`), `vet` (formatting, lint, comment rule, marker scan,
+  `all` (the build), `test` (Debug + Release tests and the `// UNTESTED` coverage gate), `verify` (the fifteen generator
+  gates, `verify-roundtrip` through `verify-decoder`), `vet` (formatting, lint, comment rule, marker scan,
   version-drift, packaging), and `gh-pages` (Doxygen docs + gcovr coverage report). Stamp-file targets keep it
   incremental.
 - **CI** — `.github/workflows/`: one workflow per sub-gate (`vet.yml`, `test.yml`, `verify.yml`, `gh-pages.yml`) plus

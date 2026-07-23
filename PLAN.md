@@ -270,9 +270,9 @@ guarantees, lowered to a single comparison.
    below formalizes. Handle the two indentation gotchas the mechanical steps miss — a zero-indent block sequence nested
    directly in a mapping, and flow context, which suspends indentation entirely. Discharge commit-safety per decision
    point, logging any residual as an assurance gap.
-1. *Finish.* Dead-production elimination; assert every terminal is a pure char-set; run the validator.
+1. *Finish.* Assert every terminal is a pure char-set; run the validator.
 
-**Determinize, what remains.** The meter counts 246 of 1592 productions still backtracking, over 78 distinct base names
+**Determinize, what remains.** The meter counts 240 of 1519 productions still backtracking, over 78 distinct base names
 — every one of them this phase's, driven to none, at which point the meter becomes a gate. They fall into the landings
 below, one at a time, each corpus-diffed. The speculations among them are the deep end, and they are one piece of work
 rather than several: the five cases spend one vocabulary, formalized under *The provisional mechanism*, and are produced
@@ -315,8 +315,6 @@ hardest facet; and the document prefix and the implicit key land after it, needi
    fused fold scans, the document loops if the surgery leaves them standing, whatever order-only residue remains — a
    staleness net refusing an entry the grammar lost or the analysis has since proved, and a counted line the gate
    prints, like the vendored spec's declared deviations.
-1. The sweep of what the stream no longer reaches, and the fixture policy it forces — the stranded fold family is the
-   first case — since the meter's floor is honest only past it.
 1. The validator made the gate, and the deferred trim-reuse pass.
 
 **The provisional mechanism**, formalized — the one shape every speculation takes. A run is a contiguous stretch of

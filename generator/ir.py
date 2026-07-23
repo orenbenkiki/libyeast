@@ -10,6 +10,10 @@ normalized here, so the round-trip stays exact. Flattening and simplification be
 Every node is a dataclass, and every grammar node it holds is a field of its own or an item of a tuple of them — which
 is what lets a walker recurse over the IR without knowing what any particular node is. `Branch` exists for that reason:
 a `(case)` branch is a node rather than a bare pair, so nothing has to special-case one.
+
+Every node also answers `references()`: the productions its subtree names directly, without following into their bodies.
+Each class spells its own fields out, so which fields can hold a production — and which are codes, messages, or counts —
+is written where the node is defined, and reachability is read off the nodes themselves.
 """
 
 from dataclasses import dataclass, fields, is_dataclass, replace
@@ -57,6 +61,20 @@ def entry(grammar, name, parameters):
     return name, dict(parameters)
 
 
+def _refs(*values):
+    """
+    The production names held anywhere in `values`, for the `references` methods: a node contributes its own
+    `references()`, a tuple its items', and anything else — a code, a message, a codepoint, `None` — nothing.
+    """
+    names = []
+    for value in values:
+        if isinstance(value, tuple):
+            names.extend(_refs(*value))
+        elif is_dataclass(value):
+            names.extend(value.references())
+    return names
+
+
 # --- value / parameter expressions ---
 
 
@@ -66,6 +84,9 @@ class Param:
 
     name: str
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class Lit:
@@ -73,10 +94,16 @@ class Lit:
 
     value: object
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class Match:
     """The `(match)` special value: the text matched so far, for length/ordinal computations."""
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -88,6 +115,9 @@ class AutoDetectIndent:
     and a block scalar measures past the rest of its header line, the break, and however many empty lines follow.
     """
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class AutoDetectInLineIndent:
@@ -97,6 +127,9 @@ class AutoDetectInLineIndent:
     What a compact collection is indented by, measured from just after the `-` or the `?` that introduced it.
     """
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class Add:
@@ -104,6 +137,9 @@ class Add:
 
     a: object
     b: object
+
+    def references(self):
+        return _refs(self.a, self.b)
 
 
 @dataclass(frozen=True)
@@ -113,6 +149,9 @@ class Sub:
     a: object
     b: object
 
+    def references(self):
+        return _refs(self.a, self.b)
+
 
 @dataclass(frozen=True)
 class Ord:
@@ -120,12 +159,18 @@ class Ord:
 
     arg: object
 
+    def references(self):
+        return _refs(self.arg)
+
 
 @dataclass(frozen=True)
 class Len:
     """`(len)`: the length of a match."""
 
     arg: object
+
+    def references(self):
+        return _refs(self.arg)
 
 
 @dataclass(frozen=True)
@@ -135,6 +180,9 @@ class Branch:
     value: str
     item: object
 
+    def references(self):
+        return _refs(self.item)
+
 
 @dataclass(frozen=True)
 class Flip:
@@ -142,6 +190,9 @@ class Flip:
 
     var: str
     branches: tuple  # (Branch, ...), each holding a result expression
+
+    def references(self):
+        return _refs(self.branches)
 
 
 # --- grammar nodes (matchers) ---
@@ -153,6 +204,9 @@ class Char:
 
     cp: int
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class Range:
@@ -160,6 +214,9 @@ class Range:
 
     lo: int
     hi: int
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -169,20 +226,32 @@ class Ref:
     name: str
     args: tuple = ()
 
+    def references(self):
+        return [self.name, *_refs(self.args)]
+
 
 @dataclass(frozen=True)
 class Empty:
     """`<empty>`: the epsilon match."""
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
 class StartOfLine:
     """`<start-of-line>`: a zero-width assertion that the parser is at the start of a line."""
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class EndOfStream:
     """`<end-of-stream>`: a zero-width assertion that the parser is at the end of the input."""
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -192,12 +261,18 @@ class Invalid:
     grammar names a character — only the recovery rules reach for it, where a run of these is `unparsed-invalid`.
     """
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class Seq:
     """`(all)`: an ordered concatenation."""
 
     items: tuple
+
+    def references(self):
+        return _refs(self.items)
 
 
 @dataclass(frozen=True)
@@ -206,12 +281,18 @@ class Alt:
 
     items: tuple
 
+    def references(self):
+        return _refs(self.items)
+
 
 @dataclass(frozen=True)
 class Star:
     """`(***)`: zero or more."""
 
     item: object
+
+    def references(self):
+        return _refs(self.item)
 
 
 @dataclass(frozen=True)
@@ -220,12 +301,18 @@ class Plus:
 
     item: object
 
+    def references(self):
+        return _refs(self.item)
+
 
 @dataclass(frozen=True)
 class Opt:
     """`(???)`: optional (zero or one)."""
 
     item: object
+
+    def references(self):
+        return _refs(self.item)
 
 
 @dataclass(frozen=True)
@@ -234,6 +321,9 @@ class Rep:
 
     count: object
     item: object
+
+    def references(self):
+        return _refs(self.count, self.item)
 
 
 @dataclass(frozen=True)
@@ -249,6 +339,9 @@ class TrimStar:
     full: object
     trim: object
 
+    def references(self):
+        return _refs(self.full, self.trim)
+
 
 @dataclass(frozen=True)
 class ConsumeSpan:
@@ -260,6 +353,9 @@ class ConsumeSpan:
 
     set: object
 
+    def references(self):
+        return _refs(self.set)
+
 
 @dataclass(frozen=True)
 class ConsumeChar:
@@ -268,6 +364,9 @@ class ConsumeChar:
     it there, so a `ConsumeChar` that finds nothing is a gate that did not do its job, and the interpreter says so
     rather than matching nothing. The generated parser carries the same assertion.
     """
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -286,6 +385,9 @@ class LiteralPeek:
     then: object
     barrier: object
 
+    def references(self):
+        return _refs(self.then, self.barrier)
+
 
 @dataclass(frozen=True)
 class ConsumePeeked:
@@ -297,6 +399,9 @@ class ConsumePeeked:
     """
 
     text: tuple
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -310,6 +415,9 @@ class Gate:
 
     peek: object = None
     guards: tuple = ()
+
+    def references(self):
+        return _refs(self.peek, self.guards)
 
 
 @dataclass(frozen=True)
@@ -330,6 +438,9 @@ class Alternative:
     second: object = None
     recover: object = None
 
+    def references(self):
+        return _refs(self.gate, self.actions, self.first, self.second, self.recover)
+
 
 @dataclass(frozen=True)
 class Choice:
@@ -341,6 +452,9 @@ class Choice:
 
     alternatives: tuple
 
+    def references(self):
+        return _refs(self.alternatives)
+
 
 @dataclass(frozen=True)
 class ConsumeLiteral:
@@ -351,6 +465,9 @@ class ConsumeLiteral:
     """
 
     text: tuple  # the codepoints, in order
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -365,6 +482,9 @@ class ConsumeCountedSpan:
     set: object
     count: object
 
+    def references(self):
+        return _refs(self.set, self.count)
+
 
 @dataclass(frozen=True)
 class ConsumeTrimmedSpan:
@@ -377,12 +497,18 @@ class ConsumeTrimmedSpan:
     full: object
     trim: object
 
+    def references(self):
+        return _refs(self.full, self.trim)
+
 
 @dataclass(frozen=True)
 class Look:
     """`(===)`: positive lookahead (zero-width)."""
 
     item: object
+
+    def references(self):
+        return _refs(self.item)
 
 
 @dataclass(frozen=True)
@@ -391,6 +517,9 @@ class NegLook:
 
     item: object
 
+    def references(self):
+        return _refs(self.item)
+
 
 @dataclass(frozen=True)
 class LookBehind:
@@ -398,12 +527,18 @@ class LookBehind:
 
     item: object
 
+    def references(self):
+        return _refs(self.item)
+
 
 @dataclass(frozen=True)
 class Bound:
     """`(<<<)`: match `item`, subject to a predicate embedded within it (e.g. an indentation-length bound)."""
 
     item: object
+
+    def references(self):
+        return _refs(self.item)
 
 
 @dataclass(frozen=True)
@@ -413,12 +548,18 @@ class Diff:
     base: object
     minus: tuple
 
+    def references(self):
+        return _refs(self.base, self.minus)
+
 
 @dataclass(frozen=True)
 class ExcludeAt:
     """`(exclude)`: a zero-width negative guard (the current position is not at `item`)."""
 
     item: object
+
+    def references(self):
+        return _refs(self.item)
 
 
 @dataclass(frozen=True)
@@ -437,6 +578,9 @@ class Max:
     message: object = None
     item: object = None
 
+    def references(self):
+        return _refs(self.limit, self.item)  # `message` is a message key, not a production
+
 
 @dataclass(frozen=True)
 class Lt:
@@ -445,6 +589,9 @@ class Lt:
     a: object
     b: object
 
+    def references(self):
+        return _refs(self.a, self.b)
+
 
 @dataclass(frozen=True)
 class Le:
@@ -452,6 +599,9 @@ class Le:
 
     a: object
     b: object
+
+    def references(self):
+        return _refs(self.a, self.b)
 
 
 @dataclass(frozen=True)
@@ -465,6 +615,9 @@ class Case:
     branches: tuple  # (Branch, ...), each holding a grammar node
     default: object = None
 
+    def references(self):
+        return _refs(self.branches, self.default)
+
 
 @dataclass(frozen=True)
 class Bind:
@@ -474,6 +627,9 @@ class Bind:
     param: str
     value: object
 
+    def references(self):
+        return _refs(self.cond, self.value)
+
 
 @dataclass(frozen=True)
 class SetVar:
@@ -481,6 +637,9 @@ class SetVar:
 
     param: str
     value: object
+
+    def references(self):
+        return _refs(self.value)
 
 
 @dataclass(frozen=True)
@@ -492,6 +651,9 @@ class Increase:
     """
 
     param: str
+
+    def references(self):
+        return []
 
 
 # --- token annotations ---
@@ -517,6 +679,9 @@ class Token:
     code: str
     item: object
 
+    def references(self):
+        return _refs(self.item)
+
 
 @dataclass(frozen=True)
 class Wrap:
@@ -531,12 +696,18 @@ class Wrap:
     end: str
     item: object
 
+    def references(self):
+        return _refs(self.item)
+
 
 @dataclass(frozen=True)
 class Emit:
     """`(emit)`: a zero-width token at this point, which also cuts the run of characters around it."""
 
     code: str
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -548,6 +719,9 @@ class PushCode:
 
     code: str
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class PopCode:
@@ -556,6 +730,9 @@ class PopCode:
     `env["code"]`, the code it was entered under, held on its frame rather than a stack, since a `(token)` never nests
     within one body. Paired with `PushCode`: `Token(code, item)` lowers to `PushCode(code), item, PopCode`.
     """
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -569,6 +746,9 @@ class PushMessage:
 
     message: str
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class PopMessage:
@@ -580,6 +760,9 @@ class PopMessage:
     outer value to pass.
     """
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class OpenMatch:
@@ -587,6 +770,9 @@ class OpenMatch:
     A zero-width action that sets the origin a `(match)` measures from to the current position — what `(<<<)` marks
     before the run it bounds. `CloseMatch` restores it at the trailing edge.
     """
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -596,6 +782,9 @@ class CloseMatch:
     was entered under, held on its frame not a stack, since a `(<<<)` never nests within one body. Paired with
     `OpenMatch`: `Bound(item)` lowers to `OpenMatch, item, CloseMatch`.
     """
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -609,6 +798,9 @@ class OpenWindow:
     limit: object
     message: str
 
+    def references(self):
+        return _refs(self.limit)  # `message` is a message key, not a production
+
 
 @dataclass(frozen=True)
 class CloseWindow:
@@ -617,6 +809,9 @@ class CloseWindow:
     entered under, held on its frame not a stack, since a `(max)` never nests within one body. Paired with `OpenWindow`:
     `Max(limit, message, item)` lowers to `OpenWindow(limit, message), item, CloseWindow`.
     """
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -627,6 +822,9 @@ class OpenProvisional:
     open at a time.
     """
 
+    def references(self):
+        return []
+
 
 @dataclass(frozen=True)
 class MarkProvisional:
@@ -635,6 +833,9 @@ class MarkProvisional:
     region from the mark on — the side a later `RetypeProvisional` or `InjectBefore` names. One-for-one with
     `ys_queue_mark_run`; at most one mark to a run. A mark is a parse position, not a property of any token.
     """
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -651,6 +852,9 @@ class RetypeProvisional:
     breaks: object
     region: str
 
+    def references(self):
+        return []  # `rest` and `breaks` are token codes, not productions
+
 
 @dataclass(frozen=True)
 class InjectBefore:
@@ -664,6 +868,9 @@ class InjectBefore:
     codes: tuple
     at: str
 
+    def references(self):
+        return []  # `codes` are token codes, not productions
+
 
 @dataclass(frozen=True)
 class CommitProvisional:
@@ -672,6 +879,9 @@ class CommitProvisional:
     `ys_queue_resolve_run`. Paired with `OpenProvisional` dynamically, as a committed region's push and pop are — the
     run is the queue's, not a frame's, so the pair may be cut across productions.
     """
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -683,6 +893,9 @@ class Cut:
     """
 
     message: str
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -703,6 +916,9 @@ class Commit:
     message: str
     item: object
 
+    def references(self):
+        return _refs(self.item)
+
 
 @dataclass(frozen=True)
 class Error:
@@ -715,6 +931,9 @@ class Error:
     """
 
     message: str
+
+    def references(self):
+        return []
 
 
 @dataclass(frozen=True)
@@ -735,6 +954,9 @@ class Recover:
     recovery: object
     item: object
 
+    def references(self):
+        return _refs(self.recovery, self.item)
+
 
 @dataclass(frozen=True)
 class Prod:
@@ -744,6 +966,9 @@ class Prod:
     name: str
     params: tuple
     body: object
+
+    def references(self):
+        return _refs(self.body)
 
 
 # The nodes that match without consuming: a lookahead reads the input and gives it back. In alphabetical order.

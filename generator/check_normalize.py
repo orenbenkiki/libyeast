@@ -5,18 +5,25 @@ Check that the normalization pipeline preserves the grammar's meaning.
 A structural transformation is only allowed if it changes no token the interpreter emits and no event the fold produces.
 So this runs the two nets the base grammar already passes, on the grammar the pipeline produces: the fixtures — every
 `tests/spec` case reproduced token for token (`check_interpreter`) — and the YAML Test Suite, folded to events
-green-or-declared (`check_star`). Coverage runs on it too, catching a production a step left unreachable. Token and
-event identity is the whole proof; the vendored-spec check is meaningless on a transformed grammar and is not run here.
+green-or-declared (`check_star`). Coverage runs on it too, pooled across the stages. Token and event identity is the
+whole proof; the vendored-spec check is meaningless on a transformed grammar and is not run here.
 
-The corpus is run over the final grammar first, and over each step's only where that fails. Every step preserving the
-corpus and the last one doing so come to the same thing — a step would have to break the stream and a later one restore
-it exactly — so the fast answer is the whole answer, and the slow walk is worth its cost only when there is a step to
-name. That walk stops at the first step that diverges, which is the one that broke it.
+Each stage's grammar is purged of what the root no longer reaches, so a transformation that replaces a call site strands
+the fixtures of the callee it dead-ends — the fold family at `speculate-folds`, the fixture-only monomorphic copies at
+`monomorphize`. A stranded fixture is not dropped: it is pinned to the last stage whose grammar can still run it, keeps
+guarding that grammar token for token, and credits coverage from there. Only a fixture no stage at all can run is an
+error.
+
+Each pinned group is run against its own stage. Every group passing and every step preserving the corpus over the stages
+its fixtures survive come to the same thing — a step would have to break the stream and a later one restore it exactly —
+so the fast answer is the whole answer, and the slow walk over every stage is worth its cost only when there is a step
+to name. That walk stops at the first step that diverges, which is the one that broke it.
 
 An empty pipeline makes the one stage the base grammar itself, so this passes exactly when the base's own gates do —
 which is how the net is proved wired before a transformation rides it.
 """
 
+import os
 import sys
 import threading
 
@@ -26,6 +33,7 @@ import check_interpreter
 import check_star
 import gate
 import normalize
+import spec_tests
 
 # The recursive helpers a transformed grammar carries recurse as deep as their input is long, past both Python's limit
 # and a default stack. So the check runs on a thread given a large one, with the limit raised to match — deep enough for
@@ -35,35 +43,66 @@ RECURSION_LIMIT = 200000
 
 
 def _corpus_errors(label, grammar, fixtures, suite):
-    """The cases `grammar` does not reproduce, named for the step that produced it."""
-    errors = [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, fixtures)]
+    """
+    The cases `grammar` does not reproduce, named for the step that produced it — the fixtures filtered to the ones
+    `grammar` can still run, a stranded fixture's production being no longer this grammar's to ask about.
+    """
+    runnable = [fixture for fixture in fixtures if spec_tests.is_runnable(fixture, grammar) is None]
+    errors = [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, runnable)]
     return errors + [f"[{label}] star {error}" for error in check_star.disagreements(grammar, suite)]
 
 
+def _pinned(stages, fixtures):
+    """
+    The fixtures each stage is held to, as a list of groups parallel to `stages` — every fixture pinned to the last
+    stage whose grammar can run it, the purge having stranded it everywhere later — and the fixtures no stage at all can
+    run, as error strings.
+    """
+    groups = [[] for _stage in stages]
+    errors = []
+    for fixture in fixtures:
+        last = None
+        for index, (_label, grammar) in enumerate(stages):
+            if spec_tests.is_runnable(fixture, grammar) is None:
+                last = index
+        if last is None:
+            errors.append(f"{os.path.basename(fixture.input_path)}: no stage's grammar can run it")
+        else:
+            groups[last].append(fixture)
+    return groups, errors
+
+
 def _check():
-    fixtures = check_interpreter.spec_tests.load()
+    fixtures = spec_tests.load()
     suite = check_star.cases()
     stages = normalize.stages(annotated2ir.load())
+    groups, errors = _pinned(stages, fixtures)
 
-    errors = _corpus_errors(*stages[-1], fixtures, suite)
-    if errors:  # something broke the stream; walk the steps to name the first one that did
+    corpus = []
+    for (label, grammar), pinned in zip(stages, groups):
+        if pinned:
+            corpus += [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, pinned)]
+    corpus += [f"[{stages[-1][0]}] star {error}" for error in check_star.disagreements(stages[-1][1], suite)]
+    if corpus:  # something broke the stream; walk the steps to name the first one that did
         for label, grammar in stages:
             named = _corpus_errors(label, grammar, fixtures, suite)
             if named:
-                errors = named
+                corpus = named
                 break
+    errors += corpus
     final = stages[-1][1]
     deterministic = normalize.deterministic_productions(final)
     if not errors:  # the hybrid run is judged only where the backtracking one stands, so a fault names its mode
         errors += [
             f"[deterministic] fixture {error}"
-            for error in check_interpreter.reproduced(final, fixtures, deterministic=deterministic)
+            for error in check_interpreter.reproduced(final, groups[-1], deterministic=deterministic)
         ]
         errors += [
             f"[deterministic] star {error}"
             for error in check_star.disagreements(final, suite, deterministic=deterministic)
         ]
-    for error in check_grammar_coverage.gaps(stages[-1][1]):
+    exercisers = [(grammar, pinned) for (_label, grammar), pinned in zip(stages, groups) if pinned]
+    for error in check_grammar_coverage.gaps(final, exercisers):
         errors.append(f"[final] coverage {error}")
     # The content-run gate reads the `(token)` scopes lower-tokens dissolves, so it runs on the last grammar that still
     # holds them; lower-tokens leaves the character runs it checks untouched, so the two grammars agree on the answer.
@@ -87,6 +126,10 @@ def _check():
         f"long text token matched in bulk by a character-set run",
     )
     print("    " + " -> ".join(name for name, _transform in normalize.STEPS))
+    # The stranded fixtures: each guards the last stage whose grammar can still run it, the purge having taken its
+    # production out of every later one.
+    stranded = len(fixtures) - len(groups[-1])
+    print(f"    {stranded} fixture(s) pinned to an earlier stage's grammar, the last to run them")
     # Not a fault: what the canonical form does not spell yet, printed so the number is watched down to none rather than
     # discovered later. The determinize phase is what resolves each of them.
     print(f"    {len(residue)} action(s) the canonical form does not spell: a leftover scope or a nullable repetition")

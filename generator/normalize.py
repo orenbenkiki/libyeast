@@ -12,9 +12,9 @@ one seam every transformation slots into.
 
 import dataclasses
 
+import annotated2ir
 import chars
 import ir
-import spec_tests
 
 # Nodes that begin no character — a match of one starts no run, so it adds nothing to a first-character set: the
 # lookaheads, the epsilon and marker emitters, the guards, and the parameter actions.
@@ -252,13 +252,10 @@ def monomorphize(grammar, namer):
         return ir.rebuilt(node, lambda child: specialize(child, env))
 
     relevant = _relevant_finite(grammar)
-    pending.append((ir.ROOT, {x: ir.FINITE_DEFAULTS.get(x) for x in relevant[ir.ROOT]}))
-    # the fixtures are entry points too: each runs a production in isolation at the finite values its filename names,
-    # reaching combinations the root does not, so seed each so its monomorphic copy is there for the driver to enter.
-    for fixture in spec_tests.load():
-        if fixture.production in grammar:
-            ambient = {x: fixture.parameters.get(x, ir.FINITE_DEFAULTS.get(x)) for x in relevant[fixture.production]}
-            pending.append((fixture.production, ambient))
+    # the root is entered once per resume policy — the one finite parameter the caller chooses rather than the grammar
+    # settles — so each policy's copy is a start state of the machine, made whether or not anything references it.
+    for resume in annotated2ir.RESUMES:
+        pending.append((ir.ROOT, {x: resume if x == "r" else ir.FINITE_DEFAULTS.get(x) for x in relevant[ir.ROOT]}))
     while pending:
         name, ambient = pending.pop()
         new_name = ir.specialized(name, ambient)
@@ -2413,20 +2410,46 @@ STEPS = [
 ]
 
 
+def reachable(grammar):
+    """
+    The productions the parse can enter, transitively: the root's copy under each resume policy — the one parameter the
+    caller chooses, so each copy is a start state of its own — and everything those reference, read off each node's own
+    `references`.
+    """
+    seen = set()
+    worklist = [ir.entry(grammar, ir.ROOT, {"r": resume})[0] for resume in annotated2ir.RESUMES]
+    while worklist:
+        name = worklist.pop()
+        if name in seen or name not in grammar:
+            continue
+        seen.add(name)
+        worklist.extend(grammar[name].references())
+    return seen
+
+
+def purged(grammar):
+    """`grammar` without the productions no parse can enter — dead-production elimination, from the root down."""
+    keep = reachable(grammar)
+    return {name: production for name, production in grammar.items() if name in keep}
+
+
 def stages(grammar):
     """
     The grammar after each step, as `(label, grammar)` pairs, opening with `("base", grammar)` — what `check_normalize`
     diffs the interpreter's token stream across, so a step that changes it is named. One `Namer` is threaded through the
-    steps, so the helper productions they mint number `<base>_<N>` off a count shared across them.
+    steps, so the helper productions they mint number `<base>_<N>` off a count shared across them. Each step's grammar
+    is purged of the productions the root no longer reaches — a transformation that replaces a call site strands the
+    callee, and a stranded production would hold the determinize meter above its honest floor. The base grammar is kept
+    whole: it is the grammar as frozen at the completeness gate, purged by no step.
     """
     namer = Namer()
     result = [("base", grammar)]
     for name, transform in STEPS:
-        grammar = transform(grammar, namer)
+        grammar = purged(transform(grammar, namer))
         result.append((name, grammar))
     return result
 
 
 def normalize(grammar):
-    """The grammar with every step applied in order."""
+    """The grammar with every step applied in order, purged after each of what the root no longer reaches."""
     return stages(grammar)[-1][1]

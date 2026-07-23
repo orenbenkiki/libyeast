@@ -145,9 +145,10 @@ def is_total(node, grammar, seen=frozenset()):
     raise TypeError(f"cannot decide whether {type(node).__name__} is total")
 
 
-def exercised(grammar):
+def exercised(grammar, fixtures=None):
     """
-    The productions the reproducible fixtures reach, and the ones they see reject an input.
+    The productions the reproducible fixtures reach, and the ones they see reject an input — the whole suite's, or
+    `fixtures`' where given.
 
     Returns `(reached, rejected)`. A production is reached when its body offers a solution or a value expression
     evaluates it; it is rejected when it fails to match, or when a `(cut)` inside it raises — a rule holding a cut never
@@ -190,7 +191,7 @@ def exercised(grammar):
 
     interpreter.match, interpreter.evaluate = match, evaluate
     try:
-        for fixture in spec_tests.load():
+        for fixture in spec_tests.load() if fixtures is None else fixtures:
             # a crashing fixture simply leaves its productions unexercised, for the gate to report
             try:
                 interpreter.run(grammar, fixture.production, fixture.input, spec_tests.arguments(fixture, grammar))
@@ -239,16 +240,21 @@ def _base(name):
     return _HELPER_SUFFIX.sub("", _MONOMORPHIC_SUFFIX.sub("", name) if _MONOMORPHIC_SUFFIX else name)
 
 
-def gaps(grammar):
+def gaps(grammar, exercisers=None):
     """
     The productions `grammar` leaves unexercised and the messages nothing fires, as error strings — empty when the
     fixtures reach and reject every production and carry every message. Takes the grammar as an argument, so it re-runs
     on a structurally-transformed grammar whose reshaped productions the same fixtures must still exercise; a
-    monomorphic copy is held covered when its base is.
+    monomorphic copy is held covered when its base is. `exercisers` — `(grammar, fixtures)` pairs, each run in its own
+    right — is how a pipeline's grammars pool their coverage: a fixture stranded by a transformation runs against the
+    last grammar its production is reachable in, and a base name exercised at any stage credits its copies here. Left
+    out, `grammar` itself is exercised with the whole suite.
     """
-    reached, rejected = exercised(grammar)
-    reached_bases = {_base(name) for name in reached}
-    rejected_bases = {_base(name) for name in rejected}
+    reached_bases, rejected_bases = set(), set()
+    for stage, fixtures in [(grammar, None)] if exercisers is None else exercisers:
+        reached, rejected = exercised(stage, fixtures)
+        reached_bases |= {_base(name) for name in reached}
+        rejected_bases |= {_base(name) for name in rejected}
     with open(check_messages.MESSAGES) as handle:
         messages = yaml.safe_load(handle)
     texts = fired()

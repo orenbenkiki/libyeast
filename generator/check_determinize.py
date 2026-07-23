@@ -31,13 +31,12 @@ EXPECTED_RETYPE = (None, "line-fold", "all")
 
 def _grammar_before(step_name):
     """The grammar as it stands just before `step_name` runs — the conflict the determinizer is handed."""
-    namer = normalize.Namer()
-    grammar = annotated2ir.load()
-    for name, transform in normalize.STEPS:
-        if name == step_name:
-            return grammar
-        grammar = transform(grammar, namer)
-    raise AssertionError(f"{step_name}: no such pipeline step")
+    names = [name for name, _transform in normalize.STEPS]
+    if step_name not in names:
+        raise AssertionError(f"{step_name}: no such pipeline step")
+    # stages() opens with the base, so the grammar at a step's index is the one the step before it produced — purged of
+    # what the root no longer reaches, exactly as the pipeline hands it on.
+    return normalize.stages(annotated2ir.load())[names.index(step_name)][1]
 
 
 def _check():
