@@ -58,6 +58,7 @@ ALWAYS = (
     ir.Flip,
     ir.Increase,
     ir.InjectBefore,
+    ir.MarkProvisional,
     ir.OpenMatch,
     ir.OpenProvisional,
     ir.OpenWindow,

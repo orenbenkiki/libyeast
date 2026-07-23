@@ -629,27 +629,40 @@ class OpenProvisional:
 
 
 @dataclass(frozen=True)
-class RetypeProvisional:
+class MarkProvisional:
     """
-    A zero-width action that rewrites the open run's codes by class: a token whose characters were consumed as a line
-    break takes `breaks`, any other takes `payload`, and a class whose code is `None` keeps its own. The run stays open.
-    One-for-one with the rewrite over `ys_queue_run`; there is no discard — a failed hypothesis retypes, it never drops
-    tokens. (`breaks` rather than the runtime's `break`, which Python reserves.)
+    A zero-width action that marks the open run's current position, cutting it into the region before the mark and the
+    region from the mark on — the side a later `RetypeProvisional` or `InjectBefore` names. One-for-one with
+    `ys_queue_mark_run`; at most one mark to a run. A mark is a parse position, not a property of any token.
     """
 
-    payload: object
+
+@dataclass(frozen=True)
+class RetypeProvisional:
+    """
+    A zero-width action that rewrites the held tokens in `region` — `all`, `before_mark` or `after_mark` — by kind: a
+    token whose characters were consumed as a line break takes `breaks`, any other takes `rest`, and a kind whose code
+    is `None` keeps its own. The run stays open. One-for-one with the rewrite over `ys_queue_run`; there is no discard —
+    a failed hypothesis retypes, it never drops tokens. (`breaks` rather than the runtime's `break`, which Python
+    reserves.)
+    """
+
+    rest: object
     breaks: object
+    region: str
 
 
 @dataclass(frozen=True)
 class InjectBefore:
     """
-    A zero-width action that puts a decided marker of `code` ahead of the open run, and of everything undecided —
-    `end-scalar` for the block scalar whose empty lines were chomped away, `begin-mapping` for the line that turned out
-    to be a key. One-for-one with `ys_queue_inject`; at most one per run.
+    A zero-width action that puts the decided markers `codes`, in order, into the open run at `at` — its `start`, ahead
+    of the whole run, or its `mark`, between the two sides. `begin-document` and the node markers ahead of a document's
+    whites, `begin-pair` at the mark where a line turned out to be a key, `end-scalar` ahead of a block scalar's chomped
+    empty lines. One-for-one with `ys_queue_inject`.
     """
 
-    code: str
+    codes: tuple
+    at: str
 
 
 @dataclass(frozen=True)

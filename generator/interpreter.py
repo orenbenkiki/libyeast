@@ -134,9 +134,9 @@ class Emitter:
         self.tokens = []
         self.run = None  # (code character, start mark, start position) of the open run, or None
         self.provisional = None  # where the open provisional run begins in `tokens`, or None — only one is open
-        self.trail = []  # the provisional undo journal — retyped codes, an injected marker, where the run stood at an
-        # open or a commit: the only token mutations that are not appends, which a rewind pops to undo what a
-        # token-count truncation cannot
+        self.provisional_mark = None  # where the run's mark cuts `tokens` in two, or None — one mark to a run
+        self.trail = []  # the provisional undo journal — a retyped code, an injected marker: the only token mutations
+        # that are not appends, which a rewind pops to undo what a token-count truncation cannot
         self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it, restoring the
         # production's own on the way out — which it reads back from `env["code"]`, the code the production was entered
         # under, the way the C parser reads it off the frame rather than a second stack.
@@ -163,6 +163,8 @@ class Emitter:
             len(self.tokens),
             len(self.trail),
             self.run,
+            self.provisional,
+            self.provisional_mark,
             self.code,
             dict(self.env),
             self.match_start,
@@ -181,6 +183,8 @@ class Emitter:
             token_count,
             trail_length,
             self.run,
+            self.provisional,
+            self.provisional_mark,
             self.code,
             env,
             self.match_start,
@@ -196,16 +200,14 @@ class Emitter:
         # branch after it rewinds to. Everything else here is either a value or a length, and cannot be written through.
         self.env = dict(env)
         # The journal is undone before the token list is cut back: its entries are the only mutations that are not
-        # appends, and popping them newest first restores every index they were recorded at.
+        # appends, and popping them newest first restores every index they were recorded at. The run start and its mark
+        # are values the checkpoint restored above, so a rewound trail leaves only the token surgery to reverse.
         while len(self.trail) > trail_length:
             entry = self.trail.pop()
             if entry[0] == "retype":
                 self.tokens[entry[1]] = entry[2]
-            elif entry[0] == "inject":
+            else:  # "inject": a marker inserted mid-list, deleted to undo what a truncation would miss
                 del self.tokens[entry[1]]
-                self.provisional = entry[1]
-            else:  # "run": where the provisional run stood before an open or a commit moved it
-                self.provisional = entry[1]
         del self.tokens[token_count:]
 
     def consume(self):
@@ -277,45 +279,79 @@ class Emitter:
         """
         assert self.provisional is None, "a provisional run opened inside one"
         self.cut()
-        self.trail.append(("run", self.provisional))
         self.provisional = len(self.tokens)
 
-    def retype_provisional(self, payload, breaks):
+    def mark_provisional(self):
         """
-        Rewrite the open provisional run's codes by class: `breaks` for a token whose characters were consumed as a line
-        break, `payload` for one that consumed anything else, a code of `None` keeping its class as it is. A marker or
-        an error, having no consumed characters, keeps its code either way. Cuts the open character run first, so it is
-        a token the rewrite sees.
+        Mark the open run's current position, cutting the held tokens into the region before the mark and the region
+        from the mark on — the side a later retype or injection names. Cuts the open character run first, so the mark
+        falls on a token boundary. One mark to a run.
+        """
+        assert self.provisional is not None, "a mark outside a provisional run"
+        assert self.provisional_mark is None, "a second mark in one provisional run"
+        self.cut()
+        self.provisional_mark = len(self.tokens)
+
+    def _region(self, region):
+        """The half-open token index range `region` names within the open run — `all`, or a side of the mark."""
+        if region == "all":
+            return self.provisional, len(self.tokens)
+        assert self.provisional_mark is not None, f"a {region} retype with no mark taken"
+        if region == "before_mark":
+            return self.provisional, self.provisional_mark
+        return self.provisional_mark, len(self.tokens)
+
+    def retype_provisional(self, rest, breaks, region):
+        """
+        Rewrite the held tokens in `region` by kind: `breaks` for a token whose characters were consumed as a line
+        break, `rest` for one that consumed anything else, a code of `None` keeping its kind as it is. A marker or an
+        error, having no consumed characters, keeps its code either way. Cuts the open character run first, so it is a
+        token the rewrite sees.
         """
         assert self.provisional is not None, "a retype outside a provisional run"
         self.cut()
-        for index in range(self.provisional, len(self.tokens)):
+        start, stop = self._region(region)
+        for index in range(start, stop):
             token = self.tokens[index]
             if not token.text or token.code == wire.ERROR:
                 continue
             is_break = wire.units(token.text, token.code)[0][0] in (wire.CARRIAGE_RETURN, wire.LINE_FEED)
-            code = breaks if is_break else payload
+            code = breaks if is_break else rest
             if code is None or wire.CODE_CHAR[code] == token.code:
                 continue
             self.trail.append(("retype", index, token))
             self.tokens[index] = wire.Token(wire.CODE_CHAR[code], token.start, token.text)
 
-    def inject_before(self, code):
+    def inject_before(self, codes, at):
         """
-        Put a decided zero-width marker of `code` ahead of the open provisional run, and of everything undecided — at
-        the run's own start, which is where the runtime's injection stands. The run begins one token later for it.
+        Put the decided zero-width markers `codes`, in order, into the open run at `at` — its `start`, ahead of the
+        whole run, or its `mark`, between the two sides. Cuts the open character run first. The run start moves past a
+        start injection, so the markers it puts there are decided; a mark injection stands behind the pre-mark tokens.
         """
         assert self.provisional is not None, "an injection outside a provisional run"
-        start = self.tokens[self.provisional].start if self.provisional < len(self.tokens) else self.mark
-        self.trail.append(("inject", self.provisional))
-        self.tokens.insert(self.provisional, wire.Token(wire.CODE_CHAR[code], start, ""))
-        self.provisional += 1
+        self.cut()
+        if at == "mark":
+            assert self.provisional_mark is not None, "a mark injection with no mark taken"
+            index = self.provisional_mark
+        else:
+            index = self.provisional
+        start = self.tokens[index].start if index < len(self.tokens) else self.mark
+        for offset, code in enumerate(codes):
+            self.trail.append(("inject", index + offset))
+            self.tokens.insert(index + offset, wire.Token(wire.CODE_CHAR[code], start, ""))
+        inserted = len(codes)
+        # An index at or past the insertion point moves right by what was inserted — the run start where the injection
+        # is its own, the mark where it stands at or past the injection.
+        if self.provisional >= index:
+            self.provisional += inserted
+        if self.provisional_mark is not None and self.provisional_mark >= index:
+            self.provisional_mark += inserted
 
     def commit_provisional(self):
-        """Resolve the open provisional run: its tokens are decided, and so is everything emitted after."""
+        """Resolve the open provisional run and its mark: its tokens are decided, and so is everything emitted after."""
         assert self.provisional is not None, "a commit with no provisional run open"
-        self.trail.append(("run", self.provisional))
         self.provisional = None
+        self.provisional_mark = None
 
 
 def _leading_spaces(emitter):
@@ -980,16 +1016,23 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.MarkProvisional):
+        checkpoint = emitter.checkpoint()
+        emitter.mark_provisional()
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.RetypeProvisional):
         checkpoint = emitter.checkpoint()
-        emitter.retype_provisional(node.payload, node.breaks)
+        emitter.retype_provisional(node.rest, node.breaks, node.region)
         if k():
             return True
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.InjectBefore):
         checkpoint = emitter.checkpoint()
-        emitter.inject_before(node.code)
+        emitter.inject_before(node.codes, node.at)
         if k():
             return True
         emitter.rewind(checkpoint)
