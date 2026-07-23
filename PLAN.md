@@ -292,9 +292,23 @@ hardest facet; and the document prefix and the implicit key land after it, needi
 1. The plain scalar's next line — whether a multi-line scalar continues at all, the same held-break read, landing with
    the key's since both resolve at a line's end.
 1. The block scalar's empty lines, opening and trailing alike: hold the run, and on resolution either make it content or
-   inject the scalar's end ahead of it and leave it breaks. The block `b-l-folded` sites fuse here, per chomping — the
-   loop productions are `t`-shared where the tail's codes are not — and clip is what needs the mark, its first break
-   retyped apart from the rest.
+   inject the scalar's end ahead of it and leave it breaks. The chomping split is monomorphize's already —
+   `l-literal-content` and `l-folded-content` stand per `t` — and what stays `t`-shared is the callee layer the fusion
+   reaches through, `b-l-folded` at block, `l-empty`, the empties chains. Four capabilities the engine lacks, each its
+   own corpus-held landing, simplest first:
+   - *Trailing empties, strip* — the walk that recurs without converging emitted as a runtime loop (the fold's
+     hand-built empties loop is the shape, derived now rather than hand-cut), rooted under callers that are no longer
+     unique; the divergence read grows the injection — a marker one path emits where the other holds tokens becomes
+     `InjectBefore((end-scalar,), start)` — with no retype and no mark.
+   - *Trailing empties, keep* — the same loop, resolving to `RetypeProvisional(None, line-feed, all)` and no injection,
+     the scalar's end emitted past the commit.
+   - *Trailing empties, clip* — the mark derived: the injection position falls between held tokens, so the walk places
+     `MarkProvisional` where the shared prefix ends, and the resolution is `InjectBefore((end-scalar,), mark)` with
+     `RetypeProvisional(None, line-feed, before_mark)`.
+   - *The opening empties* — the unbounded run before any content, deciding empty-scalar against first-content-line,
+     woven with the auto-detected indent and the `(increase)` floor the leading empties set.
+   - *The block fold fuse* — `b-l-spaced`/`l-nb-spaced-lines` and the block `b-l-folded` sites, the flow fold's read at
+     block indentation, landing last on the machinery above.
 1. The block-structure surgery — the engine's indentation output (the third divergence form under *The synthesis*),
    measuring lines once and guarding the levels. One minted indent scan at each block-context line start consumes a
    line's indentation into one `indent` token, its column measured; every block-structure decision — a sequence or
@@ -315,6 +329,11 @@ hardest facet; and the document prefix and the implicit key land after it, needi
    fused fold scans, the document loops if the surgery leaves them standing, whatever order-only residue remains — a
    staleness net refusing an entry the grammar lost or the analysis has since proved, and a counted line the gate
    prints, like the vendored spec's declared deviations.
+1. The determinizer pointed by detection rather than by name. Each landing above hands the engine a conflict its step
+   names — the fold's `b-l-folded_c_flow-in`, the empties' sites next — which is scaffolding, not the end state: the
+   engine's input is defined as the group the meter flags, so once the landings prove it case by case, the pipeline's
+   determinize step walks every conflict the meter finds and fires on each, and the name lists go. What remains named is
+   what remains declared — the assurance ledger's entries, with their reasons.
 1. The validator made the gate, and the deferred trim-reuse pass.
 
 **The provisional mechanism**, formalized — the one shape every speculation takes. A run is a contiguous stretch of
