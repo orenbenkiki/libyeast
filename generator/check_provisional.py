@@ -3,11 +3,12 @@
 Check that the provisional-run balance net refuses every misuse of a run.
 
 `normalize.provisional_faults` walks the run's state — closed, open, marked — through the call graph and faults where an
-action meets a state it cannot: an open inside a run, a mark outside one or a second mark, a retype or an injection
-outside a run, a marked-region retype or a mark injection where no mark was taken, and a commit with no run. The net is
-the one thing that keeps a speculation's actions balanced before a corpus ever runs, since each is zero-width to every
-other analysis. `check_normalize` runs it on the real grammar and expects none; this runs it on the misuses themselves,
-so a rail that stops guarding fails here rather than passing everything.
+action meets a state it cannot: an open inside a run, a mark outside one, a retype or an injection outside a run, a
+marked-region retype or a mark injection where no mark was taken, and a commit with no run. A mark re-taken within an
+open run is no misuse — it moves, the last taken winning, which is what a line scan spends per line. The net is the one
+thing that keeps a speculation's actions balanced before a corpus ever runs, since each is zero-width to every other
+analysis. `check_normalize` runs it on the real grammar and expects none; this runs it on the misuses themselves, so a
+rail that stops guarding fails here rather than passing everything.
 """
 
 import gate
@@ -50,7 +51,7 @@ CASES = (
     ("balanced without a mark", (_open(), _retype("all"), _inject("start"), _commit()), None),
     ("open inside a run", (_open(), _open(), _commit()), "an OpenProvisional inside"),
     ("mark outside a run", (_mark(),), "a MarkProvisional outside"),
-    ("a second mark", (_open(), _mark(), _mark(), _commit()), "a second MarkProvisional"),
+    ("a re-taken mark", (_open(), _mark(), _mark(), _inject("mark"), _retype("after_mark"), _commit()), None),
     ("retype outside a run", (_retype("all"),), "a RetypeProvisional outside"),
     ("marked-region retype with no mark", (_open(), _retype("before_mark"), _commit()), "marked region with no mark"),
     ("inject outside a run", (_inject("start"),), "an InjectBefore outside"),

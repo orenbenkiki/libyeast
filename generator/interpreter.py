@@ -134,7 +134,7 @@ class Emitter:
         self.tokens = []
         self.run = None  # (code character, start mark, start position) of the open run, or None
         self.provisional = None  # where the open provisional run begins in `tokens`, or None — only one is open
-        self.provisional_mark = None  # where the run's mark cuts `tokens` in two, or None — one mark to a run
+        self.provisional_mark = None  # where the run's mark cuts `tokens` in two, or None — re-taken, the last wins
         self.trail = []  # the provisional undo journal — a retyped code, an injected marker: the only token mutations
         # that are not appends, which a rewind pops to undo what a token-count truncation cannot
         self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it, restoring the
@@ -285,10 +285,10 @@ class Emitter:
         """
         Mark the open run's current position, cutting the held tokens into the region before the mark and the region
         from the mark on — the side a later retype or injection names. Cuts the open character run first, so the mark
-        falls on a token boundary. One mark to a run.
+        falls on a token boundary. Re-taken in a marked run, the mark moves — the last taken wins — and the checkpoint
+        carries the one it replaces, so a rewind restores it.
         """
         assert self.provisional is not None, "a mark outside a provisional run"
-        assert self.provisional_mark is None, "a second mark in one provisional run"
         self.cut()
         self.provisional_mark = len(self.tokens)
 
@@ -414,6 +414,8 @@ def evaluate(expression, emitter, grammar):
         # Every unit in a Match scope is a character — Match feeds only indentation and ordinal arithmetic, which no
         # invalid byte reaches — so its codepoints reconstruct the text the scope consumed.
         return "".join(chr(codepoint) for codepoint in emitter.chars[emitter.match_start : emitter.position])
+    if isinstance(expression, ir.Column):
+        return emitter.mark.column
     if isinstance(expression, ir.Ord):
         return ord(evaluate(expression.arg, emitter, grammar)) - ord("0")  # (ord) is a digit 1-9 to its integer value
     if isinstance(expression, ir.Len):

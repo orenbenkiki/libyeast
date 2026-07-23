@@ -1879,10 +1879,7 @@ def _run_state_after(action, state, name, faults):
         if state == _RUN_CLOSED:
             faults.add(f"{name}: a MarkProvisional outside a run")
             return state
-        if state == _RUN_MARKED:
-            faults.add(f"{name}: a second MarkProvisional in one run")
-            return state
-        return _RUN_MARKED
+        return _RUN_MARKED  # re-taken in a marked run, the mark moves — the last taken wins
     if isinstance(action, ir.RetypeProvisional):
         if state == _RUN_CLOSED:
             faults.add(f"{name}: a RetypeProvisional outside a run")
@@ -1905,13 +1902,13 @@ def _run_state_after(action, state, name, faults):
 
 def provisional_faults(grammar):
     """
-    The provisional-run actions that do not balance: an open inside an open run, a mark outside one or a second mark, a
-    retype or inject outside one, a marked-region retype or a mark injection where no mark was taken, or a production
-    carrying the actions that no root ever reaches. The run is the queue's, one for the whole parse, so its state flows
-    through calls rather than frames: each production maps the states it is entered under to the states it can return
-    in, the fixpoint seeded at the roots — the productions no body references — with no run open. The walk errs wide: a
-    state joins wherever any path could carry it, a recovery is walked from every state its call spans, and a fault here
-    is a step's to avoid, never an input's to trigger.
+    The provisional-run actions that do not balance: an open inside an open run, a mark outside one, a retype or inject
+    outside one, a marked-region retype or a mark injection where no mark was taken, or a production carrying the
+    actions that no root ever reaches. The run is the queue's, one for the whole parse, so its state flows through calls
+    rather than frames: each production maps the states it is entered under to the states it can return in, the fixpoint
+    seeded at the roots — the productions no body references — with no run open. The walk errs wide: a state joins
+    wherever any path could carry it, a recovery is walked from every state its call spans, and a fault here is a step's
+    to avoid, never an input's to trigger.
     """
     faults = set()
     referenced = set()

@@ -107,6 +107,19 @@ class Match:
 
 
 @dataclass(frozen=True)
+class Column:
+    """
+    The current input column, zero-based from the line's start — the machine's own register, for a guard that judges a
+    line whose prefix another production consumed: past that production's frame a `(<<<)` origin is gone, and the column
+    is what stays true of the position itself. Minted by the block-structure surgery, never spelled in the hand-authored
+    grammar.
+    """
+
+    def references(self):
+        return []
+
+
+@dataclass(frozen=True)
 class AutoDetectIndent:
     """
     `<auto-detect-indent>`: the indentation of the next line that holds a character other than a space, less `n`.
@@ -831,7 +844,8 @@ class MarkProvisional:
     """
     A zero-width action that marks the open run's current position, cutting it into the region before the mark and the
     region from the mark on — the side a later `RetypeProvisional` or `InjectBefore` names. One-for-one with
-    `ys_queue_mark_run`; at most one mark to a run. A mark is a parse position, not a property of any token.
+    `ys_queue_mark_run`; a run carries one mark at a time, and taking it again moves it, the last taken winning — how a
+    line scan marks each fresh line. A mark is a parse position, not a property of any token.
     """
 
     def references(self):

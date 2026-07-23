@@ -180,8 +180,10 @@ All notable changes to this project are documented here. The format follows
   each leftover the characters it can go on, one character deeper than the gate the alternatives shared. One round
   reaches the fixpoint: what stands after it differs in its emissions before the decision or is committed to by order —
   the deep end the certificates are still to reach. The provisional run is what reaches past a character: a run of held
-  tokens, its `start` and one `MarkProvisional` cutting it into the region before the mark and the region from it on,
-  opened by `OpenProvisional` and resolved by `CommitProvisional`, with two actions that read it —
+  tokens, its `start` and a `MarkProvisional` cutting it into the region before the mark and the region from it on —
+  re-taken within a run the mark moves, the last taken winning, what a line scan spends per fresh line, and beside the
+  `(match)` scope stands `Column`, the machine's own zero-based column for a guard judging a line whose prefix another
+  production consumed — opened by `OpenProvisional` and resolved by `CommitProvisional`, with two actions that read it —
   `RetypeProvisional(rest, breaks, region)` rewriting the held tokens in a region by kind, a break-consumed token to one
   code, any other to the second, `None` keeping a kind its own; and `InjectBefore(codes, at)` inserting decided markers,
   in order, at the run's start or its mark. One obligation makes the mechanism sound: no held token is dropped or grown,

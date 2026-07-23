@@ -287,29 +287,37 @@ implicit key land after, spending the same shared scan.
 1. The block-structure substrate — the surgery, first, because every speculation that ends at an indented dedent needs
    it (the engine's indentation output, the third divergence form under *The synthesis*). The line's indentation is
    consumed once, held, and owned by whoever the line turns out to belong to, each exiting level placing its own end
-   markers ahead of it. The mechanics, each its own corpus-held landing, sequences first:
-   - *The mark re-taken.* `MarkProvisional` may be re-taken within an open run, the last taken winning; the runtime
-     journals the mark it replaces, so backtracking rewinds through a re-take as through any provisional action, and the
-     balance net's `marked` state admits it. Lands first, being a mechanism change that is corpus-neutral until a site
-     spends it.
+   markers ahead of it. The scan is shared or it is nothing: a construct surgered alone eats a dedent line's spaces that
+   its unsurgered parent still expects to consume, and the old consuming path is no longer there to backtrack into — so
+   the grammar flip is one transform over every block loop head, corpus-held as a whole, and everything before it lands
+   corpus-neutral or family-green in preparation. The mechanics, in landing order:
+   - *The mark re-taken* — landed. `MarkProvisional` re-taken within an open run moves the mark, the last taken winning;
+     the checkpoint carries the one it replaces, and the balance net's `marked` state admits the move.
+   - *Column guards.* Cross-production reads kill the `(<<<)` origin — the outer loop judges the same line after the
+     scan's frame is gone — so the guards read the machine's own column register: a `Column` expression beside `Match`,
+     compared by the existing `Lt`/`Le` against each frame's `n`. The interpreter reads its position's column; the C
+     runtime already tracks one. Corpus-neutral until a site spends it.
    - *The line run.* One minted scan at each block-context line start opens a provisional run where none is open, takes
-     the mark, and consumes the line's indentation into one held `indent` token, its column measured off a `(<<<)`
-     origin set at the line's start — the fold's minted line scan promoted to shared substrate. Inside a longer
-     speculation the run already stands: the scan then only re-takes the mark and holds the indent in it.
+     the mark, and consumes the line's spaces split at the innermost active level's `n` — up to it one held `indent`
+     span, beyond it `white`, the boundary fixed at consume time as the obligation demands, and the fold's hand-built
+     scan already splits exactly there. A dedent line is simply a shorter indent token, its code agreeing in every
+     reading. Inside a longer speculation the run already stands: the scan then only re-takes the mark and holds the
+     spans in it.
    - *Guards, not consumes.* Every block-structure decision at that line start — a sequence or mapping entry, a compact,
-     every nested loop's exit — becomes a character gate with `IndentEq`/`IndentLt` guards against the measured column,
-     zero-width and stack-free, so a dedent of any depth is guard refusals falling through with nothing consumed and
-     nothing to re-attribute. The complementary-guard lemma is the certificate these need, already landed; the
-     vocabulary named the guards from the start.
+     every nested loop's exit — becomes a character gate with `Column` guards against each frame's level, zero-width and
+     stack-free, so a dedent of any depth is guard refusals falling through with nothing consumed and nothing to
+     re-attribute. The complementary-guard lemma is the certificate these need, already landed.
    - *Exits inject at the mark.* Each level's minted exit alternative carries that level's own end markers as
      `InjectBefore((…), mark)` — static per level, a dedent across several levels piling them up before the held indent
      in exit order, which is the reference's order. The markers move there from the return continuations that spell them
      as `Emit`s, the exit path skipping those; no emission is auto-redirected, an implicit key's held scalar markers
      being exactly the emissions that must stay where they fire.
    - *The owner commits.* The first level whose guard holds owns the line: its continue alternative commits the run —
-     the held indent decided as its own — and proceeds past it, consumed-prefix style, never re-consuming. Covers the
-     `l+block-mapping`/`l+block-sequence` loops, the compacts, `s-l+block-collection`/`s-l+block-indented`, and both
-     indentation gotchas — the zero-indent sequence in a mapping, and flow suspending indentation.
+     the held indent decided as its own — and proceeds past it, consumed-prefix style, never re-consuming.
+   - *The flip.* The one transform over all the block loop heads at once — the `l+block-mapping`/`l+block-sequence`
+     loops, the compacts, `s-l+block-collection`/`s-l+block-indented`, and both indentation gotchas, the zero-indent
+     sequence in a mapping and flow suspending indentation — prepared family by family, sequences first, each family's
+     rewrite proved against the reference before the flip, and the corpus judging the whole.
 1. The block scalar's empty lines, opening and trailing alike, riding the substrate: the run holds the breaks and the
    line runs' indents across lines, each line start re-taking the mark, and resolves either into content or into the
    scalar's end injected ahead of it. The chomping split is monomorphize's already — `l-literal-content` and
