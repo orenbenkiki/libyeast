@@ -275,8 +275,10 @@ guarantees, lowered to a single comparison.
 **Determinize, what remains.** The meter counts 246 of 1592 productions still backtracking, over 78 distinct base names
 — every one of them this phase's, driven to none, at which point the meter becomes a gate. They fall into the landings
 below, one at a time, each corpus-diffed. The speculations among them are the deep end, and they are one piece of work
-rather than several: the five cases spend one vocabulary, formalized under *The provisional mechanism*, so the mechanism
-lands once and each site is then a table row and a rewrite.
+rather than several: the five cases spend one vocabulary, formalized under *The provisional mechanism*, and are produced
+by one determinizer rather than hand-cut, described under *The synthesis*. The block scalar's empties are that engine's
+first live target; the fold is its calibration; the block-structure surgery is the same engine's indentation output, its
+hardest facet; and the document prefix and the implicit key land after it, needing its shared indent scan.
 
 1. The document-prefix speculation — the positional injection's first exercise. The comment loops between documents hold
    whites both readings claim: the spans agree, and what the decision settles is their codes and where the markers stand
@@ -293,12 +295,13 @@ lands once and each site is then a table row and a rewrite.
    inject the scalar's end ahead of it and leave it breaks. The block `b-l-folded` sites fuse here, per chomping — the
    loop productions are `t`-shared where the tail's codes are not — and clip is what needs the mark, its first break
    retyped apart from the rest.
-1. The block-structure surgery — measure lines once, guard the levels. One minted indent scan at each block-context line
-   start consumes a line's indentation into one `indent` token, its column measured; every block-structure decision — a
-   sequence or mapping entry, a compact, every nested loop's exit — stops consuming indentation and becomes a character
-   gate with `IndentEq`/`IndentLt` guards, zero-width and stack-free, so a dedent of any depth is guard refusals falling
-   through with nothing consumed and nothing to re-attribute. The complementary-guard lemma is the certificate these
-   need, already landed; the vocabulary named the guards from the start. Covers the `l+block-mapping`/`l+block-sequence`
+1. The block-structure surgery — the engine's indentation output (the third divergence form under *The synthesis*),
+   measuring lines once and guarding the levels. One minted indent scan at each block-context line start consumes a
+   line's indentation into one `indent` token, its column measured; every block-structure decision — a sequence or
+   mapping entry, a compact, every nested loop's exit — stops consuming indentation and becomes a character gate with
+   `IndentEq`/`IndentLt` guards, zero-width and stack-free, so a dedent of any depth is guard refusals falling through
+   with nothing consumed and nothing to re-attribute. The complementary-guard lemma is the certificate these need,
+   already landed; the vocabulary named the guards from the start. Covers the `l+block-mapping`/`l+block-sequence`
    loops, the compacts, `s-l+block-collection`/`s-l+block-indented`, and both indentation gotchas — the zero-indent
    sequence in a mapping, and flow suspending indentation — several landings, sequences first.
 1. Per-site separation fusions where a decision hides past optional separation and the paths do not reconverge — the
@@ -390,9 +393,57 @@ a marked run as it does through any other.
 1. *The block scalar's empties*, opening and trailing alike, want the loop productions split per chomping first — they
    are `t`-shared where the tail's codes are not — after which each branch's resolution is one row above.
 
-What is left to prove is coverage: the rows are read off hand-built inputs, and no site is known to want a second mark
-or a second injection position. The corpus is what settles that, and the balance net is what refuses one appearing
-quietly.
+**The synthesis — the provisional productions are derived, not hand-cut.** Each speculation above is the output of one
+determinizer, not a bespoke rewrite. The input is the group the meter flags: the live alternatives rooted at an
+overlapping-gate choice point, pruned to the minimal set no gate can separate — by definition where non-determinism
+lives, since a single alternative decides nothing. The output is the provisional-mechanism equivalent. The method is
+subset construction: walk the live alternatives in lockstep on the input, and read the divergence between them, which is
+always one of four and each maps to one output —
+
+- a character all paths consume over the same span but under different codes is held, and retyped at resolution to the
+  surviving path's own code for it;
+- a zero-width marker some paths emit and others do not, or emit at a position that falls before an already-held token,
+  is deferred and injected at resolution — the run's start where it precedes every held token, the mark where it stands
+  between them, in the surviving path's own order;
+- a space one path consumes as more indentation where another has reached its level is the same character read as an
+  indent comparison — space against the first non-space — and resolves not to a held token but to an `IndentEq`/
+  `IndentLt` guard on the measured column, the indent consumed once and nothing held, since only whether more indent
+  follows diverges, never its code;
+- the character on which the paths' gates first differ is the discriminator, where the run commits to the one path that
+  survives it.
+
+The first two outputs are the provisional actions; the third is a guard. So it is one divergence analysis with two kinds
+of output, not two mechanisms — a token's code or presence diverging holds and injects, a position against a level
+diverging guards.
+
+None of it is a hint. The conflict root, the held token, the retype code, the injected markers with their order and
+side, and the mark itself are each read off the grammar's own alternatives. The mark and the injections are actions
+placed at the one structural boundary the walk finds — where the shared prefix ends — and at runtime each records the
+live queue position on its own, so nothing counts tokens or threads an index: the placement in the production is the
+position. The walk either converges to a straight-line region or recurs without converging, which is the signal for a
+runtime loop rather than a fault — the block scalar's opening empties the unbounded case, the fold's scan the bounded
+one.
+
+The block-structure surgery is not a second mechanism beside the engine — it is the engine's indentation output, the
+third divergence form above, applied to the block-collection loops, where continue-vs-exit is a space against the first
+non-space at the collection's level. Two things make it the hardest facet rather than a free one, and keep it a distinct
+body of work under the one principle. A dedent can cross several nested loops on one character — the inner sequence
+exits and the outer continues at the same `-` — so to stay committed the indent must be consumed once at the line start
+and read by zero-width guards across all the nested loops, a scan *shared* between conflicts the engine otherwise
+resolves one at a time, not the local fix a single-level fold needs. And the level itself is auto-detected: `n+m` is set
+by the first entry, so the column the guard compares against is established by the run rather than fixed at synthesis.
+The flow fold, the plain scalar's next line, and the block scalar's empties are pure output-deferral and need none of
+this; the document prefix and the implicit key need the shared scan, so they land after it. The engine's output is held
+to the nets already standing — `deterministic_productions` certifies each decision one-character-decidable, and the
+hybrid corpus proves the stream identical — so a wrong synthesis fails loud, never silent, and needs no proof of the
+engine beyond the certificate on its result.
+
+It is calibrated against the fold, whose hand-built `speculate-folds` is the known-correct oracle: the engine re-derives
+its held break and its `line-fold` retype from the raw conflict, hint-free. It is fired first at the block scalar's
+empties — the hardest case it resolves alone: an unbounded run, the clip/keep/strip retype split, the injected
+`end-scalar`. One mark to a run is assumed to suffice, and no site is known to want divergent markers at two boundaries;
+were one to, the mark would take an index and the injection would name it, but the balance net refuses a second mark, so
+the assumption fails loud rather than quietly. The corpus is what settles coverage.
 
 **The validator** is the target invariant and equals "done": every production is a terminal char-set or an ordered list
 of canonical alternatives; no `Star`/`Plus`/`Opt`/`Rep`/`Look`/`NegLook`/`Diff`/`Token`/`Wrap`/`Case` survives; every
