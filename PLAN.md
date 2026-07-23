@@ -276,10 +276,55 @@ guarantees, lowered to a single comparison.
 — every one of them this phase's, driven to none, at which point the meter becomes a gate. They fall into the landings
 below, one at a time, each corpus-diffed. The speculations among them are the deep end, and they are one piece of work
 rather than several: the five cases spend one vocabulary, formalized under *The provisional mechanism*, and are produced
-by one determinizer rather than hand-cut, described under *The synthesis*. The block scalar's empties are that engine's
-first live target; the fold is its calibration; the block-structure surgery is the same engine's indentation output, its
-hardest facet; and the document prefix and the implicit key land after it, needing its shared indent scan.
+by one determinizer rather than hand-cut, described under *The synthesis*. The fold is the engine's calibration; the
+block-structure substrate — the line run and its measured column — lands first among what remains, because every
+trailing run that can end at an indented dedent hands its last line to a parent: the reference puts each exiting
+construct's end markers before the dedent line's spaces, and the parent then consumes those spaces as its own
+indentation, so a site-local committed scan that ate them has taken tokens whose markers and owner it cannot restore.
+The block scalar's empties ride the substrate as the engine's first speculation target; the document prefix and the
+implicit key land after, spending the same shared scan.
 
+1. The block-structure substrate — the surgery, first, because every speculation that ends at an indented dedent needs
+   it (the engine's indentation output, the third divergence form under *The synthesis*). The line's indentation is
+   consumed once, held, and owned by whoever the line turns out to belong to, each exiting level placing its own end
+   markers ahead of it. The mechanics, each its own corpus-held landing, sequences first:
+   - *The mark re-taken.* `MarkProvisional` may be re-taken within an open run, the last taken winning; the runtime
+     journals the mark it replaces, so backtracking rewinds through a re-take as through any provisional action, and the
+     balance net's `marked` state admits it. Lands first, being a mechanism change that is corpus-neutral until a site
+     spends it.
+   - *The line run.* One minted scan at each block-context line start opens a provisional run where none is open, takes
+     the mark, and consumes the line's indentation into one held `indent` token, its column measured off a `(<<<)`
+     origin set at the line's start — the fold's minted line scan promoted to shared substrate. Inside a longer
+     speculation the run already stands: the scan then only re-takes the mark and holds the indent in it.
+   - *Guards, not consumes.* Every block-structure decision at that line start — a sequence or mapping entry, a compact,
+     every nested loop's exit — becomes a character gate with `IndentEq`/`IndentLt` guards against the measured column,
+     zero-width and stack-free, so a dedent of any depth is guard refusals falling through with nothing consumed and
+     nothing to re-attribute. The complementary-guard lemma is the certificate these need, already landed; the
+     vocabulary named the guards from the start.
+   - *Exits inject at the mark.* Each level's minted exit alternative carries that level's own end markers as
+     `InjectBefore((…), mark)` — static per level, a dedent across several levels piling them up before the held indent
+     in exit order, which is the reference's order. The markers move there from the return continuations that spell them
+     as `Emit`s, the exit path skipping those; no emission is auto-redirected, an implicit key's held scalar markers
+     being exactly the emissions that must stay where they fire.
+   - *The owner commits.* The first level whose guard holds owns the line: its continue alternative commits the run —
+     the held indent decided as its own — and proceeds past it, consumed-prefix style, never re-consuming. Covers the
+     `l+block-mapping`/`l+block-sequence` loops, the compacts, `s-l+block-collection`/`s-l+block-indented`, and both
+     indentation gotchas — the zero-indent sequence in a mapping, and flow suspending indentation.
+1. The block scalar's empty lines, opening and trailing alike, riding the substrate: the run holds the breaks and the
+   line runs' indents across lines, each line start re-taking the mark, and resolves either into content or into the
+   scalar's end injected ahead of it. The chomping split is monomorphize's already — `l-literal-content` and
+   `l-folded-content` stand per `t`; what stays `t`-shared is the callee layer the fusion reaches through, `b-l-folded`
+   at block, `l-empty`, the empties chains. Per chomping, re-read off the reference at landing: under strip the run
+   opens before the chomped last break, `end-scalar` injected at `start`, no retype where the scalar ends and every
+   break to `line-feed` where content follows; under clip the last content break is `line-feed` in both readings, so the
+   run opens past it and strip's shape follows — the static mark the table below gives clip is expected to dissolve;
+   under keep both readings spell every break `line-feed`, so what remains to decide may be the line runs alone. A
+   dedent exit is the substrate's: each level injects its own end markers at the mark, and the parent owns the last
+   line. The engine work riding along: rooting under callers that are not unique, the injection read off the divergence
+   — a marker one path emits where the other holds tokens — and the non-converging walk emitted as the runtime loop the
+   fold's hand-built empties loop already shapes. The opening empties weave in the auto-detected indent and the
+   `(increase)` floor the leading empties set; the block fold fuse — `b-l-spaced`/`l-nb-spaced-lines`, the block
+   `b-l-folded` sites — lands last on all of it.
 1. The document-prefix speculation — the positional injection's first exercise. The comment loops between documents hold
    whites both readings claim: the spans agree, and what the decision settles is their codes and where the markers stand
    — `white` where a comment line owns the whites, `indent` where a block collection does, with `begin-document` and the
@@ -291,33 +336,6 @@ hardest facet; and the document prefix and the implicit key land after it, needi
    and the implicit-key sites.
 1. The plain scalar's next line — whether a multi-line scalar continues at all, the same held-break read, landing with
    the key's since both resolve at a line's end.
-1. The block scalar's empty lines, opening and trailing alike: hold the run, and on resolution either make it content or
-   inject the scalar's end ahead of it and leave it breaks. The chomping split is monomorphize's already —
-   `l-literal-content` and `l-folded-content` stand per `t` — and what stays `t`-shared is the callee layer the fusion
-   reaches through, `b-l-folded` at block, `l-empty`, the empties chains. Four capabilities the engine lacks, each its
-   own corpus-held landing, simplest first:
-   - *Trailing empties, strip* — the walk that recurs without converging emitted as a runtime loop (the fold's
-     hand-built empties loop is the shape, derived now rather than hand-cut), rooted under callers that are no longer
-     unique; the divergence read grows the injection — a marker one path emits where the other holds tokens becomes
-     `InjectBefore((end-scalar,), start)` — with no retype and no mark.
-   - *Trailing empties, keep* — the same loop, resolving to `RetypeProvisional(None, line-feed, all)` and no injection,
-     the scalar's end emitted past the commit.
-   - *Trailing empties, clip* — the mark derived: the injection position falls between held tokens, so the walk places
-     `MarkProvisional` where the shared prefix ends, and the resolution is `InjectBefore((end-scalar,), mark)` with
-     `RetypeProvisional(None, line-feed, before_mark)`.
-   - *The opening empties* — the unbounded run before any content, deciding empty-scalar against first-content-line,
-     woven with the auto-detected indent and the `(increase)` floor the leading empties set.
-   - *The block fold fuse* — `b-l-spaced`/`l-nb-spaced-lines` and the block `b-l-folded` sites, the flow fold's read at
-     block indentation, landing last on the machinery above.
-1. The block-structure surgery — the engine's indentation output (the third divergence form under *The synthesis*),
-   measuring lines once and guarding the levels. One minted indent scan at each block-context line start consumes a
-   line's indentation into one `indent` token, its column measured; every block-structure decision — a sequence or
-   mapping entry, a compact, every nested loop's exit — stops consuming indentation and becomes a character gate with
-   `IndentEq`/`IndentLt` guards, zero-width and stack-free, so a dedent of any depth is guard refusals falling through
-   with nothing consumed and nothing to re-attribute. The complementary-guard lemma is the certificate these need,
-   already landed; the vocabulary named the guards from the start. Covers the `l+block-mapping`/`l+block-sequence`
-   loops, the compacts, `s-l+block-collection`/`s-l+block-indented`, and both indentation gotchas — the zero-indent
-   sequence in a mapping, and flow suspending indentation — several landings, sequences first.
 1. Per-site separation fusions where a decision hides past optional separation and the paths do not reconverge — the
    properties' separate-then-tag, the flow key and value entries' separate-then-indicator — each read at its site, fused
    fold-style without a retype where the separation's codes agree either way. That agreement is read off the reference
@@ -344,17 +362,17 @@ characters. So the readings a run decides between must agree token for token and
 between them must be a zero-width marker — that is the mechanism's one obligation, and the cases below are where each
 speculation discharges it.
 
-**The positions.** A run has a `start`, where it opened, and may take one `mark` inside it; the two cut the held tokens
-into the region before the mark and the region from the mark on. One mark to a run is what every case needs. A mark is a
-parse position, recorded where its action stands, and not a property of any token — two of the three cases that take one
-stand just past the first break, and the third stands past a line's whites, in a run holding no break at all.
+**The positions.** A run has a `start`, where it opened, and may take a `mark` inside it; the two cut the held tokens
+into the region before the mark and the region from the mark on. A run carries one mark at a time, and taking it again
+moves it — the last taken wins, which is how a line scan marks each fresh line and the line that resolves the run is the
+one whose mark stands. A mark is a parse position, recorded where its action stands, and not a property of any token.
 
 **The actions.**
 
 - `OpenProvisional` opens a run at the queue's current position. A second open inside an open run is a fault; runs never
   nest.
-- `MarkProvisional` records the queue's current position as the run's mark. Outside a run, or a second time within one,
-  it is a fault.
+- `MarkProvisional` records the queue's current position as the run's mark, replacing the one it holds — the last taken
+  wins. Outside a run it is a fault.
 - `InjectBefore(codes, at)` inserts `codes` — a tuple of zero-width markers, in order — at `at`, the run's `start` or
   its `mark`. What it inserts is decided at once: not held, and reached by no later retype, which is what makes an
   injection at the mark unambiguous, landing past everything before the mark and ahead of everything after it. Injecting
@@ -374,13 +392,13 @@ key at all, a key being one line by the spec's own restriction, so the break tha
 that resolves the prefix's.
 
 **The balance net** grows to match: its walk carries `closed`, `open` and `marked` where it carried a third state for
-the one injection a run was allowed, and faults on an open inside a run, a mark outside one or a second mark, a retype
-or an injection outside a run, a marked region or a mark injection where no mark was taken, and a commit with no run
-open. The one-injection-to-a-run limit goes; the tuple and the two positions are what it had stood in for.
+the one injection a run was allowed, and faults on an open inside a run, a mark outside one, a retype or an injection
+outside a run, a marked region or a mark injection where no mark was taken, and a commit with no run open. The
+one-injection-to-a-run limit goes; the tuple and the two positions are what it had stood in for.
 
 **The runtime** follows: `ys_queue_inject` takes the position and the tuple, and the interpreter's undo trail — which
-journals a retype, an injection and where the run stood — journals the mark beside them, so backtracking rewinds through
-a marked run as it does through any other.
+journals a retype, an injection and where the run stood — journals each mark beside them, a re-take undone to the mark
+it replaced, so backtracking rewinds through a marked run as it does through any other.
 
 **The cases, part one — what each resolves to under the formalism.** Every row is read off the reference interpreter.
 
@@ -458,9 +476,10 @@ engine beyond the certificate on its result.
 It is calibrated against the fold, whose hand-built `speculate-folds` is the known-correct oracle: the engine re-derives
 its held break and its `line-fold` retype from the raw conflict, hint-free. It is fired first at the block scalar's
 empties — the hardest case it resolves alone: an unbounded run, the clip/keep/strip retype split, the injected
-`end-scalar`. One mark to a run is assumed to suffice, and no site is known to want divergent markers at two boundaries;
-were one to, the mark would take an index and the injection would name it, but the balance net refuses a second mark, so
-the assumption fails loud rather than quietly. The corpus is what settles coverage.
+`end-scalar`. One static mark to a run was assumed to suffice, and the trailing empties' dedent exit is the site that
+proved otherwise — end markers wanted at the last line's boundary, a spot only hindsight names — which is what the
+re-taken mark is for: the line scan marks each fresh line, the last taken wins, and one position serves every line-end
+boundary a run can resolve at. The corpus is what settles coverage.
 
 **The validator** is the target invariant and equals "done": every production is a terminal char-set or an ordered list
 of canonical alternatives; no `Star`/`Plus`/`Opt`/`Rep`/`Look`/`NegLook`/`Diff`/`Token`/`Wrap`/`Case` survives; every
