@@ -144,22 +144,35 @@ All notable changes to this project are documented here. The format follows
   the unwind searches the stack for the nearest recovery-carrying frame, and the parse resumes at that frame's return as
   though the guarded call had matched — which is why a recovery rides the push where a message brackets a region. With
   it the residue is fully spelled: no scope and no repetition stands where the canonical form wants a gate, an action or
-  a call, and the count the check keeps is the net that puts a leftover back on the board. `gate-hoist` then gives an
-  alternative that goes on a call the characters that call can begin with, so the decision is made where it is taken
-  rather than one production down — a first set falls straight out of the shaped form, being the union of a production's
-  alternatives' peeks. A union too wide is safe, since the peek only has to hold wherever the call could match, and one
-  that cannot be pinned down leaves the gate as it was; an alternative whose actions reach a `(cut)` before the call is
-  left alone, since the cut has committed and a gate refusing first would take that commitment away. A character to go
-  on is carried by 1125 of the 1803 alternatives that consume or call; the 678 without one are determinize's to give. An
-  alternative the call hoisting cannot reach — a nullable callee, a run before the call, a chain of both — is peeked as
-  its whole begin set, actions, call and continuation together, where that is pinned down and cannot match empty: an
-  empty match must stay enterable with no character left to peek, so a nullable alternative keeps its empty gate for the
-  follow-set certificate to decide. A hoisted gate makes the decision the production it calls used to make — where the
-  character is not one that call can begin with, the call never happens — so the coverage gate counts the gate saying no
-  as that production saying no, or gating a rule correctly would make it look untested. The coverage gate holds a minted
-  helper covered by the base it came from, as it does a monomorphic copy: a helper is a piece of the base's own body
-  moved, so requiring more of it than of the body it came from would ask the corpus for what the untransformed grammar
-  never needed. Determinism is then tracked production by production rather than claimed all at once:
+  a call, and the count the check keeps is the net that puts a leftover back on the board. `refine-indents` then turns
+  each exact-count indentation call into the one maximal scan judged after the fact, in the shape `s-indent-le` already
+  spells: an alternative calling `s-indent(k)` with a continuation behind it takes
+  `PushCode(indent) OpenMatch ConsumeSpan(space) Le·Le CloseMatch PopCode` inline — the count an equality on the scan's
+  own `(match)` measure — and promotes the continuation to the call, wherever the continuation's first set is pinned,
+  excludes the space, and cannot match empty, so the maximal scan steals nothing an exact count would have left. Counted
+  consumes of different `k` share no literal prefix; refined, they are the identical scan with the counts as residual
+  guards, which is what the prefix factoring needs to see. `factor-prefixes` grew two admissions to match, each locally
+  checked: an identical maximal scan joins the prefix where every leftover's first set is pinned, cannot match empty,
+  and excludes the scanned set — a shorter run then leaves a character no leftover admits, so the maximal run is the
+  only one that proceeds and the factoring reorders nothing, a condition the refined indents meet by construction — and
+  a `(match)` scope's opening joins with its origin passed where the split cuts the pair: a leftover closing a scope the
+  prefix opened declares `match_start` and is handed the caller's own, the `code` parameter's exact twin, so its close
+  restores what the unfactored close restored. `gate-hoist` then gives an alternative that goes on a call the characters
+  that call can begin with, so the decision is made where it is taken rather than one production down — a first set
+  falls straight out of the shaped form, being the union of a production's alternatives' peeks. A union too wide is
+  safe, since the peek only has to hold wherever the call could match, and one that cannot be pinned down leaves the
+  gate as it was; an alternative whose actions reach a `(cut)` before the call is left alone, since the cut has
+  committed and a gate refusing first would take that commitment away. A character to go on is carried by 1125 of the
+  1803 alternatives that consume or call; the 678 without one are determinize's to give. An alternative the call
+  hoisting cannot reach — a nullable callee, a run before the call, a chain of both — is peeked as its whole begin set,
+  actions, call and continuation together, where that is pinned down and cannot match empty: an empty match must stay
+  enterable with no character left to peek, so a nullable alternative keeps its empty gate for the follow-set
+  certificate to decide. A hoisted gate makes the decision the production it calls used to make — where the character is
+  not one that call can begin with, the call never happens — so the coverage gate counts the gate saying no as that
+  production saying no, or gating a rule correctly would make it look untested. The coverage gate holds a minted helper
+  covered by the base it came from, as it does a monomorphic copy: a helper is a piece of the base's own body moved, so
+  requiring more of it than of the body it came from would ask the corpus for what the untransformed grammar never
+  needed. Determinism is then tracked production by production rather than claimed all at once:
   `deterministic_productions` names every production whose decisions are statically proved one-gate-decidable — a
   terminal and a single-alternative choice decide nothing, and alternatives peeking pairwise-disjoint character sets can
   hold at most one gate, so committing to the first that holds is the parse backtracking finds; a guard on a gate only

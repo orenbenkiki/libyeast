@@ -511,7 +511,7 @@ pipeline introduces and given a second mode. It is a slow, backtracking executor
 non-issue — and it runs in two modes off one flag:
 
 - **Backtracking mode** is the baseline. Diff its token stream before and after *every* step against the yaml-test
-  suite; a step that changes any output is rejected. This is the net for all 27 steps, and the interpreter doubles as an
+  suite; a step that changes any output is rejected. This is the net for all 28 steps, and the interpreter doubles as an
   early differential oracle against YamlReference.
 - **Committed mode** respects the gates and never backtracks. After the determinize steps, both modes must agree on the
   corpus; a divergence means a gate is not commit-safe — the one thing the structural invariants and the backtracking

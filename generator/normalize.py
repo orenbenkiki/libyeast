@@ -708,6 +708,7 @@ _CODE_OPEN, _CODE_CLOSE = ir.PushCode, ir.PopCode
 _OPENS = (ir.OpenMatch, ir.OpenWindow)
 _CLOSES = (ir.CloseMatch, ir.CloseWindow)
 CODE = "code"  # the parameter a helper declares to be handed the run code its caller was entered under
+MATCH_START = "match_start"  # its `(match)`-origin twin: a helper closing a scope its caller opened restores this
 
 
 def _needs_code(items):
@@ -717,6 +718,22 @@ def _needs_code(items):
         if isinstance(item, _CODE_OPEN):
             depth += 1
         elif isinstance(item, _CODE_CLOSE):
+            depth -= 1
+            if depth < 0:
+                return True
+    return False
+
+
+def _needs_origin(items):
+    """
+    Whether `items` closes a `(match)` scope it does not open — so a helper holding them must be passed the origin: its
+    entry stamps `match_start` with the scope already open, and only the declared parameter restores the caller's own.
+    """
+    depth = 0
+    for item in items:
+        if isinstance(item, ir.OpenMatch):
+            depth += 1
+        elif isinstance(item, ir.CloseMatch):
             depth -= 1
             if depth < 0:
                 return True
@@ -1027,6 +1044,53 @@ def lower_recovers(grammar, namer):
             body = ir.Choice(tuple(lowered(name, production, alternative) for alternative in body.alternatives))
         result[name] = dataclasses.replace(production, body=body)
     result.update(minted)
+    return result
+
+
+def refine_indents(grammar, namer):
+    """
+    Refine each exact-count indentation call into the one maximal scan judged after the fact, in the grammar's own
+    spelling — the shape `s-indent-le` already is: an alternative whose call is `s-indent(k)` with a continuation behind
+    it takes the scan inline, `PushCode(indent) OpenMatch ConsumeSpan(space) Le(Len(Match), k) Le(k, Len(Match))
+    CloseMatch PopCode`, and the continuation is promoted to the call. The measure is the scan's own `(match)` scope, so
+    the rewrite reads only this alternative and the FIRST table. One side condition, mechanically checked, and a site
+    failing it is left alone: the continuation's first set is pinned, excludes the space, and cannot match empty — so
+    the maximal scan steals nothing an exact count would have left, a longer run failing the guard exactly where the
+    count came up short, and a leftover space refusing the continuation exactly as it did. Stream-faithful where it
+    applies: accepting paths consume the same spaces under the same `indent` code, one token either way. Counted
+    consumes of different `k` share no literal prefix; refined, they are the identical scan, and the differing counts
+    are residual guards for the prefix factoring to leave behind.
+    """
+    first = _first_table(grammar)
+    space = 0x20
+
+    def refined(alternative):
+        reference = alternative.first
+        if reference is None or reference.name != "s-indent" or alternative.second is None:
+            return alternative
+        begins, nullable = first.get(alternative.second.name, (None, True))
+        if begins is None or nullable or any(low <= space <= high for low, high in begins):
+            return alternative
+        [level] = reference.args
+        scan = (
+            ir.PushCode(code="indent"),
+            ir.OpenMatch(),
+            ir.ConsumeSpan(set=ir.Ref(name="s-space", args=())),
+            ir.Le(a=ir.Len(arg=ir.Match()), b=level),
+            ir.Le(a=level, b=ir.Len(arg=ir.Match())),
+            ir.CloseMatch(),
+            ir.PopCode(),
+        )
+        return dataclasses.replace(
+            alternative, actions=alternative.actions + scan, first=alternative.second, second=None
+        )
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = ir.Choice(tuple(refined(alternative) for alternative in body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
     return result
 
 
@@ -1492,7 +1556,7 @@ def split_conflicts(grammar, namer):
 
 # Where a common prefix must stop: a frame-scoped pair's half, which a helper may not hold alone, and a length-ambiguous
 # run, whose backtracking order a factoring must not reshuffle.
-_PREFIX_STOP = (ir.OpenMatch, ir.OpenWindow, ir.CloseMatch, ir.CloseWindow, ir.ConsumeSpan, ir.ConsumeTrimmedSpan)
+_PREFIX_STOP = (ir.OpenWindow, ir.CloseMatch, ir.CloseWindow, ir.ConsumeTrimmedSpan)
 # The fixed-width consumes a prefix may hold: each takes exactly what it takes or fails, identically in every
 # alternative that shares it, so factoring it out reorders nothing.
 _PREFIX_CONSUMES = (ir.ConsumeChar, ir.ConsumeLiteral, ir.ConsumeCountedSpan)
@@ -1503,13 +1567,38 @@ def factor_prefixes(grammar, namer):
     Factor the common prefix out of every choice whose alternatives all peek the same characters — the shape
     `split-conflicts` confines an overlap to. The prefix is the longest run of identical leading actions that are
     zero-width or fixed-width consumes; a length-ambiguous run stops it, backtracking over it being an order a factoring
-    must not reshuffle, as does a frame-scoped pair's half. It must consume at least the peeked character, or nothing
-    would move past the shared gate. What remains of each alternative — leftover actions, calls and recovery — moves to
-    a minted `_<N>` decision production the prefix calls, alternatives in their order, handed the code where a leftover
-    closes a `(token)` the prefix opened; the gate hoisting then gives each leftover the characters it can go on, one
-    character deeper than the gate the alternatives shared.
+    must not reshuffle, as does a `(max)` window's edge. Two admissions reach further, each locally checked. An
+    identical maximal scan joins where every leftover's first set is pinned, cannot match empty, and excludes the
+    scanned set: a run cut short leaves a set character at the head, which no leftover then admits, so the maximal run
+    is the only one that proceeds and the factoring reorders nothing — the refined indents satisfy this by construction,
+    their own side condition being the same check. And a `(match)` scope's opening joins, its origin passed where the
+    split cuts the pair: a leftover closing a scope the prefix opened declares `match_start` and is handed the caller's
+    own, the `code` parameter's exact twin, so its close restores what the unfactored close restored. It must consume at
+    least the peeked character, or nothing would move past the shared gate. What remains of each alternative — leftover
+    actions, calls and recovery — moves to a minted `_<N>` decision production the prefix calls, alternatives in their
+    order; the gate hoisting then gives each leftover the characters it can go on, one character deeper than the gate
+    the alternatives shared.
     """
     minted = {}
+    first = _first_table(grammar)
+
+    def first_of(reference):
+        return first[reference]
+
+    def one_outcome(action, alternatives, depth):
+        # The scan's admission: every leftover past it must begin off the scanned set, pinned and never empty — a
+        # shorter run leaves a set character at the head, which no leftover then admits.
+        scanned = _peek_spans(action.set, grammar)
+        if scanned is None:
+            return False
+        for alternative in alternatives:
+            remainder = dataclasses.replace(
+                alternative, gate=ir.Gate(None, ()), actions=alternative.actions[depth + 1 :]
+            )
+            begins, nullable = _alternative_first(remainder, grammar, first_of)
+            if begins is None or nullable or _spans_overlap(begins, scanned):
+                return False
+        return True
 
     def factor(name, production):
         body = production.body
@@ -1524,10 +1613,13 @@ def factor_prefixes(grammar, namer):
             action = elements[0]
             if any(element != action for element in elements[1:]) or isinstance(action, _PREFIX_STOP):
                 break
-            if not isinstance(action, _ZERO_WIDTH) and not isinstance(action, _PREFIX_CONSUMES):
+            if isinstance(action, ir.ConsumeSpan):
+                if not one_outcome(action, alternatives, len(prefix)):
+                    break
+            elif not isinstance(action, _ZERO_WIDTH) and not isinstance(action, _PREFIX_CONSUMES):
                 break
             prefix.append(action)
-        if not any(isinstance(action, _PREFIX_CONSUMES) for action in prefix):
+        if not any(isinstance(action, (ir.ConsumeSpan,) + _PREFIX_CONSUMES) for action in prefix):
             return body
         leftovers = tuple(
             dataclasses.replace(a, gate=ir.Gate(None, ()), actions=a.actions[len(prefix) :]) for a in alternatives
@@ -1535,6 +1627,8 @@ def factor_prefixes(grammar, namer):
         inner = production.params
         if any(_needs_code(leftover.actions) for leftover in leftovers) and CODE not in inner:
             inner = inner + (CODE,)
+        if any(_needs_origin(leftover.actions) for leftover in leftovers) and MATCH_START not in inner:
+            inner = inner + (MATCH_START,)
         helper = namer.fresh(name)
         minted[helper] = ir.Prod(production.number, helper, inner, ir.Choice(leftovers))
         arguments = tuple(ir.Param(parameter) for parameter in inner)
@@ -2410,6 +2504,7 @@ STEPS = [
     ("binarize", binarize),
     ("alternative-shape", alternative_shape),
     ("lower-recovers", lower_recovers),
+    ("refine-indents", refine_indents),
     ("gate-hoist", gate_hoist),
     ("split-conflicts", split_conflicts),
     ("factor-prefixes", factor_prefixes),
