@@ -284,42 +284,39 @@ indentation, so a site-local committed scan that ate them has taken tokens whose
 The block scalar's empties ride the substrate as the engine's first speculation target; the document prefix and the
 implicit key land after, spending the same shared scan.
 
-1. The block-structure substrate — the surgery, first, because every speculation that ends at an indented dedent needs
-   it (the engine's indentation output, the third divergence form under *The synthesis*). The line's indentation is
-   consumed once, held, and owned by whoever the line turns out to belong to, each exiting level placing its own end
-   markers ahead of it. The scan is shared or it is nothing: a construct surgered alone eats a dedent line's spaces that
-   its unsurgered parent still expects to consume, and the old consuming path is no longer there to backtrack into — so
-   the grammar flip is one transform over every block loop head, corpus-held as a whole, and everything before it lands
-   corpus-neutral or family-green in preparation. The mechanics, in landing order:
-   - *The mark re-taken* — landed. `MarkProvisional` re-taken within an open run moves the mark, the last taken winning;
-     the checkpoint carries the one it replaces, and the balance net's `marked` state admits the move.
-   - *Column guards.* Cross-production reads kill the `(<<<)` origin — the outer loop judges the same line after the
-     scan's frame is gone — so the guards read the machine's own column register: a `Column` expression beside `Match`,
-     compared by the existing `Lt`/`Le` against each frame's `n`. The interpreter reads its position's column; the C
-     runtime already tracks one. Corpus-neutral until a site spends it.
-   - *The line run.* One minted scan at each block-context line start opens a provisional run where none is open, takes
-     the mark, and consumes the line's spaces split at the innermost active level's `n` — up to it one held `indent`
-     span, beyond it `white`, the boundary fixed at consume time as the obligation demands, and the fold's hand-built
-     scan already splits exactly there. A dedent line is simply a shorter indent token, its code agreeing in every
-     reading. Inside a longer speculation the run already stands: the scan then only re-takes the mark and holds the
-     spans in it.
-   - *Guards, not consumes.* Every block-structure decision at that line start — a sequence or mapping entry, a compact,
-     every nested loop's exit — becomes a character gate with `Column` guards against each frame's level, zero-width and
-     stack-free, so a dedent of any depth is guard refusals falling through with nothing consumed and nothing to
-     re-attribute. The complementary-guard lemma is the certificate these need, already landed.
-   - *Exits inject at the mark.* Each level's minted exit alternative carries that level's own end markers as
-     `InjectBefore((…), mark)` — static per level, a dedent across several levels piling them up before the held indent
-     in exit order, which is the reference's order. The markers move there from the return continuations that spell them
-     as `Emit`s, the exit path skipping those; no emission is auto-redirected, an implicit key's held scalar markers
-     being exactly the emissions that must stay where they fire.
-   - *The owner commits.* The first level whose guard holds owns the line: its continue alternative commits the run —
-     the held indent decided as its own — and proceeds past it, consumed-prefix style, never re-consuming.
-   - *The flip.* The one transform over all the block loop heads at once — the `l+block-mapping`/`l+block-sequence`
-     loops, the compacts, `s-l+block-collection`/`s-l+block-indented`, and both indentation gotchas, the zero-indent
-     sequence in a mapping and flow suspending indentation — prepared family by family, sequences first, each family's
-     rewrite proved against the reference before the flip, and the corpus judging the whole.
-1. The block scalar's empty lines, opening and trailing alike, riding the substrate: the run holds the breaks and the
-   line runs' indents across lines, each line start re-taking the mark, and resolves either into content or into the
+1. The block-structure work — first, because every speculation that ends at an indented dedent hands its last line to a
+   parent — decomposed into small provable moves rather than one surgery. The insight is a factoring: the ways a block
+   line start can go — this level's next entry, a deeper construct's line, every exiting level's way out — all begin
+   with the line's spaces, so the spaces are a common prefix to extract once, ahead of the decision, and the decisions
+   behind it become character gates with column guards. The moves, each a language identity or carrying one
+   mechanically-checked side condition, every intermediate grammar corpus-green:
+   - *Indent refinement* — the enabling move, a pipeline step, applied everywhere its side condition proves. An exact
+     count of spaces followed by a non-space is one maximal scan judged after the fact: `s-indent(k)·X` becomes
+     `ConsumeSpan(space)·[Column==k]·X` wherever space is not in FIRST(X) — maximal munch must steal nothing — and the
+     `<n`/`≤n` variants take `Lt`/`Le` guards the same way. Stream-faithful: accepting paths consume the same spaces
+     under the same code, one token either way. `Column` is the machine's own zero-based register, landed; the
+     complementary-guard lemma certifying `Lt(x,y)` against `Le(y,x)` pairs, landed. What this buys: counted indent
+     consumes of different `k` share no literal prefix, and refined they are the identical scan.
+   - *Aggressive common-prefix extraction* — `split-conflicts` and `factor-prefixes` already extract identical prefixes;
+     the refinement makes indentation identical, and the extraction is driven to leave no factorable prefix standing —
+     where it stops, the stop is one of the named blockers below, never a shrug. Together these two are the whole of the
+     local factoring, and they cover the seam within any one production.
+   - *Seam moves*, demand-driven at conflicts the meter flags, since applied blindly they only duplicate productions:
+     reassociation, `A·(I·B')` to `(A·I)·B'`; distribution, `(C|D)·I` to `(C·I | D·I)`, minting continuation copies so
+     other callers stand untouched and the purge sweeps what dies; and the tail-fold that closes recursion,
+     `A = h·A | ε` giving `A·I` the derived loop `A^ = h·A^ | I` — the appended indent threads through a tail call by
+     algebra alone, which is what lets a dedent's decision sit post-indent at every nesting level without an atomic
+     flip.
+   - *Held-prefix factoring* — the one move that is not an identity, and the exact spot the provisional mechanism
+     enters. Factoring the scan across a zero-width emission — `(Emit·I·x | I·y)` — would commute the marker past the
+     indent token in the stream, which is the dedent's marker order: exiting levels' end markers stand before the dedent
+     line's indent. The stream-preserving completion is the hold: the scan's spaces are held in the line run, the mark
+     re-taken at each line start (landed), and the factored-out emission becomes an injection before the held indent at
+     resolution. Spent only where the meter demands — a held run is runtime buffering.
+   - The hand-built rewrite set aside in `junk-surgery/` is these moves' calibration oracle for the sequence loop: what
+     the composed identities must reproduce, held to the dedent fixtures already pinned.
+1. The block scalar's empty lines, opening and trailing alike, riding the factored line starts: the run holds the breaks
+   and the held indents across lines, each line start re-taking the mark, and resolves either into content or into the
    scalar's end injected ahead of it. The chomping split is monomorphize's already — `l-literal-content` and
    `l-folded-content` stand per `t`; what stays `t`-shared is the callee layer the fusion reaches through, `b-l-folded`
    at block, `l-empty`, the empties chains. Per chomping, re-read off the reference at landing: under strip the run
@@ -644,3 +641,16 @@ The reason this doesn't already exist isn't that any one piece is impossible. It
 the determinization to be faithful-by-construction — a real proof effort on top of a real compiler — and the set of
 people who can do both *and* care enough about YAML specifically is tiny. The generator, not the parsers, is the
 mountain. This plan is a route up it.
+
+## §8 — YamlStar upstream notes
+
+A running list of what libyeast's work surfaces that belongs upstream — a fix or an addition to YAMLStar or the test
+suites it validates — each with where libyeast found it:
+
+- **A test that appends a line break the input lacks.** YAML Test Suite `JEF9/02` — an empty kept block scalar whose
+  input ends in no line break. The spec folds it to the empty scalar: end-of-input counts as a break only in
+  `b-chomped-last`, which an all-empty scalar never reaches, and `l-keep-empty`'s `l-empty` needs a real `b-break`. The
+  suite's expected single line break comes from YAMLStar appending a trailing break to the input before parsing — so the
+  case tests the appended input, not the one on disk. libyeast carries it as its one declared divergence
+  (`check_star.DIVERGENCES`); the no-trailing-break form is an interesting edge case worth adding to the suite in its
+  own right, with the expectation the spec's reading gives.
