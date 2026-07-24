@@ -225,11 +225,15 @@ All notable changes to this project are documented here. The format follows
   comment chain cascading behind them. The directive keywords carry their name barrier — `YAML` and `TAG` are the whole
   name only where no `ns-char` follows, the reserved directive's own greedy name claiming a longer one, and a seen
   keyword commits, its version's faults the grammar's own cut to judge — so `%YAMLX` is a reserved directive named
-  `YAMLX` where `%YAML` alone is the committed keyword's error. The block header reads chomping first — the chomp-first
-  ordering takes every header the indicator-first one takes, an empty indentation indicator standing on either side and
-  emitting nothing, and it alone takes `+1`, so the swap changes which way backtracking finds and never what it finds.
-  And what no disjointness can prove now stands declared: the assurance ledger commits a production on a written reason
-  — the header's chomp-first subsumption, clip's two orderings being one language, a digit at the indicator being the
+  `YAMLX` where `%YAML` alone is the committed keyword's error. The block header reads chomping first through
+  `reorder-declared` — one generic swap of a two-way choice whose targets and reasons are data, `DECLARED_REORDERS`,
+  never a name recognized in transformation code — and the reasons are per-copy arguments that hold only after
+  monomorphize: the strip and keep copies gate their chomping way on a literal, no empty match left to enter through,
+  where in the base grammar clip's empty chomping branch would let a chomp-first ordering swallow nothing on `|2-` and
+  commit the valid trailing `-` into an error. Alternative order is semantics under backtracking-with-commits, and a
+  reorder's soundness is position-dependent — the same swap is unsound in the base and proved where the step stands. And
+  what no disjointness can prove now stands declared: the assurance ledger commits a production on a written reason —
+  the header's chomp-first subsumption, clip's two orderings being one language, a digit at the indicator being the
   indicator — each entry held to backtracking by the hybrid corpus, refused when its name goes stale or the analysis
   catches up, and counted on its own gate line so the declared few never grow quietly. Every step's grammar is purged of
   the productions no parse can enter — each IR node spells the productions it references, and reachability closes over

@@ -1557,13 +1557,33 @@ def factor_prefixes(grammar, namer):
 # shift when the steps before them change; the staleness fault is what makes that loud rather than silent.
 DECLARED_COMMITS = {
     "c-b-block-header_t_keep_7": "chomp-first subsumes: on '+' it takes every header indicator-first takes, and '+1'"
-    " besides — order-block-headers is what stood it first",
+    " besides — the declared reorder is what stood it first",
     "c-b-block-header_t_strip_7": "chomp-first subsumes: on '-' it takes every header indicator-first takes, and"
-    " '-1' besides — order-block-headers is what stood it first",
+    " '-1' besides — the declared reorder is what stood it first",
     "c-b-block-header_t_clip_1": "clip has no chomping character, so its two orderings are one language — an"
     " optional digit and the comment — and either way is the parse",
     "c-indentation-indicator_1": "a digit standing at the indicator is the indicator — no way through the header"
     " reads it as anything else, so the empty way serves only where no digit stands",
+}
+
+# The declared reorders: productions whose two alternatives the `reorder-declared` step swaps, each with the reason the
+# swap keeps the first-found parse. Alternative order is semantics under backtracking-with-commits — the first match
+# binds — so a reorder is sound only where a per-production argument shows every input finds the same parse either way,
+# and that argument is position-dependent: these hold only AFTER monomorphize, never in the base grammar. The header is
+# the proof. In the base, `c-chomping-indicator` is one data-dependent production whose clip branch matches empty, so a
+# chomp-first ordering enters through that empty match on `|2-`, completes the header's `(any)`, and its `(commit)`
+# turns the valid trailing `-` into an error backtracking cannot undo. Monomorphize distributes the data-dependence
+# away: the strip and keep copies gate their chomping way on the literal `-`/`+` — no empty match left to enter through,
+# so on `|2-` that way fails before anything commits and falls through — and the clip copy's two orderings are
+# empty-commutations of one language. The reasons below are those per-copy arguments; a name the grammar loses faults,
+# so the declarations cannot outlive the shapes they speak about.
+DECLARED_REORDERS = {
+    "c-b-block-header_t_strip_7": "chomp-first: its way is gated on the literal '-', which the input has or has not"
+    " — no empty match to enter through — and standing first it also takes '-1', which indicator-first misparses",
+    "c-b-block-header_t_keep_7": "chomp-first: its way is gated on the literal '+', which the input has or has not"
+    " — no empty match to enter through — and standing first it also takes '+1', which indicator-first misparses",
+    "c-b-block-header_t_clip_1": "clip's chomping indicator matches only empty, so its two orderings are"
+    " empty-commutations of one language, and either order finds the same parse",
 }
 
 
@@ -1824,30 +1844,23 @@ def gate_literals(grammar, namer):
     return result
 
 
-def order_block_headers(grammar, namer):
+def reorder_declared(grammar, namer):
     """
-    The grammar with the block header's two orderings tried chomping first wherever both open on the same gate. The
-    chomp-first way takes every header the indicator-first way takes — an empty indentation indicator stands on either
-    side of the chomping character, setting `m` the same and emitting nothing — and it alone takes `+1`, the indicator
-    standing after the chomp. The swap changes which way backtracking finds, never what it finds: both orderings spell
-    the same tokens, which the corpus holds; and it is what makes the header's declared commit sound — entered first,
-    the chomp-first way is the parse wherever the gate holds.
+    The grammar with each `DECLARED_REORDERS` production's two alternatives swapped — one generic move, its targets and
+    their reasons data rather than logic, so no transformation recognizes a production by name in code. A declared name
+    the grammar does not hold, or one that is not the two-way choice the swap speaks about, is a loud fault: the
+    declarations name shapes at this pipeline point, and a step before this one changing them must be seen, not
+    absorbed. The corpus holds each swap to the stream as it holds every step.
     """
-    result = {}
-    for name, production in grammar.items():
-        body = production.body
-        swapped = production
-        if isinstance(body, ir.Choice) and len(body.alternatives) == 2:
-            one, other = body.alternatives
-            if (
-                one.first is not None
-                and one.first.name.startswith("c-indentation-indicator")
-                and other.first is not None
-                and other.first.name.startswith("c-chomping-indicator")
-                and one.gate == other.gate
-            ):
-                swapped = dataclasses.replace(production, body=ir.Choice(alternatives=(other, one)))
-        result[name] = swapped
+    result = dict(grammar)
+    for name in sorted(DECLARED_REORDERS):
+        production = grammar.get(name)
+        if production is None:
+            raise AssertionError(f"{name}: declared reordered, but the grammar holds no such production")
+        if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) != 2:
+            raise AssertionError(f"{name}: declared reordered, but it is not the two-way choice the swap speaks about")
+        one, other = production.body.alternatives
+        result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=(other, one)))
     return result
 
 
@@ -2403,7 +2416,7 @@ STEPS = [
     ("gate-hoist-leftovers", gate_hoist),
     ("speculate-folds", speculate_folds),
     ("gate-literals", gate_literals),
-    ("order-block-headers", order_block_headers),
+    ("reorder-declared", reorder_declared),
 ]
 
 
