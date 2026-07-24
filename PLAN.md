@@ -252,7 +252,15 @@ canonical grammar holds none of them, and the validator rejects any that remain.
 own `LiteralPeek`: the longest literal plus one character of follow test, within the window the parser's fill already
 guarantees, lowered to a single comparison.
 
-**The pipeline**, one linear series, grouped only for reading:
+**The pipeline**, one linear series, grouped only for reading. One law binds every step, present and future: a
+transformation is a **local, mechanical rule** — it reads a production's own nodes, plus at most the standard
+grammar-wide tables that are themselves defined production-by-production (FIRST, follow, the reference graph), and its
+correctness argument is stated against exactly that. No step may lean on a global property of the parse — "this is only
+ever attempted at a line start", "this position is always preceded by X" — however true by construction: a rule that
+needs one is the wrong rule, and the right one spells the same fact locally, usually in a device the grammar already
+owns (a measured quantity is the `(match)` scope's, never an absolute machine register; a value crossing a minted helper
+is a declared parameter, the `code` precedent). The only judgment a step may embody is *where* it applies — a declared
+target with a written reason, ledger-style — never *what* the result looks like at a site:
 
 1. *Parameters.* Specialize `c` away (monomorphize, drop `Case`/`Flip` on `c`, prune unreachable branches); specialize
    `t` (chomping) the same way. Confirm only `n`/`m` remain, and only in indentation predicates and parameter actions.
@@ -291,16 +299,24 @@ implicit key land after, spending the same shared scan.
    behind it become character gates with column guards. The moves, each a language identity or carrying one
    mechanically-checked side condition, every intermediate grammar corpus-green:
    - *Indent refinement* — the enabling move, a pipeline step, applied everywhere its side condition proves. An exact
-     count of spaces followed by a non-space is one maximal scan judged after the fact: `s-indent(k)·X` becomes
-     `ConsumeSpan(space)·[Column==k]·X` wherever space is not in FIRST(X) — maximal munch must steal nothing — and the
-     `<n`/`≤n` variants take `Lt`/`Le` guards the same way. Stream-faithful: accepting paths consume the same spaces
-     under the same code, one token either way. `Column` is the machine's own zero-based register, landed; the
-     complementary-guard lemma certifying `Lt(x,y)` against `Le(y,x)` pairs, landed. What this buys: counted indent
-     consumes of different `k` share no literal prefix, and refined they are the identical scan.
+     count of spaces followed by a non-space is one maximal scan judged after the fact, in the grammar's own spelling —
+     the shape `s-indent-le` already is: `s-indent(k)·X` becomes
+     `OpenMatch·ConsumeSpan(space)·[Len(Match)==k, as the `Le` pair]·CloseMatch·X` wherever space is not in FIRST(X) and
+     X cannot match empty — maximal munch must steal nothing. The measure is the scan's own `(match)` scope, so the
+     rewrite is position-independent and reads only the production's nodes and the FIRST table; the `<n`/`≤n` variants
+     already stand in this shape. Stream-faithful: accepting paths consume the same spaces under the same code, one
+     token either way. What this buys: counted indent consumes of different `k` share no literal prefix, and refined
+     they are the identical scan, the differing counts residual guards.
    - *Aggressive common-prefix extraction* — `split-conflicts` and `factor-prefixes` already extract identical prefixes;
      the refinement makes indentation identical, and the extraction is driven to leave no factorable prefix standing —
-     where it stops, the stop is one of the named blockers below, never a shrug. Together these two are the whole of the
-     local factoring, and they cover the seam within any one production.
+     where it stops, the stop is one of the named blockers below, never a shrug. Two admissions grow it: an identical
+     maximal scan joins the prefix where every leftover's first set is pinned, cannot match empty, and excludes the
+     scanned set — a shorter run then leaves a character no leftover admits, so the maximal run is the only one that
+     proceeds and the factoring reorders nothing; and a `(match)` scope's opening joins where the minted leftover
+     production declares the origin and is passed the caller's own, the `code` parameter's exact twin, so the closing
+     half restores what the unfactored close restored. A leftover's leading `Lt`/`Le` assertions rise into its gate's
+     guards, judged at the same position, where the certificates read them. Together these are the whole of the local
+     factoring, and they cover the seam within any one production.
    - *Seam moves*, demand-driven at conflicts the meter flags, since applied blindly they only duplicate productions:
      reassociation, `A·(I·B')` to `(A·I)·B'`; distribution, `(C|D)·I` to `(C·I | D·I)`, minting continuation copies so
      other callers stand untouched and the purge sweeps what dies; and the tail-fold that closes recursion,
