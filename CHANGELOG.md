@@ -244,7 +244,14 @@ All notable changes to this project are documented here. The format follows
   monomorphize: the strip and keep copies gate their chomping way on a literal, no empty match left to enter through,
   where in the base grammar clip's empty chomping branch would let a chomp-first ordering swallow nothing on `|2-` and
   commit the valid trailing `-` into an error. Alternative order is semantics under backtracking-with-commits, and a
-  reorder's soundness is position-dependent — the same swap is unsound in the base and proved where the step stands. And
+  reorder's soundness is position-dependent — the same swap is unsound in the base and proved where the step stands.
+  `extend-returns` folds a declared site the same declared way: a call-then-continuation whose continuation is actions
+  alone is absorbed into the call's own family — the actions appended to every return path through minted copies, a tail
+  call retargeting to its target's copy, a recursion meeting its own copy and folding, every other caller untouched and
+  the dead frames purged — a language identity, stream-faithful because the appended actions run exactly where the
+  continuation ran, and refused where the continuation closes a scope it does not open. Its first declared targets fold
+  the sequence loops' end-marker frames, so each loop's exit way carries its own `end-sequence` inline — the seam toward
+  the parent's next scan absorbed frame by declared frame, each fold corpus-held, rather than by one atomic flip. And
   what no disjointness can prove now stands declared: the assurance ledger commits a production on a written reason —
   the header's chomp-first subsumption, clip's two orderings being one language, a digit at the indicator being the
   indicator — each entry held to backtracking by the hybrid corpus, refused when its name goes stale or the analysis
@@ -252,23 +259,29 @@ All notable changes to this project are documented here. The format follows
   the productions no parse can enter — each IR node spells the productions it references, and reachability closes over
   them from the root's copies — so the fold's old family is gone the step its fused replacement lands, and the meter
   stands on what the machine holds. A fixture the purge strands is not dropped: it pins to the last stage whose grammar
-  can run it, guards that grammar token for token, and credits coverage from where it stands — 71 of the 694, the fold
+  can run it, guards that grammar token for token, and credits coverage from where it stands — 78 of the 694, the fold
   family's four, `c-reserved`'s three (a production the spec defines and nothing references, the base grammar's own),
-  and the bare monomorphic copies only a fixture enters, the root reaching an escape char, a tag property or an alias
-  context-pinned alone. The corpus parses green in that hybrid the whole way, so the meter is honest at every step: 1279
-  of 1519 productions run committed, and the 240 still backtracking are the determinize work itself — a count driven to
-  none that then becomes a gate. `check_normalize` holds every step token-and-event identical over the whole corpus —
-  694 conformance fixtures and 402 YAML Test Suite cases, seven of them pinning the document-marker boundary the spec's
-  `c-forbidden` spells and the Clojure reference agrees on: `---foo`, `---#foo`, `----` and their `...` kin are content,
-  `--- foo` a boundary, `... foo` malformed; four pinning the sequence dedent hand-off any committed block structure
-  must reproduce — at a dedent each exiting level's end markers stand before the dedent line's indent token, the owner
-  level continues past it, and a zero-column dedent carries no indent token at all; and two pinning the sequence entry's
-  committed dash, the Clojure reference agreeing both are errors — `- @` is an entry whose body fails inside the entry's
-  own committed region, where `-b` is refused at the gate, the sequence closing before a stream-level error —
-  backtracking and hybrid alike — and ends on two own-gates over the result: every long text token, a scalar's text or a
-  name's or the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a
-  character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize
-  supplies the guard that lowers them, a nullable production.
+  the frames the declared extensions absorbed, and the bare monomorphic copies only a fixture enters, the root reaching
+  an escape char, a tag property or an alias context-pinned alone. The corpus parses green in that hybrid the whole way,
+  so the meter is honest at every step: 1274 of 1513 productions run committed, and the 239 still backtracking are the
+  determinize work itself, driven to none, at which point it becomes a gate. The first conflict the local moves
+  determinized whole is the empty line's: `inline-singles` splices the declared prefix wrappers so `l-empty`'s two ways
+  surface as the scans they are, the refinement and the factoring leave one shared scan with `==n` against `<n` residue,
+  the factoring raises a leftover's leading assertions into its gate's guards, and a new certificate reads a choice of
+  guard-led ways that are pairwise complementary — at most one enterable anywhere, so committing to the first that holds
+  is the way backtracking finds — which is what took the meter below its 240 floor. `check_normalize` holds every step
+  token-and-event identical over the whole corpus — 694 conformance fixtures and 402 YAML Test Suite cases, seven of
+  them pinning the document-marker boundary the spec's `c-forbidden` spells and the Clojure reference agrees on:
+  `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary, `... foo` malformed; four pinning
+  the sequence dedent hand-off any committed block structure must reproduce — at a dedent each exiting level's end
+  markers stand before the dedent line's indent token, the owner level continues past it, and a zero-column dedent
+  carries no indent token at all; and two pinning the sequence entry's committed dash, the Clojure reference agreeing
+  both are errors — `- @` is an entry whose body fails inside the entry's own committed region, where `-b` is refused at
+  the gate, the sequence closing before a stream-level error — backtracking and hybrid alike — and ends on two own-gates
+  over the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk
+  rather than one character per loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a
+  `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable
+  production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

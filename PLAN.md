@@ -280,7 +280,7 @@ target with a written reason, ledger-style — never *what* the result looks lik
    point, logging any residual as an assurance gap.
 1. *Finish.* Assert every terminal is a pure char-set; run the validator.
 
-**Determinize, what remains.** The meter counts 240 of 1519 productions still backtracking, over 78 distinct base names
+**Determinize, what remains.** The meter counts 239 of 1513 productions still backtracking, over 78 distinct base names
 — every one of them this phase's, driven to none, at which point the meter becomes a gate. They fall into the landings
 below, one at a time, each corpus-diffed. The speculations among them are the deep end, and they are one piece of work
 rather than several: the five cases spend one vocabulary, formalized under *The provisional mechanism*, and are produced
@@ -317,12 +317,13 @@ implicit key land after, spending the same shared scan.
      half restores what the unfactored close restored. A leftover's leading `Lt`/`Le` assertions rise into its gate's
      guards, judged at the same position, where the certificates read them. Together these are the whole of the local
      factoring, and they cover the seam within any one production.
-   - *Seam moves*, demand-driven at conflicts the meter flags, since applied blindly they only duplicate productions:
-     reassociation, `A·(I·B')` to `(A·I)·B'`; distribution, `(C|D)·I` to `(C·I | D·I)`, minting continuation copies so
-     other callers stand untouched and the purge sweeps what dies; and the tail-fold that closes recursion,
-     `A = h·A | ε` giving `A·I` the derived loop `A^ = h·A^ | I` — the appended indent threads through a tail call by
-     algebra alone, which is what lets a dedent's decision sit post-indent at every nesting level without an atomic
-     flip.
+   - *Seam moves*, demand-driven at conflicts the meter flags, since applied blindly they only duplicate productions —
+     and one generic transform embodies all three: `extend-returns` folds a declared site's call-then-continuation so
+     the continuation's actions run inside the call's own family, appended to every return path through minted copies, a
+     tail recursion folding to its own copy — reassociation, distribution, and the tail-fold in one walk, each
+     application a corpus-held identity, so the seam is absorbed frame by frame rather than in one atomic flip. The
+     first target is landed: the sequence loop's exit carries its own `end-sequence`, one frame nearer the parent's
+     scan; the chain continues through the wrapper and entry frames until the parent's scan is local to the conflict.
    - *Held-prefix factoring* — the one move that is not an identity, and the exact spot the provisional mechanism
      enters. Factoring the scan across a zero-width emission — `(Emit·I·x | I·y)` — would commute the marker past the
      indent token in the stream, which is the dedent's marker order: exiting levels' end markers stand before the dedent
@@ -511,7 +512,7 @@ pipeline introduces and given a second mode. It is a slow, backtracking executor
 non-issue — and it runs in two modes off one flag:
 
 - **Backtracking mode** is the baseline. Diff its token stream before and after *every* step against the yaml-test
-  suite; a step that changes any output is rejected. This is the net for all 28 steps, and the interpreter doubles as an
+  suite; a step that changes any output is rejected. This is the net for all 30 steps, and the interpreter doubles as an
   early differential oracle against YamlReference.
 - **Committed mode** respects the gates and never backtracks. After the determinize steps, both modes must agree on the
   corpus; a divergence means a gate is not commit-safe — the one thing the structural invariants and the backtracking

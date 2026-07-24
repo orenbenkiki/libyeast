@@ -1047,6 +1047,108 @@ def lower_recovers(grammar, namer):
     return result
 
 
+def _bound(node, mapping):
+    """
+    `node` with each `Param` the `mapping` names replaced by its expression — the substitution a call makes lexical.
+    Walks every field itself: the generic walker holds a `Param` as a value and never visits it, where here the
+    parameters are exactly what changes.
+    """
+    if isinstance(node, ir.Param):
+        return mapping.get(node.name, node)
+    if not dataclasses.is_dataclass(node):
+        return node
+    changed = {}
+    for field in dataclasses.fields(node):
+        value = getattr(node, field.name)
+        if dataclasses.is_dataclass(value):
+            changed[field.name] = _bound(value, mapping)
+        elif isinstance(value, tuple) and value and all(dataclasses.is_dataclass(item) for item in value):
+            changed[field.name] = tuple(_bound(item, mapping) for item in value)
+    return dataclasses.replace(node, **changed) if changed else node
+
+
+# The declared inlines: callees `{name: reason}` spliced into every way that calls them — the callee's ways standing in
+# the caller's place, their parameters bound to the call's arguments, the caller's continuation composed behind the
+# callee's own through a minted helper where both stand. A language identity in first-match order — the callee's ways
+# keep their order in the caller's — and stream-faithful, nothing moving relative to anything. What it is for: a
+# decision hidden one call down is hoisted into the choice that makes it, so the factoring and the certificates see what
+# the call wrapper hid — `l-empty`'s two ways are both maximal space scans told apart by `==n` against `<n`, the
+# complementary pair the certificate reads, once the prefix wrappers no longer stand between.
+DECLARED_INLINES = {
+    "l-empty_c_block-in_1": "the empty line's two ways — a full line prefix against a shorter indent — surface into"
+    " `l-empty`'s own choice, where the shared scan can factor and the column guards decide",
+    "s-line-prefix_c_block-in": "the block context's line prefix is one call down to the block prefix; inlined, the"
+    " chain shortens toward the indent scan itself",
+    "s-block-line-prefix": "the block prefix is the indent call alone; inlined, the way holds `s-indent` directly,"
+    " where the indent refinement's shape applies",
+    "s-indent-lt": "the shorter-indent way is the scan-and-`Lt` actions alone; inlined, the guard stands beside its"
+    " rival's for the complementary pair to certify",
+}
+
+
+def inline_singles(grammar, namer):
+    """
+    The grammar with each call to a `DECLARED_INLINES` callee spliced in place: the caller's way is replaced by the
+    callee's ways — parameters bound to the call's arguments, the caller's gate or the callee way's carried (both
+    standing is a loud fault), actions concatenated, and the two continuations composed through a minted helper where
+    both stand. Iterated to a fixpoint, so a declared chain collapses whole. A declared name the grammar does not hold,
+    a callee that is not a choice, or a way carrying a recovery is a loud fault — the declarations name shapes, and a
+    step before this one changing them must be seen.
+    """
+    result = dict(grammar)
+    for name in sorted(DECLARED_INLINES):
+        if name not in result:
+            raise AssertionError(f"{name}: declared inlined, but the grammar holds no such production")
+        if not isinstance(result[name].body, ir.Choice):
+            raise AssertionError(f"{name}: declared inlined, but it is not a choice to splice")
+
+    def spliced(owner, production, way):
+        callee = result[way.first.name]
+        mapping = dict(zip(callee.params, way.first.args))
+        ways = []
+        for inner in callee.body.alternatives:
+            bound = _bound(inner, mapping)
+            if way.recover is not None or bound.recover is not None:
+                raise AssertionError(f"{owner}: a recovery rides the {way.first.name} splice, which cannot carry it")
+            if way.gate.peek is not None and bound.gate.peek is not None:
+                raise AssertionError(f"{owner}: both the way and a {way.first.name} way carry a peek")
+            gate = ir.Gate(way.gate.peek or bound.gate.peek, way.gate.guards + bound.gate.guards)
+            second = way.second
+            if bound.second is not None and second is not None:
+                helper = namer.fresh(owner)
+                chain = ir.Alternative(gate=ir.Gate(None, ()), actions=(), first=bound.second, second=second)
+                result[helper] = ir.Prod(production.number, helper, production.params, ir.Choice((chain,)))
+                second = ir.Ref(name=helper, args=tuple(ir.Param(parameter) for parameter in production.params))
+            elif bound.second is not None:
+                second = bound.second
+            ways.append(
+                ir.Alternative(
+                    gate=gate, actions=way.actions + bound.actions, first=bound.first, second=second, recover=None
+                )
+            )
+        return ways
+
+    changed = True
+    while changed:
+        changed = False
+        for name, production in list(result.items()):
+            body = production.body
+            if not isinstance(body, ir.Choice):
+                continue
+            ways = []
+            rewritten = False
+            for way in body.alternatives:
+                if way.first is not None and way.first.name in DECLARED_INLINES:
+                    ways.extend(spliced(name, production, way))
+                    rewritten = True
+                else:
+                    ways.append(way)
+            if rewritten:
+                result[name] = dataclasses.replace(production, body=ir.Choice(tuple(ways)))
+                changed = True
+    return result
+
+
 def refine_indents(grammar, namer):
     """
     Refine each exact-count indentation call into the one maximal scan judged after the fact, in the grammar's own
@@ -1621,9 +1723,18 @@ def factor_prefixes(grammar, namer):
             prefix.append(action)
         if not any(isinstance(action, (ir.ConsumeSpan,) + _PREFIX_CONSUMES) for action in prefix):
             return body
-        leftovers = tuple(
-            dataclasses.replace(a, gate=ir.Gate(None, ()), actions=a.actions[len(prefix) :]) for a in alternatives
-        )
+
+        def peeled(alternative):
+            # A leftover's leading assertions become its gate's guards: both are judged at this same position — after
+            # the prefix, before anything of the leftover's own consumes — so the move changes nothing but where the
+            # certificates can see them.
+            actions = alternative.actions[len(prefix) :]
+            index = 0
+            while index < len(actions) and isinstance(actions[index], (ir.Lt, ir.Le)):
+                index += 1
+            return dataclasses.replace(alternative, gate=ir.Gate(None, tuple(actions[:index])), actions=actions[index:])
+
+        leftovers = tuple(peeled(a) for a in alternatives)
         inner = production.params
         if any(_needs_code(leftover.actions) for leftover in leftovers) and CODE not in inner:
             inner = inner + (CODE,)
@@ -1680,6 +1791,21 @@ DECLARED_REORDERS = {
     " empty-commutations of one language, and either order finds the same parse",
 }
 
+# The declared return-extensions: sites `{caller: reason}` whose one way is a call and a continuation, folded so the
+# continuation's actions run inside the call's own family — `A then B` becoming `A^`, where `A^` is `A` with `B`'s
+# actions appended to every return path, copies minted along the tail and continuation chains so every other caller of
+# `A` stands untouched and a tail recursion folds to its own copy. A language identity, and stream-faithful: the
+# appended actions run exactly where the continuation ran. What it is for: a block loop's exit way returns through a
+# chain of end-marker frames to the parent's next scan, and each extension absorbs one frame into the loop's own choice,
+# until the scan the exit shares with the continue way is local to the conflict and the held factoring can take both —
+# the seam decomposed into corpus-held identities rather than one atomic flip.
+DECLARED_EXTENSIONS = {
+    "l+block-sequence_5": "the sequence loop's exit returns through the end-marker frame; absorbing it stands"
+    " `end-sequence` inside the loop's own exit way, one frame nearer the parent's scan",
+    "l+block-sequence_r_d_5": "the resume-policy copy of the same seam",
+    "l+block-sequence_r_i_5": "the resume-policy copy of the same seam",
+}
+
 
 def declared_faults(grammar):
     """
@@ -1732,6 +1858,16 @@ def _proved_productions(grammar):
         body = production.body
         if not isinstance(body, ir.Choice) or len(body.alternatives) <= 1:
             deterministic.add(name)  # a terminal, a single way through, or no way at all: nothing to decide
+            continue
+        if all(alternative.gate.peek is None and alternative.gate.guards for alternative in body.alternatives) and all(
+            _complementary_guards(one, other)
+            for index, one in enumerate(body.alternatives)
+            for other in body.alternatives[index + 1 :]
+        ):
+            # A choice of guard-led ways, pairwise complementary: at most one is enterable at any position, so
+            # committing to the first whose guards hold is the way backtracking finds — the factored indent's `==n`
+            # against `<n` residue.
+            deterministic.add(name)
             continue
         gated = list(body.alternatives)
         last = gated[-1] if gated[-1].gate.peek is None else None
@@ -1955,6 +2091,94 @@ def reorder_declared(grammar, namer):
             raise AssertionError(f"{name}: declared reordered, but it is not the two-way choice the swap speaks about")
         one, other = production.body.alternatives
         result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=(other, one)))
+    return result
+
+
+def extend_returns(grammar, namer):
+    """
+    The grammar with each `DECLARED_EXTENSIONS` site folded: the site's one way must be a call and a continuation whose
+    own single way is actions alone, and the call is replaced by a minted copy of its production with those actions
+    appended to every return path — a way with no calls takes them onto its actions, a tail call retargets to the copy
+    of its target, a way with a continuation retargets that continuation's copy, and a recursion meets its own copy in
+    the memo and folds. The copies stay within the extension's own walk, so every other caller of the original stands
+    untouched and the purge sweeps what dies. A declared name the grammar does not hold, or a site or continuation that
+    is not the shape the fold speaks about, is a loud fault. Appending actions that close a `(token)` or `(match)` scope
+    they do not open would read the copy's own frame where the original read the site's; such an extension is refused
+    rather than mis-scoped.
+    """
+    result = dict(grammar)
+
+    def extended(name, extension, copies, owner):
+        if name in copies:
+            return copies[name]
+        production = result[name]
+        copy = namer.fresh(name)
+        copies[name] = copy
+        if not isinstance(production.body, ir.Choice):
+            # A terminal cannot take the appended actions inside; its copy is the wrapper `terminal then extension`, the
+            # extension standing in a minted actions-only continuation shared across the walk.
+            if None not in copies:
+                helper = namer.fresh(owner)
+                copies[None] = helper
+                way = ir.Alternative(gate=ir.Gate(None, ()), actions=tuple(extension), first=None, second=None)
+                result[helper] = ir.Prod(production.number, helper, (), ir.Choice((way,)))
+            wrapper = ir.Alternative(
+                gate=ir.Gate(None, ()),
+                actions=(),
+                first=ir.Ref(name=name, args=()),
+                second=ir.Ref(name=copies[None], args=()),
+            )
+            result[copy] = ir.Prod(production.number, copy, production.params, ir.Choice((wrapper,)))
+            return copy
+        ways = []
+        for alternative in production.body.alternatives:
+            if alternative.second is not None:
+                ways.append(
+                    dataclasses.replace(
+                        alternative,
+                        second=ir.Ref(
+                            name=extended(alternative.second.name, extension, copies, owner),
+                            args=alternative.second.args,
+                        ),
+                    )
+                )
+            elif alternative.first is not None:
+                ways.append(
+                    dataclasses.replace(
+                        alternative,
+                        first=ir.Ref(
+                            name=extended(alternative.first.name, extension, copies, owner),
+                            args=alternative.first.args,
+                        ),
+                    )
+                )
+            else:
+                ways.append(dataclasses.replace(alternative, actions=alternative.actions + extension))
+        result[copy] = ir.Prod(production.number, copy, production.params, ir.Choice(tuple(ways)))
+        return copy
+
+    for name in sorted(DECLARED_EXTENSIONS):
+        production = grammar.get(name)
+        if production is None:
+            raise AssertionError(f"{name}: declared extended, but the grammar holds no such production")
+        if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) != 1:
+            raise AssertionError(f"{name}: declared extended, but it is not the single way the fold speaks about")
+        [way] = production.body.alternatives
+        if way.first is None or way.second is None:
+            raise AssertionError(f"{name}: declared extended, but its way is not a call and a continuation")
+        follower = grammar.get(way.second.name)
+        if follower is None or not isinstance(follower.body, ir.Choice) or len(follower.body.alternatives) != 1:
+            raise AssertionError(f"{name}: the continuation is not the single-way production the fold speaks about")
+        [tail] = follower.body.alternatives
+        if tail.first is not None or tail.second is not None or tail.gate.peek is not None or tail.gate.guards:
+            raise AssertionError(f"{name}: the continuation is not actions alone, so the fold cannot absorb it")
+        if _needs_code(tail.actions) or _needs_origin(tail.actions):
+            raise AssertionError(f"{name}: the continuation closes a scope it does not open — the fold refuses it")
+        copy = extended(way.first.name, tail.actions, {}, name)
+        result[name] = dataclasses.replace(
+            production,
+            body=ir.Choice((dataclasses.replace(way, first=ir.Ref(name=copy, args=way.first.args), second=None),)),
+        )
     return result
 
 
@@ -2504,6 +2728,7 @@ STEPS = [
     ("binarize", binarize),
     ("alternative-shape", alternative_shape),
     ("lower-recovers", lower_recovers),
+    ("inline-singles", inline_singles),
     ("refine-indents", refine_indents),
     ("gate-hoist", gate_hoist),
     ("split-conflicts", split_conflicts),
@@ -2512,6 +2737,7 @@ STEPS = [
     ("speculate-folds", speculate_folds),
     ("gate-literals", gate_literals),
     ("reorder-declared", reorder_declared),
+    ("extend-returns", extend_returns),
 ]
 
 
