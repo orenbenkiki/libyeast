@@ -1134,13 +1134,13 @@ def _bound(node, mapping):
 # the call wrapper hid — `l-empty`'s two ways are both maximal space scans told apart by `==n` against `<n`, the
 # complementary pair the certificate reads, once the prefix wrappers no longer stand between.
 DECLARED_INLINES = {
-    "l-empty_c_block-in_1": "the empty line's two ways — a full line prefix against a shorter indent — surface into"
+    "block-empty-line": "the empty line's two ways — a full line prefix against a shorter indent — surface into"
     " `l-empty`'s own choice, where the shared scan can factor and the column guards decide",
-    "s-line-prefix_c_block-in": "the block context's line prefix is one call down to the block prefix; inlined, the"
-    " chain shortens toward the indent scan itself",
-    "s-block-line-prefix": "the block prefix is the indent call alone; inlined, the way holds `s-indent` directly,"
-    " where the indent refinement's shape applies",
-    "s-indent-lt": "the shorter-indent way is the scan-and-`Lt` actions alone; inlined, the guard stands beside its"
+    "block-line-prefix-in": "the block context's line prefix is one call down to the block prefix; inlined, the chain"
+    " shortens toward the indent scan itself",
+    "block-line-prefix": "the block prefix is the indent call alone; inlined, the way holds `s-indent` directly, where"
+    " the indent refinement's shape applies",
+    "shorter-indent": "the shorter-indent way is the scan-and-`Lt` actions alone; inlined, the guard stands beside its"
     " rival's for the complementary pair to certify",
 }
 
@@ -1155,7 +1155,8 @@ def inline_singles(grammar, namer):
     step before this one changing them must be seen.
     """
     result = dict(grammar)
-    for name in sorted(DECLARED_INLINES):
+    targets = {name for point in DECLARED_INLINES for name in namer.points.current(point)}
+    for name in sorted(targets):
         if name not in result:
             raise AssertionError(f"{name}: declared inlined, but the grammar holds no such production")
         if not isinstance(result[name].body, ir.Choice):
@@ -1197,7 +1198,7 @@ def inline_singles(grammar, namer):
             ways = []
             rewritten = False
             for way in body.alternatives:
-                if way.first is not None and way.first.name in DECLARED_INLINES:
+                if way.first is not None and way.first.name in targets:
                     ways.extend(spliced(name, production, way))
                     rewritten = True
                 else:
@@ -1205,6 +1206,8 @@ def inline_singles(grammar, namer):
             if rewritten:
                 result[name] = dataclasses.replace(production, body=ir.Choice(tuple(ways)))
                 changed = True
+    for point in DECLARED_INLINES:
+        namer.points.retire(point)  # spliced into their callers, the callees fall out of reach here
     return result
 
 
@@ -1939,6 +1942,37 @@ def _flow_fold_site_picker(grammar, candidates):
     return [name for name in candidates if any(ref in _FLOW_FOLD_CONFLICT for ref in grammar[name].references())]
 
 
+def _refs_picker(*required):
+    """
+    A production of its base identified by the references that name its role. Before monomorphize fixes a context into
+    those names, the base has no copy yet to tell apart, so the whole family holds the point.
+    """
+
+    def pick(grammar, candidates):
+        specific = [name for name in candidates if set(required) <= set(grammar[name].references())]
+        return specific or sorted(candidates)
+
+    return pick
+
+
+def _loop_seam_picker(grammar, candidates):
+    """
+    The block sequence loop's exit seam: the single-way production whose call and continuation are both helpers of its
+    own base — the loop and the frame it returns through. Before that shape takes form the whole family holds it.
+    """
+    seam = [
+        name
+        for name in candidates
+        if isinstance(grammar[name].body, ir.Choice)
+        and len(grammar[name].body.alternatives) == 1
+        and (way := grammar[name].body.alternatives[0]).first is not None
+        and way.second is not None
+        and _base(way.first.name) == _base(name)
+        and _base(way.second.name) == _base(name)
+    ]
+    return seam or sorted(candidates)
+
+
 # The points of interest: each an identifier that never changes, mapped to its origin — the base-grammar name whose
 # content it follows — and its picker. The declared tables speak in these identifiers, so no minted number is ever
 # declared and no declaration goes stale when a step renumbers the helpers around a point.
@@ -1947,6 +1981,11 @@ POINTS = {
     "block-header-strip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_strip", 0x2D)),
     "block-header-clip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_clip")),
     "flow-fold-site": ("s-flow-folded", _flow_fold_site_picker),
+    "block-empty-line": ("l-empty", _refs_picker("s-indent-lt", "s-line-prefix_c_block-in")),
+    "block-line-prefix-in": ("s-line-prefix", _refs_picker("s-block-line-prefix")),
+    "block-line-prefix": ("s-block-line-prefix", _refs_picker("s-indent")),
+    "shorter-indent": ("s-indent-lt", _refs_picker("s-space")),
+    "block-seq-loop-exit": ("l+block-sequence", _loop_seam_picker),
 }
 
 # The declared reorders: points of interest whose two alternatives the `reorder-declared` step swaps, each with the
@@ -1979,10 +2018,9 @@ DECLARED_REORDERS = {
 # until the scan the exit shares with the continue way is local to the conflict and the held factoring can take both —
 # the seam decomposed into corpus-held identities rather than one atomic flip.
 DECLARED_EXTENSIONS = {
-    "l+block-sequence_5": "the sequence loop's exit returns through the end-marker frame; absorbing it stands"
-    " `end-sequence` inside the loop's own exit way, one frame nearer the parent's scan",
-    "l+block-sequence_r_d_5": "the resume-policy copy of the same seam",
-    "l+block-sequence_r_i_5": "the resume-policy copy of the same seam",
+    "block-seq-loop-exit": "the sequence loop's exit returns through the end-marker frame; absorbing it stands"
+    " `end-sequence` inside the loop's own exit way, one frame nearer the parent's scan — and its two resume-policy"
+    " copies with it, the point holding all three seams the family spells",
 }
 
 
@@ -2493,28 +2531,31 @@ def extend_returns(grammar, namer):
         result[copy] = ir.Prod(production.number, copy, production.params, ir.Choice(tuple(ways)))
         return copy
 
-    for name in sorted(DECLARED_EXTENSIONS):
-        production = grammar.get(name)
-        if production is None:
-            raise AssertionError(f"{name}: declared extended, but the grammar holds no such production")
-        if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) != 1:
-            raise AssertionError(f"{name}: declared extended, but it is not the single way the fold speaks about")
-        [way] = production.body.alternatives
-        if way.first is None or way.second is None:
-            raise AssertionError(f"{name}: declared extended, but its way is not a call and a continuation")
-        follower = grammar.get(way.second.name)
-        if follower is None or not isinstance(follower.body, ir.Choice) or len(follower.body.alternatives) != 1:
-            raise AssertionError(f"{name}: the continuation is not the single-way production the fold speaks about")
-        [tail] = follower.body.alternatives
-        if tail.first is not None or tail.second is not None or tail.gate.peek is not None or tail.gate.guards:
-            raise AssertionError(f"{name}: the continuation is not actions alone, so the fold cannot absorb it")
-        if _needs_code(tail.actions) or _needs_origin(tail.actions):
-            raise AssertionError(f"{name}: the continuation closes a scope it does not open — the fold refuses it")
-        copy = extended(way.first.name, tail.actions, {}, name)
-        result[name] = dataclasses.replace(
-            production,
-            body=ir.Choice((dataclasses.replace(way, first=ir.Ref(name=copy, args=way.first.args), second=None),)),
-        )
+    for point in sorted(DECLARED_EXTENSIONS):
+        for name in namer.points.current(point):
+            production = grammar.get(name)
+            if production is None:
+                raise AssertionError(f"{point}: declared extended, but the grammar holds no `{name}`")
+            if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) != 1:
+                raise AssertionError(f"{point}: `{name}` is not the single way the fold speaks about")
+            [way] = production.body.alternatives
+            if way.first is None or way.second is None:
+                raise AssertionError(f"{point}: `{name}`'s way is not a call and a continuation")
+            follower = grammar.get(way.second.name)
+            if follower is None or not isinstance(follower.body, ir.Choice) or len(follower.body.alternatives) != 1:
+                raise AssertionError(
+                    f"{point}: the continuation is not the single-way production the fold speaks about"
+                )
+            [tail] = follower.body.alternatives
+            if tail.first is not None or tail.second is not None or tail.gate.peek is not None or tail.gate.guards:
+                raise AssertionError(f"{point}: the continuation is not actions alone, so the fold cannot absorb it")
+            if _needs_code(tail.actions) or _needs_origin(tail.actions):
+                raise AssertionError(f"{point}: the continuation closes a scope it does not open — the fold refuses it")
+            copy = extended(way.first.name, tail.actions, {}, name)
+            result[name] = dataclasses.replace(
+                production,
+                body=ir.Choice((dataclasses.replace(way, first=ir.Ref(name=copy, args=way.first.args), second=None),)),
+            )
     return result
 
 
