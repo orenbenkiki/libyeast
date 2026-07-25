@@ -269,19 +269,23 @@ All notable changes to this project are documented here. The format follows
   surface as the scans they are, the refinement and the factoring leave one shared scan with `==n` against `<n` residue,
   the factoring raises a leftover's leading assertions into its gate's guards, and a new certificate reads a choice of
   guard-led ways that are pairwise complementary — at most one enterable anywhere, so committing to the first that holds
-  is the way backtracking finds — which is what took the meter below its 240 floor. `check_normalize` holds every step
-  token-and-event identical over the whole corpus — 694 conformance fixtures and 402 YAML Test Suite cases, seven of
-  them pinning the document-marker boundary the spec's `c-forbidden` spells and the Clojure reference agrees on:
-  `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary, `... foo` malformed; four pinning
-  the sequence dedent hand-off any committed block structure must reproduce — at a dedent each exiting level's end
-  markers stand before the dedent line's indent token, the owner level continues past it, and a zero-column dedent
-  carries no indent token at all; and two pinning the sequence entry's committed dash, the Clojure reference agreeing
-  both are errors — `- @` is an entry whose body fails inside the entry's own committed region, where `-b` is refused at
-  the gate, the sequence closing before a stream-level error — backtracking and hybrid alike — and ends on two own-gates
-  over the result: every long text token, a scalar's text or a name's or the unparsed recovery's, is matched in bulk
-  rather than one character per loop; and every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a
-  `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard that lowers them, a nullable
-  production.
+  is the way backtracking finds — which is what took the meter below its 240 floor. Beside it stand two more local
+  moves: the sure-way certificate — a peek-gated way with refusal-free actions and no calls cannot fail once entered, so
+  against a fallthrough the gate's answer is backtracking's own, which proves the in-line separation and retires the
+  indentation indicator's ledger entry, the staleness net demanding the removal — and `subsume-ways`, dropping each way
+  a later way covers with identical actions and calls under a gate no stricter, the streams identical by construction.
+  `check_normalize` holds every step token-and-event identical over the whole corpus — 694 conformance fixtures and 402
+  YAML Test Suite cases, seven of them pinning the document-marker boundary the spec's `c-forbidden` spells and the
+  Clojure reference agrees on: `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary,
+  `... foo` malformed; four pinning the sequence dedent hand-off any committed block structure must reproduce — at a
+  dedent each exiting level's end markers stand before the dedent line's indent token, the owner level continues past
+  it, and a zero-column dedent carries no indent token at all; and two pinning the sequence entry's committed dash, the
+  Clojure reference agreeing both are errors — `- @` is an entry whose body fails inside the entry's own committed
+  region, where `-b` is refused at the gate, the sequence closing before a stream-level error — backtracking and hybrid
+  alike — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed
+  recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set — a
+  `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard
+  that lowers them, a nullable production.
 
 - Decoder ABI: `ys_span_trim_sets` scans two character sets in one forward pass — the whole run under `full`, and how
   far the last character not in `trim` reached — returning a `ys_trim` of the `span` kept and the given-back `trim` run

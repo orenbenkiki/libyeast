@@ -17,7 +17,8 @@ error.
 Each pinned group is run against its own stage. Every group passing and every step preserving the corpus over the stages
 its fixtures survive come to the same thing — a step would have to break the stream and a later one restore it exactly —
 so the fast answer is the whole answer, and the slow walk over every stage is worth its cost only when there is a step
-to name. That walk stops at the first step that diverges, which is the one that broke it.
+to name. A failure is announced the moment it is seen, and the walk then runs backward — new steps land at the
+pipeline's end, so the last stage still holding is usually near it, and the step after that stage is the culprit.
 
 An empty pipeline makes the one stage the base grammar itself, so this passes exactly when the base's own gates do —
 which is how the net is proved wired before a transformation rides it.
@@ -83,12 +84,22 @@ def _check():
         if pinned:
             corpus += [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, pinned)]
     corpus += [f"[{stages[-1][0]}] star {error}" for error in check_star.disagreements(stages[-1][1], suite)]
-    if corpus:  # something broke the stream; walk the steps to name the first one that did
-        for label, grammar in stages:
+    if corpus:  # something broke the stream; say so at once, then walk backward to name the step that did
+        print(f"FAILING: {len(corpus)} corpus divergence(s) — walking back for the step that broke them", flush=True)
+        for divergence in corpus[:5]:
+            print(f"    {divergence}", flush=True)
+        # New steps land at the pipeline's end, so the break is usually late: walk backward for the last stage that
+        # still holds, and the step after it is the culprit — one extra pass when the last step broke, where the forward
+        # walk would pay one per step.
+        culprit = corpus
+        for index in range(len(stages) - 2, -1, -1):
+            label, grammar = stages[index]
             named = _corpus_errors(label, grammar, fixtures, suite)
-            if named:
-                corpus = named
+            if not named:
+                culprit = _corpus_errors(*stages[index + 1], fixtures, suite)
+                print(f"    last stage still holding: [{label}] — the step after it broke", flush=True)
                 break
+        corpus = culprit
     errors += corpus
     final = stages[-1][1]
     deterministic = normalize.deterministic_productions(final)

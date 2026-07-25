@@ -1149,6 +1149,45 @@ def inline_singles(grammar, namer):
     return result
 
 
+def subsume_ways(grammar, namer):
+    """
+    Drop each way a later way makes redundant: identical actions, calls and recovery, under a gate no stricter — the
+    later way's peek absent or the same, its guards a subset — so wherever the earlier way succeeds, the later succeeds
+    with the very same consumption and stream, and first-found is unchanged by the drop. What it is for: a spliced
+    separation leaves a start-of-line way beside a plain fallthrough with the same continuation, and the guarded twin
+    says nothing the fallthrough does not.
+    """
+
+    def kept(alternatives):
+        ways = list(alternatives)
+        index = 0
+        while index < len(ways):
+            earlier = ways[index]
+            redundant = any(
+                later.actions == earlier.actions
+                and later.first == earlier.first
+                and later.second == earlier.second
+                and later.recover is None
+                and earlier.recover is None
+                and (later.gate.peek is None or later.gate.peek == earlier.gate.peek)
+                and set(later.gate.guards) <= set(earlier.gate.guards)
+                for later in ways[index + 1 :]
+            )
+            if redundant:
+                del ways[index]
+            else:
+                index += 1
+        return tuple(ways)
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = ir.Choice(kept(body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
+    return result
+
+
 def refine_indents(grammar, namer):
     """
     Refine each exact-count indentation call into the one maximal scan judged after the fact, in the grammar's own
@@ -1767,8 +1806,6 @@ DECLARED_COMMITS = {
     " '-1' besides — the declared reorder is what stood it first",
     "c-b-block-header_t_clip_1": "clip has no chomping character, so its two orderings are one language — an"
     " optional digit and the comment — and either way is the parse",
-    "c-indentation-indicator_1": "a digit standing at the indicator is the indicator — no way through the header"
-    " reads it as anything else, so the empty way serves only where no digit stands",
 }
 
 # The declared reorders: productions whose two alternatives the `reorder-declared` step swaps, each with the reason the
@@ -1869,6 +1906,17 @@ def _proved_productions(grammar):
             # against `<n` residue.
             deterministic.add(name)
             continue
+        if (
+            len(body.alternatives) == 2
+            and _sure_way(body.alternatives[0], grammar)
+            and body.alternatives[1].gate.peek is None
+        ):
+            # A sure way against a fallthrough: the first way, once its peek admits the character, cannot fail — its
+            # actions are refusal-free and it calls nothing — so where the gate holds it is the parse backtracking finds
+            # first, and where the gate refuses, the fallthrough is backtracking's own next try. The optional
+            # separations are the shape: a gated whites scan against taking none.
+            deterministic.add(name)
+            continue
         gated = list(body.alternatives)
         last = gated[-1] if gated[-1].gate.peek is None else None
         if last is not None:
@@ -1934,6 +1982,51 @@ def _spells_peek(alternative, text, grammar, seen):
         return False
     [entry] = body.alternatives
     return _spells_peek(entry, text, grammar, seen | {reference.name})
+
+
+# The actions that cannot refuse wherever the shaped grammar puts them: the zero-width kinds save the guards — a
+# `Lt`/`Le` or a lookahead may say no — and the scans that may take nothing, plus the gate-backed single consumes.
+_SURE_ACTS = (
+    ir.CloseMatch,
+    ir.CloseWindow,
+    ir.CommitProvisional,
+    ir.ConsumeChar,
+    ir.ConsumePeeked,
+    ir.ConsumeSpan,
+    ir.ConsumeTrimmedSpan,
+    ir.Emit,
+    ir.Empty,
+    ir.Error,
+    ir.Increase,
+    ir.InjectBefore,
+    ir.MarkProvisional,
+    ir.OpenMatch,
+    ir.OpenProvisional,
+    ir.OpenWindow,
+    ir.PopCode,
+    ir.PopMessage,
+    ir.PushCode,
+    ir.PushMessage,
+    ir.RetypeProvisional,
+    ir.SetVar,
+)
+
+
+def _sure_way(alternative, grammar):
+    """
+    Whether `alternative` cannot fail once its peek admits the character: it is peek-gated with no guards, calls nothing
+    and recovers nothing, and every action is refusal-free — the gate's own consume, a maximal scan, or a zero-width act
+    that is not itself a test. Entered, it is the parse; refused at the gate, backtracking's next try is the choice's
+    next way — so committing on the gate is the order backtracking finds.
+    """
+    return (
+        alternative.gate.peek is not None
+        and not alternative.gate.guards
+        and alternative.first is None
+        and alternative.second is None
+        and alternative.recover is None
+        and all(isinstance(action, _SURE_ACTS) for action in alternative.actions)
+    )
 
 
 def _complementary_guards(one, other):
@@ -2729,6 +2822,7 @@ STEPS = [
     ("alternative-shape", alternative_shape),
     ("lower-recovers", lower_recovers),
     ("inline-singles", inline_singles),
+    ("subsume-ways", subsume_ways),
     ("refine-indents", refine_indents),
     ("gate-hoist", gate_hoist),
     ("split-conflicts", split_conflicts),

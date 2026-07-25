@@ -280,7 +280,7 @@ target with a written reason, ledger-style — never *what* the result looks lik
    point, logging any residual as an assurance gap.
 1. *Finish.* Assert every terminal is a pure char-set; run the validator.
 
-**Determinize, what remains.** The meter counts 239 of 1513 productions still backtracking, over 78 distinct base names
+**Determinize, what remains.** The meter counts 238 of 1513 productions still backtracking, over 78 distinct base names
 — every one of them this phase's, driven to none, at which point the meter becomes a gate. They fall into the landings
 below, one at a time, each corpus-diffed. The speculations among them are the deep end, and they are one piece of work
 rather than several: the five cases spend one vocabulary, formalized under *The provisional mechanism*, and are produced
