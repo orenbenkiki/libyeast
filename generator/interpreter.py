@@ -476,22 +476,25 @@ def _gate_holds(gate, emitter, grammar):
 
 def _repeat(item, emitter, grammar, k):
     """
-    Match `item` greedily zero or more times, then the continuation — backtracking to fewer repetitions if it fails.
-
-    A zero-width match cannot repeat without looping, so it is taken once and no more.
+    Match `item` greedily zero or more times, then the continuation — possessively, taking the maximal run and never
+    falling back to fewer. The grammar's character-class runs are single-outcome by construction: a run is only ever
+    followed by something off its own set, so a shorter match is never the one a valid parse needs and the maximal run
+    is the answer. On the continuation's failure the whole run is given back, the way any failed match leaves the
+    position untouched. A zero-width match cannot repeat without looping, so it is taken once and no more.
     """
     checkpoint = emitter.checkpoint()
-    before = emitter.position
-
-    def more():
+    while True:
+        before = emitter.position
+        step = emitter.checkpoint()
+        if not match(item, emitter, grammar, _accept):
+            emitter.rewind(step)
+            break
         if emitter.position == before:
-            return k()  # a zero-width repetition — keep this one and stop, or the repetition would never end
-        return _repeat(item, emitter, grammar, k)
-
-    if match(item, emitter, grammar, more):
+            break  # a zero-width match: kept once, but repeating it would never end
+    if k():
         return True
     emitter.rewind(checkpoint)
-    return k()
+    return False
 
 
 def _forbidden_here(emitter, grammar):
