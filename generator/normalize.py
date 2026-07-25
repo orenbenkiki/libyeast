@@ -58,13 +58,22 @@ class Points:
         self.at = {point: (origin,) for point, (origin, _picker) in POINTS.items()}
 
     def settle(self, label, grammar):
-        """Re-pick every point among what its current holders became in `grammar`, faulting on a loss at `label`."""
-        for point, (_origin, picker) in POINTS.items():
+        """
+        Re-pick every live point among what its holders became in `grammar`, faulting on a loss at `label`. A point a
+        step has retired — its content replaced, the way the determinizer replaces the fold site — is no longer tracked
+        and does not fault.
+        """
+        for point in list(self.at):
+            _origin, picker = POINTS[point]
             candidates = {name for name in grammar if any(_descends(name, held) for held in self.at[point])}
             held = tuple(sorted(picker(grammar, candidates)))
             if not held:
                 raise AssertionError(f"[{label}] the step lost the point of interest `{point}` ({self.at[point]})")
             self.at[point] = held
+
+    def retire(self, point):
+        """Drop a point the pipeline has consumed, so the settle after its consuming step does not fault on its loss."""
+        self.at.pop(point, None)
 
     def current(self, point):
         """
@@ -72,7 +81,7 @@ class Points:
         """
         held = self.at.get(point)
         if held is None:
-            raise AssertionError(f"`{point}` is not a declared point of interest")
+            raise AssertionError(f"`{point}` is not a live point of interest")
         return held
 
 
@@ -1844,19 +1853,24 @@ def factor_prefixes(grammar, namer):
     return result
 
 
-# The assurance ledger: productions entered committed on a declaration rather than a proof, each with the reason its
-# gate order is the grammar's meaning. An entry is held two ways — the hybrid corpus parses with it committed, so a
-# wrong declaration diverges from backtracking on the spot, and `declared_faults` refuses a stale name or one the
-# analysis has since proved, so the ledger never quietly outgrows its reasons. Helper names are the pipeline's own and
-# shift when the steps before them change; the staleness fault is what makes that loud rather than silent.
+# The assurance ledger: points of interest entered committed on a declaration rather than a proof, each with the reason
+# its gate order is the grammar's meaning. An entry is held two ways — the hybrid corpus parses with it committed, so a
+# wrong declaration diverges from backtracking on the spot, and `declared_faults` refuses one the analysis has since
+# proved, so the ledger never quietly outgrows its reasons. The entries name points, so no minted number is declared and
+# the tracked content is what stays committed as the steps renumber the helpers around it.
 DECLARED_COMMITS = {
-    "c-b-block-header_t_keep_7": "chomp-first subsumes: on '+' it takes every header indicator-first takes, and '+1'"
+    "block-header-keep-chomp": "chomp-first subsumes: on '+' it takes every header indicator-first takes, and '+1'"
     " besides — the declared reorder is what stood it first",
-    "c-b-block-header_t_strip_7": "chomp-first subsumes: on '-' it takes every header indicator-first takes, and"
+    "block-header-strip-chomp": "chomp-first subsumes: on '-' it takes every header indicator-first takes, and"
     " '-1' besides — the declared reorder is what stood it first",
-    "c-b-block-header_t_clip_1": "clip has no chomping character, so its two orderings are one language — an"
+    "block-header-clip-chomp": "clip has no chomping character, so its two orderings are one language — an"
     " optional digit and the comment — and either way is the parse",
 }
+
+
+def committed_productions(points):
+    """The productions entered committed on declaration — the current holders of every `DECLARED_COMMITS` point."""
+    return {name for point in DECLARED_COMMITS for name in points.current(point)}
 
 
 def _holds(node, want):
@@ -1915,6 +1929,16 @@ def _chomp_choice_picker(monomorphized, literal=None):
     return pick
 
 
+# The flow fold's conflict, the break `b-l-folded` decides two ways — before monomorphize fixes its flow-in context into
+# the name, and after. The fold site is whatever production currently calls it, tracked by that content.
+_FLOW_FOLD_CONFLICT = ("b-l-folded", "b-l-folded_c_flow-in")
+
+
+def _flow_fold_site_picker(grammar, candidates):
+    """The fold site: the `s-flow-folded` production whose way calls the flow fold's conflict."""
+    return [name for name in candidates if any(ref in _FLOW_FOLD_CONFLICT for ref in grammar[name].references())]
+
+
 # The points of interest: each an identifier that never changes, mapped to its origin — the base-grammar name whose
 # content it follows — and its picker. The declared tables speak in these identifiers, so no minted number is ever
 # declared and no declaration goes stale when a step renumbers the helpers around a point.
@@ -1922,6 +1946,7 @@ POINTS = {
     "block-header-keep-chomp": ("c-b-block-header", _chomp_choice_picker("_t_keep", 0x2B)),
     "block-header-strip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_strip", 0x2D)),
     "block-header-clip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_clip")),
+    "flow-fold-site": ("s-flow-folded", _flow_fold_site_picker),
 }
 
 # The declared reorders: points of interest whose two alternatives the `reorder-declared` step swaps, each with the
@@ -1961,28 +1986,27 @@ DECLARED_EXTENSIONS = {
 }
 
 
-def declared_faults(grammar):
+def declared_faults(grammar, committed):
     """
-    The assurance-ledger entries that no longer hold their ground: a declared name the grammar does not hold, or one the
-    analysis proves on its own — a declaration gone stale either way, refused so the ledger's reasons stay true.
+    The assurance-ledger holders that no longer hold their ground: one the analysis proves on its own — a declaration
+    gone stale — refused so the ledger's reasons stay true. The `committed` holders come resolved from the points.
     """
     proved = _proved_productions(grammar)
-    faults = []
-    for name in sorted(DECLARED_COMMITS):
-        if name not in grammar:
-            faults.append(f"{name}: declared committed, but the grammar holds no such production")
-        elif name in proved:
-            faults.append(f"{name}: declared committed, but the analysis proves it — the declaration is stale")
-    return faults
+    return [
+        f"{name}: declared committed, but the analysis proves it — the declaration is stale"
+        for name in sorted(committed)
+        if name in proved
+    ]
 
 
-def deterministic_productions(grammar):
+def deterministic_productions(grammar, committed):
     """
     The productions entered committed: every one the analysis proves one-gate-decidable, and the assurance ledger's
-    declared few beside them — `DECLARED_COMMITS`, each carrying the reason its order is the grammar's meaning, held to
-    backtracking by the hybrid corpus and to freshness by `declared_faults`.
+    declared few beside them — the `committed` holders resolved from the `DECLARED_COMMITS` points, each carrying the
+    reason its order is the grammar's meaning, held to backtracking by the hybrid corpus and to freshness by
+    `declared_faults`.
     """
-    return _proved_productions(grammar) | {name for name in DECLARED_COMMITS if name in grammar}
+    return _proved_productions(grammar) | {name for name in committed if name in grammar}
 
 
 def _proved_productions(grammar):
@@ -2113,14 +2137,15 @@ def _follow_classes(grammar, first):
     return classes
 
 
-def context_conflicts(grammar):
+def context_conflicts(grammar, committed):
     """
     The correct meter: the root-reachable decision points no gate decides — each a `(production, context)` pair where
     the production's choice, judged with that context's follow (the one-level-inline judgment), is not
     one-gate-decidable. A production undecidable in isolation may be decidable at every context a root parse reaches it
     under, and then it is no conflict at all; one undecidable at some reachable context is counted once per such
-    context, that being the number of specialized copies a context split would leave conflicted. Returns the failing
-    pairs as `{name: failing-class-count}`.
+    context, that being the number of specialized copies a context split would leave conflicted. The `committed`
+    holders, resolved from the points, are skipped — they decide by declaration. Returns the failing pairs as `{name:
+    failing-class-count}`.
     """
     first = _first_table(grammar)
     classes = _follow_classes(grammar, first)
@@ -2134,7 +2159,7 @@ def context_conflicts(grammar):
         body = production.body
         if not isinstance(body, ir.Choice) or len(body.alternatives) <= 1:
             continue
-        if name in DECLARED_COMMITS:
+        if name in committed:
             continue
         if _decides(name, production, grammar, first_of, merged[name]):
             continue  # decidable under the merged follow is decidable under every context's
@@ -2986,6 +3011,148 @@ def span_consumes(grammar, namer):
     }
 
 
+def _is_nullable(node, nullable):
+    """Whether `node` can match the empty string, given the set of `nullable` production names."""
+    if isinstance(node, _ZERO_WIDTH):
+        return True
+    if isinstance(node, ir.Seq):
+        return all(_is_nullable(item, nullable) for item in node.items)
+    if isinstance(node, ir.Alt):
+        return any(_is_nullable(item, nullable) for item in node.items)
+    if isinstance(node, ir.Ref):
+        return node.name in nullable
+    return False
+
+
+def _nullable_set(grammar, opaque=frozenset()):
+    """
+    The productions whose body can match the empty string, a boolean least fixpoint. A production in `opaque` reads as
+    consuming whatever its shape — the roots and recovery targets that keep their empty ways, so nothing distributes
+    them. A recovery reads the input, a scan that may take zero characters is a value the run decides not a way it
+    chooses, so neither adds a way to match empty.
+    """
+    nullable = set()
+    changed = True
+    while changed:
+        changed = False
+        for name, production in grammar.items():
+            if name not in nullable and name not in opaque and _is_nullable(production.body, nullable):
+                nullable.add(name)
+                changed = True
+    return nullable
+
+
+def eliminate_empties(grammar, namer):
+    """
+    Make the grammar proper: no production, a root or recovery target aside, matches the empty string by shape — the
+    classic ε-elimination, done in place so it is scope-aware. A nullable production's empty match is distributed into
+    each call site where it stands: `Ref(P)` becomes `P | residue`, the consuming production tried and the zero-width
+    residue — the guards, markers and emitters the empty match is made of — its fallback, so a `Push`/`Pop` or
+    `Open`/`Close` pair around the call is never split or copied, only wrapped once. A purely empty production, the
+    `e-node` among them, has no consuming form and dissolves into the residue at each site. What was decided blind
+    inside `P` becomes a choice sitting next to what follows it, whose first characters are what decide it.
+
+    A production is made to consume by keeping only the ways that read: an alternation drops its empty way, a sequence
+    that already reads distributes its calls in place, and a sequence every part of which may be empty splits into an
+    ordered choice over which part is the first to read — the parts before it held to their empty match, in the order
+    the parse already tried them. A root keeps its empty ways — an empty stream is YAML — and a recovery target keeps
+    its own, the parse re-entering it at an error. The empty a value forces — a span scan of zero characters, an
+    `s-indent(0)` — is a run the scan decides, not a way a parse chooses, and stays.
+    """
+
+    def named_inside(node, found):
+        if isinstance(node, ir.Ref):
+            found.add(node.name)
+        ir.rebuilt(node, lambda child: (named_inside(child, found), child)[1])
+
+    def recovery_names(node, found):
+        if isinstance(node, ir.Recover):
+            named_inside(node.recovery, found)
+        ir.rebuilt(node, lambda child: (recovery_names(child, found), child)[1])
+
+    exempt = {ir.entry(grammar, ir.ROOT, {"r": resume})[0] for resume in annotated2ir.RESUMES}
+    for production in grammar.values():
+        recovery_names(production.body, exempt)
+
+    nullable_all = _nullable_set(grammar)  # every production that may match empty, exempt included
+    strip = _nullable_set(grammar, frozenset(exempt))  # the ones this makes consuming — exempt kept nullable
+
+    def consumes(node, seen=frozenset()):
+        """Whether `node` can match a non-empty string — has a consuming form to keep."""
+        if isinstance(node, _ZERO_WIDTH):
+            return False
+        if isinstance(node, (ir.Seq, ir.Alt)):
+            return any(consumes(item, seen) for item in node.items)
+        if isinstance(node, ir.Ref):
+            return node.name not in seen and consumes(grammar[node.name].body, seen | {node.name})
+        return True  # a terminal or a scan reads the input
+
+    consuming_names = {name for name in strip if consumes(grammar[name].body)}
+
+    def residue(node, seen=frozenset()):
+        """
+        `node`'s empty match — the zero-width chain it matches empty by — or `None` where it cannot match one. A call
+        cycle is cut: an empty match only reachable through itself is an infinite parse, not a way. An exempt reference
+        keeps its empty ways, so it stands for its own empty match.
+        """
+        if isinstance(node, _ZERO_WIDTH):
+            return node
+        if isinstance(node, ir.Seq):
+            parts = tuple(residue(item, seen) for item in node.items)
+            return None if any(part is None for part in parts) else _flat_seq(parts)
+        if isinstance(node, ir.Alt):
+            held = tuple(part for part in (residue(item, seen) for item in node.items) if part is not None)
+            return held[0] if len(held) == 1 else (ir.Alt(held) if held else None)
+        if isinstance(node, ir.Ref):
+            if node.name in strip:
+                if node.name in seen:
+                    return None
+                held = residue(grammar[node.name].body, seen | {node.name})
+                return None if held is None else _bound(held, dict(zip(grammar[node.name].params, node.args)))
+            return node if node.name in nullable_all else None  # exempt-and-nullable stands for its own empty match
+        return None
+
+    def distribute(node):
+        """`node` with each stripped reference replaced in place by its consuming-or-empty choice."""
+        node = ir.rebuilt(node, distribute)
+        if isinstance(node, ir.Ref) and node.name in strip:
+            held = residue(node)
+            return ir.Alt((node, held)) if node.name in consuming_names else held
+        return node
+
+    def consuming(node):
+        """`node` made to match at least one character, its references distributed."""
+        if isinstance(node, ir.Alt):
+            kept = tuple(consuming(item) for item in node.items if consumes(item))
+            return kept[0] if len(kept) == 1 else ir.Alt(kept)
+        if isinstance(node, ir.Seq):
+            if any(not _is_nullable(item, nullable_all) for item in node.items):
+                return distribute(node)  # a part must read, so the sequence already consumes
+            ways = []
+            for index, item in enumerate(node.items):
+                if consumes(item):
+                    before = tuple(residue(part) for part in node.items[:index])
+                    after = tuple(distribute(part) for part in node.items[index + 1 :])
+                    ways.append(_flat_seq(before + (consuming(item),) + after))
+                if not _is_nullable(item, nullable_all):
+                    break  # this part must read, so nothing after it is the first that does
+            return ways[0] if len(ways) == 1 else ir.Alt(tuple(ways))
+        if isinstance(node, ir.Ref):
+            return node  # a stripped reference is its own consuming form, keeping its name
+        return distribute(node)
+
+    result = {}
+    for name, production in grammar.items():
+        if name in strip and name not in consuming_names:
+            continue  # purely empty: it dissolves into the residue at every call site
+        body = consuming(production.body) if name in strip else distribute(production.body)
+        result[name] = dataclasses.replace(production, body=body)
+
+    lingering = sorted(_nullable_set(purged(result), frozenset(exempt)))
+    assert not lingering, f"production(s) still matching empty by shape: {lingering[:8]}"
+    return result
+
+
 def non_char_set_runs(grammar):
     """
     The runs whose element is not the character set a bulk scan needs. A `ConsumeTrimmedSpan` runs and trims two
@@ -3079,11 +3246,12 @@ def purged(grammar):
 def stages(grammar):
     """
     The grammar after each step, as `(label, grammar)` pairs, opening with `("base", grammar)` — what `check_normalize`
-    diffs the interpreter's token stream across, so a step that changes it is named. One `Namer` is threaded through the
-    steps, so the helper productions they mint number `<base>_<N>` off a count shared across them. Each step's grammar
-    is purged of the productions the root no longer reaches — a transformation that replaces a call site strands the
-    callee, and a stranded production would hold the determinize meter above its honest floor. The base grammar is kept
-    whole: it is the grammar as frozen at the completeness gate, purged by no step.
+    diffs the interpreter's token stream across, so a step that changes it is named. Returns the `Points` beside the
+    pairs, so the analysis of the final grammar reads its committed holders from the same tracking the steps used. One
+    `Namer` is threaded through the steps, so the helper productions they mint number `<base>_<N>` off a count shared
+    across them. Each step's grammar is purged of the productions the root no longer reaches — a transformation that
+    replaces a call site strands the callee, and a stranded production would hold the determinize meter above its honest
+    floor. The base grammar is kept whole: it is the grammar as frozen at the completeness gate, purged by no step.
     """
     namer = Namer()
     namer.points.settle("base", grammar)
@@ -3092,9 +3260,9 @@ def stages(grammar):
         grammar = purged(transform(grammar, namer))
         namer.points.settle(name, grammar)
         result.append((name, grammar))
-    return result
+    return result, namer.points
 
 
 def normalize(grammar):
     """The grammar with every step applied in order, purged after each of what the root no longer reaches."""
-    return stages(grammar)[-1][1]
+    return stages(grammar)[0][-1][1]

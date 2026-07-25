@@ -76,7 +76,8 @@ def _pinned(stages, fixtures):
 def _check():
     fixtures = spec_tests.load()
     suite = check_star.cases()
-    stages = normalize.stages(annotated2ir.load())
+    stages, points = normalize.stages(annotated2ir.load())
+    committed = normalize.committed_productions(points)
     groups, errors = _pinned(stages, fixtures)
 
     corpus = []
@@ -102,7 +103,7 @@ def _check():
         corpus = culprit
     errors += corpus
     final = stages[-1][1]
-    deterministic = normalize.deterministic_productions(final)
+    deterministic = normalize.deterministic_productions(final, committed)
     if not errors:  # the hybrid run is judged only where the backtracking one stands, so a fault names its mode
         errors += [
             f"[deterministic] fixture {error}"
@@ -124,7 +125,7 @@ def _check():
         errors.append(f"[char-set-runs] {fault}")
     for fault in normalize.provisional_faults(stages[-1][1]):
         errors.append(f"[provisional] {fault}")
-    for fault in normalize.declared_faults(stages[-1][1]):
+    for fault in normalize.declared_faults(stages[-1][1], committed):
         errors.append(f"[ledger] {fault}")
     residue = normalize.unshaped_actions(stages[-1][1])
 
@@ -151,12 +152,11 @@ def _check():
     # The correct meter: the goal is the grammar deterministic as invoked from the root, not every production at every
     # hypothetical entry — so this counts root-reachable decision points, each a production judged under one context's
     # follow, the one-level-inline judgment. This is the number driven to none.
-    failing = normalize.context_conflicts(final)
+    failing = normalize.context_conflicts(final, committed)
     print(f"    {sum(failing.values())} root-context decision point(s) undecided, across {len(failing)} production(s)")
     # The assurance ledger: committed on a declared reason rather than a proof, each entry held to backtracking by the
     # hybrid run above and to freshness by its own net — watched here so the declared few never grow quietly.
-    declared = sum(1 for name in normalize.DECLARED_COMMITS if name in final)
-    print(f"    {declared} production(s) committed by declaration — the assurance ledger")
+    print(f"    {len(committed)} production(s) committed by declaration — the assurance ledger")
 
 
 def main():

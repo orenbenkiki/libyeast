@@ -249,13 +249,22 @@ def determinize(grammar, namer):
     reached by their own fixtures; what falls out of the stream's reach is a later sweep's.
     """
     conflict = "b-l-folded_c_flow-in"
-    site = "s-flow-folded_2"
-    old = grammar.get(site)
-    if old is None or len(old.body.alternatives) != 1:
-        raise AssertionError(f"{site}: the fold site the rewrite names is not the single way it was")
+    # The site is the point of interest the pipeline tracks by content — whatever production now calls the conflict —
+    # not a minted number a step could renumber out from under this.
+    held = [name for name in namer.points.current("flow-fold-site") if len(grammar[name].body.alternatives) == 1]
+    sites = [
+        name
+        for name in held
+        if isinstance(grammar[name].body.alternatives[0].first, ir.Ref)
+        and grammar[name].body.alternatives[0].first.name == conflict
+    ]
+    if len(sites) != 1:
+        raise AssertionError(f"the flow-fold site is {len(sites)} single-way callers of {conflict}, not the one")
+    [site] = sites
+    old = grammar[site]
     [way] = old.body.alternatives
-    if way.first is None or way.first.name != conflict or way.second is None or way.second.name != "s-flow-folded_4":
-        raise AssertionError(f"{site}: the fold site no longer sequences {conflict} with the line prefix")
+    if way.second is None:
+        raise AssertionError(f"{site}: the fold site no longer sequences {conflict} with a follower")
 
     code_param = normalize.CODE
     n, code, origin = ir.Param(name="n"), ir.Param(name=code_param), ir.Param(name="match_start")
@@ -332,4 +341,5 @@ def determinize(grammar, namer):
         alternative(peek=breaks, first=ref("b-as-line-feed"), second=ref(empties, n)),
         alternative(actions=(ir.Empty(),)),
     )
+    namer.points.retire("flow-fold-site")  # the site is replaced here, so the point has done its work
     return result
