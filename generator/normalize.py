@@ -406,7 +406,7 @@ _NEVER_CONSUMES = (
 )
 
 
-def hoist_empty(grammar, namer):
+def hoist_repetition_empties(grammar, namer):
     """
     Take the empty match out of what a repetition repeats, so nothing repeats what may consume nothing. A `x*` or `x+`
     over a nullable `x` cannot become a recursive helper — the recursion would spin where `x` takes nothing — so `x` is
@@ -3022,7 +3022,7 @@ STEPS = [
     ("lift-chomping", lift_chomping),
     ("monomorphize", monomorphize),
     ("lower-optionals", lower_optionals),
-    ("hoist-empty", hoist_empty),
+    ("hoist-repetition-empties", hoist_repetition_empties),
     ("lower-plus", lower_plus),
     ("trim-runs", trim_runs),
     ("hoist-char-runs", hoist_char_runs),

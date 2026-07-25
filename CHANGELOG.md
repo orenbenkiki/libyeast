@@ -81,12 +81,12 @@ All notable changes to this project are documented here. The format follows
   implicit key's commit softens by context — a key that will not parse being simply not this key — the grammar says so
   in a `(case) c`, its key branches the bare item and its `else` the commit, and the parser's `(commit)` is the same
   hard cut everywhere. `(case)` grew that `else` for it. `lower-optionals` and `lower-plus` drop the `x?` and complex
-  `x+` spellings. `hoist-empty` takes the empty match out of what a repetition repeats, so nothing repeats what may
-  consume nothing: a `x*` or `x+` over a nullable `x` cannot become a recursive helper, since the recursion would spin
-  where `x` takes nothing, so `x` is split into the matches that consume and the matches that do not and the repetition
-  keeps the first — the empty is not lost, a repetition already meaning "as many as there are, including none".
-  Splitting a sequence takes an ordered choice over which of its parts is the first to consume, the parts before it held
-  to their empty match, which is where a `<start-of-line>` or an `<end-of-stream>` comes up — those being what
+  `x+` spellings. `hoist-repetition-empties` takes the empty match out of what a repetition repeats, so nothing repeats
+  what may consume nothing: a `x*` or `x+` over a nullable `x` cannot become a recursive helper, since the recursion
+  would spin where `x` takes nothing, so `x` is split into the matches that consume and the matches that do not and the
+  repetition keeps the first — the empty is not lost, a repetition already meaning "as many as there are, including
+  none". Splitting a sequence takes an ordered choice over which of its parts is the first to consume, the parts before
+  it held to their empty match, which is where a `<start-of-line>` or an `<end-of-stream>` comes up — those being what
   `s-separate-in-line` and `b-comment` match empty *by*. `trim-runs` recognizes a plain or quoted scalar's in-line run
   `(s-white* content)*` and rewrites it as a single trimmed run that keeps inner whitespace and gives back trailing;
   `hoist-char-runs` factors a run over an almost-character-set — a URI, a tag, quoted content, its handful of escapes
