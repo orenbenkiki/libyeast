@@ -280,17 +280,23 @@ target with a written reason, ledger-style — never *what* the result looks lik
    point, logging any residual as an assurance gap.
 1. *Finish.* Assert every terminal is a pure char-set; run the validator.
 
-**Determinize, what remains.** The meter counts 238 of 1513 productions still backtracking, over 78 distinct base names
-— every one of them this phase's, driven to none, at which point the meter becomes a gate. They fall into the landings
-below, one at a time, each corpus-diffed. The speculations among them are the deep end, and they are one piece of work
-rather than several: the five cases spend one vocabulary, formalized under *The provisional mechanism*, and are produced
-by one determinizer rather than hand-cut, described under *The synthesis*. The fold is the engine's calibration; the
-block-structure substrate — the line run and its measured column — lands first among what remains, because every
-trailing run that can end at an indented dedent hands its last line to a parent: the reference puts each exiting
-construct's end markers before the dedent line's spaces, and the parent then consumes those spaces as its own
-indentation, so a site-local committed scan that ate them has taken tokens whose markers and owner it cannot restore.
-The block scalar's empties ride the substrate as the engine's first speculation target; the document prefix and the
-implicit key land after, spending the same shared scan.
+**Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
+at every hypothetical entry — a production undecidable on its own is no conflict where every context a root parse
+reaches it under decides it, one level of inlining in. So the meter counts root-reachable decision points: each a
+production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 470
+undecided points across 229 productions — 229 also being the isolation count, printed beside it as the diagnostic it now
+is — driven to none, at which point the meter becomes a gate. A known over-count sits inside it: the greedy optional — a
+separation call then nothing, against taking none — is decided by order and the callee's sureness, not by character
+disjointness, and the certificate for it is the next to land. They fall into the landings below, one at a time, each
+corpus-diffed. The speculations among them are the deep end, and they are one piece of work rather than several: the
+five cases spend one vocabulary, formalized under *The provisional mechanism*, and are produced by one determinizer
+rather than hand-cut, described under *The synthesis*. The fold is the engine's calibration; the block-structure
+substrate — the line run and its measured column — lands first among what remains, because every trailing run that can
+end at an indented dedent hands its last line to a parent: the reference puts each exiting construct's end markers
+before the dedent line's spaces, and the parent then consumes those spaces as its own indentation, so a site-local
+committed scan that ate them has taken tokens whose markers and owner it cannot restore. The block scalar's empties ride
+the substrate as the engine's first speculation target; the document prefix and the implicit key land after, spending
+the same shared scan.
 
 1. The block-structure work — first, because every speculation that ends at an indented dedent hands its last line to a
    parent — decomposed into small provable moves rather than one surgery. The insight is a factoring: the ways a block

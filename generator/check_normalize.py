@@ -147,7 +147,12 @@ def _check():
     print(f"    {len(normalize.ungated_alternatives(stages[-1][1]))} alternative(s) with no character to go on")
     # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
     # of productions still backtracking — driven to none, at which point it becomes a gate.
-    print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic")
+    print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic in isolation")
+    # The correct meter: the goal is the grammar deterministic as invoked from the root, not every production at every
+    # hypothetical entry — so this counts root-reachable decision points, each a production judged under one context's
+    # follow, the one-level-inline judgment. This is the number driven to none.
+    failing = normalize.context_conflicts(final)
+    print(f"    {sum(failing.values())} root-context decision point(s) undecided, across {len(failing)} production(s)")
     # The assurance ledger: committed on a declared reason rather than a proof, each entry held to backtracking by the
     # hybrid run above and to freshness by its own net — watched here so the declared few never grow quietly.
     declared = sum(1 for name in normalize.DECLARED_COMMITS if name in final)

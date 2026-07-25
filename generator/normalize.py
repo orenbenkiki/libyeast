@@ -1896,58 +1896,7 @@ def _proved_productions(grammar):
         if not isinstance(body, ir.Choice) or len(body.alternatives) <= 1:
             deterministic.add(name)  # a terminal, a single way through, or no way at all: nothing to decide
             continue
-        if all(alternative.gate.peek is None and alternative.gate.guards for alternative in body.alternatives) and all(
-            _complementary_guards(one, other)
-            for index, one in enumerate(body.alternatives)
-            for other in body.alternatives[index + 1 :]
-        ):
-            # A choice of guard-led ways, pairwise complementary: at most one is enterable at any position, so
-            # committing to the first whose guards hold is the way backtracking finds — the factored indent's `==n`
-            # against `<n` residue.
-            deterministic.add(name)
-            continue
-        if (
-            len(body.alternatives) == 2
-            and _sure_way(body.alternatives[0], grammar)
-            and body.alternatives[1].gate.peek is None
-        ):
-            # A sure way against a fallthrough: the first way, once its peek admits the character, cannot fail — its
-            # actions are refusal-free and it calls nothing — so where the gate holds it is the parse backtracking finds
-            # first, and where the gate refuses, the fallthrough is backtracking's own next try. The optional
-            # separations are the shape: a gated whites scan against taking none.
-            deterministic.add(name)
-            continue
-        gated = list(body.alternatives)
-        last = gated[-1] if gated[-1].gate.peek is None else None
-        if last is not None:
-            gated = gated[:-1]
-        spans = []
-        for alternative in gated:
-            # a guard is allowed: it only narrows the one candidate its peek admits, and with pairwise-disjoint peeks
-            # there is never a second, so a guard refusing falls through exactly as backtracking does
-            spanned = _peek_spans(alternative.gate.peek, grammar) if alternative.gate.peek is not None else None
-            if spanned is None:
-                spans = None
-                break
-            spans.append(spanned)
-        if spans is None:
-            continue
-        if last is not None:
-            begins, nullable = _alternative_first(last, grammar, first_of)
-            # An empty match is followed by whatever comes next, so the begins widen by the follow set — except behind
-            # an end-of-input guard, where the empty match exists only where nothing follows at all.
-            ends = any(isinstance(guard, ir.EndOfStream) for guard in last.gate.guards)
-            if nullable and not ends and begins is not None:
-                begins = None if follow[name] is None else _merged_spans(begins + follow[name])
-            if begins is None or any(_spans_overlap(spanned, begins) for spanned in spans):
-                continue  # what the last way can begin with is not pinned down, or collides with a gate
-        if not any(
-            _spans_overlap(spans[one], spans[other])
-            and not _complementary_guards(gated[one], gated[other])
-            and not _literal_decided(gated[one], grammar)
-            for one in range(len(spans))
-            for other in range(one + 1, len(spans))
-        ):
+        if _decides(name, production, grammar, first_of, follow[name]):
             deterministic.add(name)
     return deterministic
 
@@ -1982,6 +1931,157 @@ def _spells_peek(alternative, text, grammar, seen):
         return False
     [entry] = body.alternatives
     return _spells_peek(entry, text, grammar, seen | {reference.name})
+
+
+# A production's context classes are capped: past this many distinct follows, the set collapses to the unpinned class,
+# which fails every follow-widened judgment — erring toward counting a conflict, never hiding one.
+_CLASS_CAP = 24
+
+
+def _follow_classes(grammar, first):
+    """
+    For each production, the distinct follows a root parse can reach it under — each class a tuple of spans, `None` the
+    unpinned class, and the empty tuple the end of the input. A call with a continuation contributes the continuation's
+    first set, widened by the caller's own classes where the continuation may match empty; a tail call and a
+    continuation position inherit the caller's classes whole; a recovery entry is reached from wherever a cut fired,
+    which is the unpinned class. A least fixpoint from the roots, whose own follow is the input's end.
+    """
+    classes = {name: set() for name in grammar}
+    for resume in annotated2ir.RESUMES:
+        root = ir.entry(grammar, ir.ROOT, {"r": resume})[0]
+        if root in classes:
+            classes[root].add(())
+    changed = True
+    while changed:
+        changed = False
+
+        def contribute(target, contributions):
+            nonlocal changed
+            held = classes.get(target)
+            if held is None or None in held:
+                return
+            for contribution in contributions:
+                if contribution not in held:
+                    held.add(contribution)
+                    changed = True
+            if len(held) > _CLASS_CAP:
+                held.clear()
+                held.add(None)
+                changed = True
+
+        for name, production in grammar.items():
+            body = production.body
+            if not isinstance(body, ir.Choice):
+                continue
+            inherited = classes[name]
+            for alternative in body.alternatives:
+                if alternative.recover is not None:
+                    contribute(alternative.recover.name, {None})
+                if alternative.first is not None and alternative.second is not None:
+                    spans, nullable = first.get(alternative.second.name, (None, True))
+                    if spans is None:
+                        contribute(alternative.first.name, {None})
+                    elif nullable:
+                        contribute(
+                            alternative.first.name,
+                            {None if k is None else tuple(_merged_spans(list(spans) + list(k))) for k in inherited},
+                        )
+                    else:
+                        contribute(alternative.first.name, {tuple(spans)})
+                    contribute(alternative.second.name, inherited)
+                elif alternative.first is not None:
+                    contribute(alternative.first.name, inherited)
+                elif alternative.second is not None:
+                    contribute(alternative.second.name, inherited)
+    return classes
+
+
+def context_conflicts(grammar):
+    """
+    The correct meter: the root-reachable decision points no gate decides — each a `(production, context)` pair where
+    the production's choice, judged with that context's follow (the one-level-inline judgment), is not
+    one-gate-decidable. A production undecidable in isolation may be decidable at every context a root parse reaches it
+    under, and then it is no conflict at all; one undecidable at some reachable context is counted once per such
+    context, that being the number of specialized copies a context split would leave conflicted. Returns the failing
+    pairs as `{name: failing-class-count}`.
+    """
+    first = _first_table(grammar)
+    classes = _follow_classes(grammar, first)
+    merged = _follow_spans(grammar, first)
+
+    def first_of(reference):
+        return first[reference]
+
+    failing = {}
+    for name, production in grammar.items():
+        body = production.body
+        if not isinstance(body, ir.Choice) or len(body.alternatives) <= 1:
+            continue
+        if name in DECLARED_COMMITS:
+            continue
+        if _decides(name, production, grammar, first_of, merged[name]):
+            continue  # decidable under the merged follow is decidable under every context's
+        reached = classes[name] or {None}
+        count = sum(
+            1 for k in reached if not _decides(name, production, grammar, first_of, None if k is None else list(k))
+        )
+        if count:
+            failing[name] = count
+    return failing
+
+
+def _decides(name, production, grammar, first_of, follow_spans):
+    """
+    Whether `production`'s choice is one-gate-decidable under `follow_spans` — what may follow it in the context being
+    judged. The certificates are context-free but for one point: a nullable last way's begins widen by the follow, so
+    the same choice can be decidable in one context and not another — which is why the meter judges root-reachable
+    contexts, this function taking each context's follow in turn, and the isolation view passing the merged one.
+    """
+    body = production.body
+    if all(alternative.gate.peek is None and alternative.gate.guards for alternative in body.alternatives) and all(
+        _complementary_guards(one, other)
+        for index, one in enumerate(body.alternatives)
+        for other in body.alternatives[index + 1 :]
+    ):
+        # A choice of guard-led ways, pairwise complementary: at most one is enterable at any position, so committing to
+        # the first whose guards hold is the way backtracking finds — the factored indent's `==n` against `<n` residue.
+        return True
+    if (
+        len(body.alternatives) == 2
+        and _sure_way(body.alternatives[0], grammar)
+        and body.alternatives[1].gate.peek is None
+    ):
+        # A sure way against a fallthrough: the first way, once its peek admits the character, cannot fail — its actions
+        # are refusal-free and it calls nothing — so where the gate holds it is the parse backtracking finds first, and
+        # where the gate refuses, the fallthrough is backtracking's own next try. The optional separations are the
+        # shape: a gated whites scan against taking none.
+        return True
+    ways = list(body.alternatives)
+    spans = []
+    for alternative in ways:
+        if alternative.gate.peek is not None:
+            # a guard is allowed: it only narrows the one candidate its peek admits, and with pairwise-disjoint peeks
+            # there is never a second, so a guard refusing falls through exactly as backtracking does
+            spanned = _peek_spans(alternative.gate.peek, grammar)
+        else:
+            # An ungated way is enterable always, so its effective gate is what it can begin with — and an empty match
+            # is followed by whatever comes next, so a nullable way's begins widen by the context's follow, except
+            # behind an end-of-input guard, where the empty match exists only where nothing follows at all. This is the
+            # one-level-inline judgment: the way decides here exactly as it would inlined into the caller.
+            spanned, nullable = _alternative_first(alternative, grammar, first_of)
+            ends = any(isinstance(guard, ir.EndOfStream) for guard in alternative.gate.guards)
+            if nullable and not ends and spanned is not None:
+                spanned = None if follow_spans is None else _merged_spans(spanned + list(follow_spans))
+        if spanned is None:
+            return False
+        spans.append(spanned)
+    return not any(
+        _spans_overlap(spans[one], spans[other])
+        and not _complementary_guards(ways[one], ways[other])
+        and not _literal_decided(ways[one], grammar)
+        for one in range(len(spans))
+        for other in range(one + 1, len(spans))
+    )
 
 
 # The actions that cannot refuse wherever the shaped grammar puts them: the zero-width kinds save the guards — a
