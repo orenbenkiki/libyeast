@@ -44,17 +44,67 @@ _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
 )
 
 
+class Points:
+    """
+    The named points of interest, tracked across the pipeline. A point is three things: an identifier that never changes
+    — what every consumer speaks — the names currently holding its content, and the point's own logic for picking the
+    holders anew. When a step reshapes a current holder, the logic looks at what the holder became — the holder itself
+    if it survived, and everything minted off its base — and updates the current names; a point whose holders a step
+    loses without successor is a loud fault, not an absorbed drift. The initial holder is a base-grammar name, so a
+    point starts anchored to something real and follows its content wherever the steps carry it.
+    """
+
+    def __init__(self):
+        self.at = {point: (origin,) for point, (origin, _picker) in POINTS.items()}
+
+    def settle(self, label, grammar):
+        """Re-pick every point among what its current holders became in `grammar`, faulting on a loss at `label`."""
+        for point, (_origin, picker) in POINTS.items():
+            candidates = {name for name in grammar if any(_descends(name, held) for held in self.at[point])}
+            held = tuple(sorted(picker(grammar, candidates)))
+            if not held:
+                raise AssertionError(f"[{label}] the step lost the point of interest `{point}` ({self.at[point]})")
+            self.at[point] = held
+
+    def current(self, point):
+        """
+        The names currently holding `point` — the one lookup a consumer makes, by the identifier that never changes.
+        """
+        held = self.at.get(point)
+        if held is None:
+            raise AssertionError(f"`{point}` is not a declared point of interest")
+        return held
+
+
+def _base(name):
+    """`name` without its minted `_<N>` suffixes — the base a helper's name is numbered off."""
+    head, _underscore, tail = name.rpartition("_")
+    return _base(head) if tail.isdigit() and head else name
+
+
+def _descends(name, holder):
+    """
+    Whether `name` is `holder` or something the pipeline made from it — a numbered sibling minted off its base, or a
+    `_`-suffixed copy a step split it into, `monomorphize`'s `_t_keep` among them. Bases are compared, so a sibling
+    `foo_8` of a holder `foo_7` counts, and a copy's own later helpers count through their shared base.
+    """
+    base, holder_base = _base(name), _base(holder)
+    return base == holder_base or base.startswith(holder_base + "_")
+
+
 class Namer:
     """
     Fresh helper-production names, `<base>_<N>`, the `<N>` the next unused per base across the whole pipeline.
 
     One is threaded through every step, so a base's count carries across them: a helper minted for `foo` is `foo_1`, the
     next `foo_2`, and one minted while a later step processes `foo_3` is `foo_4` — never `foo_3_1`, since the base is
-    `foo` with any `_<N>` suffix stripped. Two steps minting for the same base do not collide.
+    `foo` with any `_<N>` suffix stripped. Two steps minting for the same base do not collide. It carries the pipeline's
+    `Points` too — the points of interest tracked across the steps it names.
     """
 
     def __init__(self):
         self._counts = {}
+        self.points = Points()
 
     def fresh(self, owner):
         """A fresh `<base>_<N>` name for a helper of `owner`, the base being `owner` without its `_<N>` suffix."""
@@ -1808,23 +1858,90 @@ DECLARED_COMMITS = {
     " optional digit and the comment — and either way is the parse",
 }
 
-# The declared reorders: productions whose two alternatives the `reorder-declared` step swaps, each with the reason the
-# swap keeps the first-found parse. Alternative order is semantics under backtracking-with-commits — the first match
-# binds — so a reorder is sound only where a per-production argument shows every input finds the same parse either way,
-# and that argument is position-dependent: these hold only AFTER monomorphize, never in the base grammar. The header is
-# the proof. In the base, `c-chomping-indicator` is one data-dependent production whose clip branch matches empty, so a
-# chomp-first ordering enters through that empty match on `|2-`, completes the header's `(any)`, and its `(commit)`
-# turns the valid trailing `-` into an error backtracking cannot undo. Monomorphize distributes the data-dependence
-# away: the strip and keep copies gate their chomping way on the literal `-`/`+` — no empty match left to enter through,
-# so on `|2-` that way fails before anything commits and falls through — and the clip copy's two orderings are
-# empty-commutations of one language. The reasons below are those per-copy arguments; a name the grammar loses faults,
-# so the declarations cannot outlive the shapes they speak about.
+
+def _holds(node, want):
+    """Whether `want` holds for `node` or anything in its own shape — references named, not entered."""
+    if want(node):
+        return True
+    found = []
+    ir.rebuilt(node, lambda child: (found.append(_holds(child, want)), child)[1])
+    return any(found)
+
+
+def _two_ways(body):
+    """`body`'s two ways where it is a two-way alternation — spelled as an `Alt` or a `Choice` — else `None`."""
+    if isinstance(body, ir.Choice) and len(body.alternatives) == 2:
+        return body.alternatives
+    if isinstance(body, ir.Alt) and len(body.items) == 2:
+        return body.items
+    return None
+
+
+def _chomp_choice_picker(monomorphized, literal=None):
+    """
+    The picker for a block header's chomp choice: the header-ordering alternation, whose one way calls the chomping
+    indicator's `monomorphized` copy first and whose other calls the indentation indicator first — `|+2` against `|2+`,
+    the order the chomp-first reorder swaps. That two-call shape is what the alternation binarizes to; before it takes
+    that shape, and after a later step reshapes it, the point stays anchored to the holders that carry the chomping side
+    at all — a reference to that indicator, or the bare `literal` character it inlines to where it has one, the clip
+    copy having none since its indicator matches only empty.
+    """
+
+    def is_chomp(name):
+        return name.startswith("c-chomping-indicator") and ("_t_" not in name or monomorphized in name)
+
+    def first_call(way):
+        return way.first.name if isinstance(getattr(way, "first", None), ir.Ref) else None
+
+    def is_ordering(ways):
+        return any(is_chomp(first_call(way) or "") for way in ways) and any(
+            first_call(way) == "c-indentation-indicator" for way in ways
+        )
+
+    def chomp_side(node):
+        def wants(held):
+            if literal is not None and held == ir.Char(cp=literal):
+                return True
+            return isinstance(held, ir.Ref) and is_chomp(held.name)
+
+        return _holds(node, wants)
+
+    def pick(grammar, candidates):
+        ordering = [
+            name for name in candidates if (ways := _two_ways(grammar[name].body)) is not None and is_ordering(ways)
+        ]
+        return ordering or [name for name in candidates if chomp_side(grammar[name].body)]
+
+    return pick
+
+
+# The points of interest: each an identifier that never changes, mapped to its origin — the base-grammar name whose
+# content it follows — and its picker. The declared tables speak in these identifiers, so no minted number is ever
+# declared and no declaration goes stale when a step renumbers the helpers around a point.
+POINTS = {
+    "block-header-keep-chomp": ("c-b-block-header", _chomp_choice_picker("_t_keep", 0x2B)),
+    "block-header-strip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_strip", 0x2D)),
+    "block-header-clip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_clip")),
+}
+
+# The declared reorders: points of interest whose two alternatives the `reorder-declared` step swaps, each with the
+# reason the swap keeps the first-found parse. Alternative order is semantics under backtracking-with-commits — the
+# first match binds — so a reorder is sound only where a per-point argument shows every input finds the same parse
+# either way, and that argument is position-dependent: these hold only AFTER monomorphize, never in the base grammar.
+# The header is the proof. In the base, `c-chomping-indicator` is one data-dependent production whose clip branch
+# matches empty, so a chomp-first ordering enters through that empty match on `|2-`, completes the header's `(any)`, and
+# its `(commit)` turns the valid trailing `-` into an error backtracking cannot undo. Monomorphize distributes the
+# data-dependence away: the strip and keep copies gate their chomping way on the literal `-`/`+` — no empty match left
+# to enter through, so on `|2-` that way fails before anything commits and falls through — and the clip copy's chomping
+# indicator matches only empty, so its two orderings are empty-commutations of one language, either order the same
+# parse. The reasons below are those per-copy arguments; a point that resolves to anything but the two-way choice the
+# swap speaks about faults loudly, so the declarations cannot outlive the shapes they speak about.
 DECLARED_REORDERS = {
-    "c-b-block-header_t_strip_7": "chomp-first: its way is gated on the literal '-', which the input has or has not"
-    " — no empty match to enter through — and standing first it also takes '-1', which indicator-first misparses",
-    "c-b-block-header_t_keep_7": "chomp-first: its way is gated on the literal '+', which the input has or has not"
+    "block-header-keep-chomp": "chomp-first: its way is gated on the literal '+', which the input has or has not"
     " — no empty match to enter through — and standing first it also takes '+1', which indicator-first misparses",
-    "c-b-block-header_t_clip_1": "clip's chomping indicator matches only empty, so its two orderings are"
+    "block-header-strip-chomp": "chomp-first: its way is gated on the literal '-', which the input has or has not"
+    " — no empty match to enter through — and standing first it also takes '-1', which indicator-first misparses",
+    "block-header-clip-chomp": "clip's chomping indicator matches only empty, so its two orderings are"
     " empty-commutations of one language, and either order finds the same parse",
 }
 
@@ -2269,21 +2386,22 @@ def gate_literals(grammar, namer):
 
 def reorder_declared(grammar, namer):
     """
-    The grammar with each `DECLARED_REORDERS` production's two alternatives swapped — one generic move, its targets and
-    their reasons data rather than logic, so no transformation recognizes a production by name in code. A declared name
-    the grammar does not hold, or one that is not the two-way choice the swap speaks about, is a loud fault: the
-    declarations name shapes at this pipeline point, and a step before this one changing them must be seen, not
+    The grammar with each `DECLARED_REORDERS` point's two alternatives swapped — one generic move, its targets and their
+    reasons data rather than logic, so no transformation recognizes a production by name in code. Each entry names a
+    point of interest; the swap lands on every production currently holding it, and a point held by anything but the
+    two-way choice the swap speaks about is a loud fault: a step before this one changing the shape must be seen, not
     absorbed. The corpus holds each swap to the stream as it holds every step.
     """
     result = dict(grammar)
-    for name in sorted(DECLARED_REORDERS):
-        production = grammar.get(name)
-        if production is None:
-            raise AssertionError(f"{name}: declared reordered, but the grammar holds no such production")
-        if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) != 2:
-            raise AssertionError(f"{name}: declared reordered, but it is not the two-way choice the swap speaks about")
-        one, other = production.body.alternatives
-        result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=(other, one)))
+    for point in sorted(DECLARED_REORDERS):
+        for name in namer.points.current(point):
+            production = grammar.get(name)
+            if production is None:
+                raise AssertionError(f"{point}: declared reordered, but the grammar holds no `{name}`")
+            if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) != 2:
+                raise AssertionError(f"{point}: `{name}` is not the two-way choice the swap speaks about")
+            one, other = production.body.alternatives
+            result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=(other, one)))
     return result
 
 
@@ -2968,9 +3086,11 @@ def stages(grammar):
     whole: it is the grammar as frozen at the completeness gate, purged by no step.
     """
     namer = Namer()
+    namer.points.settle("base", grammar)
     result = [("base", grammar)]
     for name, transform in STEPS:
         grammar = purged(transform(grammar, namer))
+        namer.points.settle(name, grammar)
         result.append((name, grammar))
     return result
 
