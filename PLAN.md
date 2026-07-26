@@ -357,14 +357,38 @@ for.
      and both the reorder and the ledger entry go rather than being carried. A declaration the analysis catches up with
      is refused by the staleness net already; a declaration a transformation makes unnecessary must be removed in the
      same change, not left standing because it still parses.
-1. *Then the certificates, where the meter's mass sits.* The greedy optional is 224 of the 473 points and no reordering
-   or factoring touches it: its two ways share nothing by construction, one being a call and the other zero-width. It
-   wants the certificate this section already owes — order and the callee's sureness, sureness being that the callee
-   cannot fail once entered on a character its own first set admits, computed per production as a fixpoint. Beside it, a
-   subsumption certificate — a way whose language contains a later way's, read through one level of inlining — is what
-   retires the assurance ledger's two remaining entries rather than leaving them declared. The ~259 points that are
-   neither want the breakdown the greedy optional has before anything is designed for them; that classification is cheap
-   and comes first among the three.
+1. *Carrying the elimination through, which is where the meter's mass actually is.* The grammar is proper at
+   `eliminate-empties` and improper again sixteen steps later — 256 of its 778 productions match empty at the end, and
+   224 of the 473 decision points are that: a call to one of them against its zero-width way, the greedy optional. It is
+   not a shape awaiting a certificate; it is the elimination not having been carried through. The empty match is moved
+   one node sideways into an inline choice, and the first step that gives a choice a production of its own hands it
+   back. Five moves, in this order, each corpus-held:
+   - *The distribution goes outward, into ways.* `Ref(P)` at a site does not become `P_consuming | residue`; the way
+     holding it becomes two ways of the enclosing choice. The shortcut sits in three places and all three must go: the
+     call site, the consuming copy's body, and `residue` itself, which builds an alternation of empty matches and is the
+     one that keeps handing the shape back. Sequences take the product of their parts' ways, alternations the
+     concatenation, and every wrapper — a `(token)`, a `(<<<)`, a `(commit)` — wraps each way it holds. Inside a
+     lookahead or a difference a choice is a pattern rather than a decision and stays where it is, but the reference is
+     still rewritten, or it keeps the production it names alive and nullable.
+   - *The invariant is that no production offers both a way that reads and a way that does not.* Not "nothing matches
+     empty": a single-way action bundle — a continuation carrying a `PopMessage`, a guard the canonical form gives its
+     own frame — matches empty and decides nothing, and the canonical form mints those deliberately, so the stronger
+     rule would forbid the target. What is forbidden is the blind choice between reading and not.
+   - *Properness is enforced after every step from the elimination on*, since it is the tail's property and not the
+     property of the step that reaches it. Measured against the four steps that break it today — `lower-star`,
+     `lift-choices`, `binarize`, `alternative-shape` — the first three break it only because their input is improper,
+     and with the distribution carried through they preserve it.
+   - *`lower-star` is the one that breaks it by construction*, `_N ::= x _N | <empty>` being a production that decides
+     between reading and not. It emits the one-or-more helper and leaves the empty at the site: `_N ::= x _N | x`, and
+     `_N | <empty>` where the star stood, which the elimination then distributes like any other.
+   - *The elimination must not hand back what the lowerings removed.* Spelling the consuming form of a `x*` as a `x+`
+     puts a complex `Plus` back after `lower-plus` has taken them out and multiplies the complex `Star`s from 9 to 36;
+     the consuming form has to be written in the vocabulary that stands where the step runs.
+1. *Then the certificates.* What the elimination carried through does not dissolve is theirs — the count is not worth
+   guessing at until it has been. A subsumption certificate — a way whose language contains a later way's, read through
+   one level of inlining — is what retires the assurance ledger's two remaining entries rather than leaving them
+   declared. The ~249 points that are neither greedy optional nor ledger want the breakdown the greedy optional has
+   before anything is designed for them; that classification is cheap and comes first of the two.
 1. *And then the determinizer*, pointed by what the meter still flags, through the landings below.
 
 **Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
