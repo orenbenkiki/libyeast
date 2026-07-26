@@ -474,26 +474,45 @@ def lower_star(grammar, namer):
 
 def _lower_tokens(node):
     """
-    `node` with each `(token)` and `(wrap)` rewritten as the sequence of actions it stands for. Bottom-up, so a parent
-    sees its already-lowered children.
+    `node` with each `(token)` rewritten as the pair of actions it stands for. Bottom-up, so a parent sees its
+    already-lowered children.
     """
     node = ir.rebuilt(node, _lower_tokens)
     if isinstance(node, ir.Token):
         return ir.Seq((ir.PushCode(node.code), node.item, ir.PopCode()))
-    if isinstance(node, ir.Wrap):
-        return ir.Seq((ir.Emit(node.begin), node.item, ir.Emit(node.end)))
     return node
 
 
 def lower_tokens(grammar, namer):
     """
-    Rewrite each `(token)` as `PushCode(code), item, PopCode` and each `(wrap)` as `Emit(begin), item, Emit(end)`: the
-    run-code changes a token stands for become explicit actions over the run code its production carries on its frame,
-    and the markers a wrap stands for become the plain `(emit)`s they always were. Removes the `Token` and `Wrap` node
-    kinds — after it the run code is a runtime value, no longer a scope the tree shape implies.
+    Rewrite each `(token)` as `PushCode(code), item, PopCode`: the run-code change a token stands for becomes explicit
+    actions over the run code its production carries on its frame. Removes the `Token` node kind — after it the run code
+    is a runtime value, no longer a scope the tree shape implies.
     """
     return {
         name: dataclasses.replace(production, body=_lower_tokens(production.body))
+        for name, production in grammar.items()
+    }
+
+
+def _lower_wraps(node):
+    """
+    `node` with each `(wrap)` rewritten as the pair of markers it stands for. Bottom-up, so a parent sees its
+    already-lowered children.
+    """
+    node = ir.rebuilt(node, _lower_wraps)
+    if isinstance(node, ir.Wrap):
+        return ir.Seq((ir.Emit(node.begin), node.item, ir.Emit(node.end)))
+    return node
+
+
+def lower_wraps(grammar, namer):
+    """
+    Rewrite each `(wrap)` as `Emit(begin), item, Emit(end)`: the markers a wrap brackets its match with become the plain
+    `(emit)`s they always were. Removes the `Wrap` node kind.
+    """
+    return {
+        name: dataclasses.replace(production, body=_lower_wraps(production.body))
         for name, production in grammar.items()
     }
 
@@ -645,9 +664,8 @@ def _flatten(node):
 def flatten(grammar, namer):
     """
     Flatten and simplify every production toward the canonical shape: splice nested `Seq`/`Alt`, drop the `Empty` no-ops
-    a sequence carries, unwrap singleton `Seq`/`Alt`, and expand a fixed `(k)` repetition into its `k` copies. Removes
-    the `Rep` node kind for a literal count; a `(n)` over a runtime count stays for the determinize phase, where
-    counting a run is a gate. Introduces no canonical node yet — it hands the peek/consume seam a flat tree to reshape.
+    a sequence carries, and unwrap singleton `Seq`/`Alt`. Introduces no canonical node — it hands the peek/consume seam
+    a flat tree to reshape, and leaves a repetition's element bare for the step that turns a run into a consume.
     """
     return {
         name: dataclasses.replace(production, body=_flatten(production.body)) for name, production in grammar.items()
@@ -1026,14 +1044,13 @@ def _bound(node, mapping):
 # keep their order in the caller's — and stream-faithful, nothing moving relative to anything. What it is for: a
 # decision hidden one call down is hoisted into the choice that makes it, so the factoring and the certificates see what
 # the call wrapper hid — `l-empty`'s two ways are both maximal space scans told apart by `==n` against `<n`, the
-# complementary pair the certificate reads, once the prefix wrappers no longer stand between.
+# complementary pair the certificate reads, once the prefix wrappers no longer stand between. The wrappers themselves
+# are no longer declared: a production whose whole body is one ungated, action-free call is spliced out by the sweep
+# every step runs, which is that inlining done universally, so the two entries that named the line-prefix chain retired
+# when the universal rule caught up with them.
 DECLARED_INLINES = {
     "block-empty-line": "the empty line's two ways — a full line prefix against a shorter indent — surface into"
     " `l-empty`'s own choice, where the shared scan can factor and the column guards decide",
-    "block-line-prefix-in": "the block context's line prefix is one call down to the block prefix; inlined, the chain"
-    " shortens toward the indent scan itself",
-    "block-line-prefix": "the block prefix is the indent call alone; inlined, the way holds `s-indent` directly, where"
-    " the indent refinement's shape applies",
     "shorter-indent": "the shorter-indent way is the scan-and-`Lt` actions alone; inlined, the guard stands beside its"
     " rival's for the complementary pair to certify",
 }
@@ -1105,45 +1122,6 @@ def inline_singles(grammar, namer):
     return result
 
 
-def subsume_ways(grammar, namer):
-    """
-    Drop each way a later way makes redundant: identical actions, calls and recovery, under a gate no stricter — the
-    later way's peek absent or the same, its guards a subset — so wherever the earlier way succeeds, the later succeeds
-    with the very same consumption and stream, and first-found is unchanged by the drop. What it is for: a spliced
-    separation leaves a start-of-line way beside a plain fallthrough with the same continuation, and the guarded twin
-    says nothing the fallthrough does not.
-    """
-
-    def kept(alternatives):
-        ways = list(alternatives)
-        index = 0
-        while index < len(ways):
-            earlier = ways[index]
-            redundant = any(
-                later.actions == earlier.actions
-                and later.first == earlier.first
-                and later.second == earlier.second
-                and later.recover is None
-                and earlier.recover is None
-                and (later.gate.peek is None or later.gate.peek == earlier.gate.peek)
-                and set(later.gate.guards) <= set(earlier.gate.guards)
-                for later in ways[index + 1 :]
-            )
-            if redundant:
-                del ways[index]
-            else:
-                index += 1
-        return tuple(ways)
-
-    result = {}
-    for name, production in grammar.items():
-        body = production.body
-        if isinstance(body, ir.Choice):
-            body = ir.Choice(kept(body.alternatives))
-        result[name] = dataclasses.replace(production, body=body)
-    return result
-
-
 def refine_indents(grammar, namer):
     """
     Refine each exact-count indentation call into the one maximal scan judged after the fact, in the grammar's own
@@ -1196,13 +1174,12 @@ def gate_hoist(grammar, namer):
     Give an alternative that goes on a call the characters that call can begin with, so the decision is made where it is
     taken rather than one production down. A production's first set falls straight out of the shaped form — it is the
     union of its alternatives' peeks — so a call's is read off the production it names, and an alternative that consumes
-    nothing before it takes that union as its own peek.
+    nothing before it takes that union as its own peek. An alternative whose actions open on a literal takes that
+    literal's first character, which needs no table at all.
 
     The peek only has to hold wherever the call could match, so a union that is too wide is safe and a first set that
     cannot be pinned down leaves the gate as it was: a nullable production, a run that may take nothing, or a repetition
-    still awaiting determinize. Hoisting moves the test in front of the actions, which is why an alternative that opens
-    a committed region — a `PushMessage`, or a `(cut)` before the call — is left alone: the commitment must be entered,
-    and a gate that refuses first would soften the error it names into a skip.
+    still awaiting determinize. What this cannot reach, `gate_hoist_wide` peeks as a whole.
     """
     first_of = {}
 
@@ -1241,32 +1218,34 @@ def gate_hoist(grammar, namer):
             return ir.Char(lead.text[0])
         return lead if is_one_char(lead, grammar) else None
 
-    first = _first_table(grammar)
-
-    def first_of_spans(reference):
-        return first[reference]
-
     def hoisted(alternative):
         if alternative.gate.peek is not None:
             return alternative
         lead = _gate_lead(alternative.actions)
         if isinstance(lead, ir.ConsumeLiteral):
             return dataclasses.replace(alternative, gate=ir.Gate(ir.Char(lead.text[0]), alternative.gate.guards))
-        if any(isinstance(action, (ir.Cut, ir.PushMessage)) for action in alternative.actions):
-            return alternative  # committed on entry: a gate refusing first would take that commitment away
+        if _is_committed_on_entry(alternative):
+            return alternative
         if lead is None and alternative.first is not None:
             peek = production_first(alternative.first.name, frozenset())
             if peek is not None:
                 return dataclasses.replace(alternative, gate=ir.Gate(peek, alternative.gate.guards))
-        # What the call-first hoisting could not reach — a nullable callee, a run before the call, a chain of both — is
-        # peeked as the alternative's whole begin set, actions, call and continuation together, where that is pinned
-        # down and cannot match empty: an empty match must stay enterable with no character left to peek, so a nullable
-        # alternative keeps its empty gate for the follow-set certificate to decide.
-        begins, nullable = _alternative_first(alternative, grammar, first_of_spans)
-        if begins and not nullable and begins[0][0] >= 0:  # a begin set holding the invalid unit is not a peek
-            return dataclasses.replace(alternative, gate=ir.Gate(_spans_node(begins), alternative.gate.guards))
         return alternative
 
+    return _gated(grammar, hoisted)
+
+
+def _is_committed_on_entry(alternative):
+    """
+    Whether `alternative` opens a committed region before it calls anything — a `PushMessage`, or a `(cut)`. Hoisting
+    moves a test in front of the actions, and the commitment must be entered: a gate refusing first would soften the
+    error it names into a skip.
+    """
+    return any(isinstance(action, (ir.Cut, ir.PushMessage)) for action in alternative.actions)
+
+
+def _gated(grammar, hoisted):
+    """`grammar` with `hoisted` applied to every alternative of every choice."""
     result = {}
     for name, production in grammar.items():
         body = production.body
@@ -1274,6 +1253,31 @@ def gate_hoist(grammar, namer):
             body = ir.Choice(tuple(hoisted(alternative) for alternative in body.alternatives))
         result[name] = dataclasses.replace(production, body=body)
     return result
+
+
+def gate_hoist_wide(grammar, namer):
+    """
+    Give an alternative the call hoisting could not reach — a nullable callee, a run before the call, a chain of both —
+    the characters the whole of it can begin with, actions, call and continuation together. It holds where that begin
+    set is pinned down and cannot match empty: an empty match must stay enterable with no character left to peek, so a
+    nullable alternative keeps its empty gate for the follow-set certificate to decide. A begin set holding the invalid
+    unit is not a peek, and an alternative committed on entry is left alone for the same reason the call hoisting leaves
+    it.
+    """
+    first = _first_table(grammar)
+
+    def first_of_spans(reference):
+        return first[reference]
+
+    def hoisted(alternative):
+        if alternative.gate.peek is not None or _is_committed_on_entry(alternative):
+            return alternative
+        begins, nullable = _alternative_first(alternative, grammar, first_of_spans)
+        if begins and not nullable and begins[0][0] >= 0:
+            return dataclasses.replace(alternative, gate=ir.Gate(_spans_node(begins), alternative.gate.guards))
+        return alternative
+
+    return _gated(grammar, hoisted)
 
 
 def ungated_alternatives(grammar):
@@ -1719,17 +1723,9 @@ def factor_prefixes(grammar, namer):
         if not any(isinstance(action, (ir.ConsumeSpan,) + _PREFIX_CONSUMES) for action in prefix):
             return body
 
-        def peeled(alternative):
-            # A leftover's leading assertions become its gate's guards: both are judged at this same position — after
-            # the prefix, before anything of the leftover's own consumes — so the move changes nothing but where the
-            # certificates can see them.
-            actions = alternative.actions[len(prefix) :]
-            index = 0
-            while index < len(actions) and isinstance(actions[index], (ir.Lt, ir.Le)):
-                index += 1
-            return dataclasses.replace(alternative, gate=ir.Gate(None, tuple(actions[:index])), actions=actions[index:])
-
-        leftovers = tuple(peeled(a) for a in alternatives)
+        leftovers = tuple(
+            dataclasses.replace(a, gate=ir.Gate(None, ()), actions=a.actions[len(prefix) :]) for a in alternatives
+        )
         inner = production.params
         if any(_does_need_code(leftover.actions) for leftover in leftovers) and CODE not in inner:
             inner = inner + (CODE,)
@@ -1761,6 +1757,27 @@ DECLARED_COMMITS = {
     "block-header-strip-chomp": "chomp-first subsumes: on '-' it takes every header indicator-first takes, and"
     " '-1' besides — the declared reorder is what stood it first",
 }
+
+
+def hoist_residue_guards(grammar, namer):
+    """
+    Raise an alternative's leading assertions into its gate's guards. An `Lt` or a `Le` standing first in the actions is
+    judged at exactly the position the gate is — before anything the alternative consumes — so the move changes nothing
+    but where the certificates can see it, and a choice of guard-led ways is a shape they can read. What it is for: a
+    factored leftover opens on the count its shared scan left behind, the indent refinement's `==n` against `<n`.
+    """
+
+    def raised(alternative):
+        actions = alternative.actions
+        index = 0
+        while index < len(actions) and isinstance(actions[index], (ir.Lt, ir.Le)):
+            index += 1
+        if not index:
+            return alternative
+        gate = ir.Gate(alternative.gate.peek, alternative.gate.guards + tuple(actions[:index]))
+        return dataclasses.replace(alternative, gate=gate, actions=actions[index:])
+
+    return _gated(grammar, raised)
 
 
 def committed_productions(points):
@@ -1884,8 +1901,6 @@ POINTS = {
     "block-header-strip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_strip", 0x2D)),
     "flow-fold-site": ("s-flow-folded", _flow_fold_site_picker),
     "block-empty-line": ("l-empty", _refs_picker("s-indent-lt", "s-line-prefix_c_block-in")),
-    "block-line-prefix-in": ("s-line-prefix", _refs_picker("s-block-line-prefix")),
-    "block-line-prefix": ("s-block-line-prefix", _refs_picker("s-indent")),
     "shorter-indent": ("s-indent-lt", _refs_picker("s-space")),
     "block-seq-loop-exit": ("l+block-sequence", _loop_seam_picker),
 }
@@ -2688,85 +2703,102 @@ def _does_accept(node, codepoint, grammar, seen=frozenset()):
     return False
 
 
+def _resolved_alternation(node, grammar):
+    """
+    `node` with its references followed and a difference over an alternation distributed into it. The exclusions are a
+    start-position guard the interpreter probes before matching the base, so guarding the whole alternation and guarding
+    each branch accept the same characters. Pushing them in lets the escape of a tag or URI — `ns-tag-char` is
+    `ns-uri-char` less a few indicators — surface as the one complex branch a run factors around.
+    """
+    while isinstance(node, ir.Ref):
+        node = grammar[node.name].body
+    if isinstance(node, ir.Diff):
+        base = _resolved_alternation(node.base, grammar)
+        if isinstance(base, ir.Alt):
+            return ir.Alt(tuple(ir.Diff(item, node.minus) for item in base.items))
+    return node
+
+
+def _flat_alternatives(node, grammar):
+    """
+    `node`'s alternatives, flat: a char class kept whole, an alternation resolved and its own alternatives flattened in,
+    so a run's fast char set separates from its complex exceptions however the grammar nests them.
+    """
+    if is_one_char(node, grammar):
+        return (node,)
+    expanded = _resolved_alternation(node, grammar)
+    if isinstance(expanded, ir.Alt):
+        return tuple(alternative for item in expanded.items for alternative in _flat_alternatives(item, grammar))
+    return (node,)
+
+
+def _split_common(alternatives, grammar, owner):
+    """
+    `alternatives` split into `(common, uncommon)` — a character set of the char-class alternatives, or `None` where
+    there is none, and one alternative of the complex ones, or `None` where there is none. Raises where a complex
+    alternative is not provably start-disjoint from the common set, so a greedy common run could take a character an
+    ordered choice would have handed the exception.
+    """
+    common_alts = tuple(item for item in alternatives if is_one_char(item, grammar))
+    uncommon_alts = tuple(item for item in alternatives if not is_one_char(item, grammar))
+    common = None if not common_alts else common_alts[0] if len(common_alts) == 1 else ir.Alt(common_alts)
+    uncommon = None if not uncommon_alts else uncommon_alts[0] if len(uncommon_alts) == 1 else ir.Alt(uncommon_alts)
+    if common is not None and uncommon is not None:
+        first = _first_chars(uncommon, grammar)
+        if first is None or any(_does_accept(common, codepoint, grammar) for codepoint in first):
+            raise NotAlmostCharSet(
+                f"{owner}: a repeated alternation's complex alternative is not provably start-disjoint from its "
+                f"character classes, so its character runs cannot be factored out"
+            )
+    return common, uncommon
+
+
 def hoist_char_runs(grammar, namer):
     """
     Factor a `*` over an almost-character-set — an alternation of character classes and a few complex exceptions, the
     escapes of a quoted scalar, a URI, a tag — into `common* (uncommon common*)*`: the common characters matched in bulk
-    runs (each a repeated-char-set match, later one SIMD call), dropping to the slow path only for an exception. A
-    `TrimStar` factors the same way, keeping its trim a character set of its own: `trim-run (trim* uncommon trim-run)*`,
-    so its common runs stay the two-set trimming scan a plain or quoted scalar's line compiles to. The equivalence holds
-    only where an exception cannot begin with a character the common set also accepts, so that a greedy common run never
-    takes one an ordered choice would have handed the exception; where that cannot be shown the factoring is refused
-    with `NotAlmostCharSet` rather than guessed.
+    runs (each a repeated-char-set match, later one SIMD call), dropping to the slow path only for an exception. The
+    equivalence holds only where an exception cannot begin with a character the common set also accepts, so that a
+    greedy common run never takes one an ordered choice would have handed the exception; where that cannot be shown the
+    factoring is refused with `NotAlmostCharSet` rather than guessed.
     """
-
-    def resolved(node):
-        while isinstance(node, ir.Ref):
-            node = grammar[node.name].body
-        if isinstance(node, ir.Diff):
-            # A difference over an alternation distributes into the alternation: the exclusions are a start-position
-            # guard the interpreter probes before matching the base, so guarding the whole alternation and guarding each
-            # branch accept the same characters. Pushing them in lets the escape of a tag or URI — `ns-tag-char` is
-            # `ns-uri-char` less a few indicators — surface as the one complex branch a run factors around.
-            base = resolved(node.base)
-            if isinstance(base, ir.Alt):
-                return ir.Alt(tuple(ir.Diff(item, node.minus) for item in base.items))
-        return node
-
-    def flat_alternatives(node):
-        """
-        `node`'s alternatives, flat: a char class kept whole, an alternation resolved and its own alternatives flattened
-        in, so a run's fast char set separates from its complex exceptions however the grammar nests them.
-        """
-        if is_one_char(node, grammar):
-            return (node,)
-        expanded = resolved(node)
-        if isinstance(expanded, ir.Alt):
-            return tuple(alternative for item in expanded.items for alternative in flat_alternatives(item))
-        return (node,)
-
-    def split(alternatives, owner):
-        """
-        `alternatives` split into `(common, uncommon)` — a character set of the char-class alternatives, or `None` where
-        there is none, and one alternative of the complex ones, or `None` where there is none. Raises where a complex
-        alternative is not provably start-disjoint from the common set, so a greedy common run could take a character an
-        ordered choice would have handed the exception.
-        """
-        common_alts = tuple(item for item in alternatives if is_one_char(item, grammar))
-        uncommon_alts = tuple(item for item in alternatives if not is_one_char(item, grammar))
-        common = None if not common_alts else common_alts[0] if len(common_alts) == 1 else ir.Alt(common_alts)
-        uncommon = None if not uncommon_alts else uncommon_alts[0] if len(uncommon_alts) == 1 else ir.Alt(uncommon_alts)
-        if common is not None and uncommon is not None:
-            first = _first_chars(uncommon, grammar)
-            if first is None or any(_does_accept(common, codepoint, grammar) for codepoint in first):
-                raise NotAlmostCharSet(
-                    f"{owner}: a repeated alternation's complex alternative is not provably start-disjoint from its "
-                    f"character classes, so its character runs cannot be factored out"
-                )
-        return common, uncommon
 
     def hoist(owner, node):
         node = ir.rebuilt(node, lambda child: hoist(owner, child))
-        if isinstance(node, ir.TrimStar):
-            # A trimmed run factors as a plain run does, but each common run gives back its trailing trim, so the trim
-            # stays a char set of its own: `trim-run (trim* uncommon trim-run)*`, the leading `trim*` re-taking what the
-            # run before it gave back — which is what keeps the whitespace before a mid-scalar `:` while trailing
-            # whitespace is still trimmed off the end.
-            common, uncommon = split(flat_alternatives(node.full), owner)
-            run = ir.TrimStar(common, node.trim)
-            if uncommon is None:
-                return run  # a pure character-set run — one trimming scan, no exceptions
-            return ir.Seq((run, ir.Star(ir.Seq((ir.Star(node.trim), uncommon, run)))))
         if not isinstance(node, ir.Star):
             return node
-        alternation = resolved(node.item)
+        alternation = _resolved_alternation(node.item, grammar)
         if not isinstance(alternation, ir.Alt):
             return node
-        common, uncommon = split(alternation.items, owner)
+        common, uncommon = _split_common(alternation.items, grammar, owner)
         if common is None or uncommon is None:
             return node  # a pure character set (lower-star keeps it) or all complex (lower-star recurses it)
         run = ir.Star(common)
         return ir.Seq((run, ir.Star(ir.Seq((uncommon, run)))))
+
+    return {
+        name: dataclasses.replace(production, body=hoist(name, production.body)) for name, production in grammar.items()
+    }
+
+
+def hoist_trimmed_runs(grammar, namer):
+    """
+    Factor a trimmed run over an almost-character-set the way a plain run factors, keeping its trim a character set of
+    its own: `trim-run (trim* uncommon trim-run)*`, so its common runs stay the two-set trimming scan a plain or quoted
+    scalar's line compiles to. Each common run gives back its trailing trim and the leading `trim*` re-takes what the
+    run before it gave back — which is what keeps the whitespace before a mid-scalar `:` while trailing whitespace is
+    still trimmed off the end. It carries the same start-disjointness condition a plain run's factoring does.
+    """
+
+    def hoist(owner, node):
+        node = ir.rebuilt(node, lambda child: hoist(owner, child))
+        if not isinstance(node, ir.TrimStar):
+            return node
+        common, uncommon = _split_common(_flat_alternatives(node.full, grammar), grammar, owner)
+        run = ir.TrimStar(common, node.trim)
+        if uncommon is None:
+            return run  # a pure character-set run — one trimming scan, no exceptions
+        return ir.Seq((run, ir.Star(ir.Seq((ir.Star(node.trim), uncommon, run)))))
 
     return {
         name: dataclasses.replace(production, body=hoist(name, production.body)) for name, production in grammar.items()
@@ -2900,34 +2932,10 @@ def _literal_codepoint(node, grammar, seen=frozenset()):
 
 def _span_consumes(node, grammar):
     """
-    `node` with each character-set `Star` rewritten as `ConsumeSpan` and each `TrimStar` as `ConsumeTrimmedSpan`.
-    Bottom-up, so a parent sees its already-rewritten children.
+    `node` with each repetition over a character class rewritten as the scan it is. Bottom-up, so a parent sees its
+    already-rewritten children.
     """
     node = ir.rebuilt(node, lambda child: _span_consumes(child, grammar))
-    if isinstance(node, ir.Seq):
-        items, collapsed, index = node.items, [], 0
-        while index < len(items):
-            # Literal characters standing in a row are one fixed sequence to match, not a state each: `---`, `...`, a
-            # directive's `YAML` or `TAG`, and the carriage return and line feed of a break.
-            run = index
-            while run < len(items) and _literal_codepoint(items[run], grammar) is not None:
-                run += 1
-            if run - index > 1:
-                text = tuple(_literal_codepoint(item, grammar) for item in items[index:run])
-                collapsed.append(ir.ConsumeLiteral(text))
-                index = run
-                continue
-            # The same character class standing in a row is a counted run written out — a URI escape's two hex digits.
-            run = index
-            while run < len(items) and items[run] == items[index]:
-                run += 1
-            if run - index > 1 and is_one_char(items[index], grammar):
-                collapsed.append(ir.ConsumeCountedSpan(items[index], ir.Lit(run - index)))
-                index = run
-                continue
-            collapsed.append(items[index])
-            index += 1
-        node = _flat_seq(tuple(collapsed))
     if isinstance(node, ir.TrimStar):
         return ir.ConsumeTrimmedSpan(node.full, node.trim)
     if isinstance(node, ir.Star) and is_one_char(node.item, grammar):
@@ -2939,15 +2947,61 @@ def _span_consumes(node, grammar):
 
 def span_consumes(grammar, namer):
     """
-    Rewrite each run over a character class as the consume action the canonical form spells, each a single scan: a
-    `Star` becomes a `ConsumeSpan`, a `TrimStar` a `ConsumeTrimmedSpan`, and a `({N})` repetition a `ConsumeCountedSpan`
-    — a maximal run, a maximal run that gives its trailing trim back, and a run of exactly so many. The counted one is
-    what keeps an escape's eight hex digits and an indent's `n` spaces each a single scan rather than a state per
-    character. A `Star` over a nullable production is left for the determinize phase's zero-width guard. Removes the
-    `TrimStar` and `Rep` node kinds and every character-set `Star`.
+    Rewrite each repetition over a character class as the consume action the canonical form spells, each a single scan:
+    a `Star` becomes a `ConsumeSpan`, a `TrimStar` a `ConsumeTrimmedSpan`, and a `({N})` repetition a
+    `ConsumeCountedSpan` — a maximal run, a maximal run that gives its trailing trim back, and a run of exactly so many.
+    The counted one is what keeps an escape's eight hex digits and an indent's `n` spaces each a single scan rather than
+    a state per character. A `Star` over a nullable production is left for the determinize phase's zero-width guard.
+    Removes the `TrimStar` and `Rep` node kinds and every character-set `Star`.
     """
     return {
         name: dataclasses.replace(production, body=_span_consumes(production.body, grammar))
+        for name, production in grammar.items()
+    }
+
+
+def _literal_consumes(node, grammar):
+    """
+    `node` with each run of characters standing in a row rewritten as the one match it is. Bottom-up, so a parent sees
+    its already-rewritten children.
+    """
+    node = ir.rebuilt(node, lambda child: _literal_consumes(child, grammar))
+    if not isinstance(node, ir.Seq):
+        return node
+    items, collapsed, index = node.items, [], 0
+    while index < len(items):
+        # Literal characters standing in a row are one fixed sequence to match, not a state each: `---`, `...`, a
+        # directive's `YAML` or `TAG`, and the carriage return and line feed of a break.
+        run = index
+        while run < len(items) and _literal_codepoint(items[run], grammar) is not None:
+            run += 1
+        if run - index > 1:
+            collapsed.append(ir.ConsumeLiteral(tuple(_literal_codepoint(item, grammar) for item in items[index:run])))
+            index = run
+            continue
+        # The same character class standing in a row is a counted run written out — a URI escape's two hex digits.
+        run = index
+        while run < len(items) and items[run] == items[index]:
+            run += 1
+        if run - index > 1 and is_one_char(items[index], grammar):
+            collapsed.append(ir.ConsumeCountedSpan(items[index], ir.Lit(run - index)))
+            index = run
+            continue
+        collapsed.append(items[index])
+        index += 1
+    return _flat_seq(tuple(collapsed))
+
+
+def literal_consumes(grammar, namer):
+    """
+    Rewrite each run of characters standing in a row as the one match it is: literal characters in a row become a
+    `ConsumeLiteral`, one comparison that either stands whole or takes nothing — `---`, `...`, a directive's `YAML` or
+    `TAG`, a break's carriage return and line feed — and the same character class in a row a `ConsumeCountedSpan`, a URI
+    escape's two hex digits among them. A run is a sequence's own shape rather than a repetition, which is why it is not
+    the scan rewriting's to find.
+    """
+    return {
+        name: dataclasses.replace(production, body=_literal_consumes(production.body, grammar))
         for name, production in grammar.items()
     }
 
@@ -3288,26 +3342,31 @@ STEPS = [
     ("lower-plus", lower_plus),
     ("trim-runs", trim_runs),
     ("hoist-char-runs", hoist_char_runs),
+    ("hoist-trimmed-runs", hoist_trimmed_runs),
     ("lower-star", lower_star),
     ("lower-tokens", lower_tokens),
+    ("lower-wraps", lower_wraps),
     ("lower-bounds", lower_bounds),
     ("lower-windows", lower_windows),
     ("lower-binds", lower_binds),
     ("lower-commits", lower_commits),
     ("flatten", flatten),
     ("span-consumes", span_consumes),
+    ("literal-consumes", literal_consumes),
     ("lift-choices", lift_choices),
     ("single-consumes", single_consumes),
     ("binarize", binarize),
     ("alternative-shape", alternative_shape),
     ("lower-recovers", lower_recovers),
     ("inline-singles", inline_singles),
-    ("subsume-ways", subsume_ways),
     ("refine-indents", refine_indents),
     ("gate-hoist", gate_hoist),
+    ("gate-hoist-wide", gate_hoist_wide),
     ("split-conflicts", split_conflicts),
     ("factor-prefixes", factor_prefixes),
+    ("hoist-residue-guards", hoist_residue_guards),
     ("gate-hoist-leftovers", gate_hoist),
+    ("gate-hoist-leftovers-wide", gate_hoist_wide),
     ("speculate-folds", speculate_folds),
     ("gate-literals", gate_literals),
     ("reorder-declared", reorder_declared),
@@ -3448,6 +3507,12 @@ def cleaned(grammar):
     making two frames the same call and a splice making two callers identical, so they run to a fixpoint. None of it
     changes what the grammar matches or emits: a spliced frame ran no action and made no decision, and a merged
     production is the one kept, character for character.
+
+    Only a merge is a rename. Two productions that behave alike are one thing under two names, so what tracked either
+    tracks the one kept; a spliced frame is not renamed but *consumed*, its callee a production that already stood for
+    itself and holds none of the frame's role. Following a splice would slide a point of interest off the wrapper it
+    names and onto the callee — which is how a declaration meant for a prefix wrapper came to name the indent scan
+    underneath it and dissolve it.
     """
     keep = entered_by_name(grammar)
     renames = {}
@@ -3460,11 +3525,10 @@ def cleaned(grammar):
         return name
 
     while True:
-        spliced, splices = _spliced(grammar, keep)
+        spliced, _splices = _spliced(grammar, keep)
         swept, merges = _merged(spliced, keep)
         if swept == grammar:
             return purged(grammar), {gone: landed(gone) for gone in renames}
-        renames.update(splices)
         renames.update(merges)
         grammar = swept
 
@@ -3479,12 +3543,21 @@ def stages(grammar):
     productions, and the ones the root no longer reaches — since a transformation that replaces a call site strands the
     callee, and a frame or a duplicate the sweep leaves standing would hold the determinize meter above its honest
     floor. The base grammar is kept whole: it is the grammar as frozen at the completeness gate, cleaned by no step.
+
+    Every step must change the grammar, and one that does not is a fault. A step earns its place by doing something: it
+    goes idle when what it looks for has stopped reaching it — a shape an earlier step now spells differently, a
+    declared site whose content moved — and that is a regression in the step before it, not a step to leave standing.
+    The check reads the transform's own output, before the sweep, so a step is judged on what it did rather than on what
+    the sweep did after it.
     """
     namer = Namer()
     namer.points.settle("base", grammar)
     result = [("base", grammar)]
     for name, transform in STEPS:
-        grammar, renames = cleaned(transform(grammar, namer))
+        produced = transform(grammar, namer)
+        if produced == grammar:
+            raise AssertionError(f"the `{name}` step changed nothing — what it looks for no longer reaches it")
+        grammar, renames = cleaned(produced)
         namer.points.follow(renames)
         namer.points.settle(name, grammar)
         result.append((name, grammar))

@@ -265,11 +265,11 @@ target with a written reason, ledger-style — never *what* the result looks lik
 Three more rules bind the pipeline, and `DESIGN.md` states them, being what the generator is rather than what it is to
 do: many simple steps and never few clever ones; two things compared by making them look alike and testing equality,
 never by an equivalence rule that knows what they mean; and a named site as a code smell whose target is none. The
-pipeline does not satisfy them yet — six steps do more than one thing, one duplicates another's machinery under a second
-name, and eight points of interest carry four declaration tables — and **reaching conformance with them comes before
-driving the meter down.** A meter driven down over steps of the wrong shape buys a number and keeps the debt; the same
-number reached over steps of the right shape is a grammar that can be read. So the work below is ordered by that, not by
-what moves the meter most.
+pipeline does not satisfy them yet — six points of interest carry four declaration tables between them, and the
+comparisons the second rule asks for are not all written — and **reaching conformance with them comes before driving the
+meter down.** A meter driven down over steps of the wrong shape buys a number and keeps the debt; the same number
+reached over steps of the right shape is a grammar that can be read. So the work below is ordered by that, not by what
+moves the meter most.
 
 The steps, then:
 
@@ -301,21 +301,22 @@ points of interest are retired as the universal steps reach them. The meter is w
 after — it will move as a consequence of the repairs, and where it moves the other way the shape is what is being paid
 for.
 
-1. *The standing steps, repaired.* A set of splits, none of them changing a grammar: a split buys a name on the corpus
-   diff and a smaller rule to prove by eye, and costs nothing, the pipeline being a list.
-   - `flatten` splits into `flatten` and `expand-counts` — expanding a fixed `(k)` repetition into its copies is not
-     flattening.
-   - `lower-tokens` splits into `lower-tokens` and `lower-wraps`: two node kinds, two rules.
-   - `span-consumes` splits into `span-consumes` and `literal-consumes` — a run of characters standing in a row is not a
-     repetition, and its `ConsumeLiteral` is a different rewrite.
-   - `hoist-char-runs` splits into `hoist-char-runs` and `hoist-trimmed-runs`, the fast/slow split for a plain run and
-     for a trimmed one.
-   - `gate-hoist` splits into `gate-hoist` and `gate-hoist-wide`: taking a call's first set, and peeking a whole
-     alternative where the call hoisting cannot reach, are different rules with different side conditions.
-   - `factor-prefixes` splits into `factor-prefixes`, `factor-scans` and `factor-scopes` — the identical-action
-     factoring, the maximal-scan admission and the `(match)`-origin admission are three side conditions bolted onto one
-     walk — and the leftover's leading `Lt`/`Le` rising into its gate leaves as `hoist-residue-guards`, being its own
-     rule with its own argument.
+1. *The standing steps, repaired* — done, and what it turned up is worth keeping written down. The splits landed and
+   changed no grammar: `lower-tokens` and `lower-wraps`, `span-consumes` and `literal-consumes`, `hoist-char-runs` and
+   `hoist-trimmed-runs`, `gate-hoist` and `gate-hoist-wide`, and the leftover's leading `Lt`/`Le` rising into its gate
+   as `hoist-residue-guards`. Three things came out of doing them, none of them a split:
+   - `flatten` was not compound at all. Its docstring claimed it expanded a fixed `(k)` repetition into its copies, and
+     nothing in it ever did — `span-consumes` removes every `Rep`, literal count and runtime count alike. The claim was
+     corrected rather than a step written for it.
+   - `factor-prefixes` keeps its two admissions. The maximal-scan one and the `(match)`-origin one are side conditions
+     on what may join the prefix, not second jobs: split out they would be three steps over one walk differing by two
+     booleans, which is one rule with knobs and worse by the same principle that motivates the splits.
+   - Every step must now change the grammar, and one that does not is a fault named where it stands. The check is what
+     caught a real regression: only a merge is a rename, and a splice followed as one slid a declared inline off the
+     line-prefix wrapper it names and onto the indent scan underneath, dissolving what `refine-indents` refines and
+     leaving four steps idle. With splices no longer followed, the two line-prefix inlines retired — the universal
+     splicing is that inlining done everywhere — and the way-subsumption step retired with them, its shape reaching it
+     nowhere in the pipeline once the splicing had absorbed the spliced separations it was written for.
    - Left alone for now, noted so it is not rediscovered: `monomorphize` specializes `c`, `t` and `r` in one pass over
      their combinations, and three passes of the one generic operation would give the same grammar with three
      separately-diffed steps. The copies are made per combination, so the split wants care it has not earned yet.
@@ -340,20 +341,20 @@ for.
      brought into the list before the rule can see it.
    - `factor-calls` — a shared leading call joins the prefix. *Holds where the call is identical in name and arguments
      across every way and their gates are equal.* One production today; the shape the three steps above create.
-   - `subsume-ways`, extended to drop an earlier way whose later twin carries the same actions and calls but for
-     trailing zero-width guards — the narrower way dies, the streams identical by construction. What an elimination
-     leaves wherever a barrier rode one ordering and not the other.
+   - `subsume-ways` returns when it has work, and wider than it left: dropping an earlier way whose later twin carries
+     the same actions and calls but for trailing zero-width guards — the narrower way dies, the streams identical by
+     construction. What an elimination leaves wherever a barrier rode one ordering and not the other.
    - `merge-ways` — two ways of one choice that are equal after `order-actions` become one. *Plain equality.* The
      within-production twin of the sweep's behavioural merge, which today reaches whole productions only.
    - `drop-dead-ways` — a way whose gate is disjoint from every character its production can be entered on is
      unreachable. *Reads the root-down entry sets the meter already computes.*
-   - And after each of them, the standing question of the third law: which of the eight points does it retire? The
+   - And after each of them, the standing question of the third law: which of the six points does it retire? The
      reordered header choices are the first owed an answer — `order-actions` and `factor-calls` between them should
      leave the two orderings comparing equal, at which point there is nothing to swap and nothing to declare committed,
      and both the reorder and the ledger entry go rather than being carried. A declaration the analysis catches up with
      is refused by the staleness net already; a declaration a transformation makes unnecessary must be removed in the
      same change, not left standing because it still parses.
-1. *Then the certificates, where the meter's mass sits.* The greedy optional is 224 of the 476 points and no reordering
+1. *Then the certificates, where the meter's mass sits.* The greedy optional is 224 of the 471 points and no reordering
    or factoring touches it: its two ways share nothing by construction, one being a call and the other zero-width. It
    wants the certificate this section already owes — order and the callee's sureness, sureness being that the callee
    cannot fail once entered on a character its own first set admits, computed per production as a fixpoint. Beside it, a
@@ -366,8 +367,8 @@ for.
 **Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
 at every hypothetical entry — a production undecidable on its own is no conflict where every context a root parse
 reaches it under decides it, one level of inlining in. So the meter counts root-reachable decision points: each a
-production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 476
-undecided points across 183 productions — 183 also being the isolation count, printed beside it as the diagnostic it now
+production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 471
+undecided points across 181 productions — 181 also being the isolation count, printed beside it as the diagnostic it now
 is — driven to none, at which point the meter becomes a gate. A known over-count holds 224 of them: the greedy optional
 — a call then nothing, against taking none, which is the shape the ε-elimination distributes to every site a nullable
 production was called from — is decided by order and the callee's sureness, not by character disjointness, and the
