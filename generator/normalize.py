@@ -1122,6 +1122,25 @@ def inline_singles(grammar, namer):
     return result
 
 
+def _moved_actions(actions, callee, call):
+    """
+    `actions` as they read in the caller once moved out of `callee`, or `None` where moving them would change what they
+    do. What a production's frame holds is not in the actions to be substituted: a `PopCode`, a `CloseMatch` or a
+    `CloseWindow` restores the value its own frame carries, so a run of actions closing a scope it does not open reads
+    the caller's frame where it read the callee's, and stays where it is. What the actions *say* does substitute — each
+    parameter to the argument the call passes — and a parameter one of them binds must be passed by its own name, since
+    the target of a `(set)` is a name rather than an expression and no substitution reaches it.
+    """
+    if _does_need_code(actions) or _does_need_origin(actions):
+        return None
+    mapping = dict(zip(callee.params, call.args))
+    for parameter in _bound_params(ir.Seq(actions), set()):
+        argument = mapping.get(parameter)
+        if argument is not None and not (isinstance(argument, ir.Param) and argument.name == parameter):
+            return None
+    return tuple(_bound(action, mapping) for action in actions)
+
+
 def inline_under_gate(grammar, namer):
     """
     Give a call only the ways its caller's gate can reach. An alternative that peeks a character and then calls, taking
@@ -1173,12 +1192,14 @@ def inline_under_gate(grammar, namer):
         if len(kept) == len(callee.body.alternatives) or not kept:
             return alternative
         if len(kept) == 1 and is_bare(kept[0]) and alternative.recover is None:
-            return dataclasses.replace(
-                alternative,
-                actions=alternative.actions + kept[0].actions,
-                first=alternative.second,
-                second=None,
-            )
+            moved = _moved_actions(kept[0].actions, callee, call)
+            if moved is not None:
+                return dataclasses.replace(
+                    alternative,
+                    actions=alternative.actions + moved,
+                    first=alternative.second,
+                    second=None,
+                )
         copy = namer.fresh(call.name)
         minted[copy] = ir.Prod(callee.number, copy, callee.params, ir.Choice(tuple(kept)))
         return dataclasses.replace(alternative, first=dataclasses.replace(call, name=copy))
@@ -1215,18 +1236,16 @@ def inline_single_way(grammar, namer):
         calls = [held for held in (way.first, way.second) if held is not None]
         if len(calls) + (alternative.second is not None) > 2:
             return alternative
+        moved = _moved_actions(way.actions, callee, call)
+        if moved is None:
+            return alternative  # the actions read the callee's own frame, or bind a parameter the call renames
         mapping = dict(zip(callee.params, call.args))
-        moved = _bound(ir.Seq(way.actions), mapping).items if way.actions else ()
-        for parameter in _bound_params(ir.Seq(way.actions), set()):
-            argument = mapping.get(parameter)
-            if argument is not None and not (isinstance(argument, ir.Param) and argument.name == parameter):
-                raise AssertionError(f"{call.name}: its way binds `{parameter}`, passed as an argument")
         bound = [_bound(held, mapping) for held in calls]
         following = [held for held in (alternative.second,) if held is not None]
         held_calls = (bound + following + [None, None])[:2]
         return dataclasses.replace(
             alternative,
-            actions=alternative.actions + tuple(moved),
+            actions=alternative.actions + moved,
             first=held_calls[0],
             second=held_calls[1],
         )
