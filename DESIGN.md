@@ -172,11 +172,11 @@ the standing question at every one of them is *what universal step would retire 
 one?*
 
 **Not yet held — the one thing in this document that is not yet true.** Everything else here describes what the code
-does; this section describes what it must do, and the pipeline does not satisfy it today. Six of its thirty-three steps
-do more than one thing, one duplicates another's machinery under a second name, and eight named points of interest carry
-four declaration tables between them. Reaching conformance with these three comes before driving the determinize meter
-down: a meter driven down over steps of the wrong shape buys a number and keeps the debt. The qualification in this
-paragraph comes out when the pipeline conforms, and the three rules then stand as a hard constraint on every step after.
+does; this section describes what it must do, and the pipeline does not satisfy it today. Six of its thirty-two steps do
+more than one thing, and eight named points of interest carry four declaration tables between them. Reaching conformance
+with these three comes before driving the determinize meter down: a meter driven down over steps of the wrong shape buys
+a number and keeps the debt. The qualification in this paragraph comes out when the pipeline conforms, and the three
+rules then stand as a hard constraint on every step after.
 
 ## Differences from YamlReference
 

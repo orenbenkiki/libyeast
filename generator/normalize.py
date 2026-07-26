@@ -43,6 +43,17 @@ _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
     ir.StartOfLine,
 )
 
+# The actions that read the input. A scan of zero characters counts here beside the consumes that always take one: what
+# it takes is a run the scan decides, not a way a parse chooses. In alphabetical order.
+_CONSUMING_ACTS = (
+    ir.ConsumeChar,
+    ir.ConsumeCountedSpan,
+    ir.ConsumeLiteral,
+    ir.ConsumePeeked,
+    ir.ConsumeSpan,
+    ir.ConsumeTrimmedSpan,
+)
+
 
 class Points:
     """
@@ -405,132 +416,6 @@ def can_match_empty(node, grammar, seen=frozenset()):
     if isinstance(node, ir.Bind):
         return can_match_empty(node.cond, grammar, seen)
     return True
-
-
-_NEVER_CONSUMES = (
-    ir.StartOfLine,
-    ir.EndOfStream,
-    ir.Look,
-    ir.NegLook,
-    ir.LookBehind,
-    ir.ExcludeAt,
-    ir.Lt,
-    ir.Le,
-    ir.SetVar,
-    ir.Increase,
-    ir.Emit,
-    ir.Cut,
-    ir.Error,
-)
-
-
-def hoist_repetition_empties(grammar, namer):
-    """
-    Take the empty match out of what a repetition repeats, so nothing repeats what may consume nothing. A `x*` or `x+`
-    over a nullable `x` cannot become a recursive helper — the recursion would spin where `x` takes nothing — so `x` is
-    split into the matches that consume and the matches that do not, and the repetition keeps only the first. The empty
-    is not lost: a repetition already means "as many as there are, including none", so it absorbs it.
-
-    Splitting a sequence takes an ordered choice over which of its parts is the first to consume, the parts before it
-    held to their empty match — which is where a `<start-of-line>` or an `<end-of-stream>` comes up, those being what
-    `s-separate-in-line` and `b-comment` match empty *by*. The order is the order the parse already tried them in, so a
-    greedy match still finds the same one first.
-    """
-    minted, lookup = {}, dict(grammar)
-
-    def nullable(node):
-        return can_match_empty(node, lookup)
-
-    def consuming_name(name):
-        """
-        The production matching what `name` matches and consumes; minted from its body the first time it is asked for,
-        so a recursion through it resolves to the same one. While its body is being built it stands in as something that
-        reads a character, which is what it is — a consuming production matches no empty, whatever its body turns out to
-        be.
-        """
-        fresh = f"{name}_consuming"
-        if fresh in minted:
-            return fresh
-        original = grammar[name]
-        minted[fresh] = None
-        lookup[fresh] = ir.Prod(original.number, fresh, original.params, ir.Invalid())
-        body = consuming(original.body)
-        if body is None:
-            del minted[fresh], lookup[fresh]
-            return None
-        minted[fresh] = lookup[fresh] = ir.Prod(original.number, fresh, original.params, body)
-        return fresh
-
-    def empty(node):
-        """`node` held to its empty match — the guards it matches empty by — or `None` where it cannot match one."""
-        if isinstance(node, (ir.Empty, ir.Star, ir.Opt)):
-            return ir.Empty()
-        if isinstance(node, _NEVER_CONSUMES):
-            return node
-        if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Commit)):
-            held = empty(node.item)
-            return None if held is None else dataclasses.replace(node, item=held)
-        if isinstance(node, ir.Seq):
-            parts = [empty(item) for item in node.items]
-            return None if any(part is None for part in parts) else _flat_seq(tuple(parts))
-        if isinstance(node, ir.Alt):
-            return next((held for held in (empty(item) for item in node.items) if held is not None), None)
-        if isinstance(node, ir.Ref):
-            return ir.Ref(node.name, node.args) if nullable(node) else None
-        return None  # anything that reads the input matches no empty
-
-    def consuming(node):
-        """`node` held to the matches that consume a character, or `None` where it has none."""
-        if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid, ir.Rep, ir.TrimStar)):
-            return node if not nullable(node) else None
-        if isinstance(node, (ir.Empty, ir.Star, ir.Opt) + _NEVER_CONSUMES):
-            return None if not isinstance(node, (ir.Star, ir.Opt)) else consuming(node.item)
-        if isinstance(node, (ir.Token, ir.Wrap, ir.Bound, ir.Commit)):
-            inner = consuming(node.item)
-            return None if inner is None else dataclasses.replace(node, item=inner)
-        if isinstance(node, ir.Plus):
-            inner = consuming(node.item)
-            return None if inner is None else ir.Plus(inner)
-        if isinstance(node, ir.Alt):
-            kept = tuple(item for item in (consuming(item) for item in node.items) if item is not None)
-            return None if not kept else (kept[0] if len(kept) == 1 else ir.Alt(kept))
-        if isinstance(node, ir.Seq):
-            branches = []
-            for index, item in enumerate(node.items):
-                inner = consuming(item)
-                if inner is not None:
-                    held = [empty(before) for before in node.items[:index]]
-                    if any(part is None for part in held):
-                        break  # a part before this one must consume, so it is the first that can
-                    branches.append(_flat_seq(tuple(held) + (inner,) + node.items[index + 1 :]))
-                if not nullable(item):
-                    break  # this part must consume, so nothing after it can be the first that does
-            return None if not branches else (branches[0] if len(branches) == 1 else ir.Alt(tuple(branches)))
-        if isinstance(node, ir.Ref):
-            if not nullable(node):
-                return node
-            fresh = consuming_name(node.name)
-            return None if fresh is None else ir.Ref(fresh, node.args)
-        return None
-
-    def lift(node):
-        node = ir.rebuilt(node, lift)
-        if isinstance(node, (ir.Star, ir.Plus)) and nullable(node.item):
-            inner = consuming(node.item)
-            return ir.Star(inner) if inner is not None else ir.Empty()  # it consumed nothing, so it repeats nothing
-        return node
-
-    result = {name: dataclasses.replace(production, body=lift(production.body)) for name, production in grammar.items()}
-    lifted = set()  # a minted body holds repetitions of its own, and lifting them may mint again
-    while True:
-        pending = [name for name, production in minted.items() if production is not None and name not in lifted]
-        if not pending:
-            break
-        for name in pending:
-            lifted.add(name)
-            minted[name] = dataclasses.replace(minted[name], body=lift(minted[name].body))
-    result.update({name: production for name, production in minted.items() if production is not None})
-    return result
 
 
 def _lower_plus(node, grammar):
@@ -3067,17 +2952,42 @@ def span_consumes(grammar, namer):
     }
 
 
-def _is_nullable(node, nullable):
-    """Whether `node` can match the empty string, given the set of `nullable` production names."""
-    if isinstance(node, _ZERO_WIDTH):
-        return True
+def _is_nullable(node, nullable, grammar):
+    """
+    Whether `node` can match the empty string *as a way a parse chooses*, given the set of `nullable` production names.
+    Exact rather than conservative, since what it decides is which productions are distributed into their call sites and
+    a wrong yes would distribute one that reads. A reference is read off the set rather than followed, which is what
+    lets the set be a least fixpoint over the grammar. A node kind it does not know is a fault, not a guess.
+
+    A run over a character class is not a way: what it takes, none of it included, is a value the scan decides off the
+    input — `s-indent(0)`, an `s-indent(≤n)` at a line's start. The test is `span_consumes`' own, so the two agree by
+    construction on what a scan is, and the empty match that survives here is the one a later `ConsumeSpan` carries.
+    """
+    if isinstance(node, (ir.Star, ir.TrimStar, ir.Rep)) and is_one_char(node.item, grammar):
+        return False
+    if isinstance(node, _ZERO_WIDTH + (ir.Star, ir.TrimStar)):
+        return True  # a repetition of none matches nothing
+    if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid) + _CONSUMING_ACTS):
+        return False
     if isinstance(node, ir.Seq):
-        return all(_is_nullable(item, nullable) for item in node.items)
+        return all(_is_nullable(item, nullable, grammar) for item in node.items)
     if isinstance(node, ir.Alt):
-        return any(_is_nullable(item, nullable) for item in node.items)
+        return any(_is_nullable(item, nullable, grammar) for item in node.items)
+    if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Recover)):
+        return _is_nullable(node.item, nullable, grammar)
+    if isinstance(node, ir.Max):  # the vendored grammar's bare `(max)` is a length note, matching nothing itself
+        return node.item is None or _is_nullable(node.item, nullable, grammar)
+    if isinstance(node, ir.Bind):
+        return _is_nullable(node.cond, nullable, grammar)
+    if isinstance(node, ir.Rep):
+        # A run of exactly so many matches empty where the count can be zero — a runtime count can, a literal says — or
+        # where what it repeats does.
+        return not (isinstance(node.count, ir.Lit) and node.count.value > 0) or _is_nullable(
+            node.item, nullable, grammar
+        )
     if isinstance(node, ir.Ref):
         return node.name in nullable
-    return False
+    raise TypeError(f"cannot decide whether {type(node).__name__} matches empty")
 
 
 def _nullable_set(grammar, opaque=frozenset()):
@@ -3092,10 +3002,34 @@ def _nullable_set(grammar, opaque=frozenset()):
     while changed:
         changed = False
         for name, production in grammar.items():
-            if name not in nullable and name not in opaque and _is_nullable(production.body, nullable):
+            if name not in nullable and name not in opaque and _is_nullable(production.body, nullable, grammar):
                 nullable.add(name)
                 changed = True
     return nullable
+
+
+def improper_faults(grammar, exempt):
+    """
+    What is not proper about `grammar`, as error strings — empty when nothing matches empty that must not. Two
+    obligations, and the elimination owes both: no production but the ones a parse enters by name matches the empty
+    string by shape, since a production that does holds a decision its call sites were to have taken; and no repetition
+    repeats something that can match empty, since a repetition of a match that takes nothing spins where the grammar's
+    own `x*` stops. `exempt` names the productions that keep their empty ways.
+    """
+    nullable = _nullable_set(grammar, frozenset(exempt))
+    faults = [
+        f"{name}: matches empty by shape, and is no production a parse enters by name" for name in sorted(nullable)
+    ]
+    spinning = _nullable_set(grammar)  # the repetition test asks about the grammar as it stands, exempt included
+    for name in sorted(grammar):
+
+        def walk(node, owner=name):
+            if isinstance(node, (ir.Star, ir.Plus, ir.TrimStar)) and _is_nullable(node.item, spinning, grammar):
+                faults.append(f"{owner}: a repetition repeats what can match empty, and would spin on it")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(grammar[name].body)
+    return faults
 
 
 def eliminate_empties(grammar, namer):
@@ -3143,6 +3077,14 @@ def eliminate_empties(grammar, namer):
             return False
         if isinstance(node, (ir.Seq, ir.Alt)):
             return any(is_consuming(item, seen) for item in node.items)
+        if isinstance(node, (ir.Star, ir.TrimStar, ir.Plus, ir.Rep, ir.Token, ir.Wrap, ir.Bound, ir.Commit)):
+            return is_consuming(node.item, seen)
+        if isinstance(node, ir.Recover):
+            return is_consuming(node.item, seen)  # a recovery answers a cut; what reads here is the item
+        if isinstance(node, ir.Max):
+            return node.item is not None and is_consuming(node.item, seen)
+        if isinstance(node, ir.Bind):
+            return is_consuming(node.cond, seen)
         if isinstance(node, ir.Ref):
             return node.name not in seen and is_consuming(grammar[node.name].body, seen | {node.name})
         return True  # a terminal or a scan reads the input
@@ -3161,12 +3103,23 @@ def eliminate_empties(grammar, namer):
         """
         if isinstance(node, _ZERO_WIDTH):
             return node
+        if isinstance(node, (ir.Star, ir.TrimStar)):
+            return ir.Empty()  # a repetition of none
         if isinstance(node, ir.Seq):
             parts = tuple(residue(item, seen) for item in node.items)
             return None if any(part is None for part in parts) else _flat_seq(parts)
         if isinstance(node, ir.Alt):
             held = tuple(part for part in (residue(item, seen) for item in node.items) if part is not None)
             return held[0] if len(held) == 1 else (ir.Alt(held) if held else None)
+        if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Rep, ir.Recover)):
+            held = residue(node.item, seen)
+            return None if held is None else dataclasses.replace(node, item=held)
+        if isinstance(node, ir.Max):
+            held = None if node.item is None else residue(node.item, seen)
+            return None if held is None else dataclasses.replace(node, item=held)
+        if isinstance(node, ir.Bind):
+            held = residue(node.cond, seen)
+            return None if held is None else dataclasses.replace(node, cond=held)
         if isinstance(node, ir.Ref):
             if node.name in strip:
                 if node.name in seen:
@@ -3184,32 +3137,63 @@ def eliminate_empties(grammar, namer):
         return None
 
     def distribute(node):
-        """`node` with each nullable reference replaced in place by its consuming-copy-or-empty choice."""
+        """
+        `node` with each nullable reference replaced in place by its consuming-copy-or-empty choice — and, inside a
+        repetition, by the consuming form alone: a repetition already means "as many as there are, including none", so
+        it absorbs the empty match rather than keeping a way that takes nothing and spins on it.
+        """
+        if isinstance(node, (ir.Star, ir.Plus, ir.TrimStar)) and _is_nullable(node.item, nullable_all, grammar):
+            inner = consuming_form(node.item)
+            if inner is not None:
+                return dataclasses.replace(node, item=inner)
+            # What it repeats has no way that reads, so the repetition is that empty match, taken once.
+            held = residue(node.item)
+            return ir.Empty() if held is None else held
         node = ir.rebuilt(node, distribute)
         if isinstance(node, ir.Ref) and node.name in strip:
             held = residue(node)
-            if node.name not in minted:
-                return held
-            return ir.Alt((dataclasses.replace(node, name=minted[node.name]), held))
+            copy = None if node.name not in minted else dataclasses.replace(node, name=minted[node.name])
+            if held is None:
+                # Its empty match is only reachable through itself, which is an infinite parse rather than a way, so the
+                # site keeps what reads and nothing else — and an alternation of nothing where there is no such way.
+                return copy if copy is not None else ir.Alt(())
+            return ir.Alt((copy, held)) if copy is not None else held
         return node
 
-    def consuming(node):
-        """`node` made to match at least one character, its references distributed."""
+    def consuming_form(node):
+        """`node` held to the matches that read, its references distributed, or `None` where it has no such match."""
+        if not is_consuming(node):
+            return None
         if isinstance(node, ir.Alt):
-            kept = tuple(consuming(item) for item in node.items if is_consuming(item))
+            kept = tuple(part for part in (consuming_form(item) for item in node.items) if part is not None)
             return kept[0] if len(kept) == 1 else ir.Alt(kept)
         if isinstance(node, ir.Seq):
-            if any(not _is_nullable(item, nullable_all) for item in node.items):
+            if any(not _is_nullable(item, nullable_all, grammar) for item in node.items):
                 return distribute(node)  # a part must read, so the sequence already consumes
             ways = []
             for index, item in enumerate(node.items):
-                if is_consuming(item):
-                    before = tuple(residue(part) for part in node.items[:index])
+                inner = consuming_form(item)
+                before = tuple(residue(part) for part in node.items[:index])
+                if any(part is None for part in before):
+                    break  # a part before this one has no empty match, so it is the first that can read
+                if inner is not None:
                     after = tuple(distribute(part) for part in node.items[index + 1 :])
-                    ways.append(_flat_seq(before + (consuming(item),) + after))
-                if not _is_nullable(item, nullable_all):
+                    ways.append(_flat_seq(before + (inner,) + after))
+                if not _is_nullable(item, nullable_all, grammar):
                     break  # this part must read, so nothing after it is the first that does
             return ways[0] if len(ways) == 1 else ir.Alt(tuple(ways))
+        if isinstance(node, (ir.Star, ir.TrimStar)):
+            inner = consuming_form(node.item)
+            return None if inner is None else ir.Plus(inner)  # a repetition that reads takes at least one
+        if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Rep, ir.Recover)):
+            inner = consuming_form(node.item)
+            return None if inner is None else dataclasses.replace(node, item=inner)
+        if isinstance(node, ir.Max):
+            inner = None if node.item is None else consuming_form(node.item)
+            return None if inner is None else dataclasses.replace(node, item=inner)
+        if isinstance(node, ir.Bind):
+            inner = consuming_form(node.cond)
+            return None if inner is None else dataclasses.replace(node, cond=inner)
         if isinstance(node, ir.Ref):
             return dataclasses.replace(node, name=minted[node.name]) if node.name in minted else node
         return distribute(node)
@@ -3223,16 +3207,22 @@ def eliminate_empties(grammar, namer):
         )
         if name in minted:
             copy = minted[name]
-            result[copy] = ir.Prod(production.number, copy, production.params, consuming(production.body))
+            result[copy] = ir.Prod(production.number, copy, production.params, consuming_form(production.body))
 
-    lingering = sorted(_nullable_set(purged(result), frozenset(exempt)))
-    assert not lingering, f"production(s) still matching empty by shape: {lingering[:8]}"
+    # The post-condition, checked on what the parse can actually enter: the step is what makes the grammar proper, so
+    # anything left matching empty is this step's to have taken and a loud fault rather than a later step's puzzle.
+    faults = improper_faults(purged(result), exempt)
+    if faults:
+        raise AssertionError(f"the grammar is not proper after the elimination: {'; '.join(faults[:8])}")
     return result
 
 
 def _bound_params(node, found):
-    """The parameters `node`'s own shape binds — the targets of the `(set)` and `(increase)` actions it holds."""
-    if isinstance(node, (ir.SetVar, ir.Increase)):
+    """
+    The parameters `node`'s own shape binds — the targets of the `(set)` and `(increase)` actions it holds, and of the
+    `(if)(set)` that lowers to one, so a body is declared to bind what it will bind as surely as what it does.
+    """
+    if isinstance(node, (ir.SetVar, ir.Increase, ir.Bind)):
         found.add(node.param)
     ir.rebuilt(node, lambda child: (_bound_params(child, found), child)[1])
     return found
@@ -3293,7 +3283,8 @@ STEPS = [
     ("lift-chomping", lift_chomping),
     ("monomorphize", monomorphize),
     ("lower-optionals", lower_optionals),
-    ("hoist-repetition-empties", hoist_repetition_empties),
+    ("eliminate-empties", eliminate_empties),
+    ("declare-bindings", declare_bindings),
     ("lower-plus", lower_plus),
     ("trim-runs", trim_runs),
     ("hoist-char-runs", hoist_char_runs),
@@ -3305,8 +3296,6 @@ STEPS = [
     ("lower-commits", lower_commits),
     ("flatten", flatten),
     ("span-consumes", span_consumes),
-    ("eliminate-empties", eliminate_empties),
-    ("declare-bindings", declare_bindings),
     ("lift-choices", lift_choices),
     ("single-consumes", single_consumes),
     ("binarize", binarize),

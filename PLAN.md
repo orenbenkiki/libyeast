@@ -301,12 +301,8 @@ points of interest are retired as the universal steps reach them. The meter is w
 after — it will move as a consequence of the repairs, and where it moves the other way the shape is what is being paid
 for.
 
-1. *The standing steps, repaired.* One merge and a set of splits, none of them changing a grammar: a split buys a name
-   on the corpus diff and a smaller rule to prove by eye, and costs nothing, the pipeline being a list.
-   - `hoist-repetition-empties` **merges into** `eliminate-empties`. Both hold a production to the matches that read,
-     each with its own `consuming` walk and its own naming for the result — `_consuming` against `_<N>`. Moved ahead of
-     the repetition lowering, the elimination leaves nothing nullable for a repetition to spin on, and the older step
-     goes: one transform deleted, one machinery instead of two, one name for one idea.
+1. *The standing steps, repaired.* A set of splits, none of them changing a grammar: a split buys a name on the corpus
+   diff and a smaller rule to prove by eye, and costs nothing, the pipeline being a list.
    - `flatten` splits into `flatten` and `expand-counts` — expanding a fixed `(k)` repetition into its copies is not
      flattening.
    - `lower-tokens` splits into `lower-tokens` and `lower-wraps`: two node kinds, two rules.
@@ -357,7 +353,7 @@ for.
      and both the reorder and the ledger entry go rather than being carried. A declaration the analysis catches up with
      is refused by the staleness net already; a declaration a transformation makes unnecessary must be removed in the
      same change, not left standing because it still parses.
-1. *Then the certificates, where the meter's mass sits.* The greedy optional is 241 of the 500 points and no reordering
+1. *Then the certificates, where the meter's mass sits.* The greedy optional is 224 of the 476 points and no reordering
    or factoring touches it: its two ways share nothing by construction, one being a call and the other zero-width. It
    wants the certificate this section already owes — order and the callee's sureness, sureness being that the callee
    cannot fail once entered on a character its own first set admits, computed per production as a fixpoint. Beside it, a
@@ -370,9 +366,9 @@ for.
 **Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
 at every hypothetical entry — a production undecidable on its own is no conflict where every context a root parse
 reaches it under decides it, one level of inlining in. So the meter counts root-reachable decision points: each a
-production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 500
-undecided points across 177 productions — 177 also being the isolation count, printed beside it as the diagnostic it now
-is — driven to none, at which point the meter becomes a gate. A known over-count holds 241 of them: the greedy optional
+production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 476
+undecided points across 183 productions — 183 also being the isolation count, printed beside it as the diagnostic it now
+is — driven to none, at which point the meter becomes a gate. A known over-count holds 224 of them: the greedy optional
 — a call then nothing, against taking none, which is the shape the ε-elimination distributes to every site a nullable
 production was called from — is decided by order and the callee's sureness, not by character disjointness, and the
 certificate for it is the next to land. They fall into the landings below, one at a time, each corpus-diffed. The
