@@ -100,18 +100,19 @@ returns a "not implemented" error — so what exists is the project framework an
   `grammar2decoder.py` (emit `src/decoder_tables.h`), `wire.py` (the yeast wire format in Python), `spec_tests.py` (the
   conformance fixtures), `interpreter.py` (a backtracking interpreter of the grammar, run against those fixtures),
   `normalize.py` (the ordered pipeline of semantics-preserving transformations toward the canonical form, each step's
-  output purged of the productions no parse can enter — reachability closed from the root's copy under each resume
-  policy, the machine's start states), `determinize.py` (the divergence analysis that derives a conflict's provisional
+  output swept of the frames that only call something else, the productions that behave alike, and the ones no parse can
+  enter — reachability closed from the productions a parse enters by name, the root's copy under each resume policy and
+  the recovery a failed cut lands on), `determinize.py` (the divergence analysis that derives a conflict's provisional
   decision), `star.py` (the YAML Test Suite folded to events), and the gate checks `check_annotated_roundtrip.py`,
   `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`, `check_grammar_docs.py`, `check_messages.py`,
   `check_decoder.py`, `check_spec_tests.py`, `check_wire.py`, `check_emitter.py`, `check_provisional.py`,
   `check_interpreter.py`, `check_grammar_coverage.py`, `check_star.py`, `check_normalize.py` and `check_determinize.py`,
-  which report through `gate.py`. A fixture whose production the purge takes out of a pipeline stage is not dropped:
+  which report through `gate.py`. A fixture whose production the sweep takes out of a pipeline stage is not dropped:
   `check_normalize` pins it to the last stage whose grammar can run it, holds it there token for token, and credits
-  coverage from where it stands — so the stranded fixtures (a family a speculation replaced, a bare monomorphic copy
-  only a fixture enters, `c-reserved`, which the spec defines and nothing references) go on guarding the last grammar
-  that reaches them. This is where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 +
-  PyYAML.
+  coverage from where it stands — so the stranded fixtures (a family a speculation replaced, a nullable production its
+  consuming copy replaced, a bare monomorphic copy only a fixture enters, `c-reserved`, which the spec defines and
+  nothing references) go on guarding the last grammar that reaches them. This is where the grammar-derived parser will
+  be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
 - **YamlReference** — `third_party/yamlreference/`: the Haskell YAML 1.2 reference parser, vendored to be read. Its
   grammar carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code`
   comes from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of
@@ -141,6 +142,41 @@ returns a "not implemented" error — so what exists is the project framework an
   against vcpkg drift.
 - **Docs** — `Doxyfile` drives the API docs from the header comments, completeness-gated: an undocumented public symbol
   or a missing `@param`/`@return` fails the build.
+
+## The three rules the normalization pipeline is held to
+
+Three rules bind every transformation in `generator/normalize.py`, and they matter more than any one step does, so they
+are written here rather than left to be inferred from the code.
+
+**Many simple steps, never few clever ones.** A step does one thing. One found doing two is split — a split changes no
+grammar, buys a name on the corpus diff and a smaller rule to prove by eye, and costs nothing, the pipeline being a
+list.
+
+**Two things are compared by making them look alike and testing equality**, never by an equivalence rule that knows what
+they mean. Where a factoring cannot see that two ways share a prefix, what is missing is a step that puts the shared
+part where a prefix is — an explicit reordering into a canonical form, an inlining that brings the pieces into one list
+— after which `==` decides it. A rule that reasons about whether two different-looking chains amount to the same thing
+is a rule in the wrong shape: it cannot be proved by eye, it is where the subtle bugs live, and every one met so far
+turned out to be a canonical form that had not been written down. When a simplification looks impossible, the first
+hypothesis is a missing normalizing step, not an inherent conflict.
+
+**A named site is a code smell, and the target is none.** Every declaration in the pipeline's tables — a site named for
+inlining, a two-way choice named for reordering, a frame named for absorbing, a production named as committed — is a
+place a universal rule was not found and a hand-picked target stood in for it. The base grammar matches the right
+language and emits the right tokens, so mechanical universal steps should reach a deterministic grammar with nothing
+singled out; a singled-out site is evidence of a step not yet written. A reordering rule is the sharpest of the four,
+alternative order being semantics under backtracking-with-commits: a swap needs a per-site argument, where the right
+transformation would have made the two orderings compare equal and left nothing to swap. Each declaration carries its
+reason, the counts are printed on the gate line, and the staleness net refuses one the analysis has caught up with — but
+the standing question at every one of them is *what universal step would retire this?*, never *what other site deserves
+one?*
+
+**Not yet held — the one thing in this document that is not yet true.** Everything else here describes what the code
+does; this section describes what it must do, and the pipeline does not satisfy it today. Six of its thirty-three steps
+do more than one thing, one duplicates another's machinery under a second name, and eight named points of interest carry
+four declaration tables between them. Reaching conformance with these three comes before driving the determinize meter
+down: a meter driven down over steps of the wrong shape buys a number and keeps the debt. The qualification in this
+paragraph comes out when the pipeline conforms, and the three rules then stand as a hard constraint on every step after.
 
 ## Differences from YamlReference
 

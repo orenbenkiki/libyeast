@@ -260,7 +260,18 @@ ever attempted at a line start", "this position is always preceded by X" — how
 needs one is the wrong rule, and the right one spells the same fact locally, usually in a device the grammar already
 owns (a measured quantity is the `(match)` scope's, never an absolute machine register; a value crossing a minted helper
 is a declared parameter, the `code` precedent). The only judgment a step may embody is *where* it applies — a declared
-target with a written reason, ledger-style — never *what* the result looks like at a site:
+target with a written reason, ledger-style — never *what* the result looks like at a site.
+
+Three more rules bind the pipeline, and `DESIGN.md` states them, being what the generator is rather than what it is to
+do: many simple steps and never few clever ones; two things compared by making them look alike and testing equality,
+never by an equivalence rule that knows what they mean; and a named site as a code smell whose target is none. The
+pipeline does not satisfy them yet — six steps do more than one thing, one duplicates another's machinery under a second
+name, and eight points of interest carry four declaration tables — and **reaching conformance with them comes before
+driving the meter down.** A meter driven down over steps of the wrong shape buys a number and keeps the debt; the same
+number reached over steps of the right shape is a grammar that can be read. So the work below is ordered by that, not by
+what moves the meter most.
+
+The steps, then:
 
 1. *Parameters.* Specialize `c` away (monomorphize, drop `Case`/`Flip` on `c`, prune unreachable branches); specialize
    `t` (chomping) the same way. Confirm only `n`/`m` remain, and only in indentation predicates and parameter actions.
@@ -282,6 +293,79 @@ target with a written reason, ledger-style — never *what* the result looks lik
    directly in a mapping, and flow context, which suspends indentation entirely. Discharge commit-safety per decision
    point, logging any residual as an assurance gap.
 1. *Finish.* Assert every terminal is a pure char-set; run the validator.
+
+**The steps ahead**, in order, and the order is the three rules' rather than the meter's: the standing steps are
+repaired first, since every later rule reads what they leave; then the new ones arrive earliest and simplest first, each
+a rule with a side condition read off the nodes it touches, so what follows compares with plain equality; then the
+points of interest are retired as the universal steps reach them. The meter is watched throughout and driven down only
+after — it will move as a consequence of the repairs, and where it moves the other way the shape is what is being paid
+for.
+
+1. *The standing steps, repaired.* One merge and a set of splits, none of them changing a grammar: a split buys a name
+   on the corpus diff and a smaller rule to prove by eye, and costs nothing, the pipeline being a list.
+   - `hoist-repetition-empties` **merges into** `eliminate-empties`. Both hold a production to the matches that read,
+     each with its own `consuming` walk and its own naming for the result — `_consuming` against `_<N>`. Moved ahead of
+     the repetition lowering, the elimination leaves nothing nullable for a repetition to spin on, and the older step
+     goes: one transform deleted, one machinery instead of two, one name for one idea.
+   - `flatten` splits into `flatten` and `expand-counts` — expanding a fixed `(k)` repetition into its copies is not
+     flattening.
+   - `lower-tokens` splits into `lower-tokens` and `lower-wraps`: two node kinds, two rules.
+   - `span-consumes` splits into `span-consumes` and `literal-consumes` — a run of characters standing in a row is not a
+     repetition, and its `ConsumeLiteral` is a different rewrite.
+   - `hoist-char-runs` splits into `hoist-char-runs` and `hoist-trimmed-runs`, the fast/slow split for a plain run and
+     for a trimmed one.
+   - `gate-hoist` splits into `gate-hoist` and `gate-hoist-wide`: taking a call's first set, and peeking a whole
+     alternative where the call hoisting cannot reach, are different rules with different side conditions.
+   - `factor-prefixes` splits into `factor-prefixes`, `factor-scans` and `factor-scopes` — the identical-action
+     factoring, the maximal-scan admission and the `(match)`-origin admission are three side conditions bolted onto one
+     walk — and the leftover's leading `Lt`/`Le` rising into its gate leaves as `hoist-residue-guards`, being its own
+     rule with its own argument.
+   - Left alone for now, noted so it is not rediscovered: `monomorphize` specializes `c`, `t` and `r` in one pass over
+     their combinations, and three passes of the one generic operation would give the same grammar with three
+     separately-diffed steps. The copies are made per combination, so the split wants care it has not earned yet.
+1. *The new steps, earliest and simplest first.* The first two exist to put the pieces in one place; nothing can be
+   ordered or compared while they sit in different frames, which is why the canonical order that follows them measures
+   zero sites today.
+   - `inline-under-gate` — a call keeps only the ways the caller's peek admits, in a minted copy; where one way is left
+     and it is zero-width, it splices into the caller's action list. *Holds where the caller's peek is pinned and every
+     dropped way's peek is pinned and disjoint from it.* Twelve sites, eight decision points, four of them collapsing
+     the call to actions — the block header's chomping-versus-indentation ordering among them.
+   - `inline-single-way` — a called production with exactly one way splices into its caller. *Holds where the callee's
+     gate is empty or its peek contains the caller's.* The sweep's ungated splice with the gated case added, and what
+     brings a scalar's `|` or `>` into the same alternative as its header's detection.
+   - `order-actions` — within one action list every action moves as early as it may, leaving a canonical order the later
+     steps compare with `==`. Four side conditions, each read off the list: a frame-scoped action never crosses its
+     partner; an emitter never crosses a consume or another emitter, the stream's order being the output; a
+     position-reading action crosses a consume only where that consume's set excludes line breaks and an earlier consume
+     in the same list does too, the at-line-start bit being clear on both sides; and a value-reading action never
+     crosses what writes what it reads. That third condition is the whole of the block header's difficulty: the
+     auto-detected indent reads the position through one bit, the two orderings run it a character apart, and the bit is
+     already clear — because the scalar's own indicator was consumed two frames up, which is why the fact has to be
+     brought into the list before the rule can see it.
+   - `factor-calls` — a shared leading call joins the prefix. *Holds where the call is identical in name and arguments
+     across every way and their gates are equal.* One production today; the shape the three steps above create.
+   - `subsume-ways`, extended to drop an earlier way whose later twin carries the same actions and calls but for
+     trailing zero-width guards — the narrower way dies, the streams identical by construction. What an elimination
+     leaves wherever a barrier rode one ordering and not the other.
+   - `merge-ways` — two ways of one choice that are equal after `order-actions` become one. *Plain equality.* The
+     within-production twin of the sweep's behavioural merge, which today reaches whole productions only.
+   - `drop-dead-ways` — a way whose gate is disjoint from every character its production can be entered on is
+     unreachable. *Reads the root-down entry sets the meter already computes.*
+   - And after each of them, the standing question of the third law: which of the eight points does it retire? The
+     reordered header choices are the first owed an answer — `order-actions` and `factor-calls` between them should
+     leave the two orderings comparing equal, at which point there is nothing to swap and nothing to declare committed,
+     and both the reorder and the ledger entry go rather than being carried. A declaration the analysis catches up with
+     is refused by the staleness net already; a declaration a transformation makes unnecessary must be removed in the
+     same change, not left standing because it still parses.
+1. *Then the certificates, where the meter's mass sits.* The greedy optional is 241 of the 500 points and no reordering
+   or factoring touches it: its two ways share nothing by construction, one being a call and the other zero-width. It
+   wants the certificate this section already owes — order and the callee's sureness, sureness being that the callee
+   cannot fail once entered on a character its own first set admits, computed per production as a fixpoint. Beside it, a
+   subsumption certificate — a way whose language contains a later way's, read through one level of inlining — is what
+   retires the assurance ledger's two remaining entries rather than leaving them declared. The ~259 points that are
+   neither want the breakdown the greedy optional has before anything is designed for them; that classification is cheap
+   and comes first among the three.
+1. *And then the determinizer*, pointed by what the meter still flags, through the landings below.
 
 **Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
 at every hypothetical entry — a production undecidable on its own is no conflict where every context a root parse
