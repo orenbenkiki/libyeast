@@ -1122,6 +1122,118 @@ def inline_singles(grammar, namer):
     return result
 
 
+def inline_under_gate(grammar, namer):
+    """
+    Give a call only the ways its caller's gate can reach. An alternative that peeks a character and then calls, taking
+    nothing on the way, enters the callee at the very position it peeked — so a way of that callee whose own peek admits
+    no character the caller's does can never fire, and a minted copy holding the rest is what the call means there. And
+    where one way is left and it reads nothing, the call is that way's actions: they splice into the caller's own and
+    the continuation becomes the call, one frame fewer between a decision and what it decides.
+
+    The side conditions are read off the alternative and the two peeks. The actions before the call must all be
+    zero-width, or the callee would be entered somewhere other than where the gate looked; both peeks must be pinned, an
+    unpinned one saying nothing about what it excludes; and a way with no peek of its own stays, being enterable
+    wherever the caller is. The splice needs the surviving way bare — no peek, no guards, no calls — and the alternative
+    to carry no recovery, a recovery riding the very frame the splice would remove.
+    """
+
+    def live_ways(callee, spans):
+        kept = []
+        for way in callee.body.alternatives:
+            if way.gate.peek is None:
+                kept.append(way)
+                continue
+            inner = _peek_spans(way.gate.peek, grammar)
+            if inner is None or _do_spans_overlap(spans, inner):
+                kept.append(way)
+        return kept
+
+    def is_bare(way):
+        return (
+            way.gate.peek is None
+            and not way.gate.guards
+            and way.first is None
+            and way.second is None
+            and way.recover is None
+        )
+
+    minted = {}
+
+    def narrowed(alternative):
+        call = alternative.first
+        if alternative.gate.peek is None or call is None:
+            return alternative
+        if any(not isinstance(action, _ZERO_WIDTH) for action in alternative.actions):
+            return alternative
+        spans = _peek_spans(alternative.gate.peek, grammar)
+        callee = grammar.get(call.name)
+        if spans is None or callee is None or not isinstance(callee.body, ir.Choice):
+            return alternative
+        kept = live_ways(callee, spans)
+        if len(kept) == len(callee.body.alternatives) or not kept:
+            return alternative
+        if len(kept) == 1 and is_bare(kept[0]) and alternative.recover is None:
+            return dataclasses.replace(
+                alternative,
+                actions=alternative.actions + kept[0].actions,
+                first=alternative.second,
+                second=None,
+            )
+        copy = namer.fresh(call.name)
+        minted[copy] = ir.Prod(callee.number, copy, callee.params, ir.Choice(tuple(kept)))
+        return dataclasses.replace(alternative, first=dataclasses.replace(call, name=copy))
+
+    result = _gated(grammar, narrowed)
+    result.update(minted)
+    return result
+
+
+def inline_single_way(grammar, namer):
+    """
+    Splice a call whose production has one ungated way: it decides nothing, so what it does belongs where it is called —
+    its actions appended to the caller's, its own calls taken as the caller's, each parameter bound to the argument the
+    call passes. It is the sweep's splicing of a do-nothing frame carried to a frame that does something, and what
+    brings a scalar's own indicator into the same action list as the header it opens, where a canonical order can reach
+    both.
+
+    Refused rather than mis-spliced where the frame is load-bearing: a way gated on a character or a guard is a
+    decision, not a wrapper; the canonical form holds two calls to an alternative, so a splice that would leave three
+    stands; a recovery on either side rides the very frame the splice removes; and a spliced action binding a parameter
+    the call renames would write somewhere else, which is a loud fault rather than a silent one.
+    """
+
+    def spliced(alternative):
+        call = alternative.first
+        callee = None if call is None else grammar.get(call.name)
+        if callee is None or not isinstance(callee.body, ir.Choice) or len(callee.body.alternatives) != 1:
+            return alternative
+        [way] = callee.body.alternatives
+        if way.gate.peek is not None or way.gate.guards:
+            return alternative  # a gate is a decision, and the frame is where it is taken
+        if alternative.recover is not None or way.recover is not None:
+            return alternative
+        calls = [held for held in (way.first, way.second) if held is not None]
+        if len(calls) + (alternative.second is not None) > 2:
+            return alternative
+        mapping = dict(zip(callee.params, call.args))
+        moved = _bound(ir.Seq(way.actions), mapping).items if way.actions else ()
+        for parameter in _bound_params(ir.Seq(way.actions), set()):
+            argument = mapping.get(parameter)
+            if argument is not None and not (isinstance(argument, ir.Param) and argument.name == parameter):
+                raise AssertionError(f"{call.name}: its way binds `{parameter}`, passed as an argument")
+        bound = [_bound(held, mapping) for held in calls]
+        following = [held for held in (alternative.second,) if held is not None]
+        held_calls = (bound + following + [None, None])[:2]
+        return dataclasses.replace(
+            alternative,
+            actions=alternative.actions + tuple(moved),
+            first=held_calls[0],
+            second=held_calls[1],
+        )
+
+    return _gated(grammar, spliced)
+
+
 def refine_indents(grammar, namer):
     """
     Refine each exact-count indentation call into the one maximal scan judged after the fact, in the grammar's own
@@ -3363,6 +3475,8 @@ STEPS = [
     ("gate-hoist", gate_hoist),
     ("gate-hoist-wide", gate_hoist_wide),
     ("split-conflicts", split_conflicts),
+    ("inline-under-gate", inline_under_gate),
+    ("inline-single-way", inline_single_way),
     ("factor-prefixes", factor_prefixes),
     ("hoist-residue-guards", hoist_residue_guards),
     ("gate-hoist-leftovers", gate_hoist),

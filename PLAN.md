@@ -320,16 +320,19 @@ for.
    - Left alone for now, noted so it is not rediscovered: `monomorphize` specializes `c`, `t` and `r` in one pass over
      their combinations, and three passes of the one generic operation would give the same grammar with three
      separately-diffed steps. The copies are made per combination, so the split wants care it has not earned yet.
-1. *The new steps, earliest and simplest first.* The first two exist to put the pieces in one place; nothing can be
-   ordered or compared while they sit in different frames, which is why the canonical order that follows them measures
-   zero sites today.
-   - `inline-under-gate` — a call keeps only the ways the caller's peek admits, in a minted copy; where one way is left
-     and it is zero-width, it splices into the caller's action list. *Holds where the caller's peek is pinned and every
-     dropped way's peek is pinned and disjoint from it.* Twelve sites, eight decision points, four of them collapsing
-     the call to actions — the block header's chomping-versus-indentation ordering among them.
-   - `inline-single-way` — a called production with exactly one way splices into its caller. *Holds where the callee's
-     gate is empty or its peek contains the caller's.* The sweep's ungated splice with the gated case added, and what
-     brings a scalar's `|` or `>` into the same alternative as its header's detection.
+1. *The new steps, earliest and simplest first.* The first two are landed — they exist to put the pieces in one place,
+   nothing being orderable or comparable while it sits in different frames — and both belong after `split-conflicts`,
+   which is what narrows a gate enough for either to see anything. `inline-under-gate` gives a call only the ways its
+   caller's gate can reach, splicing the survivor's actions in where one bare way is left; `inline-single-way` splices a
+   call whose production has one ungated way, actions and calls alike. What they bought: the block header's two ways
+   both go on the chomping call now, told apart by the auto-detect bundle standing in front of it in one of them.
+   - `inline-single-way` still refuses a *gated* single way, so a callee whose peek the caller's gate already implies
+     stays a frame — `c-chomping-indicator_t_keep` is one, gated on the `'+'` its caller is gated on. Widening the side
+     condition to "the callee's peek contains the caller's" is the next small move, and it puts the chomping consume
+     into both header lists.
+   - Even then the header does not factor, and the reason is worth keeping: the `order-actions` side condition needs a
+     non-break consume *earlier in the same list*, and the scalar's own `|`/`>` is consumed two frames up in
+     `c-l+folded`. Either that call is inlined too, or the condition is met another way.
    - `order-actions` — within one action list every action moves as early as it may, leaving a canonical order the later
      steps compare with `==`. Four side conditions, each read off the list: a frame-scoped action never crosses its
      partner; an emitter never crosses a consume or another emitter, the stream's order being the output; a
@@ -354,7 +357,7 @@ for.
      and both the reorder and the ledger entry go rather than being carried. A declaration the analysis catches up with
      is refused by the staleness net already; a declaration a transformation makes unnecessary must be removed in the
      same change, not left standing because it still parses.
-1. *Then the certificates, where the meter's mass sits.* The greedy optional is 224 of the 471 points and no reordering
+1. *Then the certificates, where the meter's mass sits.* The greedy optional is 224 of the 473 points and no reordering
    or factoring touches it: its two ways share nothing by construction, one being a call and the other zero-width. It
    wants the certificate this section already owes — order and the callee's sureness, sureness being that the callee
    cannot fail once entered on a character its own first set admits, computed per production as a fixpoint. Beside it, a
@@ -367,7 +370,7 @@ for.
 **Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
 at every hypothetical entry — a production undecidable on its own is no conflict where every context a root parse
 reaches it under decides it, one level of inlining in. So the meter counts root-reachable decision points: each a
-production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 471
+production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 473
 undecided points across 181 productions — 181 also being the isolation count, printed beside it as the diagnostic it now
 is — driven to none, at which point the meter becomes a gate. A known over-count holds 224 of them: the greedy optional
 — a call then nothing, against taking none, which is the shape the ε-elimination distributes to every site a nullable
