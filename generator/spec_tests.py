@@ -31,6 +31,11 @@ CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, an
 # be named, having no default to fall back on.
 DEFAULTS = {"r": "n"}
 
+# The parameters a production detects rather than takes: the auto-detected indent `m` and the block scalar's floor `f`
+# are bound by the production that measures them, so no caller passes either and no fixture names one. A fixture
+# entering a production that declares one enters with it unset, which is what a fresh parse gives it.
+DETECTED = ("m", "f")
+
 # A production name is the leading run of a filename, up to its first `.`; a parameter is a `.<name>=<value>` segment.
 _PARAMETER = re.compile(r"\.([nctr])=([^.]+)")
 
@@ -78,9 +83,9 @@ def is_runnable(fixture, grammar):
     Return None if `grammar` can run `fixture`, else a one-line reason it cannot.
 
     Runnable means the grammar has the production and declares every parameter the filename supplies, and the filename
-    supplies every parameter the grammar declares but for the ones `DEFAULTS` answers for. This is the structural test
-    the interpreter driver filters on; that the supplied values are ones the grammar understands is a separate data
-    check the reference-test gate makes.
+    supplies every parameter the grammar declares but for the ones `DEFAULTS` answers for and the `DETECTED` ones a
+    production binds for itself rather than being passed. This is the structural test the interpreter driver filters on;
+    that the supplied values are ones the grammar understands is a separate data check the reference-test gate makes.
     """
     name, runtime = ir.entry(grammar, fixture.production, fixture.parameters)
     production = grammar.get(name)
@@ -92,8 +97,8 @@ def is_runnable(fixture, grammar):
         listed = ", ".join(sorted(given - wanted))
         declared = ", ".join(production.params) or "none"
         return f"parameters {{{listed}}} are not the grammar's {{{declared}}}"
-    if wanted - given - set(DEFAULTS):
-        listed = ", ".join(sorted(wanted - given - set(DEFAULTS)))
+    if wanted - given - set(DEFAULTS) - set(DETECTED):
+        listed = ", ".join(sorted(wanted - given - set(DEFAULTS) - set(DETECTED)))
         return f"parameters {{{listed}}} are the grammar's and the filename does not give them"
     return None
 

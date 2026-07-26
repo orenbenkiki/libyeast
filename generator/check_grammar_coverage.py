@@ -249,6 +249,10 @@ def gaps(grammar, exercisers=None):
     right — is how a pipeline's grammars pool their coverage: a fixture stranded by a transformation runs against the
     last grammar its production is reachable in, and a base name exercised at any stage credits its copies here. Left
     out, `grammar` itself is exercised with the whole suite.
+
+    A base that is total where the fixtures run it is excused the rejection: nothing can be seen to reject what matches
+    at every position, and a copy that says no where the base matched empty — what the ε-elimination's consuming copy is
+    — would be asking the corpus for a refusal the untransformed grammar had nowhere to show.
     """
     reached_bases, rejected_bases = set(), set()
     for stage, fixtures in [(grammar, None)] if exercisers is None else exercisers:
@@ -260,10 +264,21 @@ def gaps(grammar, exercisers=None):
     texts = fired()
 
     errors = [f"{name}: no reproducible fixture exercises it" for name in grammar if _base(name) not in reached_bases]
-    errors += [
-        f"{name}: no fixture makes it reject an input, and it is not total"
+    wanting = [
+        name
         for name in grammar
         if _base(name) not in rejected_bases and not is_total(grammar[name].body, grammar, frozenset({name}))
+    ]
+    excused = {
+        base
+        for base in {_base(name) for name in wanting}
+        for stage, _fixtures in ([] if exercisers is None else exercisers)
+        if base in stage and is_total(stage[base].body, stage, frozenset({base}))
+    }
+    errors += [
+        f"{name}: no fixture makes it reject an input, and it is not total"
+        for name in wanting
+        if _base(name) not in excused
     ]
     errors += [
         f"{code}: no fixture's output carries its message, so nothing shows the cut fires"

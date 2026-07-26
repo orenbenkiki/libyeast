@@ -71,6 +71,15 @@ class Points:
                 raise AssertionError(f"[{label}] the step lost the point of interest `{point}` ({self.at[point]})")
             self.at[point] = held
 
+    def follow(self, renames):
+        """
+        Carry every live point through a `{gone: standing}` renaming — what the post-step sweep did to the names. A
+        holder the sweep merged or spliced away has its content in the production it names now, whose base the picker
+        would not otherwise reach, so the point is moved rather than left to fault on a name that is gone.
+        """
+        for point, held in self.at.items():
+            self.at[point] = tuple(sorted({renames.get(name, name) for name in held}))
+
     def retire(self, point):
         """Drop a point the pipeline has consumed, so the settle after its consuming step does not fault on its loss."""
         self.at.pop(point, None)
@@ -1866,8 +1875,6 @@ DECLARED_COMMITS = {
     " besides — the declared reorder is what stood it first",
     "block-header-strip-chomp": "chomp-first subsumes: on '-' it takes every header indicator-first takes, and"
     " '-1' besides — the declared reorder is what stood it first",
-    "block-header-clip-chomp": "clip has no chomping character, so its two orderings are one language — an"
-    " optional digit and the comment — and either way is the parse",
 }
 
 
@@ -1897,11 +1904,13 @@ def _two_ways(body):
 def _chomp_choice_picker(monomorphized, literal=None):
     """
     The picker for a block header's chomp choice: the header-ordering alternation, whose one way calls the chomping
-    indicator's `monomorphized` copy first and whose other calls the indentation indicator first — `|+2` against `|2+`,
-    the order the chomp-first reorder swaps. That two-call shape is what the alternation binarizes to; before it takes
-    that shape, and after a later step reshapes it, the point stays anchored to the holders that carry the chomping side
-    at all — a reference to that indicator, or the bare `literal` character it inlines to where it has one, the clip
-    copy having none since its indicator matches only empty.
+    indicator's `monomorphized` copy first and whose other reaches it only behind the indentation indicator — `|+2`
+    against `|2+`, the order the chomp-first reorder swaps. Which way goes on the chomping first is the whole of the
+    choice, so the indentation side is read as "not that one" rather than by a name of its own: the elimination puts a
+    minted helper where the indentation indicator's call stood, the call's nullable-or-not choice, and the ordering is
+    the same ordering. Before the alternation binarizes to that two-call shape, and after a later step reshapes it, the
+    point stays anchored to the holders that carry the chomping side at all — a reference to that indicator, or the bare
+    `literal` character it inlines to where it has one.
     """
 
     def is_chomp(name):
@@ -1911,9 +1920,7 @@ def _chomp_choice_picker(monomorphized, literal=None):
         return way.first.name if isinstance(getattr(way, "first", None), ir.Ref) else None
 
     def is_ordering(ways):
-        return any(is_chomp(first_call(way) or "") for way in ways) and any(
-            first_call(way) == "c-indentation-indicator" for way in ways
-        )
+        return sum(is_chomp(first_call(way) or "") for way in ways) == 1
 
     def chomp_side(node):
         def wants(held):
@@ -1927,7 +1934,12 @@ def _chomp_choice_picker(monomorphized, literal=None):
         ordering = [
             name for name in candidates if (ways := _two_ways(grammar[name].body)) is not None and is_ordering(ways)
         ]
-        return ordering or [name for name in candidates if chomp_side(grammar[name].body)]
+        holders = ordering or [name for name in candidates if chomp_side(grammar[name].body)]
+        # Clip's chomping indicator matches only empty, so `eliminate-empties` dissolves it into a residue that is
+        # nothing at all, and there is no chomping side left to hold on to — the point stays with the header copies its
+        # own family carries, which `reorder-declared` holds to the two-way shape it speaks about. A chomping side that
+        # matches a character is there or the point is genuinely lost, so the fallback is clip's alone.
+        return holders or (sorted(candidates) if literal is None else [])
 
     return pick
 
@@ -1944,12 +1956,18 @@ def _flow_fold_site_picker(grammar, candidates):
 
 def _refs_picker(*required):
     """
-    A production of its base identified by the references that name its role. Before monomorphize fixes a context into
-    those names, the base has no copy yet to tell apart, so the whole family holds the point.
+    A production of its base identified by the references that name its role. A reference counts where it descends from
+    the name required — a step that mints a copy of the callee and calls that instead leaves the role intact, the
+    consuming copies `eliminate-empties` calls among them. Before monomorphize fixes a context into those names, the
+    base has no copy yet to tell apart, so the whole family holds the point.
     """
 
     def pick(grammar, candidates):
-        specific = [name for name in candidates if set(required) <= set(grammar[name].references())]
+        specific = [
+            name
+            for name in candidates
+            if all(any(_descends(ref, want) for ref in grammar[name].references()) for want in required)
+        ]
         return specific or sorted(candidates)
 
     return pick
@@ -1979,7 +1997,6 @@ def _loop_seam_picker(grammar, candidates):
 POINTS = {
     "block-header-keep-chomp": ("c-b-block-header", _chomp_choice_picker("_t_keep", 0x2B)),
     "block-header-strip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_strip", 0x2D)),
-    "block-header-clip-chomp": ("c-b-block-header", _chomp_choice_picker("_t_clip")),
     "flow-fold-site": ("s-flow-folded", _flow_fold_site_picker),
     "block-empty-line": ("l-empty", _refs_picker("s-indent-lt", "s-line-prefix_c_block-in")),
     "block-line-prefix-in": ("s-line-prefix", _refs_picker("s-block-line-prefix")),
@@ -2005,8 +2022,6 @@ DECLARED_REORDERS = {
     " — no empty match to enter through — and standing first it also takes '+1', which indicator-first misparses",
     "block-header-strip-chomp": "chomp-first: its way is gated on the literal '-', which the input has or has not"
     " — no empty match to enter through — and standing first it also takes '-1', which indicator-first misparses",
-    "block-header-clip-chomp": "clip's chomping indicator matches only empty, so its two orderings are"
-    " empty-commutations of one language, and either order finds the same parse",
 }
 
 # The declared return-extensions: sites `{caller: reason}` whose one way is a call and a continuation, folded so the
@@ -3086,19 +3101,21 @@ def _nullable_set(grammar, opaque=frozenset()):
 def eliminate_empties(grammar, namer):
     """
     Make the grammar proper: no production, a root or recovery target aside, matches the empty string by shape — the
-    classic ε-elimination, done in place so it is scope-aware. A nullable production's empty match is distributed into
-    each call site where it stands: `Ref(P)` becomes `P | residue`, the consuming production tried and the zero-width
-    residue — the guards, markers and emitters the empty match is made of — its fallback, so a `Push`/`Pop` or
-    `Open`/`Close` pair around the call is never split or copied, only wrapped once. A purely empty production, the
-    `e-node` among them, has no consuming form and dissolves into the residue at each site. What was decided blind
-    inside `P` becomes a choice sitting next to what follows it, whose first characters are what decide it.
+    classic ε-elimination, done at the call site so it is scope-aware. A nullable production keeps its own body and
+    gains a minted copy of it that must read; each `Ref(P)` becomes `P_consuming | residue`, the copy that reads tried
+    first and the zero-width residue — the guards, markers and emitters the empty match is made of — its fallback. The
+    choice stands exactly where the call stood, so a `Push`/`Pop` or `Open`/`Close` pair around it is never split or
+    duplicated. A purely empty production, the `e-node` among them, has no consuming copy and dissolves into the residue
+    at each site. What was decided blind inside `P` becomes a choice sitting next to what follows it, whose first
+    characters are what decide it. The original is left as it stands, and with every call to it rewritten the purge is
+    what takes it — so a fixture that enters it directly pins to the stage before this one.
 
-    A production is made to consume by keeping only the ways that read: an alternation drops its empty way, a sequence
-    that already reads distributes its calls in place, and a sequence every part of which may be empty splits into an
-    ordered choice over which part is the first to read — the parts before it held to their empty match, in the order
-    the parse already tried them. A root keeps its empty ways — an empty stream is YAML — and a recovery target keeps
-    its own, the parse re-entering it at an error. The empty a value forces — a span scan of zero characters, an
-    `s-indent(0)` — is a run the scan decides, not a way a parse chooses, and stays.
+    A copy is made to consume by keeping only the ways that read: an alternation drops its empty way, a sequence that
+    already reads distributes its calls in place, and a sequence every part of which may be empty splits into an ordered
+    choice over which part is the first to read — the parts before it held to their empty match, in the order the parse
+    already tried them. A root keeps its empty ways — an empty stream is YAML — and a recovery target keeps its own, the
+    parse re-entering it at an error. The empty a value forces — a span scan of zero characters, an `s-indent(0)` — is a
+    run the scan decides, not a way a parse chooses, and stays.
     """
 
     def named_inside(node, found):
@@ -3111,7 +3128,9 @@ def eliminate_empties(grammar, namer):
             named_inside(node.recovery, found)
         ir.rebuilt(node, lambda child: (recovery_names(child, found), child)[1])
 
-    exempt = {ir.entry(grammar, ir.ROOT, {"r": resume})[0] for resume in annotated2ir.RESUMES}
+    # The productions a parse enters by name rather than through a call, and the ones a `(recover)` names. Each keeps
+    # its empty ways: they are entered where there is no call site to hold the choice this distributes into one.
+    exempt = entered_by_name(grammar)
     for production in grammar.values():
         recovery_names(production.body, exempt)
 
@@ -3128,13 +3147,17 @@ def eliminate_empties(grammar, namer):
             return node.name not in seen and consumes(grammar[node.name].body, seen | {node.name})
         return True  # a terminal or a scan reads the input
 
-    consuming_names = {name for name in strip if consumes(grammar[name].body)}
+    # The consuming copy of every nullable production that has ways that read; one name per production, so a recursion
+    # meets its own copy rather than minting another.
+    minted = {name: namer.fresh(name) for name in sorted(strip) if consumes(grammar[name].body)}
 
     def residue(node, seen=frozenset()):
         """
         `node`'s empty match — the zero-width chain it matches empty by — or `None` where it cannot match one. A call
         cycle is cut: an empty match only reachable through itself is an infinite parse, not a way. An exempt reference
-        keeps its empty ways, so it stands for its own empty match.
+        keeps its empty ways, so it stands for its own empty match. A binding the empty match carries keeps its target,
+        so the call must pass that parameter by its own name — an argument that renames it would have the inlined
+        binding write somewhere else, and is a loud fault rather than a silent one.
         """
         if isinstance(node, _ZERO_WIDTH):
             return node
@@ -3149,16 +3172,25 @@ def eliminate_empties(grammar, namer):
                 if node.name in seen:
                     return None
                 held = residue(grammar[node.name].body, seen | {node.name})
-                return None if held is None else _bound(held, dict(zip(grammar[node.name].params, node.args)))
+                if held is None:
+                    return None
+                mapping = dict(zip(grammar[node.name].params, node.args))
+                for parameter in _bound_params(held, set()):
+                    argument = mapping.get(parameter)
+                    if argument is not None and not (isinstance(argument, ir.Param) and argument.name == parameter):
+                        raise AssertionError(f"{node.name}: its empty match binds `{parameter}`, passed as an argument")
+                return _bound(held, mapping)
             return node if node.name in nullable_all else None  # exempt-and-nullable stands for its own empty match
         return None
 
     def distribute(node):
-        """`node` with each stripped reference replaced in place by its consuming-or-empty choice."""
+        """`node` with each nullable reference replaced in place by its consuming-copy-or-empty choice."""
         node = ir.rebuilt(node, distribute)
         if isinstance(node, ir.Ref) and node.name in strip:
             held = residue(node)
-            return ir.Alt((node, held)) if node.name in consuming_names else held
+            if node.name not in minted:
+                return held
+            return ir.Alt((dataclasses.replace(node, name=minted[node.name]), held))
         return node
 
     def consuming(node):
@@ -3179,18 +3211,49 @@ def eliminate_empties(grammar, namer):
                     break  # this part must read, so nothing after it is the first that does
             return ways[0] if len(ways) == 1 else ir.Alt(tuple(ways))
         if isinstance(node, ir.Ref):
-            return node  # a stripped reference is its own consuming form, keeping its name
+            return dataclasses.replace(node, name=minted[node.name]) if node.name in minted else node
         return distribute(node)
 
     result = {}
     for name, production in grammar.items():
-        if name in strip and name not in consuming_names:
-            continue  # purely empty: it dissolves into the residue at every call site
-        body = consuming(production.body) if name in strip else distribute(production.body)
-        result[name] = dataclasses.replace(production, body=body)
+        # A nullable production stands as it is — unreachable once its calls are rewritten, and the purge's to take —
+        # beside the copy that carries its consuming ways.
+        result[name] = (
+            production if name in strip else dataclasses.replace(production, body=distribute(production.body))
+        )
+        if name in minted:
+            copy = minted[name]
+            result[copy] = ir.Prod(production.number, copy, production.params, consuming(production.body))
 
     lingering = sorted(_nullable_set(purged(result), frozenset(exempt)))
     assert not lingering, f"production(s) still matching empty by shape: {lingering[:8]}"
+    return result
+
+
+def _bound_params(node, found):
+    """The parameters `node`'s own shape binds — the targets of the `(set)` and `(increase)` actions it holds."""
+    if isinstance(node, (ir.SetVar, ir.Increase)):
+        found.add(node.param)
+    ir.rebuilt(node, lambda child: (_bound_params(child, found), child)[1])
+    return found
+
+
+def declare_bindings(grammar, namer):
+    """
+    Give each production the parameters its own body binds and does not declare. A value leaves a production only
+    through a declared parameter passed by reference, so a binding a production does not declare is written into its own
+    frame and dropped on return; it survives only where the write stands above every frame that reads it, which nothing
+    holds it to — and a step that mints a helper out of the middle of such a body puts a frame exactly there. Declared,
+    every helper a later step mints carries it, a minted call passing each declared parameter as itself, so the write
+    reaches the reader wherever the split lands. No call site changes: an argument a caller does not give leaves the
+    parameter unbound, which is the ambient value the production read before. What a production binds for itself is what
+    it detects — the block header's auto-detected indent `m` and the leading empties' floor `f` — and the new parameter
+    is appended, so every positional argument still lands where it did.
+    """
+    result = {}
+    for name, production in grammar.items():
+        missing = tuple(sorted(_bound_params(production.body, set()) - set(production.params)))
+        result[name] = dataclasses.replace(production, params=production.params + missing) if missing else production
     return result
 
 
@@ -3242,6 +3305,8 @@ STEPS = [
     ("lower-commits", lower_commits),
     ("flatten", flatten),
     ("span-consumes", span_consumes),
+    ("eliminate-empties", eliminate_empties),
+    ("declare-bindings", declare_bindings),
     ("lift-choices", lift_choices),
     ("single-consumes", single_consumes),
     ("binarize", binarize),
@@ -3261,14 +3326,26 @@ STEPS = [
 ]
 
 
+def entered_by_name(grammar):
+    """
+    The productions a parse enters without a call, each a start state of its own: the root's copy under every resume
+    policy — the one parameter the caller chooses — and the recovery a failed cut lands on. A caller cannot be
+    redirected to what no caller names, so these keep their own names through every cleanup.
+    """
+    return {
+        ir.entry(grammar, name, {"n": -1, "r": resume})[0]
+        for name in (ir.ROOT, ir.RECOVER)
+        for resume in annotated2ir.RESUMES
+    }
+
+
 def reachable(grammar):
     """
-    The productions the parse can enter, transitively: the root's copy under each resume policy — the one parameter the
-    caller chooses, so each copy is a start state of its own — and everything those reference, read off each node's own
-    `references`.
+    The productions the parse can enter, transitively: the ones it enters by name and everything those reference, read
+    off each node's own `references`.
     """
     seen = set()
-    worklist = [ir.entry(grammar, ir.ROOT, {"r": resume})[0] for resume in annotated2ir.RESUMES]
+    worklist = list(entered_by_name(grammar))
     while worklist:
         name = worklist.pop()
         if name in seen or name not in grammar:
@@ -3284,26 +3361,147 @@ def purged(grammar):
     return {name: production for name, production in grammar.items() if name in keep}
 
 
+def _spliced(grammar, keep):
+    """
+    `grammar` with every do-nothing frame gone: a production whose whole body is one ungated, action-free call, with no
+    continuation and no recovery of its own, is what it calls, so every reference to it becomes a reference to that
+    callee — its parameters bound to the call's arguments. A chain of them collapses in one pass, and a frame that
+    reaches only itself is left where it stands, a call that never returns being no simpler spelled inline.
+    """
+    frames = {}
+    for name, production in grammar.items():
+        body = production.body
+        if name in keep or not isinstance(body, ir.Choice) or len(body.alternatives) != 1:
+            continue
+        [way] = body.alternatives
+        if way.gate.peek is not None or way.gate.guards or way.actions:
+            continue
+        if way.first is None or way.second is not None or way.recover is not None:
+            continue
+        frames[name] = way.first
+    if not frames:
+        return grammar, {}
+
+    def resolved(reference):
+        seen = set()
+        while isinstance(reference, ir.Ref) and reference.name in frames and reference.name not in seen:
+            seen.add(reference.name)
+            inner = frames[reference.name]
+            reference = _bound(inner, dict(zip(grammar[reference.name].params, reference.args)))
+        return reference
+
+    def rewrite(node):
+        node = ir.rebuilt(node, rewrite)
+        return resolved(node) if isinstance(node, ir.Ref) else node
+
+    swept = {name: dataclasses.replace(p, body=rewrite(p.body)) for name, p in grammar.items()}
+    return swept, {name: resolved(reference).name for name, reference in frames.items()}
+
+
+def _grouped(grammar):
+    """
+    `{name: group}`, productions that behave alike sharing a group: same parameters, and the same body once every
+    reference in it is read as the group of what it names rather than by the name itself — so two loops that differ only
+    in what their helpers are called come out alike, which comparing the bodies as written cannot see. The groups are
+    the coarsest partition that stays stable under that reading: everything starts alike, and a difference splits it,
+    until a round splits nothing.
+    """
+
+    def keyed(body, block):
+        def rewrite(node):
+            node = ir.rebuilt(node, rewrite)
+            if isinstance(node, ir.Ref):
+                return dataclasses.replace(node, name=f"#{block.get(node.name, -1)}")
+            return node
+
+        return rewrite(body)
+
+    block = dict.fromkeys(grammar, 0)
+    while True:
+        signatures, refined = {}, {}
+        for name in sorted(grammar):
+            signature = (grammar[name].params, keyed(grammar[name].body, block))
+            refined[name] = signatures.setdefault(signature, len(signatures))
+        if refined == block:
+            return block
+        block = refined
+
+
+def _merged(grammar, keep):
+    """
+    `grammar` with productions that behave alike spelled once: a call to one is a call to any other of its group, so
+    every reference to a duplicate becomes a reference to the one kept. A production the parse enters by name is always
+    kept, having a name a caller cannot be redirected away from — and where a group holds two of those, both stand.
+    """
+    block = _grouped(grammar)
+    standing = {}
+    for name in sorted(grammar, key=lambda name: (name not in keep, name)):
+        standing.setdefault(block[name], name)
+    canonical = {name: standing[block[name]] for name in grammar if name not in keep and standing[block[name]] != name}
+    if not canonical:
+        return grammar, {}
+
+    def rewrite(node):
+        node = ir.rebuilt(node, rewrite)
+        if isinstance(node, ir.Ref) and node.name in canonical:
+            return dataclasses.replace(node, name=canonical[node.name])
+        return node
+
+    return {name: dataclasses.replace(p, body=rewrite(p.body)) for name, p in grammar.items()}, canonical
+
+
+def cleaned(grammar):
+    """
+    `grammar` with what a transformation leaves behind swept up, and the renames the sweep made — `{gone: standing}`, so
+    what tracks a production by name follows its content to where it went. The frames that only call something else are
+    spliced out, the productions that spell the very same thing are merged into one, and — last, so it sees what the
+    other two strand — every production no parse can enter is purged. Splicing and merging feed each other, a merge
+    making two frames the same call and a splice making two callers identical, so they run to a fixpoint. None of it
+    changes what the grammar matches or emits: a spliced frame ran no action and made no decision, and a merged
+    production is the one kept, character for character.
+    """
+    keep = entered_by_name(grammar)
+    renames = {}
+
+    def landed(name):
+        seen = set()
+        while name in renames and name not in seen:
+            seen.add(name)
+            name = renames[name]
+        return name
+
+    while True:
+        spliced, splices = _spliced(grammar, keep)
+        swept, merges = _merged(spliced, keep)
+        if swept == grammar:
+            return purged(grammar), {gone: landed(gone) for gone in renames}
+        renames.update(splices)
+        renames.update(merges)
+        grammar = swept
+
+
 def stages(grammar):
     """
     The grammar after each step, as `(label, grammar)` pairs, opening with `("base", grammar)` — what `check_normalize`
     diffs the interpreter's token stream across, so a step that changes it is named. Returns the `Points` beside the
     pairs, so the analysis of the final grammar reads its committed holders from the same tracking the steps used. One
     `Namer` is threaded through the steps, so the helper productions they mint number `<base>_<N>` off a count shared
-    across them. Each step's grammar is purged of the productions the root no longer reaches — a transformation that
-    replaces a call site strands the callee, and a stranded production would hold the determinize meter above its honest
-    floor. The base grammar is kept whole: it is the grammar as frozen at the completeness gate, purged by no step.
+    across them. Each step's grammar is cleaned of what the step leaves behind — the do-nothing frames, the duplicate
+    productions, and the ones the root no longer reaches — since a transformation that replaces a call site strands the
+    callee, and a frame or a duplicate the sweep leaves standing would hold the determinize meter above its honest
+    floor. The base grammar is kept whole: it is the grammar as frozen at the completeness gate, cleaned by no step.
     """
     namer = Namer()
     namer.points.settle("base", grammar)
     result = [("base", grammar)]
     for name, transform in STEPS:
-        grammar = purged(transform(grammar, namer))
+        grammar, renames = cleaned(transform(grammar, namer))
+        namer.points.follow(renames)
         namer.points.settle(name, grammar)
         result.append((name, grammar))
     return result, namer.points
 
 
 def normalize(grammar):
-    """The grammar with every step applied in order, purged after each of what the root no longer reaches."""
+    """The grammar with every step applied in order, cleaned after each of what the step leaves behind."""
     return stages(grammar)[0][-1][1]

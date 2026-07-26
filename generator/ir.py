@@ -21,6 +21,10 @@ from dataclasses import dataclass, fields, is_dataclass, replace
 # The production the whole grammar hangs off: a YAML stream, and then the end of the input.
 ROOT = "l-yeast-stream"
 
+# The production a failed cut hands the input to — entered by name rather than called, so it is a start state of its own
+# beside the root's copies: the unwind lands on it, and where the resume policy says so the parse carries on past it.
+RECOVER = "l-recover"
+
 # The parameters `normalize.monomorphize` specializes away into a production's name: the ones with finitely many values,
 # passed lexically so their value is settled where a production is entered. The context `c`, the chomping `t` (once
 # `lift-chomping` has made it lexical rather than a match's stashed state), and the resume policy `r` are the three;

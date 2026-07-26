@@ -48,10 +48,10 @@ DEPTH_TRACE = 40  # productions of the stack's deep end to show, and how near th
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "grammar", "messages.yaml")) as _f:
     MESSAGES = yaml.safe_load(_f)
 
-# The production a failed cut hands off to: it brings the input back unparsed and, where the resume policy says so,
-# carries on at the next document. Matching it, rather than emitting the tokens by hand, keeps recovery in the grammar,
-# where the C parser generates it from — a cut says only where the unwind lands, never what to do about it.
-RECOVER = "l-recover"
+# The production a failed cut hands off to, `ir.RECOVER`: it brings the input back unparsed and, where the resume policy
+# says so, carries on at the next document. Matching it, rather than emitting the tokens by hand, keeps recovery in the
+# grammar, where the C parser generates it from — a cut says only where the unwind lands, never what to do about it.
+RECOVER = ir.RECOVER
 
 
 class CommitFailure(Exception):
