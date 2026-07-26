@@ -8,7 +8,7 @@ run and with which parameters — this module decodes that convention, mirroring
 pairs each input with its expected output.
 
 The suite was built once from the vendored reference parser's fixtures and is now libyeast's to add to and correct;
-`is_runnable` and `bad_value` are what the fixture gate checks each fixture against the grammar with.
+`runnable_fault` and `bad_value` are what the fixture gate checks each fixture against the grammar with.
 """
 
 import os
@@ -78,7 +78,7 @@ def parse_name(filename):
     return production, parameters, case, "invalid" in case.split(".")
 
 
-def is_runnable(fixture, grammar):
+def runnable_fault(fixture, grammar):
     """
     Return None if `grammar` can run `fixture`, else a one-line reason it cannot.
 

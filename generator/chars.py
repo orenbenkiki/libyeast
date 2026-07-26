@@ -72,7 +72,7 @@ def denote(grammar, node, seen=()):
     return None
 
 
-def contains(denotation, codepoint):
+def does_contain(denotation, codepoint):
     """Whether `denotation` contains `codepoint`."""
     kind = denotation[0]
     if kind == "literal":
@@ -80,9 +80,11 @@ def contains(denotation, codepoint):
     if kind == "range":
         return denotation[1] <= codepoint <= denotation[2]
     if kind == "union":
-        return any(contains(part, codepoint) for part in denotation[1])
+        return any(does_contain(part, codepoint) for part in denotation[1])
     if kind == "difference":
-        return contains(denotation[1], codepoint) and not any(contains(part, codepoint) for part in denotation[2])
+        return does_contain(denotation[1], codepoint) and not any(
+            does_contain(part, codepoint) for part in denotation[2]
+        )
     raise ValueError(f"unknown denotation {denotation!r}")
 
 
@@ -199,7 +201,7 @@ class Model:
         """The key of `codepoint`, encoded in `length` bytes."""
         key = self.literal_ids.get(codepoint, LIT_NONE) | (length << LEN_SHIFT)
         for index, (_name, denotation) in enumerate(self.sets):
-            if contains(denotation, codepoint):
+            if does_contain(denotation, codepoint):
                 key |= self.set_mask(index)
         return key
 

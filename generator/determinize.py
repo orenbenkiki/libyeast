@@ -116,14 +116,14 @@ def _closure(grammar, configs):
     return parked
 
 
-def _admits(spans, codepoint):
+def _does_admit(spans, codepoint):
     """Whether `spans` — a list of inclusive `(low, high)` ranges — contains `codepoint`."""
     return spans is not None and any(low <= codepoint <= high for low, high in spans)
 
 
 def _step(grammar, parked, codepoint):
     """The parked set after consuming `codepoint`: every path whose frontier admits it, advanced and re-closed."""
-    advanced = [entry.config for entry in parked if _admits(entry.spans, codepoint)]
+    advanced = [entry.config for entry in parked if _does_admit(entry.spans, codepoint)]
     return _closure(grammar, advanced)
 
 
@@ -185,7 +185,7 @@ def _shared_codepoint(parked):
         return None
     candidates = {low for spans in per_origin.values() for low, _high in spans}
     for codepoint in sorted(candidates):
-        if all(any(_admits(spans, codepoint) for spans in [origin_spans]) for origin_spans in per_origin.values()):
+        if all(any(_does_admit(spans, codepoint) for spans in [origin_spans]) for origin_spans in per_origin.values()):
             return codepoint
     return None
 

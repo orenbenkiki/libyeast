@@ -48,7 +48,7 @@ def _corpus_errors(label, grammar, fixtures, suite):
     The cases `grammar` does not reproduce, named for the step that produced it — the fixtures filtered to the ones
     `grammar` can still run, a stranded fixture's production being no longer this grammar's to ask about.
     """
-    runnable = [fixture for fixture in fixtures if spec_tests.is_runnable(fixture, grammar) is None]
+    runnable = [fixture for fixture in fixtures if spec_tests.runnable_fault(fixture, grammar) is None]
     errors = [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, runnable)]
     return errors + [f"[{label}] star {error}" for error in check_star.disagreements(grammar, suite)]
 
@@ -64,7 +64,7 @@ def _pinned(stages, fixtures):
     for fixture in fixtures:
         last = None
         for index, (_label, grammar) in enumerate(stages):
-            if spec_tests.is_runnable(fixture, grammar) is None:
+            if spec_tests.runnable_fault(fixture, grammar) is None:
                 last = index
         if last is None:
             errors.append(f"{os.path.basename(fixture.input_path)}: no stage's grammar can run it")

@@ -37,7 +37,7 @@ def main():
 
     for fixture in fixtures:
         name = os.path.basename(fixture.input_path)
-        reason = spec_tests.is_runnable(fixture, grammar) or spec_tests.bad_value(fixture)
+        reason = spec_tests.runnable_fault(fixture, grammar) or spec_tests.bad_value(fixture)
         if reason is not None:
             errors.append(f"{name}: {reason}")
             continue

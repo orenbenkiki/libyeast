@@ -65,7 +65,7 @@ class Points:
         """
         for point in list(self.at):
             _origin, picker = POINTS[point]
-            candidates = {name for name in grammar if any(_descends(name, held) for held in self.at[point])}
+            candidates = {name for name in grammar if any(_is_descendant(name, held) for held in self.at[point])}
             held = tuple(sorted(picker(grammar, candidates)))
             if not held:
                 raise AssertionError(f"[{label}] the step lost the point of interest `{point}` ({self.at[point]})")
@@ -100,7 +100,7 @@ def _base(name):
     return _base(head) if tail.isdigit() and head else name
 
 
-def _descends(name, holder):
+def _is_descendant(name, holder):
     """
     Whether `name` is `holder` or something the pipeline made from it — a numbered sibling minted off its base, or a
     `_`-suffixed copy a step split it into, `monomorphize`'s `_t_keep` among them. Bases are compared, so a sibling
@@ -143,12 +143,12 @@ def _branch(node, value):
     raise ValueError(f"{node.var} has no branch for {value!r}")
 
 
-def _uses(node, param):
+def _is_using(node, param):
     """Whether `Param(param)` appears anywhere in `node`."""
     if isinstance(node, ir.Param):
         return node.name == param
     found = []
-    ir.rebuilt(node, lambda child: found.append(_uses(child, param)) or child)
+    ir.rebuilt(node, lambda child: found.append(_is_using(child, param)) or child)
     return any(found)
 
 
@@ -182,7 +182,7 @@ def _dispatch(body, param, values):
     choice over `values`, each branch substituting the literal for `Param(param)`.
     """
     items = body.items if isinstance(body, ir.Seq) else (body,)
-    first = next(index for index, item in enumerate(items) if _uses(item, param))
+    first = next(index for index, item in enumerate(items) if _is_using(item, param))
     prefix, tail = items[:first], items[first:]
     choice = ir.Alt(tuple(ir.Seq(tuple(_substitute(item, param, value) for item in tail)) for value in values))
     return ir.Seq(prefix + (choice,)) if prefix else choice
@@ -208,7 +208,7 @@ def lift_chomping(grammar, namer):
         else:
             body = production.body
             for param in ir.FINITE_PARAMS:
-                if param in values and param not in production.params and _uses(body, param):
+                if param in values and param not in production.params and _is_using(body, param):
                     body = _dispatch(body, param, values[param])
         result[name] = dataclasses.replace(production, body=body)
     return result
@@ -359,7 +359,7 @@ def lower_optionals(grammar, namer):
     }
 
 
-def matches_one_char(node, grammar, seen=frozenset()):
+def is_one_char(node, grammar, seen=frozenset()):
     """
     Whether `node` matches exactly one character — a terminal char class. A `+`/`*` over one stays a single repeated
     char-set match (one SIMD call); over anything else it breaks into a sequence or a recursion. A `Char`, `Range` or
@@ -370,17 +370,17 @@ def matches_one_char(node, grammar, seen=frozenset()):
     if isinstance(node, (ir.Char, ir.Range, ir.Invalid)):
         return True
     if isinstance(node, ir.Diff):
-        return matches_one_char(node.base, grammar, seen)
+        return is_one_char(node.base, grammar, seen)
     if isinstance(node, ir.Alt):
-        return bool(node.items) and all(matches_one_char(item, grammar, seen) for item in node.items)  # empty: no match
+        return bool(node.items) and all(is_one_char(item, grammar, seen) for item in node.items)  # empty: no match
     if isinstance(node, ir.Case):
-        return all(matches_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
+        return all(is_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
     if isinstance(node, ir.Ref):
-        return node.name in seen or matches_one_char(grammar[node.name].body, grammar, seen | {node.name})
+        return node.name in seen or is_one_char(grammar[node.name].body, grammar, seen | {node.name})
     return False
 
 
-def matches_empty(node, grammar, seen=frozenset()):
+def can_match_empty(node, grammar, seen=frozenset()):
     """
     Whether `node` can match the empty string. Conservative: a node it cannot prove non-empty is reported as matching
     empty, so a caller under-acts. A `Star` over a node that matches empty cannot become a right-recursive helper — it
@@ -389,21 +389,21 @@ def matches_empty(node, grammar, seen=frozenset()):
     if isinstance(node, (ir.Char, ir.Range, ir.Invalid, ir.Diff)):
         return False
     if isinstance(node, ir.Ref):
-        return node.name in seen or matches_empty(grammar[node.name].body, grammar, seen | {node.name})
+        return node.name in seen or can_match_empty(grammar[node.name].body, grammar, seen | {node.name})
     if isinstance(node, ir.Seq):
-        return all(matches_empty(item, grammar, seen) for item in node.items)
+        return all(can_match_empty(item, grammar, seen) for item in node.items)
     if isinstance(node, ir.Alt):
-        return any(matches_empty(item, grammar, seen) for item in node.items)
+        return any(can_match_empty(item, grammar, seen) for item in node.items)
     if isinstance(node, ir.Plus):
-        return matches_empty(node.item, grammar, seen)
+        return can_match_empty(node.item, grammar, seen)
     if isinstance(node, (ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Recover)):
-        return matches_empty(node.item, grammar, seen)
+        return can_match_empty(node.item, grammar, seen)
     if isinstance(node, ir.Max):
-        return node.item is None or matches_empty(node.item, grammar, seen)
+        return node.item is None or can_match_empty(node.item, grammar, seen)
     if isinstance(node, ir.Case):
-        return any(matches_empty(branch.item, grammar, seen) for branch in node.branches)
+        return any(can_match_empty(branch.item, grammar, seen) for branch in node.branches)
     if isinstance(node, ir.Bind):
-        return matches_empty(node.cond, grammar, seen)
+        return can_match_empty(node.cond, grammar, seen)
     return True
 
 
@@ -439,7 +439,7 @@ def hoist_repetition_empties(grammar, namer):
     minted, lookup = {}, dict(grammar)
 
     def nullable(node):
-        return matches_empty(node, lookup)
+        return can_match_empty(node, lookup)
 
     def consuming_name(name):
         """
@@ -539,7 +539,7 @@ def _lower_plus(node, grammar):
     alone to stay one SIMD match. Bottom-up, so a parent sees its already-lowered children.
     """
     node = ir.rebuilt(node, lambda child: _lower_plus(child, grammar))
-    if isinstance(node, ir.Plus) and not matches_one_char(node.item, grammar):
+    if isinstance(node, ir.Plus) and not is_one_char(node.item, grammar):
         return ir.Seq((node.item, ir.Star(node.item)))
     return node
 
@@ -571,7 +571,7 @@ def lower_star(grammar, namer):
     def lower(owner, params, node):
         node = ir.rebuilt(node, lambda child: lower(owner, params, child))
         item = node.item if isinstance(node, ir.Star) else None
-        if item is not None and not matches_empty(item, grammar) and not matches_one_char(item, grammar):
+        if item is not None and not can_match_empty(item, grammar) and not is_one_char(item, grammar):
             name = namer.fresh(owner)
             reference = ir.Ref(name, tuple(ir.Param(parameter) for parameter in params))
             body = ir.Alt((ir.Seq((item, reference)), ir.Empty()))
@@ -779,7 +779,7 @@ CODE = "code"  # the parameter a helper declares to be handed the run code its c
 MATCH_START = "match_start"  # its `(match)`-origin twin: a helper closing a scope its caller opened restores this
 
 
-def _needs_code(items):
+def _does_need_code(items):
     """Whether `items` closes a `(token)` scope it does not open — so a helper holding them must be passed the code."""
     depth = 0
     for item in items:
@@ -792,7 +792,7 @@ def _needs_code(items):
     return False
 
 
-def _needs_origin(items):
+def _does_need_origin(items):
     """
     Whether `items` closes a `(match)` scope it does not open — so a helper holding them must be passed the origin: its
     entry stamps `match_start` with the scope already open, and only the declared parameter restores the caller's own.
@@ -903,7 +903,7 @@ def single_consumes(grammar, namer):
     def needs_gate(item):
         # a char-set `x+` needs the gate as much as a single character: its gate is what proves it takes at least one
         target = item.item if isinstance(item, ir.Plus) else item
-        return matches_one_char(target, lookup)
+        return is_one_char(target, lookup)
 
     def split(owner, number, params, alternative):
         items = alternative.items if isinstance(alternative, ir.Seq) else (alternative,)
@@ -916,12 +916,12 @@ def single_consumes(grammar, namer):
             end = _balanced_end(items, start)
             if end is None or (start == 0 and end == len(items)):
                 break  # the whole alternative is one scope, so there is nothing to move out of it
-            if matches_one_char(_flat_seq(items[start:end]), lookup):
+            if is_one_char(_flat_seq(items[start:end]), lookup):
                 break  # a segment that is itself a character class moves to a helper that is one, which is no progress
             segment = items[start:end]
             # A segment that closes a `(token)` its caller opened is handed that caller's own code, so its close
             # restores the outer one rather than the pushed one it was entered under.
-            inner = params + (CODE,) if _needs_code(segment) and CODE not in params else params
+            inner = params + (CODE,) if _does_need_code(segment) and CODE not in params else params
             arguments = tuple(ir.Param(parameter) for parameter in inner)
             name = namer.fresh(owner)
             reference = ir.Ref(name, arguments)
@@ -957,7 +957,7 @@ def binarize(grammar, namer):
     minted, lookup = {}, dict(grammar)  # a helper is looked up too, since the split reclassifies what it put in place
 
     def is_call(node):
-        return isinstance(node, ir.Ref) and not matches_one_char(node, lookup)
+        return isinstance(node, ir.Ref) and not is_one_char(node, lookup)
 
     def split(owner, number, params, alternative):
         items = alternative.items if isinstance(alternative, ir.Seq) else (alternative,)
@@ -974,7 +974,7 @@ def binarize(grammar, namer):
             segment = items[start:end]
             # A segment that closes a `(token)` its caller opened is handed that caller's own code, so its close
             # restores the outer one rather than the pushed one it was entered under.
-            inner = params + (CODE,) if _needs_code(segment) and CODE not in params else params
+            inner = params + (CODE,) if _does_need_code(segment) and CODE not in params else params
             arguments = tuple(ir.Param(parameter) for parameter in inner)
             name = namer.fresh(owner)
             reference = ir.Ref(name, arguments)
@@ -1028,7 +1028,7 @@ def alternative_shape(grammar, namer):
     minted = {}
 
     def is_call(node):
-        return isinstance(node, ir.Ref) and not matches_one_char(node, lookup)
+        return isinstance(node, ir.Ref) and not is_one_char(node, lookup)
 
     lookup = dict(grammar)
 
@@ -1049,9 +1049,9 @@ def alternative_shape(grammar, namer):
                 break  # a committed region: a gate refusing its first character would soften the error it must raise
             if isinstance(action, _ZERO_WIDTH):
                 continue
-            if matches_one_char(action, lookup):
+            if is_one_char(action, lookup):
                 peek, actions[position] = action, ir.ConsumeChar()
-            elif isinstance(action, ir.Plus) and matches_one_char(action.item, lookup):
+            elif isinstance(action, ir.Plus) and is_one_char(action.item, lookup):
                 # a char-set `x+`: the gate peeks `[x]`, which proves the span takes at least one character
                 peek, actions[position] = action.item, ir.ConsumeSpan(action.item)
             break
@@ -1059,7 +1059,7 @@ def alternative_shape(grammar, namer):
         second = None
         if tail:
             name = namer.fresh(owner)
-            inner = params + (CODE,) if _needs_code(tail) and CODE not in params else params
+            inner = params + (CODE,) if _does_need_code(tail) and CODE not in params else params
             minted[name] = lookup[name] = ir.Prod(number, name, inner, shape(name, number, inner, tail))
             second = ir.Ref(name, tuple(ir.Param(parameter) for parameter in inner))
         return ir.Choice((ir.Alternative(ir.Gate(peek, tuple(guards)), tuple(actions), first, second),))
@@ -1067,7 +1067,7 @@ def alternative_shape(grammar, namer):
     result = {}
     for name, production in grammar.items():
         body, number, params = production.body, production.number, production.params
-        if matches_one_char(body, grammar):
+        if is_one_char(body, grammar):
             result[name] = production  # a terminal production is a character class, and stays one
             continue
         alternatives = body.items if isinstance(body, ir.Alt) else (body,)
@@ -1327,7 +1327,7 @@ def gate_hoist(grammar, namer):
         if name in first_of:
             return first_of[name]
         body = grammar[name].body
-        if matches_one_char(body, grammar):
+        if is_one_char(body, grammar):
             return body  # a terminal production is its own first set
         if not isinstance(body, ir.Choice):
             return None
@@ -1354,7 +1354,7 @@ def gate_hoist(grammar, namer):
             return None  # it consumes nothing, so what follows it decides — a first set does not say
         if isinstance(lead, ir.ConsumeLiteral):
             return ir.Char(lead.text[0])
-        return lead if matches_one_char(lead, grammar) else None
+        return lead if is_one_char(lead, grammar) else None
 
     first = _first_table(grammar)
 
@@ -1478,7 +1478,7 @@ def _peek_spans(peek, grammar):
     return None if denotation is None else _denoted_spans(denotation)
 
 
-def _spans_overlap(a, b):
+def _do_spans_overlap(a, b):
     """Whether the two `_peek_spans` results share a unit."""
     position_a = position_b = 0
     while position_a < len(a) and position_b < len(b):
@@ -1506,12 +1506,12 @@ def _node_begins(node, grammar, first_of):
         if begins is None:
             return None, nullable
         for excluded in node.minus:
-            if matches_one_char(excluded, grammar):
+            if is_one_char(excluded, grammar):
                 cut = _peek_spans(excluded, grammar)
                 if cut is not None:
                     begins = _subtracted_spans(begins, cut)
         return begins, nullable
-    if matches_one_char(node, grammar):
+    if is_one_char(node, grammar):
         return _peek_spans(node, grammar), False
     return None, True
 
@@ -1563,7 +1563,7 @@ def _alternative_first(alternative, grammar, first_of):
                 continue  # may take nothing: what follows can begin here too
             consumed = True
             break
-        if matches_one_char(action, grammar):
+        if is_one_char(action, grammar):
             part = _peek_spans(action, grammar)
             unknown = unknown or part is None
             spans.extend(part or [])
@@ -1630,7 +1630,7 @@ def _follow_spans(grammar, first):
     follow = {name: [] for name in grammar}
     top = set()
 
-    def flow(target, spans):
+    def did_widen(target, spans):
         """Widen `follow[target]` by `spans` (`None` widening it to unknown), reporting whether anything changed."""
         if target in top:
             return False
@@ -1661,11 +1661,11 @@ def _follow_spans(grammar, first):
                             followed = _merged_spans(followed + inherited)
                     else:
                         followed = inherited
-                    changed |= flow(call.name, followed)
+                    changed |= did_widen(call.name, followed)
                     if recovery is not None:
-                        changed |= flow(recovery.name, followed)
+                        changed |= did_widen(recovery.name, followed)
                 if continuation is not None:
-                    changed |= flow(continuation.name, inherited)
+                    changed |= did_widen(continuation.name, inherited)
     return {name: (None if name in top else follow[name]) for name in grammar}
 
 
@@ -1797,7 +1797,7 @@ def factor_prefixes(grammar, namer):
     def first_of(reference):
         return first[reference]
 
-    def one_outcome(action, alternatives, depth):
+    def is_one_outcome(action, alternatives, depth):
         # The scan's admission: every leftover past it must begin off the scanned set, pinned and never empty — a
         # shorter run leaves a set character at the head, which no leftover then admits.
         scanned = _peek_spans(action.set, grammar)
@@ -1808,7 +1808,7 @@ def factor_prefixes(grammar, namer):
                 alternative, gate=ir.Gate(None, ()), actions=alternative.actions[depth + 1 :]
             )
             begins, nullable = _alternative_first(remainder, grammar, first_of)
-            if begins is None or nullable or _spans_overlap(begins, scanned):
+            if begins is None or nullable or _do_spans_overlap(begins, scanned):
                 return False
         return True
 
@@ -1826,7 +1826,7 @@ def factor_prefixes(grammar, namer):
             if any(element != action for element in elements[1:]) or isinstance(action, _PREFIX_STOP):
                 break
             if isinstance(action, ir.ConsumeSpan):
-                if not one_outcome(action, alternatives, len(prefix)):
+                if not is_one_outcome(action, alternatives, len(prefix)):
                     break
             elif not isinstance(action, _ZERO_WIDTH) and not isinstance(action, _PREFIX_CONSUMES):
                 break
@@ -1846,9 +1846,9 @@ def factor_prefixes(grammar, namer):
 
         leftovers = tuple(peeled(a) for a in alternatives)
         inner = production.params
-        if any(_needs_code(leftover.actions) for leftover in leftovers) and CODE not in inner:
+        if any(_does_need_code(leftover.actions) for leftover in leftovers) and CODE not in inner:
             inner = inner + (CODE,)
-        if any(_needs_origin(leftover.actions) for leftover in leftovers) and MATCH_START not in inner:
+        if any(_does_need_origin(leftover.actions) for leftover in leftovers) and MATCH_START not in inner:
             inner = inner + (MATCH_START,)
         helper = namer.fresh(name)
         minted[helper] = ir.Prod(production.number, helper, inner, ir.Choice(leftovers))
@@ -1883,12 +1883,12 @@ def committed_productions(points):
     return {name for point in DECLARED_COMMITS for name in points.current(point)}
 
 
-def _holds(node, want):
+def _does_hold(node, want):
     """Whether `want` holds for `node` or anything in its own shape — references named, not entered."""
     if want(node):
         return True
     found = []
-    ir.rebuilt(node, lambda child: (found.append(_holds(child, want)), child)[1])
+    ir.rebuilt(node, lambda child: (found.append(_does_hold(child, want)), child)[1])
     return any(found)
 
 
@@ -1922,19 +1922,19 @@ def _chomp_choice_picker(monomorphized, literal=None):
     def is_ordering(ways):
         return sum(is_chomp(first_call(way) or "") for way in ways) == 1
 
-    def chomp_side(node):
-        def wants(held):
+    def is_chomp_side(node):
+        def is_wanted(held):
             if literal is not None and held == ir.Char(cp=literal):
                 return True
             return isinstance(held, ir.Ref) and is_chomp(held.name)
 
-        return _holds(node, wants)
+        return _does_hold(node, is_wanted)
 
     def pick(grammar, candidates):
         ordering = [
             name for name in candidates if (ways := _two_ways(grammar[name].body)) is not None and is_ordering(ways)
         ]
-        holders = ordering or [name for name in candidates if chomp_side(grammar[name].body)]
+        holders = ordering or [name for name in candidates if is_chomp_side(grammar[name].body)]
         # Clip's chomping indicator matches only empty, so `eliminate-empties` dissolves it into a residue that is
         # nothing at all, and there is no chomping side left to hold on to — the point stays with the header copies its
         # own family carries, which `reorder-declared` holds to the two-way shape it speaks about. A chomping side that
@@ -1966,7 +1966,7 @@ def _refs_picker(*required):
         specific = [
             name
             for name in candidates
-            if all(any(_descends(ref, want) for ref in grammar[name].references()) for want in required)
+            if all(any(_is_descendant(ref, want) for ref in grammar[name].references()) for want in required)
         ]
         return specific or sorted(candidates)
 
@@ -2090,12 +2090,12 @@ def _proved_productions(grammar):
         if not isinstance(body, ir.Choice) or len(body.alternatives) <= 1:
             deterministic.add(name)  # a terminal, a single way through, or no way at all: nothing to decide
             continue
-        if _decides(name, production, grammar, first_of, follow[name]):
+        if _does_decide(name, production, grammar, first_of, follow[name]):
             deterministic.add(name)
     return deterministic
 
 
-def _literal_decided(earlier, grammar):
+def _is_literal_decided(earlier, grammar):
     """
     Whether `earlier` — the first of two alternatives sharing a first character — is decided by its own literal gate:
     its peek is a `LiteralPeek` whose text its way in spells exactly, by its own leading consume or down the single-way
@@ -2105,10 +2105,10 @@ def _literal_decided(earlier, grammar):
     what holds the greedy side of that reading to the reference, the marker fixtures with it.
     """
     peek = earlier.gate.peek
-    return isinstance(peek, ir.LiteralPeek) and _spells_peek(earlier, peek.text, grammar, frozenset())
+    return isinstance(peek, ir.LiteralPeek) and _does_spell_peek(earlier, peek.text, grammar, frozenset())
 
 
-def _spells_peek(alternative, text, grammar, seen):
+def _does_spell_peek(alternative, text, grammar, seen):
     """
     Whether `alternative`'s way in consumes exactly `text` — its own leading consume, or the one found down its
     single-way calls whose actions are all zero-width. A spine level's own gate does not matter here: a gate is a
@@ -2124,7 +2124,7 @@ def _spells_peek(alternative, text, grammar, seen):
     if not isinstance(body, ir.Choice) or len(body.alternatives) != 1:
         return False
     [entry] = body.alternatives
-    return _spells_peek(entry, text, grammar, seen | {reference.name})
+    return _does_spell_peek(entry, text, grammar, seen | {reference.name})
 
 
 # A production's context classes are capped: past this many distinct follows, the set collapses to the unpinned class,
@@ -2214,18 +2214,18 @@ def context_conflicts(grammar, committed):
             continue
         if name in committed:
             continue
-        if _decides(name, production, grammar, first_of, merged[name]):
+        if _does_decide(name, production, grammar, first_of, merged[name]):
             continue  # decidable under the merged follow is decidable under every context's
         reached = classes[name] or {None}
         count = sum(
-            1 for k in reached if not _decides(name, production, grammar, first_of, None if k is None else list(k))
+            1 for k in reached if not _does_decide(name, production, grammar, first_of, None if k is None else list(k))
         )
         if count:
             failing[name] = count
     return failing
 
 
-def _decides(name, production, grammar, first_of, follow_spans):
+def _does_decide(name, production, grammar, first_of, follow_spans):
     """
     Whether `production`'s choice is one-gate-decidable under `follow_spans` — what may follow it in the context being
     judged. The certificates are context-free but for one point: a nullable last way's begins widen by the follow, so
@@ -2234,7 +2234,7 @@ def _decides(name, production, grammar, first_of, follow_spans):
     """
     body = production.body
     if all(alternative.gate.peek is None and alternative.gate.guards for alternative in body.alternatives) and all(
-        _complementary_guards(one, other)
+        _are_guards_complementary(one, other)
         for index, one in enumerate(body.alternatives)
         for other in body.alternatives[index + 1 :]
     ):
@@ -2243,7 +2243,7 @@ def _decides(name, production, grammar, first_of, follow_spans):
         return True
     if (
         len(body.alternatives) == 2
-        and _sure_way(body.alternatives[0], grammar)
+        and _is_sure_way(body.alternatives[0], grammar)
         and body.alternatives[1].gate.peek is None
     ):
         # A sure way against a fallthrough: the first way, once its peek admits the character, cannot fail — its actions
@@ -2271,9 +2271,9 @@ def _decides(name, production, grammar, first_of, follow_spans):
             return False
         spans.append(spanned)
     return not any(
-        _spans_overlap(spans[one], spans[other])
-        and not _complementary_guards(ways[one], ways[other])
-        and not _literal_decided(ways[one], grammar)
+        _do_spans_overlap(spans[one], spans[other])
+        and not _are_guards_complementary(ways[one], ways[other])
+        and not _is_literal_decided(ways[one], grammar)
         for one in range(len(spans))
         for other in range(one + 1, len(spans))
     )
@@ -2307,7 +2307,7 @@ _SURE_ACTS = (
 )
 
 
-def _sure_way(alternative, grammar):
+def _is_sure_way(alternative, grammar):
     """
     Whether `alternative` cannot fail once its peek admits the character: it is peek-gated with no guards, calls nothing
     and recovers nothing, and every action is refusal-free — the gate's own consume, a maximal scan, or a zero-width act
@@ -2324,7 +2324,7 @@ def _sure_way(alternative, grammar):
     )
 
 
-def _complementary_guards(one, other):
+def _are_guards_complementary(one, other):
     """
     Whether the two alternatives can never both be entered, whatever the position: one's gate carries `Lt(x, y)` and the
     other's `Le(y, x)` over the same two expressions, and over integers exactly one of those holds — so a peek the two
@@ -2564,7 +2564,7 @@ def extend_returns(grammar, namer):
             [tail] = follower.body.alternatives
             if tail.first is not None or tail.second is not None or tail.gate.peek is not None or tail.gate.guards:
                 raise AssertionError(f"{point}: the continuation is not actions alone, so the fold cannot absorb it")
-            if _needs_code(tail.actions) or _needs_origin(tail.actions):
+            if _does_need_code(tail.actions) or _does_need_origin(tail.actions):
                 raise AssertionError(f"{point}: the continuation closes a scope it does not open — the fold refuses it")
             copy = extended(way.first.name, tail.actions, {}, name)
             result[name] = dataclasses.replace(
@@ -2681,15 +2681,15 @@ def provisional_faults(grammar):
                 exits[name][entry] |= outs
                 grew[0] = True
 
-    def holds_provisional(node):
+    def does_hold_provisional(node):
         if isinstance(node, _PROVISIONAL):
             return True
         found = []
-        ir.rebuilt(node, lambda child: found.append(holds_provisional(child)) or child)
+        ir.rebuilt(node, lambda child: found.append(does_hold_provisional(child)) or child)
         return any(found)
 
     for name, production in grammar.items():
-        if holds_provisional(production.body) and not exits[name]:
+        if does_hold_provisional(production.body) and not exits[name]:
             faults.add(f"{name}: provisional actions no root reaches")
     return sorted(faults)
 
@@ -2705,7 +2705,7 @@ def _trim_runs(node, grammar):
         and isinstance(node.item, ir.Seq)
         and len(node.item.items) == 2
         and isinstance(node.item.items[0], ir.Star)
-        and matches_one_char(node.item.items[0].item, grammar)
+        and is_one_char(node.item.items[0].item, grammar)
     ):
         whitespace = node.item.items[0].item
         content = node.item.items[1]
@@ -2760,7 +2760,7 @@ def _first_chars(node, grammar, seen=frozenset()):
             if got is None:
                 return None
             first |= got
-            if not matches_empty(item, grammar):
+            if not can_match_empty(item, grammar):
                 break
         return first
     if isinstance(node, (ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Recover, ir.Star, ir.Plus, ir.Opt)):
@@ -2784,22 +2784,22 @@ def _first_chars(node, grammar, seen=frozenset()):
     return None  # a Range, Invalid or Rep as a first-character source is not a concrete few — unsure
 
 
-def _accepts(node, codepoint, grammar, seen=frozenset()):
+def _does_accept(node, codepoint, grammar, seen=frozenset()):
     """Whether the character class `node` matches `codepoint`."""
     if isinstance(node, ir.Char):
         return node.cp == codepoint
     if isinstance(node, ir.Range):
         return node.lo <= codepoint <= node.hi
     if isinstance(node, ir.Diff):
-        return _accepts(node.base, codepoint, grammar, seen) and not any(
-            _accepts(excluded, codepoint, grammar, seen) for excluded in node.minus
+        return _does_accept(node.base, codepoint, grammar, seen) and not any(
+            _does_accept(excluded, codepoint, grammar, seen) for excluded in node.minus
         )
     if isinstance(node, ir.Alt):
-        return any(_accepts(item, codepoint, grammar, seen) for item in node.items)
+        return any(_does_accept(item, codepoint, grammar, seen) for item in node.items)
     if isinstance(node, ir.Case):
-        return any(_accepts(branch.item, codepoint, grammar, seen) for branch in node.branches)
+        return any(_does_accept(branch.item, codepoint, grammar, seen) for branch in node.branches)
     if isinstance(node, ir.Ref):
-        return node.name not in seen and _accepts(grammar[node.name].body, codepoint, grammar, seen | {node.name})
+        return node.name not in seen and _does_accept(grammar[node.name].body, codepoint, grammar, seen | {node.name})
     return False
 
 
@@ -2833,7 +2833,7 @@ def hoist_char_runs(grammar, namer):
         `node`'s alternatives, flat: a char class kept whole, an alternation resolved and its own alternatives flattened
         in, so a run's fast char set separates from its complex exceptions however the grammar nests them.
         """
-        if matches_one_char(node, grammar):
+        if is_one_char(node, grammar):
             return (node,)
         expanded = resolved(node)
         if isinstance(expanded, ir.Alt):
@@ -2847,13 +2847,13 @@ def hoist_char_runs(grammar, namer):
         alternative is not provably start-disjoint from the common set, so a greedy common run could take a character an
         ordered choice would have handed the exception.
         """
-        common_alts = tuple(item for item in alternatives if matches_one_char(item, grammar))
-        uncommon_alts = tuple(item for item in alternatives if not matches_one_char(item, grammar))
+        common_alts = tuple(item for item in alternatives if is_one_char(item, grammar))
+        uncommon_alts = tuple(item for item in alternatives if not is_one_char(item, grammar))
         common = None if not common_alts else common_alts[0] if len(common_alts) == 1 else ir.Alt(common_alts)
         uncommon = None if not uncommon_alts else uncommon_alts[0] if len(uncommon_alts) == 1 else ir.Alt(uncommon_alts)
         if common is not None and uncommon is not None:
             first = _first_chars(uncommon, grammar)
-            if first is None or any(_accepts(common, codepoint, grammar) for codepoint in first):
+            if first is None or any(_does_accept(common, codepoint, grammar) for codepoint in first):
                 raise NotAlmostCharSet(
                     f"{owner}: a repeated alternation's complex alternative is not provably start-disjoint from its "
                     f"character classes, so its character runs cannot be factored out"
@@ -2953,7 +2953,7 @@ def _content_tail(node, active, grammar, seen=frozenset()):
     collects its run one character at a time.
     """
     if isinstance(node, (ir.Star, ir.Plus)):
-        return "run" if active in CONTENT_CODES and matches_one_char(node.item, grammar) else None
+        return "run" if active in CONTENT_CODES and is_one_char(node.item, grammar) else None
     if isinstance(node, ir.TrimStar):
         return "run" if active in CONTENT_CODES else None  # a maximal run, matched in bulk by a single trimming scan
     if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid)):
@@ -3036,7 +3036,7 @@ def _span_consumes(node, grammar):
             run = index
             while run < len(items) and items[run] == items[index]:
                 run += 1
-            if run - index > 1 and matches_one_char(items[index], grammar):
+            if run - index > 1 and is_one_char(items[index], grammar):
                 collapsed.append(ir.ConsumeCountedSpan(items[index], ir.Lit(run - index)))
                 index = run
                 continue
@@ -3045,9 +3045,9 @@ def _span_consumes(node, grammar):
         node = _flat_seq(tuple(collapsed))
     if isinstance(node, ir.TrimStar):
         return ir.ConsumeTrimmedSpan(node.full, node.trim)
-    if isinstance(node, ir.Star) and matches_one_char(node.item, grammar):
+    if isinstance(node, ir.Star) and is_one_char(node.item, grammar):
         return ir.ConsumeSpan(node.item)
-    if isinstance(node, ir.Rep) and matches_one_char(node.item, grammar):
+    if isinstance(node, ir.Rep) and is_one_char(node.item, grammar):
         return ir.ConsumeCountedSpan(node.item, node.count)
     return node
 
@@ -3137,19 +3137,19 @@ def eliminate_empties(grammar, namer):
     nullable_all = _nullable_set(grammar)  # every production that may match empty, exempt included
     strip = _nullable_set(grammar, frozenset(exempt))  # the ones this makes consuming — exempt kept nullable
 
-    def consumes(node, seen=frozenset()):
+    def is_consuming(node, seen=frozenset()):
         """Whether `node` can match a non-empty string — has a consuming form to keep."""
         if isinstance(node, _ZERO_WIDTH):
             return False
         if isinstance(node, (ir.Seq, ir.Alt)):
-            return any(consumes(item, seen) for item in node.items)
+            return any(is_consuming(item, seen) for item in node.items)
         if isinstance(node, ir.Ref):
-            return node.name not in seen and consumes(grammar[node.name].body, seen | {node.name})
+            return node.name not in seen and is_consuming(grammar[node.name].body, seen | {node.name})
         return True  # a terminal or a scan reads the input
 
     # The consuming copy of every nullable production that has ways that read; one name per production, so a recursion
     # meets its own copy rather than minting another.
-    minted = {name: namer.fresh(name) for name in sorted(strip) if consumes(grammar[name].body)}
+    minted = {name: namer.fresh(name) for name in sorted(strip) if is_consuming(grammar[name].body)}
 
     def residue(node, seen=frozenset()):
         """
@@ -3196,14 +3196,14 @@ def eliminate_empties(grammar, namer):
     def consuming(node):
         """`node` made to match at least one character, its references distributed."""
         if isinstance(node, ir.Alt):
-            kept = tuple(consuming(item) for item in node.items if consumes(item))
+            kept = tuple(consuming(item) for item in node.items if is_consuming(item))
             return kept[0] if len(kept) == 1 else ir.Alt(kept)
         if isinstance(node, ir.Seq):
             if any(not _is_nullable(item, nullable_all) for item in node.items):
                 return distribute(node)  # a part must read, so the sequence already consumes
             ways = []
             for index, item in enumerate(node.items):
-                if consumes(item):
+                if is_consuming(item):
                     before = tuple(residue(part) for part in node.items[:index])
                     after = tuple(distribute(part) for part in node.items[index + 1 :])
                     ways.append(_flat_seq(before + (consuming(item),) + after))
@@ -3269,16 +3269,16 @@ def non_char_set_runs(grammar):
 
     def walk(name, node):
         if isinstance(node, ir.ConsumeTrimmedSpan):
-            if not matches_one_char(node.full, grammar):
+            if not is_one_char(node.full, grammar):
                 faults.append(f"{name}: a ConsumeTrimmedSpan runs a non-character-set `full`")
-            if not matches_one_char(node.trim, grammar):
+            if not is_one_char(node.trim, grammar):
                 faults.append(f"{name}: a ConsumeTrimmedSpan trims a non-character-set `trim`")
-        if isinstance(node, ir.ConsumeSpan) and not matches_one_char(node.set, grammar):
+        if isinstance(node, ir.ConsumeSpan) and not is_one_char(node.set, grammar):
             faults.append(f"{name}: a ConsumeSpan runs a non-character-set `set`")
         if (
             isinstance(node, ir.Star)
-            and not matches_one_char(node.item, grammar)
-            and not matches_empty(node.item, grammar)
+            and not is_one_char(node.item, grammar)
+            and not can_match_empty(node.item, grammar)
         ):
             faults.append(f"{name}: a Star runs a non-character-set, non-nullable production")
         ir.rebuilt(node, lambda child: walk(name, child) or child)

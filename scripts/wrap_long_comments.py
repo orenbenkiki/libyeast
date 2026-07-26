@@ -46,7 +46,7 @@ def standalone(source, lines):
     return marks
 
 
-def risky(block):
+def is_risky(block):
     """
     Whether a block carries structure a greedy reflow would wreck, and so must be left untouched.
     """
@@ -73,7 +73,7 @@ def reflow(block, indent):
     def flush():
         if not paragraph:
             return
-        if risky(paragraph):
+        if is_risky(paragraph):
             out.extend(paragraph)
         else:
             text = " ".join(body_of(line).strip() for line in paragraph)

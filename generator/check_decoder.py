@@ -37,7 +37,7 @@ def check_keys(model, grammar):
     for index, (name, denotation) in enumerate(model.sets):
         for codepoint in chars.representatives(grammar):
             is_in_key = (model.key(codepoint, 1) & model.set_mask(index)) != 0
-            if is_in_key != chars.contains(denotation, codepoint):
+            if is_in_key != chars.does_contain(denotation, codepoint):
                 errors.append(
                     f"U+{codepoint:04X}: the key says {'' if is_in_key else 'not '}{name}, the grammar says "
                     f"{'not ' if is_in_key else ''}{name}"
@@ -62,7 +62,7 @@ def check_scanned_sets(model, grammar):
             denotation = chars.denote(grammar, node.item)
             if denotation is not None and denotation[0] != "literal":
                 for codepoint in (0x0A, 0x0D):
-                    if chars.contains(denotation, codepoint):
+                    if chars.does_contain(denotation, codepoint):
                         name = by_denotation.get(denotation, "an unnamed set")
                         errors.append(
                             f"{owner}: scans {name}, which admits U+{codepoint:04X} — a run could cross a line"

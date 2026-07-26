@@ -223,7 +223,9 @@ class Emitter:
             self.run = (wire.CODE_CHAR[self.code], self.mark, self.position)
         codepoint = self.chars[self.position]
         byte_length = self.byte_at[self.position + 1] - self.byte_at[self.position]
-        is_break = codepoint == wire.LINE_FEED or (codepoint == wire.CARRIAGE_RETURN and not self._before_line_feed())
+        is_break = codepoint == wire.LINE_FEED or (
+            codepoint == wire.CARRIAGE_RETURN and not self._is_before_line_feed()
+        )
         if is_break:
             self.mark = wire.Mark(self.mark.byte + byte_length, self.mark.char + 1, self.mark.line + 1, 0)
             self.is_sol = True
@@ -235,7 +237,7 @@ class Emitter:
                 self.is_sol = False
         self.position += 1
 
-    def _before_line_feed(self):
+    def _is_before_line_feed(self):
         """Whether a CR at the position is immediately followed by an LF, so the two are one break."""
         return self.position + 1 < len(self.chars) and self.chars[self.position + 1] == wire.LINE_FEED
 
@@ -467,7 +469,7 @@ def _probe(pattern, emitter, grammar):
     return matched
 
 
-def _gate_holds(gate, emitter, grammar):
+def _does_gate_hold(gate, emitter, grammar):
     """Whether `gate` holds at the position — the peeked character found, and every zero-width guard true."""
     if gate.peek is not None and not _probe(gate.peek, emitter, grammar):
         return False
@@ -497,7 +499,7 @@ def _repeat(item, emitter, grammar, k):
     return False
 
 
-def _forbidden_here(emitter, grammar):
+def _is_forbidden_here(emitter, grammar):
     """
     Whether an in-scope `(exclude)` guard matches at a start of line here — where content must not begin.
 
@@ -554,7 +556,7 @@ def match(node, emitter, grammar, k):
     """
     if isinstance(node, ir.Char):
         if emitter.position < len(emitter.chars) and emitter.chars[emitter.position] == node.cp:
-            if _forbidden_here(emitter, grammar):
+            if _is_forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
             emitter.consume()
@@ -565,7 +567,7 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.Range):
         codepoint = emitter.chars[emitter.position] if emitter.position < len(emitter.chars) else None
         if codepoint is not None and node.lo <= codepoint <= node.hi:
-            if _forbidden_here(emitter, grammar):
+            if _is_forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
             emitter.consume()
@@ -577,7 +579,7 @@ def match(node, emitter, grammar, k):
         # A byte that begins no character. It belongs to no set, so only the recovery rules ask for it, where a run of
         # these becomes one unparsed-invalid token.
         if emitter.position < len(emitter.chars) and emitter.chars[emitter.position] is None:
-            if _forbidden_here(emitter, grammar):
+            if _is_forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
             emitter.consume()
@@ -649,7 +651,7 @@ def match(node, emitter, grammar, k):
                 # refusing tries the next alternative, as its zero-width prefix fails it in backtracking.
                 committed = False
                 for alternative in body.alternatives:
-                    if _gate_holds(alternative.gate, emitter, grammar):
+                    if _does_gate_hold(alternative.gate, emitter, grammar):
                         committed = match(alternative, emitter, grammar, continue_out)
                         break
             else:
