@@ -145,6 +145,11 @@ def _check():
     # Not a fault: what the canonical form does not spell yet, printed so the number is watched down to none rather than
     # discovered later. The determinize phase is what resolves each of them.
     print(f"    {len(residue)} action(s) the canonical form does not spell: a leftover scope or a nullable repetition")
+    # The frame: an action restoring a value off it names nothing a substitution can reach, so it cannot be moved
+    # between productions without an argument about frames. Watched down to none, at which point it becomes a gate held
+    # from the last of the lowerings on.
+    frame = normalize.frame_reads(stages[-1][1])
+    print(f"    {len(frame)} action(s) restoring a value the production's frame holds rather than one they name")
     print(f"    {len(normalize.ungated_alternatives(stages[-1][1]))} alternative(s) with no character to go on")
     # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
     # of productions still backtracking — driven to none, at which point it becomes a gate.

@@ -472,22 +472,23 @@ def lower_star(grammar, namer):
     return result
 
 
-def _lower_tokens(node):
+def _lower_tokens(node, enclosing=None):
     """
-    `node` with each `(token)` rewritten as the pair of actions it stands for. Bottom-up, so a parent sees its
-    already-lowered children.
+    `node` with each `(token)` rewritten as the pair of actions it stands for, `enclosing` the code of the `(token)`
+    this one sits inside. Top-down, since what a close restores is what encloses it, which only a parent knows.
     """
-    node = ir.rebuilt(node, _lower_tokens)
     if isinstance(node, ir.Token):
-        return ir.Seq((ir.PushCode(node.code), node.item, ir.PopCode()))
-    return node
+        item = _lower_tokens(node.item, node.code)
+        return ir.Seq((ir.PushCode(node.code), item, ir.PopCode(enclosing)))
+    return ir.rebuilt(node, lambda child: _lower_tokens(child, enclosing))
 
 
 def lower_tokens(grammar, namer):
     """
     Rewrite each `(token)` as `PushCode(code), item, PopCode`: the run-code change a token stands for becomes explicit
-    actions over the run code its production carries on its frame. Removes the `Token` node kind — after it the run code
-    is a runtime value, no longer a scope the tree shape implies.
+    actions over the run code its production carries. The close names the code it restores wherever the tree says what
+    that is — the enclosing `(token)`'s, where one nests within a body, as the directives' `meta` run holds a `white`
+    one — and names nothing where the production's own is what it goes back to. Removes the `Token` node kind.
     """
     return {
         name: dataclasses.replace(production, body=_lower_tokens(production.body))
@@ -2371,6 +2372,33 @@ def _are_guards_complementary(one, other):
             ):
                 return True
     return False
+
+
+def frame_reads(grammar):
+    """
+    The actions that read a value off the production's frame rather than naming it — a `PopCode` restoring the code the
+    production was entered under, a `CloseMatch` restoring its `(match)` origin, a `CloseWindow` restoring its `(max)`
+    ceiling. What a frame holds is reachable by no substitution, so an action reading one cannot be moved between
+    productions without an argument about frames, and every step that moves actions has to make that argument — which is
+    the whole of the apparatus around the `code` and `match_start` parameters, and what three steps forgot.
+
+    Counted, and watched down to none: once the lowerings name what each close restores, the count is zero from
+    `lower-windows` on and this becomes a gate. Until then it is the measure of how much of the frame is left.
+    """
+    faults = []
+    for name in sorted(grammar):
+
+        def walk(node, owner=name):
+            if isinstance(node, ir.PopCode) and node.code is None:
+                faults.append(f"{owner}: a PopCode restores the code its frame holds")
+            if isinstance(node, ir.CloseMatch):
+                faults.append(f"{owner}: a CloseMatch restores the origin its frame holds")
+            if isinstance(node, ir.CloseWindow):
+                faults.append(f"{owner}: a CloseWindow restores the ceiling its frame holds")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(grammar[name].body)
+    return faults
 
 
 def unshaped_actions(grammar):

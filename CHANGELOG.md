@@ -120,18 +120,22 @@ All notable changes to this project are documented here. The format follows
   (`trim-run (trim* uncommon trim-run)*`, the leading `trim*` re-taking what the run before it gave back, which keeps
   the whitespace before a mid-scalar `:`); `lower-star` turns each remaining complex `x*` into a right-recursive helper;
   `lower-tokens` dissolves the `(token)` scope into actions — `PushCode(code)` … `PopCode` around its item, the run code
-  an explicit value the production carries on its frame and a nested token restores past rather than a scope the tree
-  shape implies — and `lower-wraps` the `(wrap)` into the pair of `(emit)`s it always was; `lower-bounds` does the same
-  for `(<<<)`, its `(match)` origin becoming `OpenMatch` … `CloseMatch` around the run it measures, an origin the
-  production likewise carries on its frame; and `lower-windows` does the same for `(max)`, its character window becoming
-  `OpenWindow` … `CloseWindow`, the overflow past the edge now failing the window's cut in the run itself rather than a
-  wrapper catching it; and `lower-binds` rewrites each `(if)(set)` as its `(match)`-measured condition and the `(set)`
-  that reads it, the one node that held a match scope becoming the ordinary run and action it always was.
-  `lower-commits` dissolves the last scope: a `(commit)` becomes `PushMessage(message) … PopMessage`, the committed
-  region bracketed exactly where the scope stood — a failure that unwinds past an unclosed push raises its message, one
-  past the pop backtracks softly, the `reached` flag of the old scope now the pop having run. The extent is written in
-  the grammar rather than implied by the tree shape, so it survives every later split; a helper may hold one half of the
-  pair, the pop pairing with its push dynamically and reading no frame value back, which is what lets it be cut where a
+  an explicit value rather than a scope the tree shape implies. The close names the code it restores wherever the tree
+  says what that is, which is the enclosing `(token)`'s where one nests within a body, as the directives' `meta` run
+  holds a `white` one; a close that names nothing goes back to the code the production was entered under, which its
+  frame holds, and those are counted on the gate line and watched down to none — what an action does not name, no
+  substitution reaches, so it cannot be moved between productions without an argument about frames. `lower-wraps`
+  dissolves the `(wrap)` into the pair of `(emit)`s it always was; `lower-bounds` does the same for `(<<<)`, its
+  `(match)` origin becoming `OpenMatch` … `CloseMatch` around the run it measures, an origin the production likewise
+  carries on its frame; and `lower-windows` does the same for `(max)`, its character window becoming `OpenWindow` …
+  `CloseWindow`, the overflow past the edge now failing the window's cut in the run itself rather than a wrapper
+  catching it; and `lower-binds` rewrites each `(if)(set)` as its `(match)`-measured condition and the `(set)` that
+  reads it, the one node that held a match scope becoming the ordinary run and action it always was. `lower-commits`
+  dissolves the last scope: a `(commit)` becomes `PushMessage(message) … PopMessage`, the committed region bracketed
+  exactly where the scope stood — a failure that unwinds past an unclosed push raises its message, one past the pop
+  backtracks softly, the `reached` flag of the old scope now the pop having run. The extent is written in the grammar
+  rather than implied by the tree shape, so it survives every later split; a helper may hold one half of the pair, the
+  pop pairing with its push dynamically and reading no frame value back, which is what lets it be cut where a
   `(token)`'s code must be passed. A gate is never hoisted past a `PushMessage` — refusing entry to a region the grammar
   committed to must stay the error it names, not soften into a skip — which `gate-hoist` and the alternative shaping
   both hold to. `flatten` then splices nested `Seq`/`Alt`, drops the `Empty` no-ops a sequence carries, and unwraps

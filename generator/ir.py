@@ -743,10 +743,17 @@ class PushCode:
 @dataclass(frozen=True)
 class PopCode:
     """
-    A zero-width action that cuts the run and restores the code its following characters carry to the production's own —
-    `env["code"]`, the code it was entered under, held on its frame rather than a stack, since a `(token)` never nests
-    within one body. Paired with `PushCode`: `Token(code, item)` lowers to `PushCode(code), item, PopCode`.
+    A zero-width action that cuts the run and restores the code its following characters carry. Paired with `PushCode`:
+    `Token(code, item)` lowers to `PushCode(code), item, PopCode`.
+
+    What it restores is `code` where the lowering could name it — the code of the `(token)` enclosing the one being
+    closed, a `(token)` nesting within one body in the directives, where a `meta` run holds a `white` one. Where nothing
+    encloses it, `code` is `None` and the restore reads the code the production was entered under, held on its frame;
+    naming that too is what makes an action say everything it does, and what lets one be moved between productions by
+    substitution alone.
     """
+
+    code: object = None
 
     def references(self):
         return []

@@ -980,7 +980,9 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.PopCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
-        emitter.code = emitter.env["code"]  # the production's own run code, held on its frame
+        # The code the action names, where the lowering could name it — the enclosing `(token)`'s. Where it names none,
+        # what it goes back to is the code the production was entered under, which its frame holds.
+        emitter.code = emitter.env["code"] if node.code is None else node.code
         if k():
             return True
         emitter.rewind(checkpoint)
