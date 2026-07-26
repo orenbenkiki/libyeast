@@ -301,6 +301,51 @@ points of interest are retired as the universal steps reach them. The meter is w
 after — it will move as a consequence of the repairs, and where it moves the other way the shape is what is being paid
 for.
 
+**Before every commit, every transform is read for correctness against the semantics of the nodes it moves** — by hand,
+whatever the gates say. The gates are a net and not a substitute: a transformation that moves an action into another
+frame, or copies one without binding its parameters, changes nothing the corpus can see wherever the sites it hits
+happen to be identities, and stays wrong for the next site. Three transforms were found doing exactly that with the
+whole suite green, and each was found by reading the code and asking what the node means, never by running it. The
+reading is cheapest where the answer is structural, which is what the two changes below are for; it is not skipped
+because they have landed.
+
+1. *Make the frame explicit — the enabling change, and the first.* Four values live in the interpreter's frame rather
+   than in the nodes: the run `code` a `(token)` restores, the `match_start` a `(<<<)` restores, and the `ceiling` and
+   `ceiling_message` a `(max)` restores. `PushCode` carries the code it sets and `OpenWindow` its limit, but `PopCode`,
+   `CloseMatch` and `CloseWindow` carry no operand at all — each restores whatever its own frame holds. No substitution
+   reaches that, so every step that moves an action has to reason about frames, and the whole apparatus that exists for
+   it — `_scope_start` and `_balanced_end` keeping a moved segment's opens and closes together, the `code` and
+   `match_start` parameters `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns`
+   each add where a leftover closes what it did not open, `_moved_actions` refusing a splice outright — is one
+   workaround repeated six ways, and three transforms simply forgot it.
+   - Each closing action takes the value it restores as an ordinary expression: `PopCode(code)`, `CloseMatch(origin)`,
+     `CloseWindow(limit, message)`. Then an action says everything it does, `_bound` reaches all of it, and moving one
+     anywhere is a substitution rather than an argument about frames.
+   - The value is known where the scope is lowered and nowhere else as cheaply: `lower-tokens` is looking at the
+     `(token)` that encloses the one it lowers, so the code to restore is that one's, or the production's own `code`
+     parameter where nothing encloses it. `lower-bounds` and `lower-windows` stand the same way. So the work lands in
+     those three steps, and a production that names one of the values declares it and is passed it, which is what the
+     `code` parameter already does occasionally and would then do always.
+   - What it buys, and what it costs: the six workarounds go, the class of silent corruption goes with them, and every
+     later step may move, copy, splice and inline actions with `_bound` alone. Parameter lists grow by what they already
+     thread — the interpreter seeds exactly these four on every call today, so it is the same information moved out of
+     an implicit slot into a declared one. What stays implicit afterwards is the `(set)` target, a name rather than an
+     expression, and the provisional run's own position, which is one run at a time and global by design.
+1. *A gate verifier, mechanistic and in both directions.* A gate is correct when its character set is exactly what the
+   options behind it can consume first: every character the gate admits is consumable by one of them, and every
+   character one of them can consume is admitted by the gate. The first direction failing means the gate lets through a
+   character nothing takes; the second means it refuses a character the alternative could have matched, which is a lost
+   parse.
+   - The set is computed by walking an alternative's elements carrying `alive`, the characters at which the walk can
+     still stand here having consumed nothing: an element that must consume contributes `alive ∩ its own set` and ends
+     the walk, one that may consume nothing contributes the same and leaves `alive` alone, and a call contributes
+     `alive ∩ entry(callee)` and narrows `alive` to `alive ∩ empty(callee)`, since passing a call without consuming
+     needs that call to match empty right there. `entry` is a least fixpoint and `empty` a greatest one.
+   - It computes its own character sets rather than reading the first tables, which err wide on purpose — a certificate
+     stands on disjointness, so too wide refuses safely, and an equality check has no use for it. Where the verifier
+     cannot decide a set exactly it says so and counts it, rather than passing.
+   - It runs after every step from `gate-hoist` on, beside the properness check, and an alternative that can match empty
+     is judged on the characters where it can, which its callees' own gates decide.
 1. *The standing steps, repaired* — done, and what it turned up is worth keeping written down. The splits landed and
    changed no grammar: `lower-tokens` and `lower-wraps`, `span-consumes` and `literal-consumes`, `hoist-char-runs` and
    `hoist-trimmed-runs`, `gate-hoist` and `gate-hoist-wide`, and the leftover's leading `Lt`/`Le` rising into its gate
