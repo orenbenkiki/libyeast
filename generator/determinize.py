@@ -266,8 +266,7 @@ def determinize(grammar, namer):
     if way.second is None:
         raise AssertionError(f"{site}: the fold site no longer sequences {conflict} with a follower")
 
-    code_param = normalize.CODE
-    n, code = ir.Param(name="n"), ir.Param(name=code_param)
+    n = ir.Param(name="n")
     breaks = way.gate.peek  # the site's own break class, kept as it is
     space, tab, white = ir.Char(cp=0x20), ir.Char(cp=0x09), ir.Ref(name="s-white", args=())
     below_n = ir.Lt(a=ir.Len(arg=ir.Match()), b=n)  # the indent run the enter production opened, as it stands
@@ -291,11 +290,11 @@ def determinize(grammar, namer):
         # at any column is an empty line; and past the gates, content or the stream's end at exactly `n` ends the scan
         # with the prefix consumed. Under `n` with anything but a break there is no way, exactly where the empty line's
         # short indent and the follower's full prefix refuse.
-        edge = (ir.PopCode(ir.Param(normalize.code_slot(0))),)
+        edge = (ir.PopCode(),)
         return production(
             name,
-            ("n", code_param),
-            alternative(peek=space, guards=(below_n,), actions=(ir.ConsumeChar(),), first=ref(name, n, code)),
+            ("n",),
+            alternative(peek=space, guards=(below_n,), actions=(ir.ConsumeChar(),), first=ref(name, n)),
             alternative(peek=space, guards=(at_n,), actions=edge, first=ref(after_whites, n)),
             alternative(peek=tab, guards=(at_n,), actions=edge, first=ref(after_whites, n)),
             alternative(peek=breaks, actions=edge + on_empty, first=ref("b-as-line-feed"), second=ref(empties, n)),
@@ -304,15 +303,15 @@ def determinize(grammar, namer):
 
     def line_whites(name, then):
         rest = (
-            ir.PushCode(code="white", saved=normalize.code_slot(0)),
+            ir.PushCode(code="white"),
             ir.ConsumeSpan(set=white),
-            ir.PopCode(ir.Param(normalize.code_slot(0))),
+            ir.PopCode(),
         )
         return production(name, ("n",), alternative(peek=white, actions=rest, first=ref(then, n)))
 
     def line_enter(name, then):
-        opened = (ir.PushCode(code="indent", saved=normalize.code_slot(0)),)
-        return production(name, ("n",), alternative(actions=opened, first=ref(then, n, code)))
+        opened = (ir.PushCode(code="indent"),)
+        return production(name, ("n",), alternative(actions=opened, first=ref(then, n)))
 
     rest_code, breaks_code, region = derive_retype(grammar, conflict)
     retype = (ir.RetypeProvisional(rest=rest_code, breaks=breaks_code, region=region), ir.CommitProvisional())

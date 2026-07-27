@@ -712,11 +712,10 @@ class Emit:
 class PushCode:
     """
     A zero-width action that cuts the run and sets the code its following characters carry to `code` — what a `(token)`
-    opens with — first stashing the code it displaces in `saved`, a slot its own `PopCode` names to put it back.
+    opens with — pushing the code it displaces onto the stack for its own `PopCode` to take back.
     """
 
     code: str
-    saved: object = None
 
     def references(self):
         return []
@@ -725,13 +724,10 @@ class PushCode:
 @dataclass(frozen=True)
 class PopCode:
     """
-    A zero-width action that cuts the run and restores the code its following characters carry to `code`, the slot its
-    `PushCode` stashed what it displaced in. Paired with it: `Token(code, item)` lowers to `PushCode(code, saved), item,
-    PopCode(Param(saved))`. Where `code` is `None` the restore reads the code the production was entered under, held on
-    its frame rather than named.
+    A zero-width action that cuts the run and takes back the code its following characters carry from the top of the
+    stack — what its `PushCode` displaced. Paired with it: `Token(code, item)` lowers to `PushCode(code), item,
+    PopCode`. A pop with nothing pushed is refused: the pair is what says where a code begins and ends.
     """
-
-    code: object = None
 
     def references(self):
         return []

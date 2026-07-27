@@ -37,7 +37,7 @@ RESTORED = (  # in alphabetical order
     "provisional",
     "provisional_mark",
     "run",
-    "slots",
+    "stack",
     "tokens",
     "trail",
     "window_depth",
@@ -48,7 +48,7 @@ READ_ONLY = ("byte_at", "chars", "deterministic", "raw")  # in alphabetical orde
 # which happens inside a production, its entry still standing — must leave it alone, not truncate it. The committed
 # regions likewise: push and pop restore their records on their own failure paths, a region once reached stays reached
 # whatever backtracking does after, and recovery truncates what an abandoned parse left open.
-TRANSIENT = ("commitments", "stack")
+TRANSIENT = ("commitments", "entered")
 
 
 def _dirty(emitter):
@@ -56,7 +56,7 @@ def _dirty(emitter):
     emitter.code = "text"
     emitter.consume()
     emitter.env["n"] = 99
-    emitter.slots |= {"code_saved_0"}
+    emitter.stack += ("text",)
     emitter.marker("begin-scalar")
     emitter.forbidden += (None,)
     emitter.ceiling = 5
@@ -84,7 +84,7 @@ def _state(emitter):
         list(emitter.trail),
         emitter.code,
         dict(emitter.env),
-        emitter.slots,
+        emitter.stack,
         emitter.is_sol,
         emitter.forbidden,
         emitter.pending,

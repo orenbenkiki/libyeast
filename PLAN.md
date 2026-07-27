@@ -227,12 +227,11 @@ determinization.
 
 **The action vocabulary**, four families, each derived from an IR node or the runtime already built in `src/parser.h`:
 
-- **Token run** — `Consume` (push the peeked character into the current run), `PushCode(code, slot)`/`PopCode(slot)`
-  (cut the run and set the code its characters carry, or restore the one the slot holds), `Emit(code)` (a zero-width
-  marker, which also cuts), and `OpenWindow(limit, message)`/`CloseWindow` (open and close the `(max)` character window,
-  past which a committed `Consume` fails the window's cut — a count of the opens standing, since windows do not nest).
-  The code's push stashes what it displaces in a slot its own pop names, so no action reads a value off a frame. These
-  are what `Token`/`Wrap`/`Emit`/`(max)` lower to.
+- **Token run** — `Consume` (push the peeked character into the current run), `PushCode(code)`/`PopCode` (cut the run
+  and set the code its characters carry, or take back what the push displaced from the stack), `Emit(code)` (a
+  zero-width marker, which also cuts), and `OpenWindow(limit, message)`/`CloseWindow` (open and close the `(max)`
+  character window, past which a committed `Consume` fails the window's cut — a count of the opens standing, since
+  windows do not nest). No action reads a value off a frame. These are what `Token`/`Wrap`/`Emit`/`(max)` lower to.
 - **Provisional run** — `OpenProvisional`, `MarkProvisional`, `InjectBefore(codes, at)`,
   `RetypeProvisional(rest, breaks, region)`, `CommitProvisional`, spelled in full under *The provisional mechanism*
   below, which is also where each speculation's use of them is written out. One-for-one with the `ys_queue` run, and
@@ -327,30 +326,26 @@ stack holds what the parse must restore, this holds what the parse has produced 
 at a time, its extent is written in the grammar by `OpenProvisional`/`CommitProvisional`, and nothing reads a value out
 of it. So the invariant covers state, and the pending run is accounted for separately rather than smuggled into it.
 
-1. *The frame is explicit* — done, and what it turned up is worth keeping written down. Four values used to live in the
-   interpreter's frame rather than in the nodes: the run `code` a `(token)` restores, the `(match)` origin, and the
-   `ceiling` and `ceiling_message` a `(max)` restores. The origin is gone with the operator that needed it — a `(match)`
-   is the open run, so an indentation is the length of the token the rule is building and nothing is remembered about
-   where it began. The window is two globals, the window and the count of opens standing, since windows do not nest. The
-   code's pop names a slot its own push stashed what it displaced in, so the pair says between them what it does,
-   `_bound` reaches all of it, and moving one is a substitution rather than an argument about frames.
-   - The slot naming is what the scope's own nesting decides, and getting it wrong is not free. Naming a slot per site
-     is wrong: `factor-prefixes` went dead within the minute, because the scan `refine-indents` mints and the scan the
-     lowering produces stopped comparing equal. The same actions everywhere is what a factoring compares, so a minted
-     pair spells its slot exactly as the lowering would at that depth.
-   - What is a gate now was an argument before. Beside `frame_reads`, the code slots carry a net of their own: a push
-     may not take a slot an enclosing one holds open, a pop must name the slot its push set, and a pop whose push a
-     factoring left in a caller must reach a slot nothing between them has overwritten. That last is a fixpoint over the
-     call graph — a production needs at entry what its own inherited pops name plus what it reaches through a call with
-     nothing of its own open — and it holds because no entry a parse begins at needs one. The interpreter holds the same
-     two at run time, refusing an open that takes a held slot and a close naming one nothing set.
-   - What stays implicit is the `(set)` target, a name rather than an expression. The `code` parameter
-     `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns` each add is the
-     workaround the slots replace: nothing reads it any more, and it comes out on its own.
-1. *One stack, and the code on it.* The slots are a per-production device, which is the second mechanism the invariant
-   above forbids. `PushCode(code)`/`PopCode` push and pop the unified stack instead, the top being the code in force —
-   and then the slots, `code_slot`, `code_slot_faults`, `frame_reads`, `CODE` and `_does_need_code` all go, leaving one
-   rule: pushes and pops balance on every path, refused at run time where they do not.
+1. *The frame is gone, and the code is on the stack* — done, and what it turned up is worth keeping written down. Four
+   values used to live in the interpreter's frame rather than in the nodes: the run `code` a `(token)` restores, the
+   `(match)` origin, and the `ceiling` and `ceiling_message` a `(max)` restores. The origin went with the operator that
+   needed it — a `(match)` is the open run, so an indentation is the length of the token the rule is building and
+   nothing is remembered about where it began. The window is two globals, the window and the count of opens standing,
+   since windows do not nest. The code is the unified stack's, its push putting what it displaces there for its own pop
+   to take back, so `_bound` reaches every action whole and moving one is a substitution rather than an argument about
+   frames.
+   - A per-production device was tried first and is the second mechanism the invariant forbids. It cost a whole
+     apparatus to make safe — a slot named per nesting depth, a gate on which slots an enclosing open holds, and a
+     fixpoint over the call graph proving that a pop whose push a factoring left in a caller reaches a slot nothing
+     overwrote. One stack for the parse replaces all of it with one rule: pushes and pops balance, refused at run time
+     where they do not. Naming a slot per site, tried before that, was wrong the other way: `factor-prefixes` went dead
+     within the minute, because the scan `refine-indents` mints and the scan the lowering produces stopped comparing
+     equal. The same actions everywhere is what a factoring compares.
+   - The workaround the stack replaces goes with it: the `code` parameter `single-consumes`, `binarize`,
+     `alternative-shape`, `factor-prefixes` and `extend-returns` each added, `_moved_actions` refusing to move a run of
+     actions closing a scope it did not open, and the fold's own refusal of the same. All three existed because a close
+     read its own frame, and none of them has a reason now.
+   - What stays implicit is the `(set)` target, a name rather than an expression.
 1. *`n` on the same stack.* `n` is a parameter today, restored by the call rather than by an action. `PushIndent(n)` and
    `PopIndent` make it a stack entry like the code, and the question of whether a parameter mechanism and an action
    mechanism interleave correctly stops being asked rather than being answered. The two land apart, because a mistake
@@ -781,6 +776,13 @@ robustness under hostile input.
 ## §6 — Future work
 
 Wanted, but not planned, and not on the way to anything else:
+
+- **The column a byte-order mark leaves behind** — a BOM advances the column and does not end the start of a line, so
+  after one `column == 1` while `is_sol` holds. The two agree on every other character. Which is right is a question
+  about where an error points: a mark carries the column an error message locates itself by, and a BOM is not something
+  a reader counts. Staying at column zero looks correct and nothing in the grammar depends on the answer — indentation
+  reads the length of the token it builds, which counts spaces either way — so this is a decision to take deliberately
+  rather than a bug to fix in passing.
 
 - **Lenient wire positions** — treat a `#` line in the wire as a comment, not a required field. Where it carries a token
   position (`# B: …, C: …, L: …, c: …`), use it; where it does not, estimate the position from the tokens themselves

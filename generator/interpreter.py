@@ -137,14 +137,11 @@ class Emitter:
         self.provisional_mark = None  # where the run's mark cuts `tokens` in two, or None — re-taken, the last wins
         self.trail = []  # the provisional undo journal — a retyped code, an injected marker: the only token mutations
         # that are not appends, which a rewind pops to undo what a token-count truncation cannot
-        self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it, its own close
-        # putting back what it displaced from the slot it stashed it in, the way the C parser restores it from a named
-        # place rather than a second stack.
+        self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it
+        self.stack = ()  # the unified stack: what the parse must give back on its way out, innermost last. It holds the
+        # codes the open `(token)`s displaced, each taken back by that token's own pop. One stack for the parse and not
+        # one per production, so a pair a factoring split across a call closes off the same stack it opened
         self.env = {}  # the current production's parameters (n/m/c/t/r) and their values
-        self.slots = frozenset()  # the slots the opens of the current production hold — what its own closes give back.
-        # A set rather than a stack: each open names its own slot, so which one a close gives back is what it names, and
-        # a `(token)` and a `(<<<)` need not nest. A close naming none of them pairs with an open its caller made, and
-        # reads the slot it inherits
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
         self.forbidden = ()  # patterns that must not match at a start of line — the ongoing `(exclude)` guards in scope
         self.pending = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
@@ -153,7 +150,7 @@ class Emitter:
         self.window_depth = 0  # how many `(max)` opens stand. Windows do not nest, so the outermost is the one in
         # force and an open under it only counts: the window is set at zero and cleared when the count returns to it
         self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
-        self.stack = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
+        self.entered = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
         self.commitments = []  # one `[reached]` record per open committed region, innermost last — not checkpointed:
         # the push and pop actions restore it on their own failure paths, and a region once reached stays reached
         self.deterministic = (
@@ -172,7 +169,7 @@ class Emitter:
             self.provisional_mark,
             self.code,
             dict(self.env),
-            self.slots,
+            self.stack,
             self.is_sol,
             self.forbidden,
             self.pending,
@@ -193,7 +190,7 @@ class Emitter:
             self.provisional_mark,
             self.code,
             env,
-            self.slots,
+            self.stack,
             self.is_sol,
             self.forbidden,
             self.pending,
@@ -458,36 +455,6 @@ def _accept():
     return True
 
 
-def _slot_named(expression):
-    """The slot `expression` names, or `None` where a close restores something other than a value an open stashed."""
-    return expression.name if isinstance(expression, ir.Param) else None
-
-
-def _opened_slot(emitter, slot):
-    """
-    Take `slot` for an open of the current production, refusing one an open of the same production already holds — the
-    outer close would read what the inner open displaced rather than what its own did.
-    """
-    if slot is None:
-        return
-    if slot in emitter.slots:
-        raise AssertionError(f"an open takes the slot `{slot}` an open of the same production already holds")
-    emitter.slots |= {slot}
-
-
-def _closed_slot(emitter, slot):
-    """
-    Give back the slot a close of the current production names. A close naming none this production holds pairs with an
-    open its caller made, and then the slot must be one it inherits rather than one nothing has ever set.
-    """
-    if slot is None:
-        return
-    if slot in emitter.slots:
-        emitter.slots -= {slot}
-    elif slot not in emitter.env:
-        raise AssertionError(f"a close names the slot `{slot}`, which no open has set")
-
-
 def _probe(pattern, emitter, grammar):
     """
     Whether `pattern` matches at the position, leaving the emitter untouched — a lookahead that keeps no effect.
@@ -573,6 +540,7 @@ def _fail(emitter, message):
     reason, so the recovery reads on past the edge the abandoned parse had failed against.
     """
     emitter.code = "unparsed-text"  # a raise skips the token frames' cleanup; from here on the input is unparsed
+    emitter.stack = ()  # and skips their pops, so what they left on the stack goes with the codes it would restore
     emitter.forbidden = ()
     emitter.ceiling = None
     emitter.ceiling_message = None
@@ -637,28 +605,15 @@ def match(node, emitter, grammar, k):
         ]
         arguments = tuple(evaluate(argument, emitter, grammar) for argument in node.args)
         saved_env = emitter.env
-        saved_slots = emitter.slots  # the callee holds none of its caller's opens: a close of its own that pairs with
-        # one of them is what an empty stack means, and reads the slot the caller set through the env it inherits
         saved_forbidden = emitter.forbidden  # inherited by the callee, and any (exclude) it adds is scoped to it
         # A production inherits the ambient parameters and overrides only the ones it declares, so `n` stays in scope
-        # through a callee that does not name it — which is how the block header's indent detection still reads `n`. Its
-        # run code, `(match)` origin and `(max)` window are the ones in force where it was entered, which a `(token)`, a
-        # `(<<<)` and a `(max)` it lowers to restore past a nested one. The scopes come before the arguments, so a
-        # production that declares one takes what it is passed instead of what is in force: a helper split out of the
-        # middle of a `(token)` is entered under the pushed code but must restore the outer one, which its caller passes
-        # it as the `code` it was itself entered under.
-        emitter.env = {
-            **saved_env,
-            "code": emitter.code,
-            "ceiling": emitter.ceiling,
-            "ceiling_message": emitter.ceiling_message,
-            **dict(zip(production.params, arguments)),
-        }
-        emitter.slots = frozenset()
+        # through a callee that does not name it — which is how the block header's indent detection still reads `n`. The
+        # run code and the `(max)` window are not among them: the code is the parse's own stack and the window a global,
+        # so a callee reads what is in force rather than a copy taken at the call.
+        emitter.env = {**saved_env, **dict(zip(production.params, arguments))}
 
         def continue_out():
             callee_env = emitter.env
-            callee_slots = emitter.slots
             callee_forbidden = emitter.forbidden
             caller_env = dict(saved_env)
             for parameter in by_reference:
@@ -668,22 +623,20 @@ def match(node, emitter, grammar, k):
             emitter.env = (
                 caller_env  # the caller sees its own parameters again, with any by-reference result carried out
             )
-            emitter.slots = saved_slots
             emitter.forbidden = saved_forbidden
             if k():
                 return True
             emitter.env = callee_env  # restore the callee's scope so its body can try its next way
-            emitter.slots = callee_slots
             emitter.forbidden = callee_forbidden
             return False
 
-        emitter.stack.append(node.name)
-        if len(emitter.stack) >= DEPTH_LIMIT:
-            trace = " -> ".join(emitter.stack[-DEPTH_TRACE:])
-            emitter.stack.pop()
+        emitter.entered.append(node.name)
+        if len(emitter.entered) >= DEPTH_LIMIT:
+            trace = " -> ".join(emitter.entered[-DEPTH_TRACE:])
+            emitter.entered.pop()
             raise DepthExceeded(f"production nesting reached {DEPTH_LIMIT}, deepest: ...{trace}")
-        if len(emitter.stack) > DEPTH_LIMIT - DEPTH_TRACE:
-            print(f"    depth {len(emitter.stack)}: {node.name}", file=sys.stderr)
+        if len(emitter.entered) > DEPTH_LIMIT - DEPTH_TRACE:
+            print(f"    depth {len(emitter.entered)}: {node.name}", file=sys.stderr)
         try:
             body = production.body
             if node.name in emitter.deterministic and isinstance(body, ir.Choice) and len(body.alternatives) > 1:
@@ -699,10 +652,9 @@ def match(node, emitter, grammar, k):
             else:
                 committed = match(body, emitter, grammar, continue_out)
         finally:
-            emitter.stack.pop()
+            emitter.entered.pop()
         if not committed:
             emitter.env = saved_env
-            emitter.slots = saved_slots
             emitter.forbidden = saved_forbidden
         return committed
     if isinstance(node, ir.Seq):
@@ -995,9 +947,7 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.PushCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
-        if node.saved is not None:
-            _opened_slot(emitter, node.saved)
-            emitter.env[node.saved] = emitter.code  # the code this push displaces, for its close to put back
+        emitter.stack += (emitter.code,)  # the code this push displaces, for its own pop to take back
         emitter.code = node.code
         if k():
             return True
@@ -1006,10 +956,9 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.PopCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
-        # The code the slot the action names holds — what its `PushCode` displaced. Where it names none, what it goes
-        # back to is the code the production was entered under, which its frame holds.
-        _closed_slot(emitter, _slot_named(node.code))
-        emitter.code = emitter.env["code"] if node.code is None else evaluate(node.code, emitter, grammar)
+        if not emitter.stack:
+            raise AssertionError("a `(token)` code is popped where none is pushed")
+        emitter.code, emitter.stack = emitter.stack[-1], emitter.stack[:-1]
         if k():
             return True
         emitter.rewind(checkpoint)
