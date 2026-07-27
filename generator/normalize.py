@@ -19,7 +19,6 @@ import ir
 # Nodes that begin no character — a match of one starts no run, so it adds nothing to a first-character set: the
 # lookaheads, the epsilon and marker emitters, the guards, and the parameter actions.
 _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
-    ir.CloseMatch,
     ir.CloseWindow,
     ir.CommitProvisional,
     ir.Cut,
@@ -31,7 +30,6 @@ _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
     ir.InjectBefore,
     ir.Le,
     ir.Lt,
-    ir.OpenMatch,
     ir.OpenProvisional,
     ir.OpenWindow,
     ir.PopCode,
@@ -407,7 +405,7 @@ def can_match_empty(node, grammar, seen=frozenset()):
         return any(can_match_empty(item, grammar, seen) for item in node.items)
     if isinstance(node, ir.Plus):
         return can_match_empty(node.item, grammar, seen)
-    if isinstance(node, (ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Recover)):
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Commit, ir.Recover)):
         return can_match_empty(node.item, grammar, seen)
     if isinstance(node, ir.Max):
         return node.item is None or can_match_empty(node.item, grammar, seen)
@@ -472,23 +470,23 @@ def lower_star(grammar, namer):
     return result
 
 
-def _lower_tokens(node, enclosing=None):
+def _lower_tokens(node, depth=0):
     """
-    `node` with each `(token)` rewritten as the pair of actions it stands for, `enclosing` the code of the `(token)`
-    this one sits inside. Top-down, since what a close restores is what encloses it, which only a parent knows.
+    `node` with each `(token)` rewritten as the pair of actions it stands for, `depth` how many `(token)`s of this body
+    it sits inside — which names the slot the pair uses, so a nested one cannot overwrite what its parent stashed.
     """
     if isinstance(node, ir.Token):
-        item = _lower_tokens(node.item, node.code)
-        return ir.Seq((ir.PushCode(node.code), item, ir.PopCode(enclosing)))
-    return ir.rebuilt(node, lambda child: _lower_tokens(child, enclosing))
+        slot = code_slot(depth)
+        item = _lower_tokens(node.item, depth + 1)
+        return ir.Seq((ir.PushCode(node.code, slot), item, ir.PopCode(ir.Param(slot))))
+    return ir.rebuilt(node, lambda child: _lower_tokens(child, depth))
 
 
 def lower_tokens(grammar, namer):
     """
-    Rewrite each `(token)` as `PushCode(code), item, PopCode`: the run-code change a token stands for becomes explicit
-    actions over the run code its production carries. The close names the code it restores wherever the tree says what
-    that is — the enclosing `(token)`'s, where one nests within a body, as the directives' `meta` run holds a `white`
-    one — and names nothing where the production's own is what it goes back to. Removes the `Token` node kind.
+    Rewrite each `(token)` as `PushCode(code, saved), item, PopCode(Param(saved))`: the run-code change a token stands
+    for becomes explicit actions over the run code its production carries, the open stashing the code it displaces in
+    the slot its own close names. Removes the `Token` node kind.
     """
     return {
         name: dataclasses.replace(production, body=_lower_tokens(production.body))
@@ -518,35 +516,6 @@ def lower_wraps(grammar, namer):
     }
 
 
-def _lower_bounds(node):
-    """
-    `node` with each `(<<<)` rewritten as the pair of actions that mark and restore the `(match)` origin around its run,
-    the pair sharing the slot the mark stashes the origin it displaces in. Bottom-up, so a parent sees its
-    already-lowered children.
-
-    One slot serves every `(<<<)` there is: a `(<<<)` never nests, so two of them in a body stand end to end and the
-    second stashes what the first put back. Sharing the name is also what keeps the pair the same two actions wherever
-    it stands, which is what a factoring compares.
-    """
-    node = ir.rebuilt(node, _lower_bounds)
-    if isinstance(node, ir.Bound):
-        return ir.Seq((ir.OpenMatch(MATCH_SAVED), node.item, ir.CloseMatch(ir.Param(MATCH_SAVED))))
-    return node
-
-
-def lower_bounds(grammar, namer):
-    """
-    Rewrite each `(<<<)` as `OpenMatch(slot), item, CloseMatch(slot)`: the `(match)` origin a bound marks for its run
-    becomes an explicit action, and the origin it displaces is stashed in a slot of the production's own that the close
-    names to put it back. The pair says between them what it does and reads no frame, so what a later step must keep
-    together is the pair rather than a fact about frames. Removes the `Bound` node kind.
-    """
-    return {
-        name: dataclasses.replace(production, body=_lower_bounds(production.body))
-        for name, production in grammar.items()
-    }
-
-
 def _lower_windows(node):
     """
     `node` with each `(max)` rewritten as the pair of actions that open and restore its character window around the run
@@ -556,22 +525,16 @@ def _lower_windows(node):
     if isinstance(node, ir.Max):
         if node.item is None:
             return ir.Empty()  # a bare `(max)` is a length note libyeast never runs — only recovers to
-        return ir.Seq(
-            (
-                ir.OpenWindow(node.limit, node.message, CEILING_SAVED, CEILING_MESSAGE_SAVED),
-                node.item,
-                ir.CloseWindow(ir.Param(CEILING_SAVED), ir.Param(CEILING_MESSAGE_SAVED)),
-            )
-        )
+        return ir.Seq((ir.OpenWindow(node.limit, node.message), node.item, ir.CloseWindow()))
     return node
 
 
 def lower_windows(grammar, namer):
     """
     Rewrite each `(max)` as `OpenWindow(limit, message), item, CloseWindow`: the character window a `(max)` bounds its
-    run with becomes an explicit action over the window its production carries on its frame, restored at the run's
-    trailing edge — the overflow past the edge failing the window's cut in `consume`, no longer a wrapper catching it.
-    Removes the `Max` node kind — after it the window is a runtime value, no longer a scope the tree shape implies.
+    run with becomes an explicit action, closed at the run's trailing edge — the overflow past the edge failing the
+    window's cut in `consume`, no longer a wrapper catching it. Removes the `Max` node kind — after it the window is a
+    runtime value, no longer a scope the tree shape implies.
     """
     return {
         name: dataclasses.replace(production, body=_lower_windows(production.body))
@@ -581,28 +544,20 @@ def lower_windows(grammar, namer):
 
 def _lower_binds(node):
     """
-    `node` with each `(if)(set)` rewritten as its `(match)`-measured condition and the assignment that reads it.
-    Bottom-up, so a parent sees its already-lowered children.
+    `node` with each `(if)(set)` rewritten as its condition and the assignment that reads what it matched. Bottom-up, so
+    a parent sees its already-lowered children.
     """
     node = ir.rebuilt(node, _lower_binds)
     if isinstance(node, ir.Bind):
-        return ir.Seq(
-            (
-                ir.OpenMatch(MATCH_SAVED),
-                node.cond,
-                ir.SetVar(node.param, node.value),
-                ir.CloseMatch(ir.Param(MATCH_SAVED)),
-            )
-        )
+        return ir.Seq((node.cond, ir.SetVar(node.param, node.value)))
     return node
 
 
 def lower_binds(grammar, namer):
     """
-    Rewrite each `(if)(set)` as `OpenMatch, cond, SetVar(param, value), CloseMatch`: the parameter a bind sets from what
-    its condition matched becomes a plain `(set)` over the `(match)` origin the condition runs under, marked and
-    restored around it the way `(<<<)` is. Removes the `Bind` node kind — its condition and its assignment, one node
-    holding a match scope, become the ordinary run and action they always were.
+    Rewrite each `(if)(set)` as `cond, SetVar(param, value)`: the parameter a bind sets from what its condition matched
+    becomes a plain `(set)`, reading the run the condition left open. Removes the `Bind` node kind — its condition and
+    its assignment become the ordinary run and action they always were, with no scope between them.
     """
     return {
         name: dataclasses.replace(production, body=_lower_binds(production.body))
@@ -694,19 +649,26 @@ def flatten(grammar, namer):
 
 # The scopes a production's frame holds the outer value of, whose close reads that value back off it. A `(token)`'s is
 # passable: a helper split out of the middle of one takes the outer code as a parameter, so a cut may fall inside it.
-# The `(match)` origin and the `(max)` window are not passed, so a segment moved out must open and close them together.
+# The `(max)` window is not passed, so a segment moved out must open and close it together.
 _CODE_OPEN, _CODE_CLOSE = ir.PushCode, ir.PopCode
-_OPENS = (ir.OpenMatch, ir.OpenWindow)
-_CLOSES = (ir.CloseMatch, ir.CloseWindow)
+_OPENS = (ir.OpenWindow,)
+_CLOSES = (ir.CloseWindow,)
 CODE = "code"  # the parameter a helper declares to be handed the run code its caller was entered under
-MATCH_START = "match_start"  # its `(match)`-origin twin: a helper closing a scope its caller opened restores this
-# The slot a `(<<<)`'s mark stashes the origin it displaces in, for its own close to put back. One name serves them all:
-# a `(<<<)` never nests, so two stand end to end, and the same two actions everywhere is what a factoring compares.
-MATCH_SAVED = "match_saved"
-# The slots a `(max)`'s open stashes the window it displaces in, for its own close to put back. One pair serves them
-# all, for the same reason: a `(max)` never nests, and the same actions everywhere is what a factoring compares.
-CEILING_SAVED = "ceiling_saved"
-CEILING_MESSAGE_SAVED = "ceiling_message_saved"
+# The slots a `(token)`'s push stashes the code it displaces in, for its own pop to put back. A `(token)` does nest —
+# the directives' `meta` run holds a `white` one — so one name will not do: the inner push would overwrite what the
+# outer pop needs. The name is the nesting depth, which two `(token)`s at the same depth share, so the same actions
+# still stand everywhere a factoring compares them.
+CODE_SAVED = "code_saved"
+
+
+def code_slot(depth):
+    """The slot a `(token)` nested `depth` deep in a body stashes the code it displaces in."""
+    return f"{CODE_SAVED}_{depth}"
+
+
+def code_depth(items):
+    """How many `(token)` scopes `items` leaves open — the depth a pair minted after them stands at."""
+    return sum(isinstance(item, _CODE_OPEN) - isinstance(item, _CODE_CLOSE) for item in items)
 
 
 def _does_need_code(items):
@@ -716,22 +678,6 @@ def _does_need_code(items):
         if isinstance(item, _CODE_OPEN):
             depth += 1
         elif isinstance(item, _CODE_CLOSE):
-            depth -= 1
-            if depth < 0:
-                return True
-    return False
-
-
-def _does_need_origin(items):
-    """
-    Whether `items` closes a `(match)` scope it does not open — so a helper holding them must be passed the origin: its
-    entry stamps `match_start` with the scope already open, and only the declared parameter restores the caller's own.
-    """
-    depth = 0
-    for item in items:
-        if isinstance(item, ir.OpenMatch):
-            depth += 1
-        elif isinstance(item, ir.CloseMatch):
             depth -= 1
             if depth < 0:
                 return True
@@ -1158,7 +1104,7 @@ def _moved_actions(actions, callee, call):
     parameter to the argument the call passes — and a parameter one of them binds must be passed by its own name, since
     the target of a `(set)` is a name rather than an expression and no substitution reaches it.
     """
-    if _does_need_code(actions) or _does_need_origin(actions):
+    if _does_need_code(actions):
         return None
     mapping = dict(zip(callee.params, call.args))
     for parameter in _bound_params(ir.Seq(actions), set()):
@@ -1305,14 +1251,13 @@ def refine_indents(grammar, namer):
         if begins is None or nullable or any(low <= space <= high for low, high in begins):
             return alternative
         [level] = reference.args
+        slot = code_slot(code_depth(alternative.actions))  # the scan goes behind them, so their open scopes enclose it
         scan = (
-            ir.PushCode(code="indent"),
-            ir.OpenMatch(MATCH_SAVED),
+            ir.PushCode(code="indent", saved=slot),
             ir.ConsumeSpan(set=ir.Ref(name="s-space", args=())),
             ir.Le(a=ir.Len(arg=ir.Match()), b=level),
             ir.Le(a=level, b=ir.Len(arg=ir.Match())),
-            ir.CloseMatch(ir.Param(MATCH_SAVED)),
-            ir.PopCode(),
+            ir.PopCode(ir.Param(slot)),
         )
         return dataclasses.replace(
             alternative, actions=alternative.actions + scan, first=alternative.second, second=None
@@ -1815,7 +1760,7 @@ def split_conflicts(grammar, namer):
 
 # Where a common prefix must stop: a frame-scoped pair's half, which a helper may not hold alone, and a length-ambiguous
 # run, whose backtracking order a factoring must not reshuffle.
-_PREFIX_STOP = (ir.OpenWindow, ir.CloseMatch, ir.CloseWindow, ir.ConsumeTrimmedSpan)
+_PREFIX_STOP = (ir.OpenWindow, ir.CloseWindow, ir.ConsumeTrimmedSpan)
 # The fixed-width consumes a prefix may hold: each takes exactly what it takes or fails, identically in every
 # alternative that shares it, so factoring it out reorders nothing.
 _PREFIX_CONSUMES = (ir.ConsumeChar, ir.ConsumeLiteral, ir.ConsumeCountedSpan)
@@ -1887,8 +1832,6 @@ def factor_prefixes(grammar, namer):
         inner = production.params
         if any(_does_need_code(leftover.actions) for leftover in leftovers) and CODE not in inner:
             inner = inner + (CODE,)
-        if any(_does_need_origin(leftover.actions) for leftover in leftovers) and MATCH_START not in inner:
-            inner = inner + (MATCH_START,)
         helper = namer.fresh(name)
         minted[helper] = ir.Prod(production.number, helper, inner, ir.Choice(leftovers))
         arguments = tuple(ir.Param(parameter) for parameter in inner)
@@ -2340,7 +2283,6 @@ def _does_decide(name, production, grammar, first_of, follow_spans):
 # The actions that cannot refuse wherever the shaped grammar puts them: the zero-width kinds save the guards — a
 # `Lt`/`Le` or a lookahead may say no — and the scans that may take nothing, plus the gate-backed single consumes.
 _SURE_ACTS = (
-    ir.CloseMatch,
     ir.CloseWindow,
     ir.CommitProvisional,
     ir.ConsumeChar,
@@ -2353,7 +2295,6 @@ _SURE_ACTS = (
     ir.Increase,
     ir.InjectBefore,
     ir.MarkProvisional,
-    ir.OpenMatch,
     ir.OpenProvisional,
     ir.OpenWindow,
     ir.PopCode,
@@ -2417,13 +2358,77 @@ def frame_reads(grammar):
         def walk(node, owner=name):
             if isinstance(node, ir.PopCode) and node.code is None:
                 faults.append(f"{owner}: a PopCode restores the code its frame holds")
-            if isinstance(node, ir.CloseMatch) and node.origin is None:
-                faults.append(f"{owner}: a CloseMatch restores the origin its frame holds")
-            if isinstance(node, ir.CloseWindow) and node.ceiling is None:
-                faults.append(f"{owner}: a CloseWindow restores the ceiling its frame holds")
             ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
 
         walk(grammar[name].body)
+    return faults
+
+
+def _walked_slots(node, open_slots, walk, faults):
+    """
+    The `(token)` slots `node` leaves open, given the ones open where it begins — appending to `faults` every way its
+    pairs fail to restore what they say: a push whose slot an enclosing one already holds open, so the outer pop reads
+    what the inner one displaced; a pop naming a slot other than the one its push set; and a pop taking its push from a
+    caller after this production has overwritten the slot it inherits. `walk` carries the production's name, the slots
+    it has pushed so far, the slots its own pops take from a caller, and the callees it reaches with nothing open.
+    """
+    owner, written, needs, sites = walk
+    if isinstance(node, ir.PushCode):
+        if node.saved in open_slots:
+            faults.append(f"{owner}: a PushCode takes the slot `{node.saved}` an enclosing one holds open")
+        written.add(node.saved)
+        return open_slots + (node.saved,)
+    if isinstance(node, ir.PopCode):
+        slot = node.code.name if isinstance(node.code, ir.Param) else None
+        if open_slots:
+            if slot != open_slots[-1]:
+                faults.append(f"{owner}: a PopCode names `{slot}`, not the `{open_slots[-1]}` its PushCode set")
+            return open_slots[:-1]
+        if slot in written:
+            faults.append(f"{owner}: a PopCode takes `{slot}` from its caller, which this production has overwritten")
+        needs.add(slot)
+        return open_slots
+    if isinstance(node, ir.Seq):
+        for item in node.items:
+            open_slots = _walked_slots(item, open_slots, walk, faults)
+        return open_slots
+    if isinstance(node, ir.Alternative):
+        for action in node.actions:
+            open_slots = _walked_slots(action, open_slots, walk, faults)
+        sites.extend((call.name, open_slots) for call in (node.first, node.second) if isinstance(call, ir.Ref))
+        return open_slots
+    ir.rebuilt(node, lambda child: (_walked_slots(child, open_slots, walk, faults), child)[1])
+    return open_slots
+
+
+def code_slot_faults(grammar):
+    """
+    The `(token)` pairs that do not say what they restore. A push stashes the code it displaces in a slot its own pop
+    names, so the pair is movable by substitution alone — but only while nothing else can reach that slot between the
+    two, and only while every entry to a production holding the pop of a pair split across a call has the slot set. A
+    callee inherits its caller's slots, so what a production needs at entry is its own inherited pops plus what it
+    reaches through a call with nothing of its own open; the root must need none. The count is zero, and is a gate.
+    """
+    faults, needs, calls = [], {}, {}
+    for name in sorted(grammar):
+        needs[name], calls[name] = set(), []
+        _walked_slots(grammar[name].body, (), (name, set(), needs[name], calls[name]), faults)
+    settling = True
+    while settling:  # a slot a callee takes from its caller is one this production must have at its own entry
+        settling = False
+        for name, sites in calls.items():
+            inherited = {slot for callee, open_slots in sites if not open_slots for slot in needs.get(callee, ())}
+            if inherited - needs[name]:
+                needs[name] |= inherited
+                settling = True
+    for name, sites in calls.items():
+        for callee, open_slots in sites:
+            crossed = {slot for slot in needs.get(callee, ()) if slot in open_slots and slot != open_slots[-1]}
+            if crossed:
+                faults.append(f"{name}: enters `{callee}`, which pops {sorted(crossed)} out of a scope still open here")
+    for entry in sorted(entered_by_name(grammar)):
+        for slot in sorted(needs.get(entry, ())):
+            faults.append(f"{entry}: a parse enters it here, so `{slot}` is a slot nothing has set")
     return faults
 
 
@@ -2649,7 +2654,7 @@ def extend_returns(grammar, namer):
             [tail] = follower.body.alternatives
             if tail.first is not None or tail.second is not None or tail.gate.peek is not None or tail.gate.guards:
                 raise AssertionError(f"{point}: the continuation is not actions alone, so the fold cannot absorb it")
-            if _does_need_code(tail.actions) or _does_need_origin(tail.actions):
+            if _does_need_code(tail.actions):
                 raise AssertionError(f"{point}: the continuation closes a scope it does not open — the fold refuses it")
             copy = extended(way.first.name, tail.actions, {}, name)
             result[name] = dataclasses.replace(
@@ -2848,7 +2853,7 @@ def _first_chars(node, grammar, seen=frozenset()):
             if not can_match_empty(item, grammar):
                 break
         return first
-    if isinstance(node, (ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Recover, ir.Star, ir.Plus, ir.Opt)):
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Commit, ir.Recover, ir.Star, ir.Plus, ir.Opt)):
         return _first_chars(node.item, grammar, seen)
     if isinstance(node, ir.Max):
         return frozenset() if node.item is None else _first_chars(node.item, grammar, seen)
@@ -3078,7 +3083,7 @@ def _content_tail(node, active, grammar, seen=frozenset()):
         items = node.items if isinstance(node, ir.Alt) else [branch.item for branch in node.branches]
         tails = {_content_tail(item, active, grammar, seen) for item in items}
         return "bare" if "bare" in tails else "run" if "run" in tails else None  # a bare branch makes it per-character
-    if isinstance(node, (ir.Bound, ir.Commit, ir.Recover)):
+    if isinstance(node, (ir.Commit, ir.Recover)):
         return _content_tail(node.item, active, grammar, seen)
     if isinstance(node, ir.Max):
         return _content_tail(node.item, active, grammar, seen) if node.item is not None else None
@@ -3212,7 +3217,7 @@ def _is_nullable(node, nullable, grammar):
         return all(_is_nullable(item, nullable, grammar) for item in node.items)
     if isinstance(node, ir.Alt):
         return any(_is_nullable(item, nullable, grammar) for item in node.items)
-    if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Recover)):
+    if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Commit, ir.Recover)):
         return _is_nullable(node.item, nullable, grammar)
     if isinstance(node, ir.Max):  # the vendored grammar's bare `(max)` is a length note, matching nothing itself
         return node.item is None or _is_nullable(node.item, nullable, grammar)
@@ -3316,7 +3321,7 @@ def eliminate_empties(grammar, namer):
             return False
         if isinstance(node, (ir.Seq, ir.Alt)):
             return any(is_consuming(item, seen) for item in node.items)
-        if isinstance(node, (ir.Star, ir.TrimStar, ir.Plus, ir.Rep, ir.Token, ir.Wrap, ir.Bound, ir.Commit)):
+        if isinstance(node, (ir.Star, ir.TrimStar, ir.Plus, ir.Rep, ir.Token, ir.Wrap, ir.Commit)):
             return is_consuming(node.item, seen)
         if isinstance(node, ir.Recover):
             return is_consuming(node.item, seen)  # a recovery answers a cut; what reads here is the item
@@ -3350,7 +3355,7 @@ def eliminate_empties(grammar, namer):
         if isinstance(node, ir.Alt):
             held = tuple(part for part in (residue(item, seen) for item in node.items) if part is not None)
             return held[0] if len(held) == 1 else (ir.Alt(held) if held else None)
-        if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Rep, ir.Recover)):
+        if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Commit, ir.Rep, ir.Recover)):
             held = residue(node.item, seen)
             return None if held is None else dataclasses.replace(node, item=held)
         if isinstance(node, ir.Max):
@@ -3424,7 +3429,7 @@ def eliminate_empties(grammar, namer):
         if isinstance(node, (ir.Star, ir.TrimStar)):
             inner = consuming_form(node.item)
             return None if inner is None else ir.Plus(inner)  # a repetition that reads takes at least one
-        if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Commit, ir.Rep, ir.Recover)):
+        if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Commit, ir.Rep, ir.Recover)):
             inner = consuming_form(node.item)
             return None if inner is None else dataclasses.replace(node, item=inner)
         if isinstance(node, ir.Max):
@@ -3531,7 +3536,6 @@ STEPS = [
     ("lower-star", lower_star),
     ("lower-tokens", lower_tokens),
     ("lower-wraps", lower_wraps),
-    ("lower-bounds", lower_bounds),
     ("lower-windows", lower_windows),
     ("lower-binds", lower_binds),
     ("lower-commits", lower_commits),

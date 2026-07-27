@@ -31,15 +31,16 @@ RESTORED = (  # in alphabetical order
     "forbidden",
     "is_sol",
     "mark",
-    "match_start",
     "pending",
     "position",
     "probing",
     "provisional",
     "provisional_mark",
     "run",
+    "slots",
     "tokens",
     "trail",
+    "window_depth",
 )
 READ_ONLY = ("byte_at", "chars", "deterministic", "raw")  # in alphabetical order
 # Balanced by its own pushes and pops rather than by a checkpoint: the production stack the depth guard traces is the
@@ -55,11 +56,12 @@ def _dirty(emitter):
     emitter.code = "text"
     emitter.consume()
     emitter.env["n"] = 99
+    emitter.slots |= {"code_saved_0"}
     emitter.marker("begin-scalar")
     emitter.forbidden += (None,)
-    emitter.match_start = 1
     emitter.ceiling = 5
     emitter.ceiling_message = "IMPLICIT_KEY_TOO_LONG"
+    emitter.window_depth += 1
     emitter.probing += 1
     emitter.open_provisional()
     emitter.consume()
@@ -82,12 +84,13 @@ def _state(emitter):
         list(emitter.trail),
         emitter.code,
         dict(emitter.env),
-        emitter.match_start,
+        emitter.slots,
         emitter.is_sol,
         emitter.forbidden,
         emitter.pending,
         emitter.ceiling,
         emitter.ceiling_message,
+        emitter.window_depth,
         emitter.probing,
     )
 

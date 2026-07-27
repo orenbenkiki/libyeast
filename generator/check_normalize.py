@@ -123,6 +123,13 @@ def _check():
         errors.append(f"[content-runs] {offender}: a long text token is collected one character at a time")
     for fault in normalize.non_char_set_runs(stages[-1][1]):
         errors.append(f"[char-set-runs] {fault}")
+    # The frame is gone: every stage's grammar is checked, so a step that reintroduces an action reading one is named
+    # where it happens rather than at the end.
+    for label, grammar in stages:
+        for fault in normalize.frame_reads(grammar):
+            errors.append(f"[{label}] frame {fault}")
+        for fault in normalize.code_slot_faults(grammar):
+            errors.append(f"[{label}] code-slot {fault}")
     for fault in normalize.provisional_faults(stages[-1][1]):
         errors.append(f"[provisional] {fault}")
     for fault in normalize.declared_faults(stages[-1][1], committed):
@@ -132,10 +139,11 @@ def _check():
     gate.report(
         errors,
         "normalization fault(s) — a step that changes the grammar's meaning, a content run not matched in bulk, a "
-        "repetition that is not a character-set run, or a provisional run that does not balance",
+        "repetition that is not a character-set run, an action reading a value off the frame, or a provisional run "
+        "that does not balance",
         f"normalization pipeline: {len(normalize.STEPS)} step(s) preserve {len(fixtures)} fixtures and {len(suite)} "
         f"suite cases — backtracking, and hybrid with {len(deterministic)} production(s) entered committed — every "
-        f"long text token matched in bulk by a character-set run",
+        f"long text token matched in bulk by a character-set run, every action naming what it restores",
     )
     print("    " + " -> ".join(name for name, _transform in normalize.STEPS))
     # The stranded fixtures: each guards the last stage whose grammar can still run it, the purge having taken its
@@ -145,11 +153,6 @@ def _check():
     # Not a fault: what the canonical form does not spell yet, printed so the number is watched down to none rather than
     # discovered later. The determinize phase is what resolves each of them.
     print(f"    {len(residue)} action(s) the canonical form does not spell: a leftover scope or a nullable repetition")
-    # The frame: an action restoring a value off it names nothing a substitution can reach, so it cannot be moved
-    # between productions without an argument about frames. Watched down to none, at which point it becomes a gate held
-    # from the last of the lowerings on.
-    frame = normalize.frame_reads(stages[-1][1])
-    print(f"    {len(frame)} action(s) restoring a value the production's frame holds rather than one they name")
     print(f"    {len(normalize.ungated_alternatives(stages[-1][1]))} alternative(s) with no character to go on")
     # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
     # of productions still backtracking — driven to none, at which point it becomes a gate.

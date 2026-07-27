@@ -89,8 +89,12 @@ def expr(x):
             return ir.Add(expr(value[0]), expr(value[1]))
         if op == "(-)":
             return ir.Sub(expr(value[0]), expr(value[1]))
+        if op == "(atoi)":
+            return ir.Atoi(expr(value))
+        # The vendored grammar's own spelling: `(ord)` is a single character there and `(atoi)` a whole string here,
+        # which agree at the one digit it is applied to.
         if op == "(ord)":
-            return ir.Ord(expr(value))
+            return ir.Atoi(expr(value))
         if op == "(len)":
             return ir.Len(expr(value))
         if op == "(flip)":
@@ -141,8 +145,10 @@ def node(x):
             return ir.NegLook(node(value))
         if op == "(<==)":
             return ir.LookBehind(node(value))
+        # The vendored spelling: match `value`, giving nothing back if a predicate within it then fails. Its two uses
+        # wrap a repetition, which matches possessively here and so hands back nothing already.
         if op == "(<<<)":
-            return ir.Bound(node(value))
+            return node(value)
         if op == "(---)":
             return ir.Diff(node(value[0]), tuple(node(i) for i in value[1:]))
         if op == "(exclude)":

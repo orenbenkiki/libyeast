@@ -13,6 +13,8 @@ import os
 
 import annotated2ir
 import gate
+import ir
+import validate_grammar
 
 VENDORED = os.path.join(annotated2ir.TREE, "third_party", "yaml-grammar", "yaml-spec-1.2.yaml")
 
@@ -75,11 +77,35 @@ DEVIATIONS = {
 }
 
 
-def main():
-    vendored = ir2spec.normalized(annotated2ir.load(VENDORED))
-    recovered = ir2spec.official(annotated2ir.load())
+def _match_drift(vendored, ours):
+    """
+    The productions whose `(match)` the two grammars disagree about.
 
-    errors = []
+    A `(match)` is read here as the open run — the token the rule is building — where the official grammar means the
+    text the rule matched. Those are the same wherever both read one in the same production, which is what this holds: a
+    `(match)` the official grammar reads and libyeast does not is a reading nothing here justifies.
+    """
+    holders = {
+        label: {name for name, production in grammar.items() if any(isinstance(n, ir.Match) for n in walk(production))}
+        for label, grammar in (("official", vendored), ("libyeast", ours))
+    }
+    return [
+        f"{name}: the official grammar reads a `(match)` here and libyeast does not, so the two need not agree"
+        for name in sorted(holders["official"] - holders["libyeast"])
+    ]
+
+
+def walk(production):
+    """Every IR node in `production`'s body."""
+    yield from validate_grammar.walk(production.body)
+
+
+def main():
+    vendored_ir, ours_ir = annotated2ir.load(VENDORED), annotated2ir.load()
+    vendored = ir2spec.normalized(vendored_ir)
+    recovered = ir2spec.official(ours_ir)
+
+    errors = _match_drift(vendored_ir, ours_ir)
     for name in (key for key in vendored if not key.startswith(":")):
         if recovered.get(name) != vendored[name] and name not in DEVIATIONS:
             errors.append(f"{name}: differs from the official grammar, and is not a declared deviation")

@@ -104,19 +104,10 @@ class Lit:
 
 @dataclass(frozen=True)
 class Match:
-    """The `(match)` special value: the text matched so far, for length/ordinal computations."""
-
-    def references(self):
-        return []
-
-
-@dataclass(frozen=True)
-class Column:
     """
-    The current input column, zero-based from the line's start — the machine's own register, for a guard that judges a
-    line whose prefix another production consumed: past that production's frame a `(<<<)` origin is gone, and the column
-    is what stays true of the position itself. Minted by the block-structure surgery, never spelled in the hand-authored
-    grammar.
+    `(match)`: the text of the open run — the token about to be emitted, which is what a rule has just matched. What a
+    rule reads when it must act on that text, the characters being in hand already, with nothing remembered about where
+    they began.
     """
 
     def references(self):
@@ -171,8 +162,8 @@ class Sub:
 
 
 @dataclass(frozen=True)
-class Ord:
-    """`(ord)`: the numeric value of a matched digit."""
+class Len:
+    """`(len)`: how many characters a matched string holds."""
 
     arg: object
 
@@ -181,8 +172,8 @@ class Ord:
 
 
 @dataclass(frozen=True)
-class Len:
-    """`(len)`: the length of a match."""
+class Atoi:
+    """`(atoi)`: the integer the decimal digits of a matched string spell."""
 
     arg: object
 
@@ -549,16 +540,6 @@ class LookBehind:
 
 
 @dataclass(frozen=True)
-class Bound:
-    """`(<<<)`: match `item`, subject to a predicate embedded within it (e.g. an indentation-length bound)."""
-
-    item: object
-
-    def references(self):
-        return _refs(self.item)
-
-
-@dataclass(frozen=True)
 class Diff:
     """`(---)`: character-class subtraction — `base` but none of `minus`."""
 
@@ -731,10 +712,11 @@ class Emit:
 class PushCode:
     """
     A zero-width action that cuts the run and sets the code its following characters carry to `code` — what a `(token)`
-    opens with, over the production's own, which `PopCode` restores at its trailing edge.
+    opens with — first stashing the code it displaces in `saved`, a slot its own `PopCode` names to put it back.
     """
 
     code: str
+    saved: object = None
 
     def references(self):
         return []
@@ -743,14 +725,10 @@ class PushCode:
 @dataclass(frozen=True)
 class PopCode:
     """
-    A zero-width action that cuts the run and restores the code its following characters carry. Paired with `PushCode`:
-    `Token(code, item)` lowers to `PushCode(code), item, PopCode`.
-
-    What it restores is `code` where the lowering could name it — the code of the `(token)` enclosing the one being
-    closed, a `(token)` nesting within one body in the directives, where a `meta` run holds a `white` one. Where nothing
-    encloses it, `code` is `None` and the restore reads the code the production was entered under, held on its frame;
-    naming that too is what makes an action say everything it does, and what lets one be moved between productions by
-    substitution alone.
+    A zero-width action that cuts the run and restores the code its following characters carry to `code`, the slot its
+    `PushCode` stashed what it displaced in. Paired with it: `Token(code, item)` lowers to `PushCode(code, saved), item,
+    PopCode(Param(saved))`. Where `code` is `None` the restore reads the code the production was entered under, held on
+    its frame rather than named.
     """
 
     code: object = None
@@ -789,49 +767,15 @@ class PopMessage:
 
 
 @dataclass(frozen=True)
-class OpenMatch:
-    """
-    A zero-width action that sets the origin a `(match)` measures from to the current position — what `(<<<)` marks
-    before the run it bounds — first stashing the origin it displaces in `saved`, a slot of the production's own that
-    its `CloseMatch` names to put it back. `CloseMatch` restores it at the trailing edge.
-    """
-
-    saved: object = None
-
-    def references(self):
-        return []
-
-
-@dataclass(frozen=True)
-class CloseMatch:
-    """
-    A zero-width action that restores the `(match)` origin to `origin` — the slot its `OpenMatch` stashed the displaced
-    one in, so the pair says between them what it does and no frame is read. Paired with `OpenMatch`: `Bound(item)`
-    lowers to `OpenMatch(slot), item, CloseMatch(slot)`.
-
-    Where `origin` is `None` the restore reads the origin the production was entered under, held on its frame — what a
-    `CloseMatch` minted without its opening half falls back to.
-    """
-
-    origin: object = None
-
-    def references(self):
-        return []
-
-
-@dataclass(frozen=True)
 class OpenWindow:
     """
     A zero-width action that opens a `(max)` window `limit` characters wide, past which a committed consume fails the
-    cut `message` names. Only the outermost applies — a nested one keeps the outer edge, being the buffer — and
-    `CloseWindow` restores it at the trailing edge, from the slots `saved` and `saved_message` this one stashes the
-    window it displaces in.
+    cut `message` names. Windows do not nest: only the outermost applies, an inner one being inside the budget the outer
+    already bounds, so an open under one is counted and otherwise does nothing.
     """
 
     limit: object
     message: str
-    saved: object = None
-    saved_message: object = None
 
     def references(self):
         return _refs(self.limit)  # `message` is a message key, not a production
@@ -840,15 +784,10 @@ class OpenWindow:
 @dataclass(frozen=True)
 class CloseWindow:
     """
-    A zero-width action that restores the `(max)` window to `ceiling` and `message` — the slots its `OpenWindow` stashed
-    the window it displaced in, so the pair says between them what it does and reads no frame. Paired with `OpenWindow`:
-    `Max(limit, message, item)` lowers to `OpenWindow(limit, message, slots), item, CloseWindow(slots)`.
-
-    Where they are `None` the restore reads the window the production was entered under, held on its frame.
+    A zero-width action that closes a `(max)` window. Paired with `OpenWindow`: `Max(limit, message, item)` lowers to
+    `OpenWindow(limit, message), item, CloseWindow`. The one it closes is the outermost open — the inner ones only count
+    — so the window is gone exactly when the open that set it is closed.
     """
-
-    ceiling: object = None
-    message: object = None
 
     def references(self):
         return []

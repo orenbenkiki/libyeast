@@ -50,8 +50,8 @@ def expr_yaml(e):
         return {"(+)": [expr_yaml(e.a), expr_yaml(e.b)]}
     if isinstance(e, ir.Sub):
         return {"(-)": [expr_yaml(e.a), expr_yaml(e.b)]}
-    if isinstance(e, ir.Ord):
-        return {"(ord)": expr_yaml(e.arg)}
+    if isinstance(e, ir.Atoi):
+        return {"(atoi)": expr_yaml(e.arg)}
     if isinstance(e, ir.Len):
         return {"(len)": expr_yaml(e.arg)}
     if isinstance(e, ir.Flip):
@@ -96,8 +96,6 @@ def node_yaml(n):
         return {"(!==)": node_yaml(n.item)}
     if isinstance(n, ir.LookBehind):
         return {"(<==)": node_yaml(n.item)}
-    if isinstance(n, ir.Bound):
-        return {"(<<<)": node_yaml(n.item)}
     if isinstance(n, ir.Diff):
         return {"(---)": [node_yaml(n.base), *(node_yaml(m) for m in n.minus)]}
     if isinstance(n, ir.ExcludeAt):

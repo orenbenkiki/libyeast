@@ -137,16 +137,21 @@ class Emitter:
         self.provisional_mark = None  # where the run's mark cuts `tokens` in two, or None — re-taken, the last wins
         self.trail = []  # the provisional undo journal — a retyped code, an injected marker: the only token mutations
         # that are not appends, which a rewind pops to undo what a token-count truncation cannot
-        self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it, restoring the
-        # production's own on the way out — which it reads back from `env["code"]`, the code the production was entered
-        # under, the way the C parser reads it off the frame rather than a second stack.
+        self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it, its own close
+        # putting back what it displaced from the slot it stashed it in, the way the C parser restores it from a named
+        # place rather than a second stack.
         self.env = {}  # the current production's parameters (n/m/c/t/r) and their values
-        self.match_start = 0  # where the enclosing Match() scope began, for Match() and Len(Match())
+        self.slots = frozenset()  # the slots the opens of the current production hold — what its own closes give back.
+        # A set rather than a stack: each open names its own slot, so which one a close gives back is what it names, and
+        # a `(token)` and a `(<<<)` need not nest. A close naming none of them pairs with an open its caller made, and
+        # reads the slot it inherits
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
         self.forbidden = ()  # patterns that must not match at a start of line — the ongoing `(exclude)` guards in scope
         self.pending = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
         self.ceiling = None  # the position a `(max)` window ends at, past which committed input may not be consumed
         self.ceiling_message = None  # the cut message a consume past the ceiling raises — the window's, held with it
+        self.window_depth = 0  # how many `(max)` opens stand. Windows do not nest, so the outermost is the one in
+        # force and an open under it only counts: the window is set at zero and cleared when the count returns to it
         self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
         self.stack = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
         self.commitments = []  # one `[reached]` record per open committed region, innermost last — not checkpointed:
@@ -167,12 +172,13 @@ class Emitter:
             self.provisional_mark,
             self.code,
             dict(self.env),
-            self.match_start,
+            self.slots,
             self.is_sol,
             self.forbidden,
             self.pending,
             self.ceiling,
             self.ceiling_message,
+            self.window_depth,
             self.probing,
         )
 
@@ -187,12 +193,13 @@ class Emitter:
             self.provisional_mark,
             self.code,
             env,
-            self.match_start,
+            self.slots,
             self.is_sol,
             self.forbidden,
             self.pending,
             self.ceiling,
             self.ceiling_message,
+            self.window_depth,
             self.probing,
         ) = checkpoint
         # The parameters are copied out rather than adopted: an alternation rewinds to the same checkpoint once per
@@ -413,13 +420,12 @@ def evaluate(expression, emitter, grammar):
     if isinstance(expression, ir.Param):
         return emitter.env.get(expression.name)  # an out-parameter (m, t) may be passed on before it is set
     if isinstance(expression, ir.Match):
-        # Every unit in a Match scope is a character — Match feeds only indentation and ordinal arithmetic, which no
-        # invalid byte reaches — so its codepoints reconstruct the text the scope consumed.
-        return "".join(chr(codepoint) for codepoint in emitter.chars[emitter.match_start : emitter.position])
-    if isinstance(expression, ir.Column):
-        return emitter.mark.column
-    if isinstance(expression, ir.Ord):
-        return ord(evaluate(expression.arg, emitter, grammar)) - ord("0")  # (ord) is a digit 1-9 to its integer value
+        # The open run's text: what the rule has just matched, still in hand. Every unit in it is a character — the one
+        # rule that reads it matches a digit — so its codepoints reconstruct the text.
+        start = emitter.position if emitter.run is None else emitter.run[2]
+        return "".join(chr(codepoint) for codepoint in emitter.chars[start : emitter.position])
+    if isinstance(expression, ir.Atoi):
+        return int(evaluate(expression.arg, emitter, grammar))
     if isinstance(expression, ir.Len):
         return len(evaluate(expression.arg, emitter, grammar))
     if isinstance(expression, ir.Add):
@@ -450,6 +456,36 @@ def evaluate(expression, emitter, grammar):
 def _accept():
     """The outermost continuation: the first whole match is the answer, so it is accepted and the run commits."""
     return True
+
+
+def _slot_named(expression):
+    """The slot `expression` names, or `None` where a close restores something other than a value an open stashed."""
+    return expression.name if isinstance(expression, ir.Param) else None
+
+
+def _opened_slot(emitter, slot):
+    """
+    Take `slot` for an open of the current production, refusing one an open of the same production already holds — the
+    outer close would read what the inner open displaced rather than what its own did.
+    """
+    if slot is None:
+        return
+    if slot in emitter.slots:
+        raise AssertionError(f"an open takes the slot `{slot}` an open of the same production already holds")
+    emitter.slots |= {slot}
+
+
+def _closed_slot(emitter, slot):
+    """
+    Give back the slot a close of the current production names. A close naming none this production holds pairs with an
+    open its caller made, and then the slot must be one it inherits rather than one nothing has ever set.
+    """
+    if slot is None:
+        return
+    if slot in emitter.slots:
+        emitter.slots -= {slot}
+    elif slot not in emitter.env:
+        raise AssertionError(f"a close names the slot `{slot}`, which no open has set")
 
 
 def _probe(pattern, emitter, grammar):
@@ -540,6 +576,7 @@ def _fail(emitter, message):
     emitter.forbidden = ()
     emitter.ceiling = None
     emitter.ceiling_message = None
+    emitter.window_depth = 0  # a raise skips the closes, so the count goes back with the window it bounds
     emitter.error(message)
     while emitter.pending:
         emitter.marker(emitter.pending[-1])
@@ -600,6 +637,8 @@ def match(node, emitter, grammar, k):
         ]
         arguments = tuple(evaluate(argument, emitter, grammar) for argument in node.args)
         saved_env = emitter.env
+        saved_slots = emitter.slots  # the callee holds none of its caller's opens: a close of its own that pairs with
+        # one of them is what an empty stack means, and reads the slot the caller set through the env it inherits
         saved_forbidden = emitter.forbidden  # inherited by the callee, and any (exclude) it adds is scoped to it
         # A production inherits the ambient parameters and overrides only the ones it declares, so `n` stays in scope
         # through a callee that does not name it — which is how the block header's indent detection still reads `n`. Its
@@ -611,14 +650,15 @@ def match(node, emitter, grammar, k):
         emitter.env = {
             **saved_env,
             "code": emitter.code,
-            "match_start": emitter.match_start,
             "ceiling": emitter.ceiling,
             "ceiling_message": emitter.ceiling_message,
             **dict(zip(production.params, arguments)),
         }
+        emitter.slots = frozenset()
 
         def continue_out():
             callee_env = emitter.env
+            callee_slots = emitter.slots
             callee_forbidden = emitter.forbidden
             caller_env = dict(saved_env)
             for parameter in by_reference:
@@ -628,10 +668,12 @@ def match(node, emitter, grammar, k):
             emitter.env = (
                 caller_env  # the caller sees its own parameters again, with any by-reference result carried out
             )
+            emitter.slots = saved_slots
             emitter.forbidden = saved_forbidden
             if k():
                 return True
             emitter.env = callee_env  # restore the callee's scope so its body can try its next way
+            emitter.slots = callee_slots
             emitter.forbidden = callee_forbidden
             return False
 
@@ -660,6 +702,7 @@ def match(node, emitter, grammar, k):
             emitter.stack.pop()
         if not committed:
             emitter.env = saved_env
+            emitter.slots = saved_slots
             emitter.forbidden = saved_forbidden
         return committed
     if isinstance(node, ir.Seq):
@@ -833,21 +876,16 @@ def match(node, emitter, grammar, k):
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Bind):
-        saved_start = emitter.match_start
-        emitter.match_start = emitter.position
 
         def bound():  # noqa: N807 — a continuation, not a special method
             checkpoint = emitter.checkpoint()
             emitter.env[node.param] = evaluate(node.value, emitter, grammar)
-            emitter.match_start = saved_start
             if k():
                 return True
-            emitter.rewind(checkpoint)  # undo the bound value and restore the Match() scope so the condition can go on
+            emitter.rewind(checkpoint)  # undo the bound value so the condition can go on
             return False
 
-        matched = match(node.cond, emitter, grammar, bound)
-        emitter.match_start = saved_start
-        return matched
+        return match(node.cond, emitter, grammar, bound)
     if isinstance(node, ir.Lt):
         return k() if evaluate(node.a, emitter, grammar) < evaluate(node.b, emitter, grammar) else False
     if isinstance(node, ir.Le):
@@ -875,21 +913,6 @@ def match(node, emitter, grammar, k):
         finally:
             emitter.ceiling = None
             emitter.ceiling_message = None
-    if isinstance(node, ir.Bound):
-        saved_start = emitter.match_start
-        emitter.match_start = emitter.position
-
-        def scoped():  # noqa: N807 — a continuation, not a special method
-            here = emitter.match_start
-            emitter.match_start = saved_start
-            if k():
-                return True
-            emitter.match_start = here  # restore the Match() scope so the wrapped item can try its next way
-            return False
-
-        matched = match(node.item, emitter, grammar, scoped)
-        emitter.match_start = saved_start
-        return matched
     if isinstance(node, ir.StartOfLine):
         return k() if emitter.is_sol else False
     if isinstance(node, ir.EndOfStream):
@@ -972,6 +995,9 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.PushCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
+        if node.saved is not None:
+            _opened_slot(emitter, node.saved)
+            emitter.env[node.saved] = emitter.code  # the code this push displaces, for its close to put back
         emitter.code = node.code
         if k():
             return True
@@ -980,53 +1006,31 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.PopCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
-        # The code the action names, where the lowering could name it — the enclosing `(token)`'s. Where it names none,
-        # what it goes back to is the code the production was entered under, which its frame holds.
-        emitter.code = emitter.env["code"] if node.code is None else node.code
-        if k():
-            return True
-        emitter.rewind(checkpoint)
-        return False
-    if isinstance(node, ir.OpenMatch):
-        checkpoint = emitter.checkpoint()
-        if node.saved is not None:
-            emitter.env[node.saved] = emitter.match_start  # the origin this mark displaces, for its close to put back
-        emitter.match_start = emitter.position
-        if k():
-            return True
-        emitter.rewind(checkpoint)
-        return False
-    if isinstance(node, ir.CloseMatch):
-        checkpoint = emitter.checkpoint()
-        # The origin the action names — the slot its opening half stashed. Where it names none, what it goes back to is
-        # the origin the production was entered under, which its frame holds.
-        origin = emitter.env["match_start"] if node.origin is None else evaluate(node.origin, emitter, grammar)
-        emitter.match_start = origin
+        # The code the slot the action names holds — what its `PushCode` displaced. Where it names none, what it goes
+        # back to is the code the production was entered under, which its frame holds.
+        _closed_slot(emitter, _slot_named(node.code))
+        emitter.code = emitter.env["code"] if node.code is None else evaluate(node.code, emitter, grammar)
         if k():
             return True
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.OpenWindow):
         checkpoint = emitter.checkpoint()
-        if node.saved is not None:  # the window this one displaces, for its close to put back
-            emitter.env[node.saved] = emitter.ceiling
-            emitter.env[node.saved_message] = emitter.ceiling_message
-        if emitter.ceiling is None:  # outermost-only: a nested window keeps the outer edge, being the buffer
+        if emitter.window_depth == 0:  # outermost-only: an open under one is inside the budget that one already bounds
             emitter.ceiling = emitter.position + evaluate(node.limit, emitter, grammar)
             emitter.ceiling_message = node.message
+        emitter.window_depth += 1
         if k():
             return True
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.CloseWindow):
         checkpoint = emitter.checkpoint()
-        # The window the action names — the slots its opening half stashed. Where it names none, what it goes back to is
-        # the window the production was entered under, which its frame holds.
-        if node.ceiling is None:
-            emitter.ceiling, emitter.ceiling_message = emitter.env["ceiling"], emitter.env["ceiling_message"]
-        else:
-            emitter.ceiling = evaluate(node.ceiling, emitter, grammar)
-            emitter.ceiling_message = evaluate(node.message, emitter, grammar)
+        if emitter.window_depth == 0:
+            raise AssertionError("a `(max)` window is closed where none is open")
+        emitter.window_depth -= 1
+        if emitter.window_depth == 0:  # the open that set the window is the one this closes
+            emitter.ceiling, emitter.ceiling_message = None, None
         if k():
             return True
         emitter.rewind(checkpoint)

@@ -45,7 +45,6 @@ AMBIENT = {"r": len(annotated2ir.RESUMES)}
 # never returns "no", it raises instead, which is a different thing that `rejected` accounts for separately. Both lists
 # in alphabetical order.
 ALWAYS = (
-    ir.CloseMatch,
     ir.CloseWindow,
     ir.CommitProvisional,
     ir.ConsumeChar,  # the gate found the character, so taking it cannot fail
@@ -59,7 +58,6 @@ ALWAYS = (
     ir.Increase,
     ir.InjectBefore,
     ir.MarkProvisional,
-    ir.OpenMatch,
     ir.OpenProvisional,
     ir.OpenWindow,
     ir.PopCode,
@@ -112,7 +110,7 @@ def is_total(node, grammar, seen=frozenset()):
     if isinstance(node, ir.Max):
         # A wrapping `(max)` says no where its production does; the vendored grammar's bare `(max)` is a length note.
         return is_total(node.item, grammar, seen) if node.item is not None else False
-    if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Bound, ir.Rep, ir.Commit)):
+    if isinstance(node, (ir.Plus, ir.Token, ir.Wrap, ir.Rep, ir.Commit)):
         return is_total(node.item, grammar, seen)
     if isinstance(node, ir.Bind):
         return is_total(node.cond, grammar, seen)

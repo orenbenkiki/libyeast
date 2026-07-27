@@ -87,7 +87,7 @@ def effect(node, values, known):
         return marker(node.code)
     if isinstance(node, ir.Wrap):
         return compose(compose(marker(node.begin), effect(node.item, values, known)), marker(node.end))
-    if isinstance(node, (ir.Token, ir.Bound, ir.Commit)) or (isinstance(node, ir.Max) and node.item is not None):
+    if isinstance(node, (ir.Token, ir.Commit)) or (isinstance(node, ir.Max) and node.item is not None):
         # A `(<<<)`, a `(commit)` or a wrapping `(max)` matches what is inside it, so what is inside it emits. Passing
         # over it would let a marker opened there go unclosed, and no other gate looks.
         return effect(node.item, values, known)

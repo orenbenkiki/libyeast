@@ -255,11 +255,12 @@
 #     the second is an expression. Set the variable to the value of the
 #     evaluated expression.
 #
-#   * (ord)
-#     Convert a character (1-9) to an integer.
+#   * (atoi)
+#     Convert a string of decimal digits to an integer.
 #
 #   * (match)
-#     Return the string or character value of the last rule match.
+#     Return the text of the open run — the token about to be emitted, which is
+#     what the rule reading it has just matched.
 #
 #   * (len)
 #     Return the length of a string value.
@@ -1295,16 +1296,17 @@ s-indent:
 
 
 #===============================================================================
-# This rule means to match as many spaces as possible, then check the length of
-# the match is less than the indentation level in variable n. The (<<<) means
-# that if both assertions are not true, backtrack to where the rule started.
+# This rule means to match as many spaces as possible, then check the parse has
+# not passed the indentation level in variable n. An indentation is the spaces
+# the indent token holds, so the check reads the length of (match) — the token
+# the rule is building — and nothing need be remembered about where the spaces
+# began.
 #
 # The (***) function means the rule must match 0 or more times.
 #
 # The (<) function matches if the first argument is less than the second.
 #
-# The (len) function returns the length of a string, and the (match) function
-# returns the last match.
+# The (len) function returns the length of a string.
 #===============================================================================
 
 :064: s-indent-lt
@@ -1317,10 +1319,9 @@ s-indent-lt:
   (...): n
   (token):
   - indent
-  - (<<<):
-      (all):
-      - (***): s-space
-      - (<): [ { (len): (match) }, n ]
+  - (all):
+    - (***): s-space
+    - (<): [ { (len): (match) }, n ]
 
 
 
@@ -1339,10 +1340,9 @@ s-indent-le:
   (...): n
   (token):
   - indent
-  - (<<<):
-      (all):
-      - (***): s-space
-      - (<=): [ { (len): (match) }, n ]
+  - (all):
+    - (***): s-space
+    - (<=): [ { (len): (match) }, n ]
 
 
 
@@ -3127,7 +3127,7 @@ c-indentation-indicator:
   - indicator
   - (any):
     - (if): ns-dec-digit
-      (set): [ m, { (ord): (match) } ]
+      (set): [ m, { (atoi): (match) } ]
     - (if): <empty>
       (set): [ m, <auto-detect-indent> ]
 

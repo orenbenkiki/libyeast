@@ -84,9 +84,29 @@ def check_annotated(grammar):
     return errors
 
 
+def check_matches(grammar):
+    """
+    Every `(match)` reads the open run, so what it returns is the text since the last token cut. That is the rule's own
+    match only where the rule matched inside one `(token)` and nothing before it in that token was consumed by another:
+    a `(match)` must stand in a `(token)` whose item it is the whole of, past what that item itself matched.
+    """
+    errors = []
+    for name, production in sorted(grammar.items()):
+        holders = [node for node in walk(production.body) if isinstance(node, ir.Token)]
+        for token in holders:
+            inner = [node for node in walk(token.item) if isinstance(node, ir.Token)]
+            if inner and any(isinstance(node, ir.Match) for node in walk(token.item)):
+                errors.append(f"{name}: a `(match)` reads a run a nested `(token)` has cut")
+        covered = {id(node) for token in holders for node in walk(token.item)}
+        for node in walk(production.body):
+            if isinstance(node, ir.Match) and id(node) not in covered:
+                errors.append(f"{name}: a `(match)` stands outside any `(token)`, so no run is its own")
+    return errors
+
+
 def validate(grammar):
     """Return a list of human-readable validation errors (empty if the grammar is clean)."""
-    errors = check_annotated(grammar)
+    errors = check_annotated(grammar) + check_matches(grammar)
     referenced = set()
     for name, prod in grammar.items():
         for ref in (n for n in walk(prod.body) if isinstance(n, ir.Ref)):

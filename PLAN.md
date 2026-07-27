@@ -227,12 +227,12 @@ determinization.
 
 **The action vocabulary**, four families, each derived from an IR node or the runtime already built in `src/parser.h`:
 
-- **Token run** — `Consume` (push the peeked character into the current run), `PushCode(code)`/`PopCode` (cut the run
-  and set the code its characters carry, or restore the production's own — the run code it carries on its frame,
-  restored past a nested token, not a stack), `Emit(code)` (a zero-width marker, which also cuts),
-  `OpenMatch`/`CloseMatch` (mark and restore the `(match)` origin the production likewise carries on its frame), and
-  `OpenWindow(limit, message)`/`CloseWindow` (open and restore the `(max)` character window it likewise carries, past
-  which a committed `Consume` fails the window's cut). These are what `Token`/`Wrap`/`Emit`/`(<<<)`/`(max)` lower to.
+- **Token run** — `Consume` (push the peeked character into the current run), `PushCode(code, slot)`/`PopCode(slot)`
+  (cut the run and set the code its characters carry, or restore the one the slot holds), `Emit(code)` (a zero-width
+  marker, which also cuts), and `OpenWindow(limit, message)`/`CloseWindow` (open and close the `(max)` character window,
+  past which a committed `Consume` fails the window's cut — a count of the opens standing, since windows do not nest).
+  The code's push stashes what it displaces in a slot its own pop names, so no action reads a value off a frame. These
+  are what `Token`/`Wrap`/`Emit`/`(max)` lower to.
 - **Provisional run** — `OpenProvisional`, `MarkProvisional`, `InjectBefore(codes, at)`,
   `RetypeProvisional(rest, breaks, region)`, `CommitProvisional`, spelled in full under *The provisional mechanism*
   below, which is also where each speculation's use of them is written out. One-for-one with the `ys_queue` run, and
@@ -258,9 +258,9 @@ grammar-wide tables that are themselves defined production-by-production (FIRST,
 correctness argument is stated against exactly that. No step may lean on a global property of the parse — "this is only
 ever attempted at a line start", "this position is always preceded by X" — however true by construction: a rule that
 needs one is the wrong rule, and the right one spells the same fact locally, usually in a device the grammar already
-owns (a measured quantity is the `(match)` scope's, never an absolute machine register; a value crossing a minted helper
-is a declared parameter, the `code` precedent). The only judgment a step may embody is *where* it applies — a declared
-target with a written reason, ledger-style — never *what* the result looks like at a site.
+owns (a measured quantity is the open run's, never an absolute machine register; a value crossing a minted helper is a
+declared parameter, the `code` precedent). The only judgment a step may embody is *where* it applies — a declared target
+with a written reason, ledger-style — never *what* the result looks like at a site.
 
 Three more rules bind the pipeline, and `DESIGN.md` states them, being what the generator is rather than what it is to
 do: many simple steps and never few clever ones; two things compared by making them look alike and testing equality,
@@ -275,10 +275,10 @@ The steps, then:
 
 1. *Parameters.* Specialize `c` away (monomorphize, drop `Case`/`Flip` on `c`, prune unreachable branches); specialize
    `t` (chomping) the same way. Confirm only `n`/`m` remain, and only in indentation predicates and parameter actions.
-1. *Structural.* Flatten `Seq`/`Alt`, drop `Empty`, collapse singletons. Lower `Token`/`Wrap` to token actions, `(<<<)`
-   to the `(match)`-origin pair, and `(max)` to the window pair. Evaluate `Diff` and single-character `Look`/`NegLook`
-   into plain char-sets. Lower `Star`/`Plus`/`Opt`/`Rep` into recursive `_<N>` productions. Lower
-   `SetVar`/`Lt`/`Le`/`StartOfLine`/`EndOfStream` into parameter actions and guards (`(if)(set)` already is one).
+1. *Structural.* Flatten `Seq`/`Alt`, drop `Empty`, collapse singletons. Lower `Token`/`Wrap` to token actions and
+   `(max)` to the window pair. Evaluate `Diff` and single-character `Look`/`NegLook` into plain char-sets. Lower
+   `Star`/`Plus`/`Opt`/`Rep` into recursive `_<N>` productions. Lower `SetVar`/`Lt`/`Le`/`StartOfLine`/`EndOfStream`
+   into parameter actions and guards (`(if)(set)` already is one).
 1. *Proper.* Make the grammar ε-free: a nullable production gains a consuming copy, and each call to it becomes that
    copy against the empty match distributed into the call site, so nothing matches empty by shape but the productions a
    parse enters by name. Declare the parameters a body binds, so a distributed binding still travels out.
@@ -309,28 +309,55 @@ whole suite green, and each was found by reading the code and asking what the no
 reading is cheapest where the answer is structural, which is what the two changes below are for; it is not skipped
 because they have landed.
 
-1. *Make the frame explicit — the enabling change, and the first.* Four values live in the interpreter's frame rather
-   than in the nodes: the run `code` a `(token)` restores, the `match_start` a `(<<<)` restores, and the `ceiling` and
-   `ceiling_message` a `(max)` restores. `PushCode` carries the code it sets and `OpenWindow` its limit, but `PopCode`,
-   `CloseMatch` and `CloseWindow` carry no operand at all — each restores whatever its own frame holds. No substitution
-   reaches that, so every step that moves an action has to reason about frames, and the whole apparatus that exists for
-   it — `_scope_start` and `_balanced_end` keeping a moved segment's opens and closes together, the `code` and
-   `match_start` parameters `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns`
-   each add where a leftover closes what it did not open, `_moved_actions` refusing a splice outright — is one
-   workaround repeated six ways, and three transforms simply forgot it.
-   - Each closing action takes the value it restores as an ordinary expression: `PopCode(code)`, `CloseMatch(origin)`,
-     `CloseWindow(limit, message)`. Then an action says everything it does, `_bound` reaches all of it, and moving one
-     anywhere is a substitution rather than an argument about frames.
-   - The value is known where the scope is lowered and nowhere else as cheaply: `lower-tokens` is looking at the
-     `(token)` that encloses the one it lowers, so the code to restore is that one's, or the production's own `code`
-     parameter where nothing encloses it. `lower-bounds` and `lower-windows` stand the same way. So the work lands in
-     those three steps, and a production that names one of the values declares it and is passed it, which is what the
-     `code` parameter already does occasionally and would then do always.
-   - What it buys, and what it costs: the six workarounds go, the class of silent corruption goes with them, and every
-     later step may move, copy, splice and inline actions with `_bound` alone. Parameter lists grow by what they already
-     thread — the interpreter seeds exactly these four on every call today, so it is the same information moved out of
-     an implicit slot into a declared one. What stays implicit afterwards is the `(set)` target, a name rather than an
-     expression, and the provisional run's own position, which is one run at a time and global by design.
+**The state invariant.** Every value the parse carries is a **global singleton**, possibly empty, or an entry in **the
+one unified stack**. There is no third place — no per-production frame holding a value, no scope implied by the tree
+shape, no slot reachable only from where it was written. The C parser is a state machine and that stack; a value fitting
+neither is a value it cannot hold, so a transformation producing one has produced something the parser cannot run,
+whatever the corpus says.
+
+- *Globals* are what does not nest: the position and its mark, the open run and the code its characters carry, the
+  `(max)` window and the count of opens standing over it, `m` and `f` — computed indentations rather than scopes.
+- *The unified stack* is what nests: the return frames, and the values that come back on the way out. `n` is one of
+  these and `(token)`'s code is another, which is why both belong on the same stack rather than in two mechanisms that
+  must then be proved to interleave.
+
+The parser holds one other store, and it is not state: the **pending-token run**, the output a speculation has emitted
+but not yet committed to. It is a second stack in the implementation and nothing like the first in kind — the unified
+stack holds what the parse must restore, this holds what the parse has produced and may still retype. Only one is open
+at a time, its extent is written in the grammar by `OpenProvisional`/`CommitProvisional`, and nothing reads a value out
+of it. So the invariant covers state, and the pending run is accounted for separately rather than smuggled into it.
+
+1. *The frame is explicit* — done, and what it turned up is worth keeping written down. Four values used to live in the
+   interpreter's frame rather than in the nodes: the run `code` a `(token)` restores, the `(match)` origin, and the
+   `ceiling` and `ceiling_message` a `(max)` restores. The origin is gone with the operator that needed it — a `(match)`
+   is the open run, so an indentation is the length of the token the rule is building and nothing is remembered about
+   where it began. The window is two globals, the window and the count of opens standing, since windows do not nest. The
+   code's pop names a slot its own push stashed what it displaced in, so the pair says between them what it does,
+   `_bound` reaches all of it, and moving one is a substitution rather than an argument about frames.
+   - The slot naming is what the scope's own nesting decides, and getting it wrong is not free. Naming a slot per site
+     is wrong: `factor-prefixes` went dead within the minute, because the scan `refine-indents` mints and the scan the
+     lowering produces stopped comparing equal. The same actions everywhere is what a factoring compares, so a minted
+     pair spells its slot exactly as the lowering would at that depth.
+   - What is a gate now was an argument before. Beside `frame_reads`, the code slots carry a net of their own: a push
+     may not take a slot an enclosing one holds open, a pop must name the slot its push set, and a pop whose push a
+     factoring left in a caller must reach a slot nothing between them has overwritten. That last is a fixpoint over the
+     call graph — a production needs at entry what its own inherited pops name plus what it reaches through a call with
+     nothing of its own open — and it holds because no entry a parse begins at needs one. The interpreter holds the same
+     two at run time, refusing an open that takes a held slot and a close naming one nothing set.
+   - What stays implicit is the `(set)` target, a name rather than an expression. The `code` parameter
+     `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns` each add is the
+     workaround the slots replace: nothing reads it any more, and it comes out on its own.
+1. *One stack, and the code on it.* The slots are a per-production device, which is the second mechanism the invariant
+   above forbids. `PushCode(code)`/`PopCode` push and pop the unified stack instead, the top being the code in force —
+   and then the slots, `code_slot`, `code_slot_faults`, `frame_reads`, `CODE` and `_does_need_code` all go, leaving one
+   rule: pushes and pops balance on every path, refused at run time where they do not.
+1. *`n` on the same stack.* `n` is a parameter today, restored by the call rather than by an action. `PushIndent(n)` and
+   `PopIndent` make it a stack entry like the code, and the question of whether a parameter mechanism and an action
+   mechanism interleave correctly stops being asked rather than being answered. The two land apart, because a mistake
+   here is invisible without the check that catches it: first mint the pushes where a call changes `n`, keeping the
+   parameter beside them and asserting on every read that the stack top agrees with it, so the corpus runs both in
+   lockstep and decides; then, once that has held, drop the parameter, and `monomorphize`, the FIRST tables and the
+   certificates read the top instead.
 1. *A gate verifier, mechanistic and in both directions.* A gate is correct when its character set is exactly what the
    options behind it can consume first: every character the gate admits is consumable by one of them, and every
    character one of them can consume is admitted by the gate. The first direction failing means the gate lets through a
@@ -353,9 +380,9 @@ because they have landed.
    - `flatten` was not compound at all. Its docstring claimed it expanded a fixed `(k)` repetition into its copies, and
      nothing in it ever did — `span-consumes` removes every `Rep`, literal count and runtime count alike. The claim was
      corrected rather than a step written for it.
-   - `factor-prefixes` keeps its two admissions. The maximal-scan one and the `(match)`-origin one are side conditions
-     on what may join the prefix, not second jobs: split out they would be three steps over one walk differing by two
-     booleans, which is one rule with knobs and worse by the same principle that motivates the splits.
+   - `factor-prefixes` keeps its maximal-scan admission. It is a side condition on what may join the prefix, not a
+     second job: split out it would be two steps over one walk differing by a boolean, which is one rule with a knob and
+     worse by the same principle that motivates the splits.
    - Every step must now change the grammar, and one that does not is a fault named where it stands. The check is what
      caught a real regression: only a merge is a rename, and a splice followed as one slid a declared inline off the
      line-prefix wrapper it names and onto the indent scan underneath, dissolving what `refine-indents` refines and
