@@ -2441,6 +2441,62 @@ def reorder_declared(grammar, namer):
     return result
 
 
+def push_indents(grammar, namer):
+    """
+    Say where the indentation changes, and where the change stops applying.
+
+    An alternative whose call passes an `n` other than the one in force pushes it and marks its return as the point it
+    comes back off, which is where the call is done being measured against it. The parameter stays for now, and the run
+    holds the two to each other — every read of `n` compares it against the stack — so the corpus decides whether the
+    pushes stand where they should rather than an argument deciding. A call passing the `n` in force pushes nothing.
+
+    A tail call is the same shape with an empty continuation: nothing runs after it in this alternative either way, so
+    it becomes the call and the return is where its push comes off, which is what a tail call always meant.
+    """
+
+    minted = {}
+
+    def changed(call):
+        """The indentation `call` is measured against where that is not the one in force, else `None`."""
+        if not isinstance(call, ir.Ref):
+            return None
+        callee = grammar.get(call.name)
+        if callee is None or "n" not in callee.params:
+            return None
+        level = call.args[callee.params.index("n")]
+        return None if isinstance(level, ir.Param) and level.name == "n" else level
+
+    def wrapped(owner, call, level):
+        """`call` behind a production of its own that pushes `level` and takes it back when the call returns."""
+        name = namer.fresh(owner)
+        way = ir.Alternative(ir.Gate(None, ()), (ir.PushIndent(level),), call, None, None, True)
+        minted[name] = ir.Prod(0, name, (), ir.Choice((way,)))
+        return ir.Ref(name, ())
+
+    def pushed(alternative, owner):
+        way = alternative
+        if way.first is None and way.second is not None:  # a tail call is the same shape with an empty continuation
+            way = dataclasses.replace(way, first=way.second, second=None)
+        # A continuation that changes the indentation has no return of this alternative's to come back off — nothing of
+        # it runs after the continuation — so the push and its return go into a production holding that call alone.
+        level = changed(way.second)
+        if level is not None:
+            way = dataclasses.replace(way, second=wrapped(owner, way.second, level))
+        level = changed(way.first)
+        if level is not None:
+            way = dataclasses.replace(way, actions=way.actions + (ir.PushIndent(level),), pops_indent=True)
+        return way
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = ir.Choice(tuple(pushed(way, name) for way in body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
+    result.update(minted)
+    return result
+
+
 def extend_returns(grammar, namer):
     """
     The grammar with each `DECLARED_EXTENSIONS` site folded: the site's one way must be a call and a continuation whose
@@ -3428,6 +3484,7 @@ STEPS = [
     ("gate-literals", gate_literals),
     ("reorder-declared", reorder_declared),
     ("extend-returns", extend_returns),
+    ("push-indents", push_indents),
 ]
 
 

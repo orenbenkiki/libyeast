@@ -138,9 +138,11 @@ class Emitter:
         self.trail = []  # the provisional undo journal — a retyped code, an injected marker: the only token mutations
         # that are not appends, which a rewind pops to undo what a token-count truncation cannot
         self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it
-        self.stack = ()  # the unified stack: what the parse must give back on its way out, innermost last. It holds the
-        # codes the open `(token)`s displaced, each taken back by that token's own pop. One stack for the parse and not
-        # one per production, so a pair a factoring split across a call closes off the same stack it opened
+        self.stack = ()  # the unified stack: what the parse must give back on its way out, innermost last, each entry a
+        # `(kind, value)` pair. It holds the codes the open `(token)`s displaced, each taken back by that token's own
+        # pop, and the indentation in force, taken back where the call it was pushed for returns. One stack for the
+        # parse and not one per production, so a pair a factoring split across a call closes off the same stack it
+        # opened
         self.env = {}  # the current production's parameters (n/m/c/t/r) and their values
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
         self.forbidden = ()  # patterns that must not match at a start of line — the ongoing `(exclude)` guards in scope
@@ -157,6 +159,12 @@ class Emitter:
             frozenset()
         )  # the productions entered committed — first holding gate, no second try — which
         # `run` sets from `normalize.deterministic_productions`; empty runs the whole grammar backtracking
+        self.holds_indent = False  # whether the grammar says where the indentation changes, which `run` reads off it.
+        # While it is both a parameter and the stack's, only a grammar carrying the pushes can be held to the two
+        # agreeing; this goes when the parameter does
+        self.passing_arguments = False  # while a call's arguments are read. The new indentation is pushed before the
+        # call and passed to it as well, so the argument reads `n` under the push its own value made — the two disagree
+        # there and nowhere else, and only until the argument goes
 
     def checkpoint(self):
         return (
@@ -415,7 +423,15 @@ def evaluate(expression, emitter, grammar):
     if isinstance(expression, ir.Lit):
         return expression.value
     if isinstance(expression, ir.Param):
-        return emitter.env.get(expression.name)  # an out-parameter (m, t) may be passed on before it is set
+        value = emitter.env.get(expression.name)  # an out-parameter (m, t) may be passed on before it is set
+        if expression.name == "n" and emitter.holds_indent and not emitter.passing_arguments:
+            # The indentation is on its way from a parameter to the stack, and both are kept while the corpus decides
+            # whether the pushes stand where they should. Every read of it compares the two, wherever the grammar has
+            # been through `push-indents` — before that step there are no pushes and nothing to compare against.
+            held = _indent_in_force(emitter)
+            if held != value:
+                raise AssertionError(f"the stack holds an indentation of {held!r} where the parameter is {value!r}")
+        return value
     if isinstance(expression, ir.Match):
         # The open run's text: what the rule has just matched, still in hand. Every unit in it is a character — the one
         # rule that reads it matches a digit — so its codepoints reconstruct the text.
@@ -453,6 +469,38 @@ def evaluate(expression, emitter, grammar):
 def _accept():
     """The outermost continuation: the first whole match is the answer, so it is accepted and the run commits."""
     return True
+
+
+def _popped(emitter, kind, what):
+    """
+    The value the stack's top entry holds and the stack without it, refusing a top that is not of `kind`.
+
+    The whole of the discipline: a pop takes what its own push put there, so the top being something else means the two
+    are not the pair they read as — an action moved across one it must not cross, or a push whose pop never ran.
+    """
+    if not emitter.stack:
+        raise AssertionError(f"{what} is taken off an empty stack")
+    held, value = emitter.stack[-1]
+    if held != kind:
+        raise AssertionError(f"{what} is taken off the stack, which holds {held} there")
+    return value, emitter.stack[:-1]
+
+
+def _nodes(node):
+    """`node` and every IR node nested within it."""
+    yield node
+    children = []
+    ir.rebuilt(node, lambda child: (children.append(child), child)[1])
+    for child in children:
+        yield from _nodes(child)
+
+
+def _indent_in_force(emitter):
+    """The indentation the stack holds, or `None` where nothing has pushed one."""
+    for kind, value in reversed(emitter.stack):
+        if kind == "indent":
+            return value
+    return None
 
 
 def _probe(pattern, emitter, grammar):
@@ -603,7 +651,9 @@ def match(node, emitter, grammar, k):
             for parameter, argument in zip(production.params, node.args)
             if isinstance(argument, ir.Param) and argument.name == parameter
         ]
+        emitter.passing_arguments = True
         arguments = tuple(evaluate(argument, emitter, grammar) for argument in node.args)
+        emitter.passing_arguments = False
         saved_env = emitter.env
         saved_forbidden = emitter.forbidden  # inherited by the callee, and any (exclude) it adds is scoped to it
         # A production inherits the ambient parameters and overrides only the ones it declares, so `n` stays in scope
@@ -708,7 +758,11 @@ def match(node, emitter, grammar, k):
         # A recovery riding the edge is the `(recover)` scope over the call it protects — the same handler, its resume
         # point the frame's own return, which is exactly the continuation the call already has here.
         first = node.first if node.recover is None else ir.Recover(node.recover, node.first)
-        parts += tuple(item for item in (first, node.second) if item is not None)
+        # The indentation this alternative pushed stops applying where its call returns, which is the one point nothing
+        # of the alternative's own runs at — so the flag puts the pop there, between the call and the continuation.
+        returned = (ir.PopIndent(),) if node.pops_indent else ()
+        parts += tuple(item for item in (first,) if item is not None) + returned
+        parts += tuple(item for item in (node.second,) if item is not None)
         return match(ir.Seq(parts), emitter, grammar, k)
     if isinstance(node, ir.ConsumeChar):
         if emitter.position >= len(emitter.chars):
@@ -944,10 +998,24 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.PushIndent):
+        checkpoint = emitter.checkpoint()
+        emitter.stack += (("indent", evaluate(node.level, emitter, grammar)),)
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.PopIndent):
+        checkpoint = emitter.checkpoint()
+        _value, emitter.stack = _popped(emitter, "indent", "an indentation")
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.PushCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
-        emitter.stack += (emitter.code,)  # the code this push displaces, for its own pop to take back
+        emitter.stack += (("code", emitter.code),)  # the code this push displaces, for its own pop to take back
         emitter.code = node.code
         if k():
             return True
@@ -956,9 +1024,7 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.PopCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
-        if not emitter.stack:
-            raise AssertionError("a `(token)` code is popped where none is pushed")
-        emitter.code, emitter.stack = emitter.stack[-1], emitter.stack[:-1]
+        emitter.code, emitter.stack = _popped(emitter, "code", "a `(token)` code")
         if k():
             return True
         emitter.rewind(checkpoint)
@@ -1068,9 +1134,10 @@ def match(node, emitter, grammar, k):
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Recover):
-        depth, code, forbidden, env, ceiling, ceiling_message, commitments = (
+        depth, code, stack, forbidden, env, ceiling, ceiling_message, commitments = (
             len(emitter.pending),
             emitter.code,
+            emitter.stack,
             emitter.forbidden,
             dict(emitter.env),
             emitter.ceiling,
@@ -1086,6 +1153,7 @@ def match(node, emitter, grammar, k):
             # whatever failed somewhere below it.
             stopped = emitter.checkpoint()
             emitter.code = code
+            emitter.stack = stack  # what the abandoned parse pushed and never got to take back
             emitter.forbidden = forbidden
             emitter.env = env
             emitter.ceiling = ceiling
@@ -1122,9 +1190,14 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset()):
     production, parameters = ir.entry(grammar, production, parameters)
     emitter = Emitter(data)
     emitter.deterministic = deterministic
+    emitter.holds_indent = any(
+        isinstance(node, ir.PushIndent) for name in grammar for node in _nodes(grammar[name].body)
+    )
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in parameters.items()}
     if "r" in grammar[production].params:
         emitter.env.setdefault("r", resume)  # a production run without a resume policy takes the zeroed one, no-resume
+    if "n" in emitter.env:  # the indentation the run is entered under, which no alternative pushed and none pops
+        emitter.stack = (("indent", emitter.env["n"]),)
     entry = ir.Ref(production, tuple(ir.Lit(emitter.env.get(name)) for name in grammar[production].params))
 
     # A cut says where the unwind lands and nothing else; what to do about the input from there is `l-recover`'s, which
@@ -1156,4 +1229,5 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset()):
         # there is no indentation left to bound the recovery by. The resume policy resolves the same way the entry did —
         # into the name where the grammar is monomorphized, so recovery re-enters the right copy rather than the base.
         recover, recover_args = ir.entry(grammar, RECOVER, {"n": -1, "r": resume})
+        emitter.stack = (("indent", recover_args["n"]),)  # the stream's own level, which the recovery is entered under
         node = ir.Ref(recover, tuple(ir.Lit(recover_args[parameter]) for parameter in grammar[recover].params))

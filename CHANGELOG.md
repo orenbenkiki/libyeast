@@ -358,6 +358,18 @@ All notable changes to this project are documented here. The format follows
   `code` parameter `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns` each
   added, the refusal to move a run of actions closing a scope it did not open, and the fold's own refusal of the same.
 
+- The indentation is on the same stack as the code. `push-indents` mints a `PushIndent` at each of the thirty-three
+  calls measured against an `n` other than the one in force — the other seven hundred pass it through and push nothing —
+  and marks that alternative's return as where it comes back off, which is the one point nothing of the alternative runs
+  at and the one thing a shared continuation cannot say for itself. A continuation that changes the indentation has no
+  return of its own to take it back, so its call goes into a production holding it alone; a tail call is that same shape
+  with an empty continuation. Every entry on the stack says what kind it is and every pop is held to it, so a pair that
+  has been moved across one it must not cross is refused where it happens.
+
+  The parameter still stands beside the stack, and every read of `n` is held to the two agreeing — which is what found
+  all of it, and one fault besides: an in-grammar `(recover)` left standing the pushes of the parse it abandoned, where
+  a cut reaching `_fail` had always cleared them. The recovery now takes back what the abandoned parse never got to.
+
 - `(match)` is the text of the open run — the token the rule is building — and the `(<<<)` origin it used to be measured
   from is gone with the operator, along with `OpenMatch`, `CloseMatch`, the `match_start` parameter and the
   `lower-bounds` step. An indentation is the length of the indent token the rule builds, which is what `s-indent-lt` and

@@ -61,7 +61,9 @@ ALWAYS = (
     ir.OpenProvisional,
     ir.OpenWindow,
     ir.PopCode,
+    ir.PopIndent,
     ir.PushCode,
+    ir.PushIndent,
     ir.RetypeProvisional,
     ir.SetVar,
 )

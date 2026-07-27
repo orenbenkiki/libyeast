@@ -364,10 +364,15 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    takes it back out on the way home. `PushIndent(n)`/`PopIndent` make it what the code already is: pushed where it
    changes and popped where it stops applying, by actions that say so. Thirty-three call sites pass an `n` that differs
    from the caller's; the other seven hundred pass it through, and under a stack they push nothing at all.
-   - It lands in two, because a mistake here is invisible without the check that catches it: first mint the pushes and
-     pops, keeping the parameter beside them and asserting on every read that the stack top agrees with it, so the
-     corpus runs both in lockstep and decides rather than an argument deciding; then, once that has held, drop the
-     parameter, and `monomorphize`, the FIRST tables and the certificates read the top instead.
+   - The pushes are minted and the parameter still stands beside them, every read of `n` held to the stack agreeing with
+     it — the corpus deciding whether they stand where they should rather than an argument deciding. What remains is to
+     drop the parameter, and have `monomorphize`, the FIRST tables and the certificates read the top instead; with it
+     goes the call argument that still passes the same value, and the one suppression the two mechanisms need while both
+     run, where that argument reads `n` under the push its own value just made.
+   - What the check caught, none of which an argument would have: a continuation that changes the indentation has no
+     return of its alternative's to take it back, and needs a production holding that call alone; a tail call is the
+     same shape with an empty continuation; and an in-grammar `(recover)` left the pushes of the parse it abandoned
+     standing, where `_fail` had always cleared them — a real fault, not scaffolding, found because every read compared.
 1. *The call written out.* `first` and `second` are a call and where to carry on, which the machine performs — the last
    thing a production does that the grammar does not spell. `PushContinuation(second)` and a jump to `first` say it, and
    a `Pop` and a jump say the way home. Nothing is left that pushes or pops without an action naming it, and an inlining
