@@ -316,9 +316,23 @@ whatever the corpus says.
 
 - *Globals* are what does not nest: the position and its mark, the open run and the code its characters carry, the
   `(max)` window and the count of opens standing over it, `m` and `f` — computed indentations rather than scopes.
-- *The unified stack* is what nests: the return frames, and the values that come back on the way out. `n` is one of
-  these and `(token)`'s code is another, which is why both belong on the same stack rather than in two mechanisms that
-  must then be proved to interleave.
+- *The unified stack* is what nests: the indentation in force, the code a `(token)` displaced, and where to carry on.
+  All three are pushed and popped by actions the grammar writes, never by anything a call does on their behalf.
+
+**And every push is written down.** There is no call, and so nothing a call implicitly pushes or pops: a production that
+goes on to another pushes where to carry on and jumps, and where it comes back to is what a pop takes. Reading a call as
+"push a continuation, then go" is what keeps the stack safe to transform. A value riding on something a call pushes is a
+footgun, because the pipeline inlines — `inline-singles`, `inline-under-gate`, `inline-single-way` and the sweep's
+splicing of do-nothing calls each remove one — and a value living on what they remove has nowhere to go and no gate that
+could see it coming. Written as actions, an inlining deletes a continuation push and a jump and touches nothing else,
+because nothing was ever riding them.
+
+```
+call P, carry on at Q       PushContinuation(Q) ; GOTO P
+come back                   Pop ; GOTO what it held
+the indentation changes     PushIndent(n) … PopIndent
+a `(token)` opens           PushCode(code) … PopCode
+```
 
 The parser holds one other store, and it is not state: the **pending-token run**, the output a speculation has emitted
 but not yet committed to. It is a second stack in the implementation and nothing like the first in kind — the unified
@@ -346,13 +360,18 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      actions closing a scope it did not open, and the fold's own refusal of the same. All three existed because a close
      read its own frame, and none of them has a reason now.
    - What stays implicit is the `(set)` target, a name rather than an expression.
-1. *`n` on the same stack.* `n` is a parameter today, restored by the call rather than by an action. `PushIndent(n)` and
-   `PopIndent` make it a stack entry like the code, and the question of whether a parameter mechanism and an action
-   mechanism interleave correctly stops being asked rather than being answered. The two land apart, because a mistake
-   here is invisible without the check that catches it: first mint the pushes where a call changes `n`, keeping the
-   parameter beside them and asserting on every read that the stack top agrees with it, so the corpus runs both in
-   lockstep and decides; then, once that has held, drop the parameter, and `monomorphize`, the FIRST tables and the
-   certificates read the top instead.
+1. *`n` on the same stack.* `n` is a parameter today, put in scope by the call rather than by an action, and the call
+   takes it back out on the way home. `PushIndent(n)`/`PopIndent` make it what the code already is: pushed where it
+   changes and popped where it stops applying, by actions that say so. Thirty-three call sites pass an `n` that differs
+   from the caller's; the other seven hundred pass it through, and under a stack they push nothing at all.
+   - It lands in two, because a mistake here is invisible without the check that catches it: first mint the pushes and
+     pops, keeping the parameter beside them and asserting on every read that the stack top agrees with it, so the
+     corpus runs both in lockstep and decides rather than an argument deciding; then, once that has held, drop the
+     parameter, and `monomorphize`, the FIRST tables and the certificates read the top instead.
+1. *The call written out.* `first` and `second` are a call and where to carry on, which the machine performs — the last
+   thing a production does that the grammar does not spell. `PushContinuation(second)` and a jump to `first` say it, and
+   a `Pop` and a jump say the way home. Nothing is left that pushes or pops without an action naming it, and an inlining
+   becomes what it should be: deleting a push and a jump, with no value riding either.
 1. *A gate verifier, mechanistic and in both directions.* A gate is correct when its character set is exactly what the
    options behind it can consume first: every character the gate admits is consumable by one of them, and every
    character one of them can consume is admitted by the gate. The first direction failing means the gate lets through a
