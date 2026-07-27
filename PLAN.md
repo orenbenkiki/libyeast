@@ -308,6 +308,16 @@ whole suite green, and each was found by reading the code and asking what the no
 reading is cheapest where the answer is structural, which is what the two changes below are for; it is not skipped
 because they have landed.
 
+**And a node kind nothing places is an error, everywhere, always.** Never a default, never the answer that falls out of
+a membership test the kind happens not to be in. A classification that answers for what it does not know is a silent
+answer to a question nobody asked: `PushIndent` was in no list, `isinstance(action, _ZERO_WIDTH)` said `False` for it,
+thirty-three zero-width actions were read as consuming, and a third of the undecided decision points went away — green
+corpus, green gates, and the meter reporting progress that had not happened. The check that caught it,
+`check_grammar_coverage.is_total`, caught it because it was written to refuse rather than to guess, and it refused on
+the first run. So every classifier decides from lists that name every kind and raises on anything else, and adding one
+is expected to surface kinds that were being classified by falling through — `Diff`, `Recover`, and every repetition and
+scope in an alternative's actions were, until one asked.
+
 **The state invariant.** Every value the parse carries is a **global singleton**, possibly empty, or an entry in **the
 one unified stack**. There is no third place — no per-production frame holding a value, no scope implied by the tree
 shape, no slot reachable only from where it was written. The C parser is a state machine and that stack; a value fitting

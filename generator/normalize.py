@@ -33,8 +33,10 @@ _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
     ir.OpenProvisional,
     ir.OpenWindow,
     ir.PopCode,
+    ir.PopIndent,
     ir.PopMessage,
     ir.PushCode,
+    ir.PushIndent,
     ir.PushMessage,
     ir.RetypeProvisional,
     ir.SetVar,
@@ -51,6 +53,47 @@ _CONSUMING_ACTS = (
     ir.ConsumeSpan,
     ir.ConsumeTrimmedSpan,
 )
+
+# What else may stand among an alternative's actions and begin a character: the character classes a lowering has not
+# turned into a scan yet, and the `(recover)` scope around what it guards. Named so that the split below is a decision
+# about every kind there is rather than a default that catches whatever nothing else claimed.
+_BEGINNING_ACTS = (
+    ir.Alt,
+    ir.Bind,
+    ir.Case,
+    ir.Char,
+    ir.Choice,
+    ir.Commit,
+    ir.Diff,
+    ir.Max,
+    ir.Opt,
+    ir.Plus,
+    ir.Range,
+    ir.Recover,
+    ir.Ref,
+    ir.Rep,
+    ir.Seq,
+    ir.Star,
+    ir.Token,
+    ir.TrimStar,
+    ir.Wrap,
+)
+
+
+def is_zero_width(action):
+    """
+    Whether `action` begins no character, so it adds nothing to a first-character set.
+
+    An action the lists do not place is refused rather than assumed. Assuming is the dangerous way round: a zero-width
+    action taken for a consuming one narrows every first set it stands in and moves the analyses that read them, which
+    is a silent answer to a question nobody asked. A new node kind belongs in one of the lists, and until it is in one
+    this says so.
+    """
+    if isinstance(action, _ZERO_WIDTH):
+        return True
+    if isinstance(action, _CONSUMING_ACTS + _BEGINNING_ACTS):
+        return False
+    raise TypeError(f"cannot decide whether {type(action).__name__} begins a character")
 
 
 class Points:
@@ -845,7 +888,7 @@ def _gate_lead(actions):
     region's first character is not a gate's to refuse, since entering and failing must raise the region's message.
     """
     return next(
-        (action for action in actions if isinstance(action, ir.PushMessage) or not isinstance(action, _ZERO_WIDTH)),
+        (action for action in actions if isinstance(action, ir.PushMessage) or not is_zero_width(action)),
         None,
     )
 
@@ -888,7 +931,7 @@ def alternative_shape(grammar, namer):
         for position, action in enumerate(actions):  # the gate goes on the first character consumed, where it is one
             if isinstance(action, ir.PushMessage):
                 break  # a committed region: a gate refusing its first character would soften the error it must raise
-            if isinstance(action, _ZERO_WIDTH):
+            if is_zero_width(action):
                 continue
             if is_one_char(action, lookup):
                 peek, actions[position] = action, ir.ConsumeChar()
@@ -1117,7 +1160,7 @@ def inline_under_gate(grammar, namer):
         call = alternative.first
         if alternative.gate.peek is None or call is None:
             return alternative
-        if any(not isinstance(action, _ZERO_WIDTH) for action in alternative.actions):
+        if any(not is_zero_width(action) for action in alternative.actions):
             return alternative
         spans = _peek_spans(alternative.gate.peek, grammar)
         callee = grammar.get(call.name)
@@ -1357,7 +1400,7 @@ def ungated_alternatives(grammar):
         for alternative in production.body.alternatives:
             if alternative.gate.peek is not None:
                 continue
-            consuming = [action for action in alternative.actions if not isinstance(action, _ZERO_WIDTH)]
+            consuming = [action for action in alternative.actions if not is_zero_width(action)]
             if consuming or alternative.first is not None:
                 ungated.append(f"{name}: an alternative with no character to go on")
     return ungated
@@ -1489,7 +1532,7 @@ def _alternative_first(alternative, grammar, first_of):
         if isinstance(action, ir.ConsumeChar):
             consumed = True  # the gated character, which the peek already describes
             break
-        if isinstance(action, _ZERO_WIDTH):
+        if is_zero_width(action):
             continue
         if isinstance(action, (ir.ConsumeLiteral, ir.ConsumePeeked)):
             spans.append((action.text[0], action.text[0]))
@@ -1781,7 +1824,7 @@ def factor_prefixes(grammar, namer):
             if isinstance(action, ir.ConsumeSpan):
                 if not is_one_outcome(action, alternatives, len(prefix)):
                     break
-            elif not isinstance(action, _ZERO_WIDTH) and not isinstance(action, _PREFIX_CONSUMES):
+            elif not is_zero_width(action) and not isinstance(action, _PREFIX_CONSUMES):
                 break
             prefix.append(action)
         if not any(isinstance(action, (ir.ConsumeSpan,) + _PREFIX_CONSUMES) for action in prefix):
@@ -2074,7 +2117,7 @@ def _does_spell_peek(alternative, text, grammar, seen):
     single-way calls whose actions are all zero-width. A spine level's own gate does not matter here: a gate is a
     necessary condition on entry, and what the way in consumes is the same behind any of them.
     """
-    lead = next((action for action in alternative.actions if not isinstance(action, _ZERO_WIDTH)), None)
+    lead = next((action for action in alternative.actions if not is_zero_width(action)), None)
     if lead is not None:
         return isinstance(lead, ir.ConsumePeeked) and lead.text == text
     reference = alternative.first
@@ -2257,8 +2300,10 @@ _SURE_ACTS = (
     ir.OpenProvisional,
     ir.OpenWindow,
     ir.PopCode,
+    ir.PopIndent,
     ir.PopMessage,
     ir.PushCode,
+    ir.PushIndent,
     ir.PushMessage,
     ir.RetypeProvisional,
     ir.SetVar,
@@ -2363,7 +2408,7 @@ def gate_literals(grammar, namer):
         peek = way.gate.peek
         if isinstance(peek, ir.LiteralPeek):
             return peek
-        if any(not isinstance(action, _ZERO_WIDTH) for action in way.actions):
+        if any(not is_zero_width(action) for action in way.actions):
             return None
         return literal_entry(way.first, seen | {reference.name})
 
@@ -2376,7 +2421,7 @@ def gate_literals(grammar, namer):
                 continue
             ways = []
             for index, way in enumerate(body.alternatives):
-                lead = next((action for action in way.actions if not isinstance(action, _ZERO_WIDTH)), None)
+                lead = next((action for action in way.actions if not is_zero_width(action)), None)
                 if (
                     way.gate.peek is not None
                     and not isinstance(way.gate.peek, ir.LiteralPeek)
@@ -2395,7 +2440,7 @@ def gate_literals(grammar, namer):
                     entry is not None
                     and way.gate.peek is not None
                     and not isinstance(way.gate.peek, ir.LiteralPeek)
-                    and all(isinstance(action, _ZERO_WIDTH) for action in way.actions)
+                    and all(is_zero_width(action) for action in way.actions)
                     and _peek_spans(way.gate.peek, grammar) == [(entry.text[0], entry.text[0])]
                 ):
                     hoisted = entry
@@ -2475,8 +2520,6 @@ def push_indents(grammar, namer):
 
     def pushed(alternative, owner):
         way = alternative
-        if way.first is None and way.second is not None:  # a tail call is the same shape with an empty continuation
-            way = dataclasses.replace(way, first=way.second, second=None)
         # A continuation that changes the indentation has no return of this alternative's to come back off — nothing of
         # it runs after the continuation — so the push and its return go into a production holding that call alone.
         level = changed(way.second)
