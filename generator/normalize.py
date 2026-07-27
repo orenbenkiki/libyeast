@@ -520,20 +520,26 @@ def lower_wraps(grammar, namer):
 
 def _lower_bounds(node):
     """
-    `node` with each `(<<<)` rewritten as the pair of actions that mark and restore the `(match)` origin around its run.
-    Bottom-up, so a parent sees its already-lowered children.
+    `node` with each `(<<<)` rewritten as the pair of actions that mark and restore the `(match)` origin around its run,
+    the pair sharing the slot the mark stashes the origin it displaces in. Bottom-up, so a parent sees its
+    already-lowered children.
+
+    One slot serves every `(<<<)` there is: a `(<<<)` never nests, so two of them in a body stand end to end and the
+    second stashes what the first put back. Sharing the name is also what keeps the pair the same two actions wherever
+    it stands, which is what a factoring compares.
     """
     node = ir.rebuilt(node, _lower_bounds)
     if isinstance(node, ir.Bound):
-        return ir.Seq((ir.OpenMatch(), node.item, ir.CloseMatch()))
+        return ir.Seq((ir.OpenMatch(MATCH_SAVED), node.item, ir.CloseMatch(ir.Param(MATCH_SAVED))))
     return node
 
 
 def lower_bounds(grammar, namer):
     """
-    Rewrite each `(<<<)` as `OpenMatch, item, CloseMatch`: the `(match)` origin a bound marks for its run becomes an
-    explicit action over the origin its production carries on its frame, restored at the run's trailing edge. Removes
-    the `Bound` node kind — after it the measuring origin is a runtime value, no longer a scope the tree shape implies.
+    Rewrite each `(<<<)` as `OpenMatch(slot), item, CloseMatch(slot)`: the `(match)` origin a bound marks for its run
+    becomes an explicit action, and the origin it displaces is stashed in a slot of the production's own that the close
+    names to put it back. The pair says between them what it does and reads no frame, so what a later step must keep
+    together is the pair rather than a fact about frames. Removes the `Bound` node kind.
     """
     return {
         name: dataclasses.replace(production, body=_lower_bounds(production.body))
@@ -550,7 +556,13 @@ def _lower_windows(node):
     if isinstance(node, ir.Max):
         if node.item is None:
             return ir.Empty()  # a bare `(max)` is a length note libyeast never runs — only recovers to
-        return ir.Seq((ir.OpenWindow(node.limit, node.message), node.item, ir.CloseWindow()))
+        return ir.Seq(
+            (
+                ir.OpenWindow(node.limit, node.message, CEILING_SAVED, CEILING_MESSAGE_SAVED),
+                node.item,
+                ir.CloseWindow(ir.Param(CEILING_SAVED), ir.Param(CEILING_MESSAGE_SAVED)),
+            )
+        )
     return node
 
 
@@ -574,7 +586,14 @@ def _lower_binds(node):
     """
     node = ir.rebuilt(node, _lower_binds)
     if isinstance(node, ir.Bind):
-        return ir.Seq((ir.OpenMatch(), node.cond, ir.SetVar(node.param, node.value), ir.CloseMatch()))
+        return ir.Seq(
+            (
+                ir.OpenMatch(MATCH_SAVED),
+                node.cond,
+                ir.SetVar(node.param, node.value),
+                ir.CloseMatch(ir.Param(MATCH_SAVED)),
+            )
+        )
     return node
 
 
@@ -681,6 +700,13 @@ _OPENS = (ir.OpenMatch, ir.OpenWindow)
 _CLOSES = (ir.CloseMatch, ir.CloseWindow)
 CODE = "code"  # the parameter a helper declares to be handed the run code its caller was entered under
 MATCH_START = "match_start"  # its `(match)`-origin twin: a helper closing a scope its caller opened restores this
+# The slot a `(<<<)`'s mark stashes the origin it displaces in, for its own close to put back. One name serves them all:
+# a `(<<<)` never nests, so two stand end to end, and the same two actions everywhere is what a factoring compares.
+MATCH_SAVED = "match_saved"
+# The slots a `(max)`'s open stashes the window it displaces in, for its own close to put back. One pair serves them
+# all, for the same reason: a `(max)` never nests, and the same actions everywhere is what a factoring compares.
+CEILING_SAVED = "ceiling_saved"
+CEILING_MESSAGE_SAVED = "ceiling_message_saved"
 
 
 def _does_need_code(items):
@@ -1281,11 +1307,11 @@ def refine_indents(grammar, namer):
         [level] = reference.args
         scan = (
             ir.PushCode(code="indent"),
-            ir.OpenMatch(),
+            ir.OpenMatch(MATCH_SAVED),
             ir.ConsumeSpan(set=ir.Ref(name="s-space", args=())),
             ir.Le(a=ir.Len(arg=ir.Match()), b=level),
             ir.Le(a=level, b=ir.Len(arg=ir.Match())),
-            ir.CloseMatch(),
+            ir.CloseMatch(ir.Param(MATCH_SAVED)),
             ir.PopCode(),
         )
         return dataclasses.replace(
@@ -2391,9 +2417,9 @@ def frame_reads(grammar):
         def walk(node, owner=name):
             if isinstance(node, ir.PopCode) and node.code is None:
                 faults.append(f"{owner}: a PopCode restores the code its frame holds")
-            if isinstance(node, ir.CloseMatch):
+            if isinstance(node, ir.CloseMatch) and node.origin is None:
                 faults.append(f"{owner}: a CloseMatch restores the origin its frame holds")
-            if isinstance(node, ir.CloseWindow):
+            if isinstance(node, ir.CloseWindow) and node.ceiling is None:
                 faults.append(f"{owner}: a CloseWindow restores the ceiling its frame holds")
             ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
 

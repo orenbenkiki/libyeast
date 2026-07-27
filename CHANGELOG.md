@@ -125,11 +125,14 @@ All notable changes to this project are documented here. The format follows
   holds a `white` one; a close that names nothing goes back to the code the production was entered under, which its
   frame holds, and those are counted on the gate line and watched down to none — what an action does not name, no
   substitution reaches, so it cannot be moved between productions without an argument about frames. `lower-wraps`
-  dissolves the `(wrap)` into the pair of `(emit)`s it always was; `lower-bounds` does the same for `(<<<)`, its
-  `(match)` origin becoming `OpenMatch` … `CloseMatch` around the run it measures, an origin the production likewise
-  carries on its frame; and `lower-windows` does the same for `(max)`, its character window becoming `OpenWindow` …
-  `CloseWindow`, the overflow past the edge now failing the window's cut in the run itself rather than a wrapper
-  catching it; and `lower-binds` rewrites each `(if)(set)` as its `(match)`-measured condition and the `(set)` that
+  dissolves the `(wrap)` into the pair of `(emit)`s it always was. `lower-bounds` and `lower-windows` name theirs
+  outright: a `(<<<)` becomes `OpenMatch(slot) … CloseMatch(slot)` and a `(max)`
+  `OpenWindow(limit, message, slots) … CloseWindow(slots)`, the open stashing the origin or the window it displaces in a
+  slot its own close names to put back, so the pair says between them what it does and reads no frame at all. One slot
+  serves every `(<<<)` and one pair every `(max)`: neither nests, so two stand end to end and the second stashes what
+  the first put back — and the same actions everywhere is what a factoring compares, which naming them per site would
+  have taken away — and the window's overflow past its edge fails the window's cut in the run itself rather than a
+  wrapper catching it. `lower-binds` rewrites each `(if)(set)` as its `(match)`-measured condition and the `(set)` that
   reads it, the one node that held a match scope becoming the ordinary run and action it always was. `lower-commits`
   dissolves the last scope: a `(commit)` becomes `PushMessage(message) … PopMessage`, the committed region bracketed
   exactly where the scope stood — a failure that unwinds past an unclosed push raises its message, one past the pop

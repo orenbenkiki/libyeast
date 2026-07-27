@@ -292,7 +292,7 @@ def determinize(grammar, namer):
         # gates, content or the stream's end at exactly `n` ends the scan with the prefix consumed. Under `n` with
         # anything but a break there is no way, exactly where the empty line's short indent and the follower's full
         # prefix refuse.
-        edge = (ir.CloseMatch(), ir.PopCode())
+        edge = (ir.CloseMatch(ir.Param(normalize.MATCH_SAVED)), ir.PopCode())
         return production(
             name,
             ("n", code_param, "match_start"),
@@ -308,7 +308,7 @@ def determinize(grammar, namer):
         return production(name, ("n",), alternative(peek=white, actions=rest, first=ref(then, n)))
 
     def line_enter(name, then):
-        opened = (ir.PushCode(code="indent"), ir.OpenMatch())
+        opened = (ir.PushCode(code="indent"), ir.OpenMatch(normalize.MATCH_SAVED))
         return production(name, ("n",), alternative(actions=opened, first=ref(then, n, code, origin)))
 
     rest_code, breaks_code, region = derive_retype(grammar, conflict)

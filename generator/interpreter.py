@@ -989,6 +989,8 @@ def match(node, emitter, grammar, k):
         return False
     if isinstance(node, ir.OpenMatch):
         checkpoint = emitter.checkpoint()
+        if node.saved is not None:
+            emitter.env[node.saved] = emitter.match_start  # the origin this mark displaces, for its close to put back
         emitter.match_start = emitter.position
         if k():
             return True
@@ -996,13 +998,19 @@ def match(node, emitter, grammar, k):
         return False
     if isinstance(node, ir.CloseMatch):
         checkpoint = emitter.checkpoint()
-        emitter.match_start = emitter.env["match_start"]  # the production's own `(match)` origin, held on its frame
+        # The origin the action names — the slot its opening half stashed. Where it names none, what it goes back to is
+        # the origin the production was entered under, which its frame holds.
+        origin = emitter.env["match_start"] if node.origin is None else evaluate(node.origin, emitter, grammar)
+        emitter.match_start = origin
         if k():
             return True
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.OpenWindow):
         checkpoint = emitter.checkpoint()
+        if node.saved is not None:  # the window this one displaces, for its close to put back
+            emitter.env[node.saved] = emitter.ceiling
+            emitter.env[node.saved_message] = emitter.ceiling_message
         if emitter.ceiling is None:  # outermost-only: a nested window keeps the outer edge, being the buffer
             emitter.ceiling = emitter.position + evaluate(node.limit, emitter, grammar)
             emitter.ceiling_message = node.message
@@ -1012,8 +1020,13 @@ def match(node, emitter, grammar, k):
         return False
     if isinstance(node, ir.CloseWindow):
         checkpoint = emitter.checkpoint()
-        emitter.ceiling = emitter.env["ceiling"]  # the production's own `(max)` window, held on its frame
-        emitter.ceiling_message = emitter.env["ceiling_message"]
+        # The window the action names — the slots its opening half stashed. Where it names none, what it goes back to is
+        # the window the production was entered under, which its frame holds.
+        if node.ceiling is None:
+            emitter.ceiling, emitter.ceiling_message = emitter.env["ceiling"], emitter.env["ceiling_message"]
+        else:
+            emitter.ceiling = evaluate(node.ceiling, emitter, grammar)
+            emitter.ceiling_message = evaluate(node.message, emitter, grammar)
         if k():
             return True
         emitter.rewind(checkpoint)

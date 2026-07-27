@@ -792,8 +792,11 @@ class PopMessage:
 class OpenMatch:
     """
     A zero-width action that sets the origin a `(match)` measures from to the current position — what `(<<<)` marks
-    before the run it bounds. `CloseMatch` restores it at the trailing edge.
+    before the run it bounds — first stashing the origin it displaces in `saved`, a slot of the production's own that
+    its `CloseMatch` names to put it back. `CloseMatch` restores it at the trailing edge.
     """
+
+    saved: object = None
 
     def references(self):
         return []
@@ -802,10 +805,15 @@ class OpenMatch:
 @dataclass(frozen=True)
 class CloseMatch:
     """
-    A zero-width action that restores the `(match)` origin to the production's own — `env["match_start"]`, the origin it
-    was entered under, held on its frame not a stack, since a `(<<<)` never nests within one body. Paired with
-    `OpenMatch`: `Bound(item)` lowers to `OpenMatch, item, CloseMatch`.
+    A zero-width action that restores the `(match)` origin to `origin` — the slot its `OpenMatch` stashed the displaced
+    one in, so the pair says between them what it does and no frame is read. Paired with `OpenMatch`: `Bound(item)`
+    lowers to `OpenMatch(slot), item, CloseMatch(slot)`.
+
+    Where `origin` is `None` the restore reads the origin the production was entered under, held on its frame — what a
+    `CloseMatch` minted without its opening half falls back to.
     """
+
+    origin: object = None
 
     def references(self):
         return []
@@ -816,11 +824,14 @@ class OpenWindow:
     """
     A zero-width action that opens a `(max)` window `limit` characters wide, past which a committed consume fails the
     cut `message` names. Only the outermost applies — a nested one keeps the outer edge, being the buffer — and
-    `CloseWindow` restores it at the trailing edge.
+    `CloseWindow` restores it at the trailing edge, from the slots `saved` and `saved_message` this one stashes the
+    window it displaces in.
     """
 
     limit: object
     message: str
+    saved: object = None
+    saved_message: object = None
 
     def references(self):
         return _refs(self.limit)  # `message` is a message key, not a production
@@ -829,10 +840,15 @@ class OpenWindow:
 @dataclass(frozen=True)
 class CloseWindow:
     """
-    A zero-width action that restores the `(max)` window to the production's own — `env["ceiling"]`, the window it was
-    entered under, held on its frame not a stack, since a `(max)` never nests within one body. Paired with `OpenWindow`:
-    `Max(limit, message, item)` lowers to `OpenWindow(limit, message), item, CloseWindow`.
+    A zero-width action that restores the `(max)` window to `ceiling` and `message` — the slots its `OpenWindow` stashed
+    the window it displaced in, so the pair says between them what it does and reads no frame. Paired with `OpenWindow`:
+    `Max(limit, message, item)` lowers to `OpenWindow(limit, message, slots), item, CloseWindow(slots)`.
+
+    Where they are `None` the restore reads the window the production was entered under, held on its frame.
     """
+
+    ceiling: object = None
+    message: object = None
 
     def references(self):
         return []
