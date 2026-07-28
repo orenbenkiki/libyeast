@@ -467,6 +467,15 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      within-production twin of the sweep's behavioural merge, which today reaches whole productions only.
    - `drop-dead-ways` — a way whose gate is disjoint from every character its production can be entered on is
      unreachable. *Reads the root-down entry sets the meter already computes.*
+   - `clear-params` — landed, and the twin of the one below. Where a production that does not need a parameter calls
+     into ones that do, it clears it where the last of them returns: `ClearVar(param)`, put after that call by the same
+     device the pop uses, and `x-clear-m` where the clear is the whole body. *A production that needs a parameter is
+     inside the region it measures, so nothing between the outermost frame to need it and the innermost is touched.*
+     Clearing is what restoring would be, there being no outer value to restore to — which is the asymmetry with the
+     indentation, and why `n` wanted a stack where `m` and `f` want a clear. Twelve of them, eight for `m` and four for
+     `f`. Reading a parameter nothing holds a value for is a fault, so what the clears assert is the corpus's to refuse:
+     over 694 fixtures and 402 suite cases no read ever crosses one, and the refusal was proved live by putting the
+     clears inside the region instead and watching it fire.
    - `prune-params` — landed. A parameter a production does not need goes, with the argument every call passed it: what
      a production needs is what reaches a read — its own gate and actions, and whatever it hands to a production that
      needs one — and a write counts, a binding a frame does not declare being dropped on return. *A least fixpoint, so a
@@ -483,9 +492,9 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
    and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
    Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
-   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 240. Of those, 133
+   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 252. Of those, 133
    offer a blind choice between a way that reads and one that does not — the debt, and the decision points that are a
-   call to one of them against its zero-width way are the greedy optional. The other 107 match empty single-way, which
+   call to one of them against its zero-width way are the greedy optional. The other 119 match empty single-way, which
    is the shape the canonical form mints on purpose and the invariant below allows. It is not a shape awaiting a
    certificate; it is the elimination not having been carried through. The empty match is moved one node sideways into
    an inline choice, and the first step that gives a choice a production of its own hands it back. Five moves, in this

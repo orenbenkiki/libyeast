@@ -315,7 +315,7 @@ All notable changes to this project are documented here. The format follows
   an alias context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's
   rejection: nothing can be seen to refuse what matches at every position, and a consuming copy that says no where the
   base matched empty would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus
-  parses green in that hybrid the whole way, so the meter is honest at every step: 596 of 764 productions run committed,
+  parses green in that hybrid the whole way, so the meter is honest at every step: 608 of 776 productions run committed,
   and the 168 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
   first conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix
   wrappers so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan
@@ -378,12 +378,21 @@ All notable changes to this project are documented here. The format follows
   The recovery now takes back what the abandoned parse never got to. The comparison stays live at `push-indents`, the
   last grammar to carry both.
 
-  `prune-params` behind it drops a parameter no production needs, with the argument every call passed it: what a
-  production needs is what reaches a read — its own gate and actions, and whatever it hands to a production that needs
-  one — and a write counts, since a binding a frame does not declare is dropped on return. A least fixpoint, so a
-  parameter a chain of frames only relayed dies through the chain at once: `m` goes from 91 declarations to 76 and `f`
-  from 15 to 9. It found `_is_using` answering `False` for a `Param` a field holds directly, the generic walker never
-  visiting one — latent, its two callers asking only about the parameters where the two agree, and corrected here.
+  `clear-params` says where a parameter stops applying. A production that needs one stands inside the region it measures
+  — whether it reads it or only hands it to something that reads — so the frame above them all is where the value ends,
+  and it clears it where the last call needing it returns. There being no outer value to restore to, the clear is what a
+  restore would be, which is why the indentation wanted a stack and `m` and `f` want this: twelve clears, eight for `m`
+  and four for `f`, placed by the device the pop already uses, with `x-clear-m` where the clear is the whole body.
+  Reading a parameter nothing holds a value for is a fault, so the placement is the corpus's to refuse rather than an
+  argument's to make: no read crosses a clear over 694 fixtures and 402 suite cases, and the refusal was proved live by
+  placing the clears inside the region instead and watching it fire.
+
+  `prune-params` drops a parameter no production needs, with the argument every call passed it: what a production needs
+  is what reaches a read — its own gate and actions, and whatever it hands to a production that needs one — and a write
+  counts, since a binding a frame does not declare is dropped on return. A least fixpoint, so a parameter a chain of
+  frames only relayed dies through the chain at once: `m` goes from 91 declarations to 76 and `f` from 15 to 9. It found
+  `_is_using` answering `False` for a `Param` a field holds directly, the generic walker never visiting one — latent,
+  its two callers asking only about the parameters where the two agree, and corrected here.
 
   Neither step decides anything, and the meter's fall is not theirs. Each leaves it exactly where it found it on its own
   output — 473 points through `read-indents`, 426 through `prune-params` — and every point that goes, goes to the sweep:

@@ -19,6 +19,7 @@ import ir
 # Nodes that begin no character — a match of one starts no run, so it adds nothing to a first-character set: the
 # lookaheads, the epsilon and marker emitters, the guards, and the parameter actions.
 _ZERO_WIDTH = ir.ZERO_WIDTH + (  # in alphabetical order
+    ir.ClearVar,
     ir.CloseWindow,
     ir.CommitProvisional,
     ir.Cut,
@@ -2497,6 +2498,22 @@ def reorder_declared(grammar, namer):
     return result
 
 
+def _framed(minted, namer, owner, actions, call=None, tail=None, name=None):
+    """
+    A reference to a minted production holding `actions`, then `call`, then `tail` — the frame an action needs where the
+    alternative wanting it has nowhere to put it, nothing of one running after the call it makes.
+
+    `name` names the production where every site wants the same body, so the one they share is named for what it does
+    rather than left to the sweep to merge and name it after whichever site minted it first. Without one it is a fresh
+    helper of `owner`. The production declares no parameters and reads the ambient ones, so what its calls pass is
+    evaluated inside it, after whatever the actions did.
+    """
+    name = name or namer.fresh(owner)
+    way = ir.Alternative(ir.Gate(None, ()), tuple(actions), call, tail)
+    minted[name] = ir.Prod(0, name, (), ir.Choice((way,)))
+    return ir.Ref(name, ())
+
+
 # The base the production that takes an indentation back off is named off, where the pop is all it does. It names no
 # rule of the grammar's own, the pop belonging to no rule: every push that carries on nowhere else carries on here.
 _POP_INDENT_BASE = "x-pop-indent"
@@ -2531,22 +2548,13 @@ def push_indents(grammar, namer):
         return None if isinstance(level, ir.Param) and level.name == "n" else level
 
     def restores(owner, continuation):
-        """
-        `continuation` behind a production of its own that takes the indentation back off ahead of it. With no
-        continuation the pop is the whole body, which is one production however many sites want it, named for what it
-        does rather than left to the sweep to merge and name after whichever site minted it first.
-        """
-        name = pop_indent if continuation is None else namer.fresh(owner)
-        way = ir.Alternative(ir.Gate(None, ()), (ir.PopIndent(),), None, continuation)
-        minted[name] = ir.Prod(0, name, (), ir.Choice((way,)))
-        return ir.Ref(name, ())
+        """`continuation` behind a production of its own that takes the indentation back off ahead of it."""
+        shared = pop_indent if continuation is None else None
+        return _framed(minted, namer, owner, (ir.PopIndent(),), tail=continuation, name=shared)
 
     def wrapped(owner, call, level):
         """`call` behind a production of its own that pushes `level` and carries on where the pop takes it back."""
-        name = namer.fresh(owner)
-        way = ir.Alternative(ir.Gate(None, ()), (ir.PushIndent(level),), call, restores(owner, None))
-        minted[name] = ir.Prod(0, name, (), ir.Choice((way,)))
-        return ir.Ref(name, ())
+        return _framed(minted, namer, owner, (ir.PushIndent(level),), call=call, tail=restores(owner, None))
 
     def pushed(alternative, owner):
         way = alternative
@@ -2673,6 +2681,57 @@ def prune_params(grammar, namer):
         name: dataclasses.replace(production, params=surviving[name], body=pruned(production.body))
         for name, production in grammar.items()
     }
+
+
+# The base a production that says a parameter has stopped applying is named off, one per parameter — `x-clear-m` where
+# the clear is all it does, the twin of `x-pop-indent` and named for the same reason.
+_CLEAR_BASE = "x-clear"
+
+
+def clear_params(grammar, namer):
+    """
+    Say where a parameter stops applying: the production above the ones that need it clears it where the last of them
+    returns.
+
+    A production that needs a parameter stands inside the region the parameter measures — whether it reads it or only
+    hands it to something that reads — so nothing between the outermost frame to need it and the innermost is touched.
+    The frame above them holds no value of its own for it, which is why the clear is what a restore would be: there is
+    nothing to restore to. Past the clear a read takes the unset value a fresh parse gives, and reading one is a fault
+    rather than a measurement of a construct that has ended.
+    """
+    minted = {}
+    needs = {
+        param: _needing(grammar, param)
+        for param in {param for production in grammar.values() for param in production.params}
+    }
+    shared = {param: namer.fresh(f"{_CLEAR_BASE}-{param}") for param in sorted(needs)}
+
+    def stops(way, owner, param):
+        """`way` with the clear where the last call needing `param` returns, or `way` where none of them does."""
+        inside = {reference.name for reference in (way.first, way.second, way.recover) if reference is not None}
+        if way.second is not None and way.second.name in needs[param]:
+            # The last one is the continuation, and nothing of this way outlives it: the call takes a frame of its own,
+            # and the clear is what that frame carries on at.
+            tail = _framed(minted, namer, owner, (ir.ClearVar(param),), name=shared[param])
+            return dataclasses.replace(way, second=_framed(minted, namer, owner, (), way.second, tail))
+        if inside & needs[param]:
+            bare = shared[param] if way.second is None else None
+            return dataclasses.replace(
+                way, second=_framed(minted, namer, owner, (ir.ClearVar(param),), tail=way.second, name=bare)
+            )
+        return way
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            for param in sorted(needs):  # sorted, so the helpers a run mints carry the same names as the last one's
+                if name in needs[param]:
+                    continue  # inside the region, where the parameter still applies
+                body = ir.Choice(tuple(stops(way, name, param) for way in body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
+    result.update(minted)
+    return result
 
 
 def extend_returns(grammar, namer):
@@ -3665,6 +3724,7 @@ STEPS = [
     ("push-indents", push_indents),
     ("read-indents", read_indents),
     ("prune-params", prune_params),
+    ("clear-params", clear_params),
 ]
 
 

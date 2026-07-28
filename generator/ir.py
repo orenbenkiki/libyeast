@@ -654,6 +654,23 @@ class SetVar:
 
 
 @dataclass(frozen=True)
+class ClearVar:
+    """
+    A zero-width action that says `param` stops applying here: past it, nothing holds a value for it, and reading one is
+    a fault rather than whatever was left behind.
+
+    Where a construct that measures `param` returns to a caller with none of its own, the value has no further meaning —
+    and a refusal is what says so, where leaving it standing would let a later read take a measurement of something that
+    has ended and no gate would see it happen.
+    """
+
+    param: str
+
+    def references(self):
+        return []
+
+
+@dataclass(frozen=True)
 class Increase:
     """
     `(increase)`: increase indentation parameter `param` to the current column — `param = max(param, column)` — a

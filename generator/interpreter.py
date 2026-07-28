@@ -431,6 +431,10 @@ def evaluate(expression, emitter, grammar):
             held = _indent_in_force(emitter)
             if held != value:
                 raise AssertionError(f"the stack holds an indentation of {held!r} where the parameter is {value!r}")
+        if value is None and not emitter.passing_arguments:
+            # Nothing holds a value for it: either no construct has measured one yet or a `ClearVar` has said the one
+            # that did has ended. Passing it on is not reading it — an out-parameter travels to its setter unset.
+            raise AssertionError(f"`{expression.name}` is read where nothing holds a value for it")
         return value
     if isinstance(expression, ir.Indent):
         return _indent(emitter)
@@ -878,6 +882,13 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.SetVar):
         checkpoint = emitter.checkpoint()
         emitter.env[node.param] = evaluate(node.value, emitter, grammar)
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
+    if isinstance(node, ir.ClearVar):
+        checkpoint = emitter.checkpoint()
+        emitter.env[node.param] = None  # back to the state a fresh parse gives it, which reading is a fault
         if k():
             return True
         emitter.rewind(checkpoint)
