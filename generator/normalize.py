@@ -2561,6 +2561,40 @@ def push_indents(grammar, namer):
     return result
 
 
+def read_indents(grammar, namer):
+    """
+    Read the indentation off the stack rather than out of a parameter.
+
+    Every read of `n` becomes `Indent`, the indentation in force, which is what the pushes put there; the declaration
+    goes from every production that carried it and the argument from every call that passed it. A call that changes the
+    indentation says so with its push and nothing else, and one that does not says nothing at all.
+
+    What holds this is the corpus and the run's own comparison: every read of `n` was held to the stack agreeing with it
+    over the whole suite before the reads became the stack's. The comparison stays live where both mechanisms stand,
+    which is the grammar this runs on rather than the one it produces.
+    """
+    at = {name: production.params.index("n") for name, production in grammar.items() if "n" in production.params}
+
+    def dropped(node):
+        """`node` with the indentation argument gone from every call whose callee no longer declares one."""
+        node = ir.rebuilt(node, dropped)
+        if not isinstance(node, ir.Ref) or node.name not in at:
+            return node
+        index = at[node.name]
+        if index >= len(node.args):  # a call that left it out read the ambient one, and has nothing to drop
+            return node
+        return dataclasses.replace(node, args=node.args[:index] + node.args[index + 1 :])
+
+    return {
+        name: dataclasses.replace(
+            production,
+            params=tuple(parameter for parameter in production.params if parameter != "n"),
+            body=dropped(_bound(production.body, {"n": ir.Indent()})),
+        )
+        for name, production in grammar.items()
+    }
+
+
 def extend_returns(grammar, namer):
     """
     The grammar with each `DECLARED_EXTENSIONS` site folded: the site's one way must be a call and a continuation whose
@@ -3549,6 +3583,7 @@ STEPS = [
     ("reorder-declared", reorder_declared),
     ("extend-returns", extend_returns),
     ("push-indents", push_indents),
+    ("read-indents", read_indents),
 ]
 
 

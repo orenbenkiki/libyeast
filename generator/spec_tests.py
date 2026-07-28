@@ -36,6 +36,11 @@ DEFAULTS = {"r": "n"}
 # entering a production that declares one enters with it unset, which is what a fresh parse gives it.
 DETECTED = ("m", "f")
 
+# The parameter a run is entered under rather than a production declaring it: past `read-indents` the indentation is the
+# stack's, pushed where it changes, so a fixture naming `n` seeds that stack and no production takes it as an argument.
+# A fixture keeps naming it either way, being what the run is entered under whichever holds it.
+ENTERED = ("n",)
+
 # A production name is the leading run of a filename, up to its first `.`; a parameter is a `.<name>=<value>` segment.
 _PARAMETER = re.compile(r"\.([nctr])=([^.]+)")
 
@@ -82,10 +87,11 @@ def runnable_fault(fixture, grammar):
     """
     Return None if `grammar` can run `fixture`, else a one-line reason it cannot.
 
-    Runnable means the grammar has the production and declares every parameter the filename supplies, and the filename
-    supplies every parameter the grammar declares but for the ones `DEFAULTS` answers for and the `DETECTED` ones a
-    production binds for itself rather than being passed. This is the structural test the interpreter driver filters on;
-    that the supplied values are ones the grammar understands is a separate data check the reference-test gate makes.
+    Runnable means the grammar has the production and declares every parameter the filename supplies but for the
+    `ENTERED` ones the run is entered under, and the filename supplies every parameter the grammar declares but for the
+    ones `DEFAULTS` answers for and the `DETECTED` ones a production binds for itself rather than being passed. This is
+    the structural test the interpreter driver filters on; that the supplied values are ones the grammar understands is
+    a separate data check the reference-test gate makes.
     """
     name, runtime = ir.entry(grammar, fixture.production, fixture.parameters)
     production = grammar.get(name)
@@ -93,8 +99,8 @@ def runnable_fault(fixture, grammar):
         return "not a production of the official grammar"
     given = set(runtime)  # the finite parameters a monomorphized copy fixes are in its name, not its arguments
     wanted = set(production.params)
-    if given - wanted:
-        listed = ", ".join(sorted(given - wanted))
+    if given - wanted - set(ENTERED):
+        listed = ", ".join(sorted(given - wanted - set(ENTERED)))
         declared = ", ".join(production.params) or "none"
         return f"parameters {{{listed}}} are not the grammar's {{{declared}}}"
     if wanted - given - set(DEFAULTS) - set(DETECTED):

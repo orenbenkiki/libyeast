@@ -370,15 +370,21 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      actions closing a scope it did not open, and the fold's own refusal of the same. All three existed because a close
      read its own frame, and none of them has a reason now.
    - What stays implicit is the `(set)` target, a name rather than an expression.
-1. *`n` on the same stack.* `n` is a parameter today, put in scope by the call rather than by an action, and the call
-   takes it back out on the way home. `PushIndent(n)`/`PopIndent` make it what the code already is: pushed where it
-   changes and popped where it stops applying, by actions that say so. Thirty-three call sites pass an `n` that differs
-   from the caller's; the other seven hundred pass it through, and under a stack they push nothing at all.
-   - The pushes are minted and the parameter still stands beside them, every read of `n` held to the stack agreeing with
-     it — the corpus deciding whether they stand where they should rather than an argument deciding. What remains is to
-     drop the parameter, and have `monomorphize`, the FIRST tables and the certificates read the top instead; with it
-     goes the call argument that still passes the same value, and the one suppression the two mechanisms need while both
-     run, where that argument reads `n` under the push its own value just made.
+1. *`n` on the same stack* — done. `n` was a parameter, put in scope by the call rather than by an action, and taken
+   back out on the way home. `push-indents` mints a `PushIndent` at each of the thirty-three calls measured against an
+   `n` other than the one in force — the other seven hundred passed it through and push nothing — and `read-indents`
+   then drops the parameter: every read becomes `Indent`, the indentation in force, and the declaration and the argument
+   go with it. The final grammar declares `m` and `f` and nothing else.
+   - What held it: the two mechanisms stood side by side for a whole gate, every read of `n` compared against the stack
+     over 694 fixtures and 402 suite cases before the reads became the stack's. The comparison is live still, at
+     `push-indents`, which is the last grammar carrying both — so the drop is proved rather than argued, and the
+     suppression the two need while both run stays where they both run.
+   - The drop decides nothing, and the meter's fall is not its doing: on the step's own output the meter is unmoved at
+     473 points, and the 47 it loses are the sweep's, sixteen productions merging once the argument stopped telling them
+     apart. Nine of those carried conflicts. Simplification, not determinization, and worth keeping straight.
+   - What the interpreter had to be told: `<auto-detect-indent>` read `n` out of the environment directly rather than
+     through a `Param`, so no rewrite could see it. The indentation in force is one accessor now, answering from the
+     stack where the grammar pushes and from the parameter where it does not.
    - The pop is a production the push carries on at, not a property of the edge: a call measured against its own
      indentation carries on where that indentation comes back off, and then wherever the alternative was carrying on.
      One production is the pop and nothing else — `x-pop-indent`, shared by every push with nowhere else to go — and the
@@ -470,10 +476,10 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
    and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
    Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
-   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline moves it by 22 between them. Of the
-   265 that match empty at the end, 147 offer a blind choice between a way that reads and one that does not — the debt,
+   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline moves it by 6 between them. Of the
+   249 that match empty at the end, 137 offer a blind choice between a way that reads and one that does not — the debt,
    and the decision points that are a call to one of them against its zero-width way are the greedy optional. The other
-   118 match empty single-way, which is the shape the canonical form mints on purpose and the invariant below allows. It
+   112 match empty single-way, which is the shape the canonical form mints on purpose and the invariant below allows. It
    is not a shape awaiting a certificate; it is the elimination not having been carried through. The empty match is
    moved one node sideways into an inline choice, and the first step that gives a choice a production of its own hands
    it back. Five moves, in this order, each corpus-held:
@@ -508,8 +514,8 @@ of it. So the invariant covers state, and the pending run is accounted for separ
 **Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
 at every hypothetical entry — a production undecidable on its own is no conflict where every context a root parse
 reaches it under decides it, one level of inlining in. So the meter counts root-reachable decision points: each a
-production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 473
-undecided points across 181 productions — 181 also being the isolation count, printed beside it as the diagnostic it now
+production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 426
+undecided points across 172 productions — 172 also being the isolation count, printed beside it as the diagnostic it now
 is — driven to none, at which point the meter becomes a gate. A known over-count is the greedy optional: a call then
 nothing, against taking none, which is the shape the ε-elimination distributes to every site a nullable production was
 called from — decided by order and the callee's sureness, not by character disjointness, and the certificate for it is

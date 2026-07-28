@@ -115,6 +115,19 @@ class Match:
 
 
 @dataclass(frozen=True)
+class Indent:
+    """
+    The indentation in force: what the top of the stack holds, and what the characters here are measured against.
+
+    A value read off the stack rather than a parameter passed to get here — `PushIndent` and `PopIndent` are what put it
+    there and take it back, so nothing declares it and no call carries it.
+    """
+
+    def references(self):
+        return []
+
+
+@dataclass(frozen=True)
 class AutoDetectIndent:
     """
     `<auto-detect-indent>`: the indentation of the next line that holds a character other than a space, less `n`.

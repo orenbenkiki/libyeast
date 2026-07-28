@@ -432,6 +432,8 @@ def evaluate(expression, emitter, grammar):
             if held != value:
                 raise AssertionError(f"the stack holds an indentation of {held!r} where the parameter is {value!r}")
         return value
+    if isinstance(expression, ir.Indent):
+        return _indent(emitter)
     if isinstance(expression, ir.Match):
         # The open run's text: what the rule has just matched, still in hand. Every unit in it is a character — the one
         # rule that reads it matches a digit — so its codepoints reconstruct the text.
@@ -454,7 +456,8 @@ def evaluate(expression, emitter, grammar):
     if isinstance(expression, ir.AutoDetectInLineIndent):
         return max(1, _leading_spaces(emitter))
     if isinstance(expression, ir.AutoDetectIndent):
-        return max(1, _detect_indent(emitter) - emitter.env.get("n", 0))
+        held = _indent(emitter)
+        return max(1, _detect_indent(emitter) - (0 if held is None else held))
     if isinstance(expression, ir.Ref):
         production = grammar[expression.name]
         arguments = tuple(evaluate(argument, emitter, grammar) for argument in expression.args)
@@ -501,6 +504,15 @@ def _indent_in_force(emitter):
         if kind == "indent":
             return value
     return None
+
+
+def _indent(emitter):
+    """
+    The indentation in force, read from whichever mechanism the grammar carries: the stack where it pushes, and the
+    parameter where it does not. A grammar that pushes is held to the two agreeing at every read of `n`, so this is one
+    value read two ways rather than a choice between two answers.
+    """
+    return _indent_in_force(emitter) if emitter.holds_indent else emitter.env.get("n")
 
 
 def _probe(pattern, emitter, grammar):
