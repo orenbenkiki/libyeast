@@ -2864,14 +2864,20 @@ _CLEAR_BASE = "x-clear"
 
 def clear_params(grammar, namer):
     """
-    Say where a parameter stops applying: the production above the ones that need it clears it where the last of them
-    returns.
+    Clear a parameter where the last call needing it returns, in the productions that do not need it themselves.
 
-    A production that needs a parameter stands inside the region the parameter measures — whether it reads it or only
-    hands it to something that reads — so nothing between the outermost frame to need it and the innermost is touched.
-    The frame above them holds no value of its own for it, which is why the clear is what a restore would be: there is
-    nothing to restore to. Past the clear a read takes the unset value a fresh parse gives, and reading one is a fault
-    rather than a measurement of a construct that has ended.
+    A production needs a parameter where it reads it or hands it to something that reads, so the ones that need it are a
+    region of the call graph, and nothing between the outermost and the innermost is touched. Past a clear a read takes
+    the unset value a fresh parse gives, and reading one is a fault.
+
+    What the corpus holds is narrower than where the clears stand, and the difference is load-bearing. A clear writes
+    the frame it runs in, so it reaches that frame and whatever it calls, and no read there crosses one over every
+    fixture and suite case. It says nothing about a frame above, a clear never reaching one — so nothing has yet asked
+    whether a caller still wants the value. Some do: a block collection reads its own on the next entry of its loop, and
+    a clear that escaped its frame would take that away, which is what a global for `m` runs into. The clears go by the
+    call graph and the call graph is not the control flow — a production reached between two reads by an enclosing loop
+    is outside the region by this rule and inside it by the parse. Hoisting a loop's push and pop out of it is what
+    would make the two agree.
     """
     minted = {}
     needs = {
