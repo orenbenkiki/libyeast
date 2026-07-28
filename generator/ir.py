@@ -438,10 +438,6 @@ class Alternative:
     names a recovery production, a cut unwinding out of `first` stops at this frame — the error is emitted, the markers
     `first` opened are closed down to here, `recover` matches what this rule gives up, and the parse resumes at the
     frame's own return as though `first` had matched. A recovery that does not match sends the cut on up.
-
-    `pops_indent` says the return itself takes an indentation off the stack, before `second` runs: an alternative that
-    pushed one for `first` to be measured against is where that indentation stops applying, and there is nowhere else to
-    say so — nothing of this alternative runs after `first` returns, and `second` is shared with other callers.
     """
 
     gate: object
@@ -449,7 +445,6 @@ class Alternative:
     first: object = None
     second: object = None
     recover: object = None
-    pops_indent: bool = False
 
     def references(self):
         return _refs(self.gate, self.actions, self.first, self.second, self.recover)
@@ -717,7 +712,8 @@ class Emit:
 class PushIndent:
     """
     A zero-width action that pushes `level` onto the stack as the indentation the characters after it are measured
-    against. It comes off where the call it was pushed for is done with it, which the alternative's `pops_indent` says.
+    against. It comes off where the call it was pushed for is done with it, which is the production that call carries on
+    at.
     """
 
     level: object
@@ -729,8 +725,9 @@ class PushIndent:
 @dataclass(frozen=True)
 class PopIndent:
     """
-    A zero-width action that takes the indentation in force off the stack, putting back the one it displaced. Not
-    written among an alternative's actions — nothing runs there after its call returns — but by `pops_indent`.
+    A zero-width action that takes the indentation in force off the stack, putting back the one it displaced. It leads a
+    production of its own rather than standing beside the call it answers for: nothing of an alternative runs after its
+    call returns, so the push carries on at that production and the pop is what coming back means.
     """
 
     def references(self):

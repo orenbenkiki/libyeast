@@ -758,11 +758,7 @@ def match(node, emitter, grammar, k):
         # A recovery riding the edge is the `(recover)` scope over the call it protects — the same handler, its resume
         # point the frame's own return, which is exactly the continuation the call already has here.
         first = node.first if node.recover is None else ir.Recover(node.recover, node.first)
-        # The indentation this alternative pushed stops applying where its call returns, which is the one point nothing
-        # of the alternative's own runs at — so the flag puts the pop there, between the call and the continuation.
-        returned = (ir.PopIndent(),) if node.pops_indent else ()
-        parts += tuple(item for item in (first,) if item is not None) + returned
-        parts += tuple(item for item in (node.second,) if item is not None)
+        parts += tuple(item for item in (first, node.second) if item is not None)
         return match(ir.Seq(parts), emitter, grammar, k)
     if isinstance(node, ir.ConsumeChar):
         if emitter.position >= len(emitter.chars):

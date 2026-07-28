@@ -2486,20 +2486,28 @@ def reorder_declared(grammar, namer):
     return result
 
 
+# The base the production that takes an indentation back off is named off, where the pop is all it does. It names no
+# rule of the grammar's own, the pop belonging to no rule: every push that carries on nowhere else carries on here.
+_POP_INDENT_BASE = "x-pop-indent"
+
+
 def push_indents(grammar, namer):
     """
     Say where the indentation changes, and where the change stops applying.
 
-    An alternative whose call passes an `n` other than the one in force pushes it and marks its return as the point it
-    comes back off, which is where the call is done being measured against it. The parameter stays for now, and the run
-    holds the two to each other — every read of `n` compares it against the stack — so the corpus decides whether the
-    pushes stand where they should rather than an argument deciding. A call passing the `n` in force pushes nothing.
+    An alternative whose call passes an `n` other than the one in force pushes it and carries on at a production that
+    takes it back — the pop, and then wherever the alternative was carrying on. So the point an indentation stops
+    applying is an action the grammar writes, in the one place nothing of the alternative's own runs. The parameter
+    stays for now, and the run holds the two to each other — every read of `n` compares it against the stack — so the
+    corpus decides whether the pushes stand where they should rather than an argument deciding. A call passing the `n`
+    in force pushes nothing.
 
-    A tail call is the same shape with an empty continuation: nothing runs after it in this alternative either way, so
-    it becomes the call and the return is where its push comes off, which is what a tail call always meant.
+    The minted production declares no parameters and reads the ambient ones, so a continuation's arguments are evaluated
+    inside it, after the pop, where the stack and the parameter agree.
     """
 
     minted = {}
+    pop_indent = namer.fresh(_POP_INDENT_BASE)
 
     def changed(call):
         """The indentation `call` is measured against where that is not the one in force, else `None`."""
@@ -2511,23 +2519,36 @@ def push_indents(grammar, namer):
         level = call.args[callee.params.index("n")]
         return None if isinstance(level, ir.Param) and level.name == "n" else level
 
+    def restores(owner, continuation):
+        """
+        `continuation` behind a production of its own that takes the indentation back off ahead of it. With no
+        continuation the pop is the whole body, which is one production however many sites want it, named for what it
+        does rather than left to the sweep to merge and name after whichever site minted it first.
+        """
+        name = pop_indent if continuation is None else namer.fresh(owner)
+        way = ir.Alternative(ir.Gate(None, ()), (ir.PopIndent(),), None, continuation)
+        minted[name] = ir.Prod(0, name, (), ir.Choice((way,)))
+        return ir.Ref(name, ())
+
     def wrapped(owner, call, level):
-        """`call` behind a production of its own that pushes `level` and takes it back when the call returns."""
+        """`call` behind a production of its own that pushes `level` and carries on where the pop takes it back."""
         name = namer.fresh(owner)
-        way = ir.Alternative(ir.Gate(None, ()), (ir.PushIndent(level),), call, None, None, True)
+        way = ir.Alternative(ir.Gate(None, ()), (ir.PushIndent(level),), call, restores(owner, None))
         minted[name] = ir.Prod(0, name, (), ir.Choice((way,)))
         return ir.Ref(name, ())
 
     def pushed(alternative, owner):
         way = alternative
         # A continuation that changes the indentation has no return of this alternative's to come back off — nothing of
-        # it runs after the continuation — so the push and its return go into a production holding that call alone.
+        # it runs after the continuation — so the push and its pop go into a production holding that call alone.
         level = changed(way.second)
         if level is not None:
             way = dataclasses.replace(way, second=wrapped(owner, way.second, level))
         level = changed(way.first)
         if level is not None:
-            way = dataclasses.replace(way, actions=way.actions + (ir.PushIndent(level),), pops_indent=True)
+            way = dataclasses.replace(
+                way, actions=way.actions + (ir.PushIndent(level),), second=restores(owner, way.second)
+            )
         return way
 
     result = {}

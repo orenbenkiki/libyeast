@@ -379,10 +379,18 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      drop the parameter, and have `monomorphize`, the FIRST tables and the certificates read the top instead; with it
      goes the call argument that still passes the same value, and the one suppression the two mechanisms need while both
      run, where that argument reads `n` under the push its own value just made.
+   - The pop is a production the push carries on at, not a property of the edge: a call measured against its own
+     indentation carries on where that indentation comes back off, and then wherever the alternative was carrying on.
+     One production is the pop and nothing else — `x-pop-indent`, shared by every push with nowhere else to go — and the
+     rest hold a continuation behind it. Each declares no parameters and reads the ambient ones, so a continuation's
+     arguments are evaluated inside it, after the pop, where the stack and the parameter agree.
    - What the check caught, none of which an argument would have: a continuation that changes the indentation has no
-     return of its alternative's to take it back, and needs a production holding that call alone; a tail call is the
-     same shape with an empty continuation; and an in-grammar `(recover)` left the pushes of the parse it abandoned
-     standing, where `_fail` had always cleared them — a real fault, not scaffolding, found because every read compared.
+     return of its alternative's to take it back, and needs a production holding that call alone; and an in-grammar
+     `(recover)` left the pushes of the parse it abandoned standing, where `_fail` had always cleared them — a real
+     fault, not scaffolding, found because every read compared.
+   - Unchecked, and holding by construction rather than by a refusal: a `(recover)` rebinds `n` exactly as the call it
+     rides does, at all seven sites, which is why the push made for the call answers for the recovery too. Nothing
+     compares the two, and `push-indents` does not look at a recovery's arguments at all.
 1. *The call written out.* `first` and `second` are a call and where to carry on, which the machine performs — the last
    thing a production does that the grammar does not spell. `PushContinuation(second)` and a jump to `first` say it, and
    a `Pop` and a jump say the way home. Nothing is left that pushes or pops without an action naming it, and an inlining
@@ -459,11 +467,16 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      is refused by the staleness net already; a declaration a transformation makes unnecessary must be removed in the
      same change, not left standing because it still parses.
 1. *Carrying the elimination through, which is where the meter's mass actually is.* The grammar is proper at
-   `eliminate-empties` and improper again sixteen steps later — 256 of its 778 productions match empty at the end, and
-   224 of the 473 decision points are that: a call to one of them against its zero-width way, the greedy optional. It is
-   not a shape awaiting a certificate; it is the elimination not having been carried through. The empty match is moved
-   one node sideways into an inline choice, and the first step that gives a choice a production of its own hands it
-   back. Five moves, in this order, each corpus-held:
+   `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
+   and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
+   Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
+   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline moves it by 22 between them. Of the
+   265 that match empty at the end, 147 offer a blind choice between a way that reads and one that does not — the debt,
+   and the decision points that are a call to one of them against its zero-width way are the greedy optional. The other
+   118 match empty single-way, which is the shape the canonical form mints on purpose and the invariant below allows. It
+   is not a shape awaiting a certificate; it is the elimination not having been carried through. The empty match is
+   moved one node sideways into an inline choice, and the first step that gives a choice a production of its own hands
+   it back. Five moves, in this order, each corpus-held:
    - *The distribution goes outward, into ways.* `Ref(P)` at a site does not become `P_consuming | residue`; the way
      holding it becomes two ways of the enclosing choice. The shortcut sits in three places and all three must go: the
      call site, the consuming copy's body, and `residue` itself, which builds an alternation of empty matches and is the
@@ -497,18 +510,18 @@ at every hypothetical entry — a production undecidable on its own is no confli
 reaches it under decides it, one level of inlining in. So the meter counts root-reachable decision points: each a
 production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 473
 undecided points across 181 productions — 181 also being the isolation count, printed beside it as the diagnostic it now
-is — driven to none, at which point the meter becomes a gate. A known over-count holds 224 of them: the greedy optional
-— a call then nothing, against taking none, which is the shape the ε-elimination distributes to every site a nullable
-production was called from — is decided by order and the callee's sureness, not by character disjointness, and the
-certificate for it is the next to land. They fall into the landings below, one at a time, each corpus-diffed. The
-speculations among them are the deep end, and they are one piece of work rather than several: the five cases spend one
-vocabulary, formalized under *The provisional mechanism*, and are produced by one determinizer rather than hand-cut,
-described under *The synthesis*. The fold is the engine's calibration; the block-structure substrate — the line run and
-its measured column — lands first among what remains, because every trailing run that can end at an indented dedent
-hands its last line to a parent: the reference puts each exiting construct's end markers before the dedent line's
-spaces, and the parent then consumes those spaces as its own indentation, so a site-local committed scan that ate them
-has taken tokens whose markers and owner it cannot restore. The block scalar's empties ride the substrate as the
-engine's first speculation target; the document prefix and the implicit key land after, spending the same shared scan.
+is — driven to none, at which point the meter becomes a gate. A known over-count is the greedy optional: a call then
+nothing, against taking none, which is the shape the ε-elimination distributes to every site a nullable production was
+called from — decided by order and the callee's sureness, not by character disjointness, and the certificate for it is
+the next to land. They fall into the landings below, one at a time, each corpus-diffed. The speculations among them are
+the deep end, and they are one piece of work rather than several: the five cases spend one vocabulary, formalized under
+*The provisional mechanism*, and are produced by one determinizer rather than hand-cut, described under *The synthesis*.
+The fold is the engine's calibration; the block-structure substrate — the line run and its measured column — lands first
+among what remains, because every trailing run that can end at an indented dedent hands its last line to a parent: the
+reference puts each exiting construct's end markers before the dedent line's spaces, and the parent then consumes those
+spaces as its own indentation, so a site-local committed scan that ate them has taken tokens whose markers and owner it
+cannot restore. The block scalar's empties ride the substrate as the engine's first speculation target; the document
+prefix and the implicit key land after, spending the same shared scan.
 
 1. The block-structure work — first, because every speculation that ends at an indented dedent hands its last line to a
    parent — decomposed into small provable moves rather than one surgery. The insight is a factoring: the ways a block

@@ -315,7 +315,7 @@ All notable changes to this project are documented here. The format follows
   an alias context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's
   rejection: nothing can be seen to refuse what matches at every position, and a consuming copy that says no where the
   base matched empty would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus
-  parses green in that hybrid the whole way, so the meter is honest at every step: 597 of 778 productions run committed,
+  parses green in that hybrid the whole way, so the meter is honest at every step: 611 of 792 productions run committed,
   and the 181 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
   first conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix
   wrappers so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan
@@ -332,39 +332,43 @@ All notable changes to this project are documented here. The format follows
   contexts computed root-down as follow classes, a nullable way's begins widened by its context exactly as one level of
   inlining would place them. The certificates sharpened the same way — every ungated way judged by its effective begins,
   not the last alone — which alone proved nine more productions in isolation; the isolation count stays printed as a
-  diagnostic beside the true meter's 473 points across 181 productions, of which 224 are the greedy optional — a way
-  that reads against the zero-width residue behind it, the shape the elimination distributes and the one the
-  certificates still owe. Every step must change the grammar, and one that does not is a fault named where it stands: a
-  step goes idle when what it looks for has stopped reaching it — a shape an earlier step now spells differently, a
-  declared site whose content moved — which is a regression in the step before it rather than a step to leave standing,
-  and it is what caught the line-prefix declarations dissolving the indent scan. The check reads a transform's own
-  output, before the sweep, so a step is judged on what it did rather than on what the sweep did after it; the
-  way-subsumption step retired to it, its shape reaching it nowhere in the pipeline once the universal splicing had
-  absorbed the spliced separations it was written for. `check_normalize` holds every step token-and-event identical over
-  the whole corpus — 694 conformance fixtures and 402 YAML Test Suite cases, seven of them pinning the document-marker
-  boundary the spec's `c-forbidden` spells and the Clojure reference agrees on: `---foo`, `---#foo`, `----` and their
-  `...` kin are content, `--- foo` a boundary, `... foo` malformed; four pinning the sequence dedent hand-off any
-  committed block structure must reproduce — at a dedent each exiting level's end markers stand before the dedent line's
-  indent token, the owner level continues past it, and a zero-column dedent carries no indent token at all; and two
-  pinning the sequence entry's committed dash, the Clojure reference agreeing both are errors — `- @` is an entry whose
-  body fails inside the entry's own committed region, where `-b` is refused at the gate, the sequence closing before a
-  stream-level error — backtracking and hybrid alike — and ends on two own-gates over the result: every long text token,
-  a scalar's text or a name's or the unparsed recovery's, is matched in bulk rather than one character per loop; and
-  every run consumes a character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element
-  or, until determinize supplies the guard that lowers them, a nullable production. No action reads a value off a frame,
-  and the one rule left over what the parse gives back is that pushes and pops balance — held by the run itself, where a
-  `(token)` code popped with none pushed and a `(max)` window closed with none open are each refused where they happen
-  rather than deduced. The apparatus that existed because a close read its own frame is gone with the reason for it: the
-  `code` parameter `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns` each
-  added, the refusal to move a run of actions closing a scope it did not open, and the fold's own refusal of the same.
+  diagnostic beside the true meter's 473 points across 181 productions, among them the greedy optional — a way that
+  reads against the zero-width residue behind it, the shape the elimination distributes and the one the certificates
+  still owe. Every step must change the grammar, and one that does not is a fault named where it stands: a step goes
+  idle when what it looks for has stopped reaching it — a shape an earlier step now spells differently, a declared site
+  whose content moved — which is a regression in the step before it rather than a step to leave standing, and it is what
+  caught the line-prefix declarations dissolving the indent scan. The check reads a transform's own output, before the
+  sweep, so a step is judged on what it did rather than on what the sweep did after it; the way-subsumption step retired
+  to it, its shape reaching it nowhere in the pipeline once the universal splicing had absorbed the spliced separations
+  it was written for. `check_normalize` holds every step token-and-event identical over the whole corpus — 694
+  conformance fixtures and 402 YAML Test Suite cases, seven of them pinning the document-marker boundary the spec's
+  `c-forbidden` spells and the Clojure reference agrees on: `---foo`, `---#foo`, `----` and their `...` kin are content,
+  `--- foo` a boundary, `... foo` malformed; four pinning the sequence dedent hand-off any committed block structure
+  must reproduce — at a dedent each exiting level's end markers stand before the dedent line's indent token, the owner
+  level continues past it, and a zero-column dedent carries no indent token at all; and two pinning the sequence entry's
+  committed dash, the Clojure reference agreeing both are errors — `- @` is an entry whose body fails inside the entry's
+  own committed region, where `-b` is refused at the gate, the sequence closing before a stream-level error —
+  backtracking and hybrid alike — and ends on two own-gates over the result: every long text token, a scalar's text or a
+  name's or the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a
+  character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize
+  supplies the guard that lowers them, a nullable production. No action reads a value off a frame, and the one rule left
+  over what the parse gives back is that pushes and pops balance — held by the run itself, where a `(token)` code popped
+  with none pushed and a `(max)` window closed with none open are each refused where they happen rather than deduced.
+  The apparatus that existed because a close read its own frame is gone with the reason for it: the `code` parameter
+  `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns` each added, the refusal to
+  move a run of actions closing a scope it did not open, and the fold's own refusal of the same.
 
 - The indentation is on the same stack as the code. `push-indents` mints a `PushIndent` at each of the thirty-three
   calls measured against an `n` other than the one in force — the other seven hundred pass it through and push nothing —
-  and marks that alternative's return as where it comes back off, which is the one point nothing of the alternative runs
-  at and the one thing a shared continuation cannot say for itself. A continuation that changes the indentation has no
-  return of its own to take it back, so its call goes into a production holding it alone; a tail call is that same shape
-  with an empty continuation. Every entry on the stack says what kind it is and every pop is held to it, so a pair that
-  has been moved across one it must not cross is refused where it happens.
+  and the call carries on at a production that takes it back: the pop, and then wherever the alternative was carrying
+  on. So the point an indentation stops applying is an action the grammar writes, in the one place nothing of the
+  alternative's own runs, rather than a property of the edge that a shared continuation could not have said for itself.
+  One production is the pop and nothing else, `x-pop-indent`, shared by the nineteen pushes with nowhere else to go; the
+  other fourteen hold a continuation behind it. Each declares no parameters and reads the ambient ones, so a
+  continuation's arguments are evaluated after the pop, where the stack and the parameter agree. A continuation that
+  changes the indentation has no return of its own to take it back, so its call goes into a production holding it alone.
+  Every entry on the stack says what kind it is and every pop is held to it, so a pair that has been moved across one it
+  must not cross is refused where it happens.
 
   The parameter still stands beside the stack, and every read of `n` is held to the two agreeing — which is what found
   all of it, and one fault besides: an in-grammar `(recover)` left standing the pushes of the parse it abandoned, where
