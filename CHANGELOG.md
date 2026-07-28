@@ -315,7 +315,7 @@ All notable changes to this project are documented here. The format follows
   an alias context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's
   rejection: nothing can be seen to refuse what matches at every position, and a consuming copy that says no where the
   base matched empty would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus
-  parses green in that hybrid the whole way, so the meter is honest at every step: 604 of 772 productions run committed,
+  parses green in that hybrid the whole way, so the meter is honest at every step: 603 of 771 productions run committed,
   and the 168 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
   first conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix
   wrappers so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan
@@ -363,12 +363,15 @@ All notable changes to this project are documented here. The format follows
   and the call carries on at a production that takes it back: the pop, and then wherever the alternative was carrying
   on. So the point an indentation stops applying is an action the grammar writes, in the one place nothing of the
   alternative's own runs, rather than a property of the edge that a shared continuation could not have said for itself.
-  A continuation nothing else enters takes the pop at the head of its own ways rather than behind a frame of its own,
-  there being no other way in for it to be wrong for — five do, and one keeps its frame where its arguments hold an
-  `Indent`, those being read before the pop rather than after. What that buys is not the frames: the pop lands in the
-  same action list as the scan that follows it, where moving it is a reorder rather than a rule reading across a call.
-  One production is the pop and nothing else, `x-pop-indent`, shared by the nineteen pushes with nowhere else to go; the
-  other fourteen hold a continuation behind it. Each declares no parameters and reads the ambient ones, so a
+  Whether a frame is what a pop wants is `sink-pops`', on a grammar where every one of them stands: where every
+  reference to a production is a bare pop holder — one ungated way, the pop its only action — the pop leads that
+  production's own ways instead, and the holders are left with nothing of their own for the sweep to splice. There is no
+  other way in for it to be wrong for, however many holders say it. A continuation whose arguments read the indentation
+  keeps its holders, those being read before the pop rather than after, as does one a parse enters by name. Five sink;
+  the three that do not are reached both from a holder and from a way that pushed nothing, which is a refusal rather
+  than a limit — those want their two arrivals split. What it is for is `defer-pops`, which cannot see a pop behind a
+  frame. One production is the pop and nothing else, `x-pop-indent`, shared by the nineteen pushes with nowhere else to
+  go; the other fourteen hold a continuation behind it. Each declares no parameters and reads the ambient ones, so a
   continuation's arguments are evaluated after the pop, where the stack and the parameter agree. A continuation that
   changes the indentation has no return of its own to take it back, so its call goes into a production holding it alone.
   Every entry on the stack says what kind it is and every pop is held to it, so a pair that has been moved across one it

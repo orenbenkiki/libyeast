@@ -2567,33 +2567,12 @@ def push_indents(grammar, namer):
     in force pushes nothing.
 
     The minted production declares no parameters and reads the ambient ones, so a continuation's arguments are evaluated
-    inside it, after the pop, where the stack and the parameter agree.
-
-    A continuation nothing else enters takes the pop at the head of its own ways instead, there being no other way in
-    for the pop to be wrong for — a frame minted to hold one action, where the action can stand in the production it was
-    going to call. Its arguments are then read before the pop rather than after, which is why one holding an `Indent`
-    keeps its frame: everything else a call passes is untouched by what the pop restores.
+    inside it, after the pop, where the stack and the parameter agree. Whether a frame is what the pop wants is
+    `sink-pops`' to say, on a grammar where every one of them stands.
     """
 
     minted = {}
     pop_indent = namer.fresh(_POP_INDENT_BASE)
-    sunk = set()  # the continuations taking the pop into their own ways rather than behind a frame
-    entered = entered_by_name(grammar)
-    callers = collections.Counter(
-        reference.name
-        for production in grammar.values()
-        if isinstance(production.body, ir.Choice)
-        for way in production.body.alternatives
-        for reference in (way.first, way.second, way.recover)
-        if reference is not None
-    )
-
-    def is_sinkable(continuation):
-        """Whether the pop can lead `continuation`'s own ways rather than stand in a frame ahead of it."""
-        if continuation is None or continuation.name in entered or callers[continuation.name] != 1:
-            return False
-        callee = grammar.get(continuation.name)
-        return isinstance(callee, ir.Prod) and isinstance(callee.body, ir.Choice) and not _reads_indent(continuation)
 
     def changed(call):
         """The indentation `call` is measured against where that is not the one in force, else `None`."""
@@ -2606,10 +2585,7 @@ def push_indents(grammar, namer):
         return None if isinstance(level, ir.Param) and level.name == "n" else level
 
     def restores(owner, continuation):
-        """`continuation` with the indentation taken back off ahead of it — in its own ways, or behind a frame."""
-        if is_sinkable(continuation):
-            sunk.add(continuation.name)
-            return continuation
+        """`continuation` behind a production of its own that takes the indentation back off ahead of it."""
         shared = pop_indent if continuation is None else None
         return _framed(minted, namer, owner, (ir.PopIndent(),), tail=continuation, name=shared)
 
@@ -2637,11 +2613,74 @@ def push_indents(grammar, namer):
         if isinstance(body, ir.Choice):
             body = ir.Choice(tuple(pushed(way, name) for way in body.alternatives))
         result[name] = dataclasses.replace(production, body=body)
-    for name in sunk:  # the pop leads every way of a continuation nothing else enters
-        body = result[name].body
-        led = tuple(dataclasses.replace(way, actions=(ir.PopIndent(),) + way.actions) for way in body.alternatives)
-        result[name] = dataclasses.replace(result[name], body=ir.Choice(led))
     result.update(minted)
+    return result
+
+
+def _pop_holder(production):
+    """
+    The continuation a bare pop holder carries on at — one ungated way, the pop its only action, and nothing else of its
+    own — or `None` where `production` is not one. It is what `push-indents` mints wherever an indentation comes off.
+    """
+    ways = production.body.alternatives if isinstance(production.body, ir.Choice) else ()
+    if len(ways) != 1:
+        return None
+    [way] = ways
+    if way.gate.peek is not None or way.gate.guards or way.first is not None or way.recover is not None:
+        return None
+    return way.second if way.actions == (ir.PopIndent(),) else None
+
+
+def sink_pops(grammar, namer):
+    """
+    Put the pop at the head of the production its holders carry on at, where they are the only way in.
+
+    A bare pop holder says the indentation comes off before its continuation runs. Where every reference to that
+    continuation is such a holder, the pop can lead the continuation's own ways instead: there is no other way in for it
+    to be wrong for, and each holder is left with nothing of its own to do, which the sweep splices out. However many
+    holders there are — one indentation coming off before one continuation, said in several places.
+
+    A continuation whose arguments read the indentation keeps its holders, those being read before the pop rather than
+    after; nothing else a call passes is touched by what the pop restores. So is one a parse enters by name, which is
+    reached without a holder having run at all.
+    """
+    holders = {name: _pop_holder(production) for name, production in grammar.items()}
+    holders = {name: tail for name, tail in holders.items() if tail is not None}
+
+    arrivals = collections.defaultdict(list)
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for way in production.body.alternatives:
+            for reference in (way.first, way.second, way.recover):
+                if reference is not None:
+                    arrivals[reference.name].append(name)
+
+    entered = entered_by_name(grammar)
+    sunk = {
+        tail.name
+        for tail in holders.values()
+        if tail.name not in entered
+        and not _reads_indent(tail)
+        and isinstance(grammar.get(tail.name), ir.Prod)
+        and isinstance(grammar[tail.name].body, ir.Choice)
+        and grammar[tail.name].body.alternatives
+        and all(owner in holders for owner in arrivals[tail.name])
+    }
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if name in sunk:
+            body = ir.Choice(
+                tuple(dataclasses.replace(way, actions=(ir.PopIndent(),) + way.actions) for way in body.alternatives)
+            )
+        elif name in holders and holders[name].name in sunk:
+            # Nothing of the holder's own is left. Its call goes in the slot the sweep splices a do-nothing frame from,
+            # a tail call being the same thing in either — so the frame goes with the action that was its reason.
+            way = dataclasses.replace(body.alternatives[0], actions=(), first=holders[name], second=None)
+            body = ir.Choice((way,))
+        result[name] = dataclasses.replace(production, body=body)
     return result
 
 
@@ -3858,6 +3897,7 @@ STEPS = [
     ("extend-returns", extend_returns),
     ("push-indents", push_indents),
     ("read-indents", read_indents),
+    ("sink-pops", sink_pops),
     ("defer-pops", defer_pops),
     ("prune-params", prune_params),
     ("clear-params", clear_params),

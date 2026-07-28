@@ -391,11 +391,8 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      One production is the pop and nothing else — `x-pop-indent`, shared by every push with nowhere else to go — and the
      rest hold a continuation behind it. Each declares no parameters and reads the ambient ones, so a continuation's
      arguments are evaluated inside it, after the pop, where the stack and the parameter agree.
-   - A continuation nothing else enters takes the pop at the head of its own ways instead of behind a frame, there being
-     no other way in for the pop to be wrong for. Five do, and what it buys is not the five frames: the pop lands in the
-     same action list as the scan that follows it, where moving it is a reorder rather than a rule that reads across a
-     call. A continuation whose arguments hold an `Indent` keeps its frame, those being read before the pop rather than
-     after; nothing else a call passes is touched by what the pop restores.
+   - Whether a frame is what a pop wants is `sink-pops`', on a grammar where every one of them stands: minting the frame
+     and deciding to keep it are two jobs, and split they are two local rules rather than one that looks ahead.
    - What the check caught, none of which an argument would have: a continuation that changes the indentation has no
      return of its alternative's to take it back, and needs a production holding that call alone; and an in-grammar
      `(recover)` left the pushes of the parse it abandoned standing, where `_fail` had always cleared them — a real
@@ -472,6 +469,13 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      within-production twin of the sweep's behavioural merge, which today reaches whole productions only.
    - `drop-dead-ways` — a way whose gate is disjoint from every character its production can be entered on is
      unreachable. *Reads the root-down entry sets the meter already computes.*
+   - `sink-pops` — landed. Where every reference to a production is a bare pop holder — one ungated way, the pop its
+     only action — the pop leads that production's own ways instead, and the holders are left with nothing of their own
+     for the sweep to splice. *There is no other way in for the pop to be wrong for, however many holders say it.* A
+     continuation whose arguments read the indentation keeps its holders, those being read before the pop rather than
+     after, as does one a parse enters by name. Five sink, and the three that do not are reached both from a holder and
+     from a way that pushed nothing — a real refusal, wanting the two arrivals split rather than a wider rule. What it
+     is for is `defer-pops` below, which cannot see a pop that stands behind a frame.
    - `defer-pops` — landed. A `PopIndent` leading every way of a production moves to the end of that way's actions, each
      expression among them equal to the level it restores from becoming `Indent`. *Sound because the stack holds that
      level until the pop runs, so the same measurement is read one action later; held to it by every caller pushing the
@@ -504,9 +508,9 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
    and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
    Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
-   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 248. Of those, 133
+   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 247. Of those, 133
    offer a blind choice between a way that reads and one that does not — the debt, and the decision points that are a
-   call to one of them against its zero-width way are the greedy optional. The other 115 match empty single-way, which
+   call to one of them against its zero-width way are the greedy optional. The other 114 match empty single-way, which
    is the shape the canonical form mints on purpose and the invariant below allows. It is not a shape awaiting a
    certificate; it is the elimination not having been carried through. The empty match is moved one node sideways into
    an inline choice, and the first step that gives a choice a production of its own hands it back. Five moves, in this
