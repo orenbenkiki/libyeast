@@ -374,7 +374,8 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    back out on the way home. `push-indents` mints a `PushIndent` at each of the thirty-three calls measured against an
    `n` other than the one in force — the other seven hundred passed it through and push nothing — and `read-indents`
    then drops the parameter: every read becomes `Indent`, the indentation in force, and the declaration and the argument
-   go with it. The final grammar declares `m` and `f` and nothing else.
+   go with it. The final grammar declares `m` and `f` and nothing else, and `prune-params` behind it drops even those
+   wherever nothing reads them.
    - What held it: the two mechanisms stood side by side for a whole gate, every read of `n` compared against the stack
      over 694 fixtures and 402 suite cases before the reads became the stack's. The comparison is live still, at
      `push-indents`, which is the last grammar carrying both — so the drop is proved rather than argued, and the
@@ -466,6 +467,12 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      within-production twin of the sweep's behavioural merge, which today reaches whole productions only.
    - `drop-dead-ways` — a way whose gate is disjoint from every character its production can be entered on is
      unreachable. *Reads the root-down entry sets the meter already computes.*
+   - `prune-params` — landed. A parameter a production does not need goes, with the argument every call passed it: what
+     a production needs is what reaches a read — its own gate and actions, and whatever it hands to a production that
+     needs one — and a write counts, a binding a frame does not declare being dropped on return. *A least fixpoint, so a
+     parameter a chain of frames only relayed dies through the chain at once.* It took `m` from 91 declarations to 76
+     and `f` from 15 to 9, and it decides nothing: the meter is unmoved on the step's own output, and the four points it
+     loses are the sweep merging twelve productions the dead arguments had been telling apart.
    - And after each of them, the standing question of the third law: which of the six points does it retire? The
      reordered header choices are the first owed an answer — `order-actions` and `factor-calls` between them should
      leave the two orderings comparing equal, at which point there is nothing to swap and nothing to declare committed,
@@ -476,13 +483,13 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
    and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
    Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
-   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline moves it by 6 between them. Of the
-   249 that match empty at the end, 137 offer a blind choice between a way that reads and one that does not — the debt,
-   and the decision points that are a call to one of them against its zero-width way are the greedy optional. The other
-   112 match empty single-way, which is the shape the canonical form mints on purpose and the invariant below allows. It
-   is not a shape awaiting a certificate; it is the elimination not having been carried through. The empty match is
-   moved one node sideways into an inline choice, and the first step that gives a choice a production of its own hands
-   it back. Five moves, in this order, each corpus-held:
+   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 240. Of those, 133
+   offer a blind choice between a way that reads and one that does not — the debt, and the decision points that are a
+   call to one of them against its zero-width way are the greedy optional. The other 107 match empty single-way, which
+   is the shape the canonical form mints on purpose and the invariant below allows. It is not a shape awaiting a
+   certificate; it is the elimination not having been carried through. The empty match is moved one node sideways into
+   an inline choice, and the first step that gives a choice a production of its own hands it back. Five moves, in this
+   order, each corpus-held:
    - *The distribution goes outward, into ways.* `Ref(P)` at a site does not become `P_consuming | residue`; the way
      holding it becomes two ways of the enclosing choice. The shortcut sits in three places and all three must go: the
      call site, the consuming copy's body, and `residue` itself, which builds an alternation of empty matches and is the
@@ -507,15 +514,16 @@ of it. So the invariant covers state, and the pending run is accounted for separ
 1. *Then the certificates.* What the elimination carried through does not dissolve is theirs — the count is not worth
    guessing at until it has been. A subsumption certificate — a way whose language contains a later way's, read through
    one level of inlining — is what retires the assurance ledger's two remaining entries rather than leaving them
-   declared. The ~249 points that are neither greedy optional nor ledger want the breakdown the greedy optional has
-   before anything is designed for them; that classification is cheap and comes first of the two.
+   declared. The points that are neither greedy optional nor ledger want the breakdown the greedy optional has before
+   anything is designed for them; that classification is cheap and comes first of the two, and it is what would put a
+   derived number on both halves rather than the one nothing computed.
 1. *And then the determinizer*, pointed by what the meter still flags, through the landings below.
 
 **Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
 at every hypothetical entry — a production undecidable on its own is no conflict where every context a root parse
 reaches it under decides it, one level of inlining in. So the meter counts root-reachable decision points: each a
-production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 426
-undecided points across 172 productions — 172 also being the isolation count, printed beside it as the diagnostic it now
+production judged under one reachable context's follow, the contexts computed root-down as follow classes. It reads 422
+undecided points across 168 productions — 168 also being the isolation count, printed beside it as the diagnostic it now
 is — driven to none, at which point the meter becomes a gate. A known over-count is the greedy optional: a call then
 nothing, against taking none, which is the shape the ε-elimination distributes to every site a nullable production was
 called from — decided by order and the callee's sureness, not by character disjointness, and the certificate for it is

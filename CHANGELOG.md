@@ -315,8 +315,8 @@ All notable changes to this project are documented here. The format follows
   an alias context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's
   rejection: nothing can be seen to refuse what matches at every position, and a consuming copy that says no where the
   base matched empty would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus
-  parses green in that hybrid the whole way, so the meter is honest at every step: 604 of 776 productions run committed,
-  and the 172 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
+  parses green in that hybrid the whole way, so the meter is honest at every step: 596 of 764 productions run committed,
+  and the 168 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
   first conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix
   wrappers so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan
   with `==n` against `<n` residue, the factoring raises a leftover's leading assertions into its gate's guards, and a
@@ -332,7 +332,7 @@ All notable changes to this project are documented here. The format follows
   contexts computed root-down as follow classes, a nullable way's begins widened by its context exactly as one level of
   inlining would place them. The certificates sharpened the same way — every ungated way judged by its effective begins,
   not the last alone — which alone proved nine more productions in isolation; the isolation count stays printed as a
-  diagnostic beside the true meter's 426 points across 172 productions, among them the greedy optional — a way that
+  diagnostic beside the true meter's 422 points across 168 productions, among them the greedy optional — a way that
   reads against the zero-width residue behind it, the shape the elimination distributes and the one the certificates
   still owe. Every step must change the grammar, and one that does not is a fault named where it stands: a step goes
   idle when what it looks for has stopped reaching it — a shape an earlier step now spells differently, a declared site
@@ -378,11 +378,21 @@ All notable changes to this project are documented here. The format follows
   The recovery now takes back what the abandoned parse never got to. The comparison stays live at `push-indents`, the
   last grammar to carry both.
 
-  The drop decides nothing, and the meter's fall is not its doing: on the step's own output the meter is unmoved at 473
-  points, and the 47 it loses are the sweep's — sixteen productions merging into one another once the argument stopped
-  telling them apart, nine of which carried conflicts. `<auto-detect-indent>` had to be told: it read `n` out of the
-  environment rather than through a `Param`, where no rewrite of the grammar could reach it, and the indentation in
-  force is one accessor now — the stack's where the grammar pushes, the parameter's where it does not.
+  `prune-params` behind it drops a parameter no production needs, with the argument every call passed it: what a
+  production needs is what reaches a read — its own gate and actions, and whatever it hands to a production that needs
+  one — and a write counts, since a binding a frame does not declare is dropped on return. A least fixpoint, so a
+  parameter a chain of frames only relayed dies through the chain at once: `m` goes from 91 declarations to 76 and `f`
+  from 15 to 9. It found `_is_using` answering `False` for a `Param` a field holds directly, the generic walker never
+  visiting one — latent, its two callers asking only about the parameters where the two agree, and corrected here.
+
+  Neither step decides anything, and the meter's fall is not theirs. Each leaves it exactly where it found it on its own
+  output — 473 points through `read-indents`, 426 through `prune-params` — and every point that goes, goes to the sweep:
+  sixteen productions merging once the indentation argument stopped telling them apart, nine of them carrying conflicts,
+  and twelve more once the dead arguments did. Simplification, not determinization, and the two are worth keeping apart.
+
+  `<auto-detect-indent>` had to be told: it read `n` out of the environment rather than through a `Param`, where no
+  rewrite of the grammar could reach it, and it took the block scalars and the dedents down with it until it was. The
+  indentation in force is one accessor now — the stack's where the grammar pushes, the parameter's where it does not.
 
 - `(match)` is the text of the open run — the token the rule is building — and the `(<<<)` origin it used to be measured
   from is gone with the operator, along with `OpenMatch`, `CloseMatch`, the `match_start` parameter and the

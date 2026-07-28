@@ -196,12 +196,23 @@ def _branch(node, value):
 
 
 def _is_using(node, param):
-    """Whether `Param(param)` appears anywhere in `node`."""
+    """
+    Whether `Param(param)` appears anywhere in `node`. Walks every field itself: the generic walker holds a `Param` as a
+    value and never visits one a field holds directly, where here the parameters are exactly what is being looked for.
+    """
     if isinstance(node, ir.Param):
         return node.name == param
-    found = []
-    ir.rebuilt(node, lambda child: found.append(_is_using(child, param)) or child)
-    return any(found)
+    if not dataclasses.is_dataclass(node):
+        return False
+    for field in dataclasses.fields(node):
+        value = getattr(node, field.name)
+        if dataclasses.is_dataclass(value):
+            if _is_using(value, param):
+                return True
+        elif isinstance(value, tuple):
+            if any(dataclasses.is_dataclass(item) and _is_using(item, param) for item in value):
+                return True
+    return False
 
 
 def _substitute(node, param, value):
@@ -2595,6 +2606,75 @@ def read_indents(grammar, namer):
     }
 
 
+def _needing(grammar, param):
+    """
+    The productions that need `param`: the ones whose own gate or actions read or write it, and the ones that hand it to
+    a production that needs it. A write is a need — a binding a production does not declare is written into its own
+    frame and dropped on return, which is what `declare-bindings` gives it. A least fixpoint, so a parameter a chain of
+    frames only relayed dies through the whole chain at once rather than one frame per pass.
+    """
+
+    def owns(way):
+        """Whether `way` reads or writes `param` itself, rather than handing it on to something that does."""
+        return _is_using(way.gate, param) or any(
+            _is_using(action, param) or (isinstance(action, (ir.SetVar, ir.Increase)) and action.param == param)
+            for action in way.actions
+        )
+
+    bodies = {name: production.body for name, production in grammar.items() if isinstance(production.body, ir.Choice)}
+    need = {name for name, body in bodies.items() if any(owns(way) for way in body.alternatives)}
+    changed = True
+    while changed:
+        changed = False
+        for name, body in bodies.items():
+            if name in need:
+                continue
+            handed = any(
+                reference is not None and reference.name in need and _is_using(reference, param)
+                for way in body.alternatives
+                for reference in (way.first, way.second, way.recover)
+            )
+            if handed:
+                need.add(name)
+                changed = True
+    return need
+
+
+def prune_params(grammar, namer):
+    """
+    Drop each parameter a production does not need, with the argument every call passed it.
+
+    What a production needs is what reaches a read: its own, and whatever it hands to a production that needs one. A
+    declaration nothing reaches carries nothing, and the arguments behind it are a value threaded to be discarded — the
+    shape a parameter leaves behind as the steps that read it stop reading it.
+    """
+    needs = {
+        param: _needing(grammar, param)
+        for param in {param for production in grammar.values() for param in production.params}
+    }
+    surviving = {
+        name: tuple(param for param in production.params if name in needs[param])
+        for name, production in grammar.items()
+    }
+
+    def pruned(node):
+        """`node` with each call's arguments cut down to the parameters its callee still declares."""
+        node = ir.rebuilt(node, pruned)
+        if not isinstance(node, ir.Ref) or node.name not in grammar:
+            return node
+        declared = grammar[node.name].params
+        kept = surviving[node.name]
+        if len(kept) == len(declared):
+            return node
+        arguments = tuple(argument for param, argument in zip(declared, node.args) if param in kept)
+        return dataclasses.replace(node, args=arguments)
+
+    return {
+        name: dataclasses.replace(production, params=surviving[name], body=pruned(production.body))
+        for name, production in grammar.items()
+    }
+
+
 def extend_returns(grammar, namer):
     """
     The grammar with each `DECLARED_EXTENSIONS` site folded: the site's one way must be a call and a continuation whose
@@ -3584,6 +3664,7 @@ STEPS = [
     ("extend-returns", extend_returns),
     ("push-indents", push_indents),
     ("read-indents", read_indents),
+    ("prune-params", prune_params),
 ]
 
 
