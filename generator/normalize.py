@@ -10,6 +10,7 @@ lists them in order as `(name, transform)` pairs, so a step is named wherever it
 one seam every transformation slots into.
 """
 
+import collections
 import dataclasses
 
 import annotated2ir
@@ -2498,6 +2499,23 @@ def reorder_declared(grammar, namer):
     return result
 
 
+def _reads_indent(node):
+    """Whether `node` reads the indentation in force, which a pop moved ahead of it would change under it."""
+    if isinstance(node, ir.Indent):
+        return True
+    if not dataclasses.is_dataclass(node):
+        return False
+    for field in dataclasses.fields(node):
+        value = getattr(node, field.name)
+        if dataclasses.is_dataclass(value):
+            if _reads_indent(value):
+                return True
+        elif isinstance(value, tuple):
+            if any(dataclasses.is_dataclass(item) and _reads_indent(item) for item in value):
+                return True
+    return False
+
+
 def _framed(minted, namer, owner, actions, call=None, tail=None, name=None):
     """
     A reference to a minted production holding `actions`, then `call`, then `tail` — the frame an action needs where the
@@ -2532,10 +2550,32 @@ def push_indents(grammar, namer):
 
     The minted production declares no parameters and reads the ambient ones, so a continuation's arguments are evaluated
     inside it, after the pop, where the stack and the parameter agree.
+
+    A continuation nothing else enters takes the pop at the head of its own ways instead, there being no other way in
+    for the pop to be wrong for — a frame minted to hold one action, where the action can stand in the production it was
+    going to call. Its arguments are then read before the pop rather than after, which is why one holding an `Indent`
+    keeps its frame: everything else a call passes is untouched by what the pop restores.
     """
 
     minted = {}
     pop_indent = namer.fresh(_POP_INDENT_BASE)
+    sunk = set()  # the continuations taking the pop into their own ways rather than behind a frame
+    entered = entered_by_name(grammar)
+    callers = collections.Counter(
+        reference.name
+        for production in grammar.values()
+        if isinstance(production.body, ir.Choice)
+        for way in production.body.alternatives
+        for reference in (way.first, way.second, way.recover)
+        if reference is not None
+    )
+
+    def is_sinkable(continuation):
+        """Whether the pop can lead `continuation`'s own ways rather than stand in a frame ahead of it."""
+        if continuation is None or continuation.name in entered or callers[continuation.name] != 1:
+            return False
+        callee = grammar.get(continuation.name)
+        return isinstance(callee, ir.Prod) and isinstance(callee.body, ir.Choice) and not _reads_indent(continuation)
 
     def changed(call):
         """The indentation `call` is measured against where that is not the one in force, else `None`."""
@@ -2548,7 +2588,10 @@ def push_indents(grammar, namer):
         return None if isinstance(level, ir.Param) and level.name == "n" else level
 
     def restores(owner, continuation):
-        """`continuation` behind a production of its own that takes the indentation back off ahead of it."""
+        """`continuation` with the indentation taken back off ahead of it — in its own ways, or behind a frame."""
+        if is_sinkable(continuation):
+            sunk.add(continuation.name)
+            return continuation
         shared = pop_indent if continuation is None else None
         return _framed(minted, namer, owner, (ir.PopIndent(),), tail=continuation, name=shared)
 
@@ -2576,6 +2619,10 @@ def push_indents(grammar, namer):
         if isinstance(body, ir.Choice):
             body = ir.Choice(tuple(pushed(way, name) for way in body.alternatives))
         result[name] = dataclasses.replace(production, body=body)
+    for name in sunk:  # the pop leads every way of a continuation nothing else enters
+        body = result[name].body
+        led = tuple(dataclasses.replace(way, actions=(ir.PopIndent(),) + way.actions) for way in body.alternatives)
+        result[name] = dataclasses.replace(result[name], body=ir.Choice(led))
     result.update(minted)
     return result
 

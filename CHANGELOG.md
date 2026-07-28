@@ -315,7 +315,7 @@ All notable changes to this project are documented here. The format follows
   an alias context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's
   rejection: nothing can be seen to refuse what matches at every position, and a consuming copy that says no where the
   base matched empty would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus
-  parses green in that hybrid the whole way, so the meter is honest at every step: 608 of 776 productions run committed,
+  parses green in that hybrid the whole way, so the meter is honest at every step: 604 of 772 productions run committed,
   and the 168 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
   first conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix
   wrappers so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan
@@ -363,6 +363,10 @@ All notable changes to this project are documented here. The format follows
   and the call carries on at a production that takes it back: the pop, and then wherever the alternative was carrying
   on. So the point an indentation stops applying is an action the grammar writes, in the one place nothing of the
   alternative's own runs, rather than a property of the edge that a shared continuation could not have said for itself.
+  A continuation nothing else enters takes the pop at the head of its own ways rather than behind a frame of its own,
+  there being no other way in for it to be wrong for — five do, and one keeps its frame where its arguments hold an
+  `Indent`, those being read before the pop rather than after. What that buys is not the frames: the pop lands in the
+  same action list as the scan that follows it, where moving it is a reorder rather than a rule reading across a call.
   One production is the pop and nothing else, `x-pop-indent`, shared by the nineteen pushes with nowhere else to go; the
   other fourteen hold a continuation behind it. Each declares no parameters and reads the ambient ones, so a
   continuation's arguments are evaluated after the pop, where the stack and the parameter agree. A continuation that
