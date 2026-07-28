@@ -382,6 +382,14 @@ All notable changes to this project are documented here. The format follows
   The recovery now takes back what the abandoned parse never got to. The comparison stays live at `push-indents`, the
   last grammar to carry both.
 
+  `defer-pops` moves a `PopIndent` that leads every way of a production to the end of that way's actions, rewriting each
+  expression among them equal to the level it restores from into `Indent`. The stack holds that level until the pop
+  runs, so the measurement is the same read one action later — held to it by every caller pushing the one level, and by
+  the residue with the level masked out holding no `Indent` the rewrite did not account for. It crosses actions and
+  nothing else: an alternative's calls run after all of them, so nothing a callee is measured against changes, and an
+  action that is itself a call or a scope around one stops the move. The block sequence's next-entry scan compares
+  against `Indent` directly now, and the pop stands against the push that follows it with no scan between.
+
   `clear-params` says where a parameter stops applying. A production that needs one stands inside the region it measures
   — whether it reads it or only hands it to something that reads — so the frame above them all is where the value ends,
   and it clears it where the last call needing it returns. There being no outer value to restore to, the clear is what a

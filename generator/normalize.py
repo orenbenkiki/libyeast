@@ -2516,6 +2516,24 @@ def _reads_indent(node):
     return False
 
 
+def _replaced(node, needle, replacement):
+    """
+    `node` with every subtree equal to `needle` replaced by `replacement` — the nodes being values, so `==` decides.
+    """
+    if node == needle:
+        return replacement
+    if not dataclasses.is_dataclass(node):
+        return node
+    changed = {}
+    for field in dataclasses.fields(node):
+        value = getattr(node, field.name)
+        if dataclasses.is_dataclass(value):
+            changed[field.name] = _replaced(value, needle, replacement)
+        elif isinstance(value, tuple) and value and all(dataclasses.is_dataclass(item) for item in value):
+            changed[field.name] = tuple(_replaced(item, needle, replacement) for item in value)
+    return dataclasses.replace(node, **changed) if changed else node
+
+
 def _framed(minted, namer, owner, actions, call=None, tail=None, name=None):
     """
     A reference to a minted production holding `actions`, then `call`, then `tail` — the frame an action needs where the
@@ -2693,6 +2711,76 @@ def _needing(grammar, param):
                 need.add(name)
                 changed = True
     return need
+
+
+def defer_pops(grammar, namer):
+    """
+    Move a `PopIndent` past the actions that follow it, where what those read of the indentation is the level it
+    restores from.
+
+    A production whose ways all lead with the pop is entered from sites that pushed the level the pop takes off, so
+    until the pop runs the stack holds that level: an expression among the following actions equal to it is `Indent`
+    read one action later, and the measurement is the same either way. Held to that — every way's leading action is the
+    pop, every caller pushes the one level, and once the level has been rewritten no bare `Indent` is left for the move
+    to change under.
+
+    The pop crosses actions and nothing else: an alternative's calls run after all of them, so what a callee is measured
+    against is what it was measured against before. An action that is itself a call, or a scope around one, is where the
+    move stops — it would read the indentation somewhere this cannot see.
+
+    What it buys is not the reorder. It puts the pop against the call that follows it, where the push it cancels against
+    is the callee's leading action rather than a scan away.
+    """
+    incoming = collections.defaultdict(list)
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for way in production.body.alternatives:
+            pushed = [action.level for action in way.actions if isinstance(action, ir.PushIndent)]
+            for reference in (way.first, way.second, way.recover):
+                if reference is not None:
+                    incoming[reference.name].append(pushed[0] if len(pushed) == 1 else None)
+
+    def restored(name, production):
+        """The one level every caller of `name` pushes for it, where its ways all lead with the pop, else `None`."""
+        ways = production.body.alternatives if isinstance(production.body, ir.Choice) else ()
+        if not ways or not all(way.actions and isinstance(way.actions[0], ir.PopIndent) for way in ways):
+            return None
+        levels = incoming[name]
+        return levels[0] if levels and len(set(levels)) == 1 and levels[0] is not None else None
+
+    def is_crossable(action):
+        """
+        Whether the pop may move past `action` — one that does here whatever it does, rather than one reaching a
+        production that would read the indentation for itself. `is_zero_width` decides from lists naming every kind, so
+        an action kind neither of them places is a fault here rather than something assumed safe to cross.
+        """
+        return is_zero_width(action) or isinstance(action, _CONSUMING_ACTS)
+
+    def deferred(way, level):
+        """`way` with the pop moved to the end of its actions, or `way` where something there would change under it."""
+        rest = []
+        for action in way.actions[1:]:
+            if not is_crossable(action):
+                return way  # a call, or a scope around one, which reads the indentation for itself
+            if isinstance(action, (ir.PushIndent, ir.PopIndent)):
+                return way  # a pair of its own, whose own level this knows nothing about
+            # What the level does not account for is read off the residue, the level masked out of it: the rewrite puts
+            # an `Indent` where the level stood, so asking the rewritten action would refuse every one it just made.
+            if _reads_indent(_replaced(action, level, ir.Lit(None))):
+                return way
+            rest.append(_replaced(action, level, ir.Indent()))
+        return dataclasses.replace(way, actions=tuple(rest) + (ir.PopIndent(),))
+
+    result = {}
+    for name, production in grammar.items():
+        level = restored(name, production)
+        if level is None:
+            result[name] = production
+            continue
+        body = ir.Choice(tuple(deferred(way, level) for way in production.body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
+    return result
 
 
 def prune_params(grammar, namer):
@@ -3770,6 +3858,7 @@ STEPS = [
     ("extend-returns", extend_returns),
     ("push-indents", push_indents),
     ("read-indents", read_indents),
+    ("defer-pops", defer_pops),
     ("prune-params", prune_params),
     ("clear-params", clear_params),
 ]
