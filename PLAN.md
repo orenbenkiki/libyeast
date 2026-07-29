@@ -493,6 +493,13 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      goes on the stack ahead of where the pop would land, so the pop would meet that rather than the indentation it
      comes off. Twelve holders come to five. What it is for is `defer-pops` below, which cannot see a pop standing
      behind a call.
+   - *No way carries on over a call that takes an indentation off* — landed as a gate, read off the final grammar. Where
+     to carry on goes on the stack ahead of the call, so a pop inside that call meets it rather than the indentation it
+     comes off. It is the half of "nothing sits between a scope's push and its pop" that a way can be asked about on its
+     own, and it is read rather than run, so it holds while the calls are still `first`/`second` — which is what makes
+     it the standing guard until `write-calls` lands and the machine's kind assertions take over. It errs wide: a way is
+     followed wherever its actions settle neither question. `clear-params` makes one and `inline-bare-actions` takes it
+     away, so the gate proves it can fail on the stages between them and reads none at the end.
    - `inline-bare-actions` — landed. A call whose production is actions alone goes nowhere, so being a call buys nothing
      and costs a push. It matters where the caller carries on somewhere: the call is made under the continuation the way
      pushes ahead of it, so an indentation coming off there would be taken back from under that push rather than from

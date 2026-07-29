@@ -390,8 +390,12 @@ All notable changes to this project are documented here. The format follows
   production `inline-bare-actions` hands back where the caller carries on somewhere: a call whose production is actions
   alone goes nowhere, so being a call buys nothing and costs a push, and it is made under the continuation the way
   pushes ahead of it — an indentation coming off there would be taken back from under that push rather than from under
-  the one that set it. Spliced, the actions run before the way pushes anything. No way in the grammar now carries on
-  over a call that pops.
+  the one that set it. Spliced, the actions run before the way pushes anything. That no way carries on over a call
+  taking an indentation off is then a gate rather than a thing believed: it is the half of "nothing sits between a
+  scope's push and its pop" that a way can be asked about on its own, and it is read off the grammar rather than run, so
+  it holds while a call is still a field and a continuation beside it. It errs wide, following a way wherever its
+  actions settle neither question, and it reads none — where `clear-params` makes one and the splice takes it away, so
+  what it would catch is on the record between them.
 
   `read-indents` then drops the parameter: every read of `n` becomes `Indent`, the indentation in force, and the
   declaration and the argument go with it, leaving `m` and `f` the only parameters the final grammar declares. The two

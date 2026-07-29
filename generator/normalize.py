@@ -2775,6 +2775,57 @@ def _sink_pops_once(grammar):
     return result
 
 
+def _reaches_a_pop(grammar, name, seen):
+    """
+    Whether entering `name` takes an indentation off before putting one on, by some way it offers. Errs wide: a way is
+    followed wherever its actions settle neither question, so a path that could pop counts as one that does.
+    """
+    if name in seen or name not in grammar:
+        return False
+    seen = seen | {name}
+    body = grammar[name].body
+    if not isinstance(body, ir.Choice):
+        return False
+    for way in body.alternatives:
+        for action in way.actions:
+            if isinstance(action, ir.PopIndent):
+                return True
+            if isinstance(action, ir.PushIndent):
+                break  # from here the way takes off what it put on, and what it does after is its own
+        else:
+            following = way.first if way.first is not None else way.second
+            if following is not None and _reaches_a_pop(grammar, following.name, seen):
+                return True
+    return False
+
+
+def carried_over_pop_faults(grammar):
+    """
+    The ways that carry on over a call taking an indentation off, as error strings — empty where none does.
+
+    Where to carry on goes on the stack ahead of the call, so a pop inside that call meets it rather than the
+    indentation it comes off. Nothing may sit between a scope's push and its pop, and this is the half of that a way can
+    be asked about on its own: an ancestor pushes the indent, this way pushes the continuation, the callee pops.
+
+    Read off the grammar rather than run, so it holds whether or not the calls are written out — which is what makes it
+    the standing guard until they are, the machine's own kind assertions being the answer afterwards.
+    """
+    faults = []
+    for name in sorted(grammar):
+        body = grammar[name].body
+        if not isinstance(body, ir.Choice):
+            continue
+        for index, way in enumerate(body.alternatives):
+            if way.first is None or way.second is None:
+                continue
+            if _reaches_a_pop(grammar, way.first.name, frozenset()):
+                faults.append(
+                    f"{name}[{index}]: carries on at `{way.second.name}` over `{way.first.name}`, which takes an "
+                    f"indentation off under the push"
+                )
+    return faults
+
+
 def read_indents(grammar, namer):
     """
     Read the indentation off the stack rather than out of a parameter.
