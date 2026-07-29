@@ -758,10 +758,19 @@ class PopIndent:
     A zero-width action that takes the indentation in force off the stack, putting back the one it displaced. It leads a
     production of its own rather than standing beside the call it answers for: nothing of an alternative runs after its
     call returns, so the push carries on at that production and the pop is what coming back means.
+
+    `level` is what its `PushIndent` put there, written on both halves where the two are minted together and carried
+    with the pop wherever it moves. It says nothing the stack does not already hold, and is not what the pop restores
+    from — a pop takes off whatever is on top. It is there so that a step moving the pop, or moving something past it,
+    can say which indentation the actions around it are measuring against, without a table pairing the two ends; and it
+    is checked where the pop runs, so the pairing is a refusal rather than a claim. Two pops of the same level are the
+    same action still, so what merges before this carries a level merges after it.
     """
 
+    level: object
+
     def references(self):
-        return []
+        return _refs(self.level)
 
 
 @dataclass(frozen=True)

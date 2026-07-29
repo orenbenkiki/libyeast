@@ -1026,7 +1026,16 @@ def match(node, emitter, grammar, k):
         return False
     if isinstance(node, ir.PopIndent):
         checkpoint = emitter.checkpoint()
-        _value, emitter.stack = _popped(emitter, "indent", "an indentation")
+        # The pop says which indentation it takes off, so that a step moving it, or moving something past it, can name
+        # what the actions around it measure against. Nothing reads it here — a pop takes off whatever is on top — so it
+        # is checked instead, and the pairing it stands for is refused where it does not hold. It is read once the pop
+        # has happened, which is the scope it was written in: the level its push computed from the indentation this
+        # restores, not from the one it put there.
+        value, emitter.stack = _popped(emitter, "indent", "an indentation")
+        if node.level is not None:  # `strip-pop-levels` takes it off once no step reads it
+            said = evaluate(node.level, emitter, grammar)
+            if value != said:
+                raise AssertionError(f"the pop takes off an indentation of {value!r} where it says {said!r}")
         if k():
             return True
         emitter.rewind(checkpoint)

@@ -386,9 +386,19 @@ All notable changes to this project are documented here. The format follows
   The recovery now takes back what the abandoned parse never got to. The comparison stays live at `push-indents`, the
   last grammar to carry both.
 
+  A pop says which indentation it takes off. `PushIndent` and `PopIndent` are minted together and the level is written
+  on both, carried with the pop wherever it moves and re-scoped where it crosses a call, so a step moving the pop — or
+  moving something past it — can name what the actions around it measure against, with no table pairing the two ends. It
+  is not what the pop restores from, a pop taking off whatever is on top; it is read once the pop has happened, that
+  being the scope it was written in, and checked there, so the pairing is refused rather than claimed. A tag naming the
+  pair would have done as much and cost the sweep's merge, two otherwise-equal productions with different tags never
+  collapsing; a level is a value, so two pops of the same level are the same action still. `strip-pop-levels` takes it
+  off once `defer-pops`, the last step to read it, has run — left standing it is a read of the auto-detected indent at
+  every pop, keeping a value live where the parse has no use for it.
+
   `defer-pops` moves a `PopIndent` that leads every way of a production to the end of that way's actions, rewriting each
   expression among them equal to the level it restores from into `Indent`. The stack holds that level until the pop
-  runs, so the measurement is the same read one action later — held to it by every caller pushing the one level, and by
+  runs, so the measurement is the same read one action later — held to it by the level the pop itself carries, and by
   the residue with the level masked out holding no `Indent` the rewrite did not account for. It crosses actions and
   nothing else: an alternative's calls run after all of them, so nothing a callee is measured against changes, and an
   action that is itself a call or a scope around one stops the move. The block sequence's next-entry scan compares

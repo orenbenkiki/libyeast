@@ -2572,7 +2572,7 @@ def push_indents(grammar, namer):
     """
 
     minted = {}
-    pop_indent = namer.fresh(_POP_INDENT_BASE)
+    pop_indent = {}  # a production per level whose whole body is the pop, shared by every push of that level
 
     def changed(call):
         """The indentation `call` is measured against where that is not the one in force, else `None`."""
@@ -2584,14 +2584,14 @@ def push_indents(grammar, namer):
         level = call.args[callee.params.index("n")]
         return None if isinstance(level, ir.Param) and level.name == "n" else level
 
-    def restores(owner, continuation):
-        """`continuation` behind a production of its own that takes the indentation back off ahead of it."""
-        shared = pop_indent if continuation is None else None
-        return _framed(minted, namer, owner, (ir.PopIndent(),), tail=continuation, name=shared)
+    def restores(owner, continuation, level):
+        """`continuation` behind a production of its own that takes `level` back off ahead of it."""
+        shared = pop_indent.setdefault(level, namer.fresh(_POP_INDENT_BASE)) if continuation is None else None
+        return _framed(minted, namer, owner, (ir.PopIndent(level),), tail=continuation, name=shared)
 
     def wrapped(owner, call, level):
         """`call` behind a production of its own that pushes `level` and carries on where the pop takes it back."""
-        return _framed(minted, namer, owner, (ir.PushIndent(level),), call=call, tail=restores(owner, None))
+        return _framed(minted, namer, owner, (ir.PushIndent(level),), call=call, tail=restores(owner, None, level))
 
     def pushed(alternative, owner):
         way = alternative
@@ -2603,7 +2603,7 @@ def push_indents(grammar, namer):
         level = changed(way.first)
         if level is not None:
             way = dataclasses.replace(
-                way, actions=way.actions + (ir.PushIndent(level),), second=restores(owner, way.second)
+                way, actions=way.actions + (ir.PushIndent(level),), second=restores(owner, way.second, level)
             )
         return way
 
@@ -2632,7 +2632,7 @@ def _pop_holder(production):
     [way] = ways
     if way.gate.peek is not None or way.gate.guards or way.recover is not None:
         return None
-    if way.actions != (ir.PopIndent(),):
+    if len(way.actions) != 1 or not isinstance(way.actions[0], ir.PopIndent):
         return None
     return way.first if way.first is not None else way.second
 
@@ -2663,10 +2663,47 @@ def sink_pops(grammar, namer):
     raise AssertionError("`sink-pops` did not settle: a pop is going round a cycle rather than coming to rest")
 
 
+def _params_read(node, found=None):
+    """The parameter names `node` reads anywhere."""
+    found = set() if found is None else found
+    if isinstance(node, ir.Param):
+        found.add(node.name)
+        return found
+    if dataclasses.is_dataclass(node):
+        for field in dataclasses.fields(node):
+            value = getattr(node, field.name)
+            if dataclasses.is_dataclass(value):
+                _params_read(value, found)
+            elif isinstance(value, tuple):
+                for item in value:
+                    if dataclasses.is_dataclass(item):
+                        _params_read(item, found)
+    return found
+
+
+def _travels(level, reference, callee):
+    """
+    Whether `level`, written where `reference` is called from, says the same thing inside `callee`. Every parameter it
+    reads must be one the callee inherits — it declares none of that name — or one it declares and is passed as itself.
+    A callee given some other value for it would read the level against its own binding rather than the caller's.
+    """
+    for param in _params_read(level):
+        if param not in callee.params:
+            continue
+        index = callee.params.index(param)
+        argument = reference.args[index] if index < len(reference.args) else None
+        if argument is not None and not (isinstance(argument, ir.Param) and argument.name == param):
+            return False
+    return True
+
+
 def _sink_pops_once(grammar):
     """`grammar` with every pop its holders can hand down moved into what they call, or `None` where none can."""
-    holders = {name: _pop_holder(production) for name, production in grammar.items()}
-    holders = {name: tail for name, tail in holders.items() if tail is not None}
+    holders = {}  # what a holder calls, and the level its pop carries
+    for name, production in grammar.items():
+        tail = _pop_holder(production)
+        if tail is not None:
+            holders[name] = (tail, production.body.alternatives[0].actions[0].level)
 
     arrivals = collections.defaultdict(list)
     for name, production in grammar.items():
@@ -2678,16 +2715,27 @@ def _sink_pops_once(grammar):
                     arrivals[reference.name].append(name)
 
     entered = entered_by_name(grammar)
-    sunk = {
-        tail.name
-        for tail in holders.values()
-        if tail.name not in entered
-        and not _reads_indent(tail)
-        and isinstance(grammar.get(tail.name), ir.Prod)
-        and isinstance(grammar[tail.name].body, ir.Choice)
-        and grammar[tail.name].body.alternatives
-        and all(owner in holders for owner in arrivals[tail.name])
-    }
+    offered = collections.defaultdict(set)
+    for tail, level in holders.values():
+        offered[tail.name].add(level)
+
+    def is_sinkable(target):
+        """Whether every arrival at `target` is a holder, and they agree on a level that means the same inside it."""
+        callee = grammar.get(target)
+        if target in entered or not isinstance(callee, ir.Prod) or not isinstance(callee.body, ir.Choice):
+            return False
+        if not callee.body.alternatives or len(offered[target]) != 1:
+            return False
+        if not all(owner in holders for owner in arrivals[target]):
+            return False
+        [level] = offered[target]
+        return all(
+            not _reads_indent(tail) and _travels(level, tail, callee)
+            for tail, _level in holders.values()
+            if tail.name == target
+        )
+
+    sunk = {tail.name for tail, _level in holders.values() if is_sinkable(tail.name)}
     if not sunk:
         return None
 
@@ -2695,10 +2743,13 @@ def _sink_pops_once(grammar):
     for name, production in grammar.items():
         body = production.body
         if name in sunk:
+            [level] = offered[name]
             body = ir.Choice(
-                tuple(dataclasses.replace(way, actions=(ir.PopIndent(),) + way.actions) for way in body.alternatives)
+                tuple(
+                    dataclasses.replace(way, actions=(ir.PopIndent(level),) + way.actions) for way in body.alternatives
+                )
             )
-        elif name in holders and holders[name].name in sunk:
+        elif name in holders and holders[name][0].name in sunk:
             way = body.alternatives[0]
             if way.first is None:
                 # Nothing of the holder's own is left. Its call goes in the slot the sweep splices a do-nothing frame
@@ -2785,11 +2836,10 @@ def defer_pops(grammar, namer):
     Move a `PopIndent` past the actions that follow it, where what those read of the indentation is the level it
     restores from.
 
-    A production whose ways all lead with the pop is entered from sites that pushed the level the pop takes off, so
-    until the pop runs the stack holds that level: an expression among the following actions equal to it is `Indent`
-    read one action later, and the measurement is the same either way. Held to that — every way's leading action is the
-    pop, every caller pushes the one level, and once the level has been rewritten no bare `Indent` is left for the move
-    to change under.
+    Until the pop runs the stack holds the level it carries, so an expression among the following actions equal to that
+    level is `Indent` read one action later, and the measurement is the same either way. The level is the pop's own —
+    written on it where its push was minted, and carried with it wherever it has moved since — so this reads no table
+    pairing the two ends, and once the level has been rewritten no bare `Indent` is left for the move to change under.
 
     The pop crosses actions and nothing else: an alternative's calls run after all of them, so what a callee is measured
     against is what it was measured against before. An action that is itself a call, or a scope around one, is where the
@@ -2798,23 +2848,6 @@ def defer_pops(grammar, namer):
     What it buys is not the reorder. It puts the pop against the call that follows it, where the push it cancels against
     is the callee's leading action rather than a scan away.
     """
-    incoming = collections.defaultdict(list)
-    for name, production in grammar.items():
-        if not isinstance(production.body, ir.Choice):
-            continue
-        for way in production.body.alternatives:
-            pushed = [action.level for action in way.actions if isinstance(action, ir.PushIndent)]
-            for reference in (way.first, way.second, way.recover):
-                if reference is not None:
-                    incoming[reference.name].append(pushed[0] if len(pushed) == 1 else None)
-
-    def restored(name, production):
-        """The one level every caller of `name` pushes for it, where its ways all lead with the pop, else `None`."""
-        ways = production.body.alternatives if isinstance(production.body, ir.Choice) else ()
-        if not ways or not all(way.actions and isinstance(way.actions[0], ir.PopIndent) for way in ways):
-            return None
-        levels = incoming[name]
-        return levels[0] if levels and len(set(levels)) == 1 and levels[0] is not None else None
 
     def is_crossable(action):
         """
@@ -2824,8 +2857,13 @@ def defer_pops(grammar, namer):
         """
         return is_zero_width(action) or isinstance(action, _CONSUMING_ACTS)
 
-    def deferred(way, level):
-        """`way` with the pop moved to the end of its actions, or `way` where something there would change under it."""
+    def deferred(way):
+        """
+        `way` with its leading pop moved to the end of its actions, or `way` where something would change under it.
+        """
+        if not way.actions or not isinstance(way.actions[0], ir.PopIndent):
+            return way
+        pop = way.actions[0]
         rest = []
         for action in way.actions[1:]:
             if not is_crossable(action):
@@ -2834,18 +2872,41 @@ def defer_pops(grammar, namer):
                 return way  # a pair of its own, whose own level this knows nothing about
             # What the level does not account for is read off the residue, the level masked out of it: the rewrite puts
             # an `Indent` where the level stood, so asking the rewritten action would refuse every one it just made.
-            if _reads_indent(_replaced(action, level, ir.Lit(None))):
+            if _reads_indent(_replaced(action, pop.level, ir.Lit(None))):
                 return way
-            rest.append(_replaced(action, level, ir.Indent()))
-        return dataclasses.replace(way, actions=tuple(rest) + (ir.PopIndent(),))
+            rest.append(_replaced(action, pop.level, ir.Indent()))
+        return dataclasses.replace(way, actions=tuple(rest) + (pop,))
 
     result = {}
     for name, production in grammar.items():
-        level = restored(name, production)
-        if level is None:
-            result[name] = production
-            continue
-        body = ir.Choice(tuple(deferred(way, level) for way in production.body.alternatives))
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = ir.Choice(tuple(deferred(way) for way in body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
+    return result
+
+
+def strip_pop_levels(grammar, namer):
+    """
+    Take the level off every pop, nothing needing it past here.
+
+    It is minted with the push, moved with the pop, and read by `defer-pops`, which is the last step to want it. Left
+    standing it is a read of what it names — the auto-detected indent among them — at every pop, which keeps a value
+    live where the parse has no use for it and would have the check read one a nested construct has since written.
+    """
+
+    def bare(action):
+        return ir.PopIndent(None) if isinstance(action, ir.PopIndent) else action
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            ways = tuple(
+                dataclasses.replace(way, actions=tuple(bare(action) for action in way.actions))
+                for way in body.alternatives
+            )
+            body = ir.Choice(ways)
         result[name] = dataclasses.replace(production, body=body)
     return result
 
@@ -3933,6 +3994,7 @@ STEPS = [
     ("read-indents", read_indents),
     ("sink-pops", sink_pops),
     ("defer-pops", defer_pops),
+    ("strip-pop-levels", strip_pop_levels),
     ("prune-params", prune_params),
     ("clear-params", clear_params),
 ]

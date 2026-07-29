@@ -483,22 +483,33 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      own, and it moved no read of `m`. It also cannot be a step of its own — the sweep merges a copy back into what it
      came from, a copy still identical being the same production, and it stops being identical only once the pop leads
      it. The fixpoint reaches the same sites for nothing.
+   - *A pop says which indentation it takes off.* `PushIndent` and `PopIndent` are minted together and the level is
+     written on both, carried with the pop wherever it moves and re-scoped where it crosses a call. It is not what the
+     pop restores from — a pop takes off whatever is on top — but what lets a step moving it, or moving something past
+     it, name what the actions around it measure against, with no table pairing the two ends. It is read once the pop
+     has happened, that being the scope it was written in, and checked there: the pairing is a refusal, not a claim.
+     What was rejected and why: a tag naming the pair would make two otherwise-equal productions unequal, and the
+     sweep's merge is where every gain has come from. A level is a value, so two pops of the same level still merge.
+   - `strip-pop-levels` — landed. The level goes once `defer-pops`, the last step to read it, has run. Left standing it
+     is a read of what it names at every pop — the auto-detected indent among them — which keeps a value live where the
+     parse has no use for it, and would have the check read one a nested construct has since written. Ten ways stop
+     reading `m`, and the per-level pop productions merge back into one.
    - `defer-pops` — landed. A `PopIndent` leading every way of a production moves to the end of that way's actions, each
      expression among them equal to the level it restores from becoming `Indent`. *Sound because the stack holds that
-     level until the pop runs, so the same measurement is read one action later; held to it by every caller pushing the
-     one level, and by the residue — the level masked out — holding no `Indent` the rewrite did not account for.* The
-     pop crosses actions only, an alternative's calls running after all of them, so no callee is measured against
-     anything new; an action that is itself a call or a scope around one stops the move. What it is for is the pop
-     standing against the push that follows it, a scan no longer between them. Its reach is the sink's: one of the four
-     sites where a loop re-reads `m`, the other three keeping their pop behind a frame. Where a production that does not
-     need a parameter calls into ones that do, it clears it where the last of them returns: `ClearVar(param)`, put after
-     that call by the same device the pop uses, and `x-clear-m` where the clear is the whole body. *A production that
-     needs a parameter is inside the region it measures, so nothing between the outermost frame to need it and the
-     innermost is touched.* Clearing is what restoring would be, there being no outer value to restore to — which is the
-     asymmetry with the indentation, and why `n` wanted a stack where `m` and `f` want a clear. Twelve of them, eight
-     for `m` and four for `f`. Reading a parameter nothing holds a value for is a fault, so what the clears assert is
-     the corpus's to refuse: over 694 fixtures and 402 suite cases no read ever crosses one, and the refusal was proved
-     live by putting the clears inside the region instead and watching it fire.
+     level until the pop runs, so the same measurement is read one action later; held to it by the level the pop itself
+     carries, and by the residue — the level masked out — holding no `Indent` the rewrite did not account for.* The pop
+     crosses actions only, an alternative's calls running after all of them, so no callee is measured against anything
+     new; an action that is itself a call or a scope around one stops the move. What it is for is the pop standing
+     against the push that follows it, a scan no longer between them. It reaches all four sites where a loop re-reads
+     `m`, which took the level being the pop's own rather than looked up one hop from the callers that push it. Where a
+     production that does not need a parameter calls into ones that do, it clears it where the last of them returns:
+     `ClearVar(param)`, put after that call by the same device the pop uses, and `x-clear-m` where the clear is the
+     whole body. *A production that needs a parameter is inside the region it measures, so nothing between the outermost
+     frame to need it and the innermost is touched.* Clearing is what restoring would be, there being no outer value to
+     restore to — which is the asymmetry with the indentation, and why `n` wanted a stack where `m` and `f` want a
+     clear. Twelve of them, eight for `m` and four for `f`. Reading a parameter nothing holds a value for is a fault, so
+     what the clears assert is the corpus's to refuse: over 694 fixtures and 402 suite cases no read ever crosses one,
+     and the refusal was proved live by putting the clears inside the region instead and watching it fire.
    - `prune-params` — landed. A parameter a production does not need goes, with the argument every call passed it: what
      a production needs is what reaches a read — its own gate and actions, and whatever it hands to a production that
      needs one — and a write counts, a binding a frame does not declare being dropped on return. *A least fixpoint, so a
