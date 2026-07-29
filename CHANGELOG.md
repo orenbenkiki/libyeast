@@ -316,14 +316,14 @@ All notable changes to this project are documented here. The format follows
   loop's own exit seam went by a flow-sequence name — and a test on the name then asks about a production the sweep
   discarded. Read by membership, each loop's declaration takes its resume-policy twin in beside the original, both being
   the same end-marker helper. A fixture the sweep strands is not dropped: it pins to the last stage whose grammar can
-  run it, guards that grammar token for token, and credits coverage from where it stands — 194 of the 694, the fold
+  run it, guards that grammar token for token, and credits coverage from where it stands — 198 of the 694, the fold
   family's four, `c-reserved`'s three (a production the spec defines and nothing references, the base grammar's own),
   the helpers the declared extensions absorbed, the nullable productions their consuming copies replaced, and the bare
   monomorphic copies only a fixture enters, the root reaching an escape char, a tag property or an alias context-pinned
   alone. A base that is total where the fixtures run it is excused the coverage gate's rejection: nothing can be seen to
   refuse what matches at every position, and a consuming copy that says no where the base matched empty would be asking
   the corpus for a refusal the untransformed grammar had nowhere to show. The corpus parses green in that hybrid the
-  whole way, so the meter is honest at every step: 584 of 752 productions run committed, and the 168 still backtracking
+  whole way, so the meter is honest at every step: 582 of 750 productions run committed, and the 168 still backtracking
   are the determinize work itself, driven to none, at which point it becomes a gate. The first conflict the local moves
   determinized whole is the empty line's: `inline-singles` splices the declared prefix wrappers so `l-empty`'s two ways
   surface as the scans they are, the refinement and the factoring leave one shared scan with `==n` against `<n` residue,
@@ -386,7 +386,12 @@ All notable changes to this project are documented here. The format follows
   reads the ambient ones, so a continuation's arguments are evaluated after the pop, where the stack and the parameter
   agree. A continuation that changes the indentation has no return of its own to take it back, so its call goes into a
   production holding it alone. Every entry on the stack says what kind it is and every pop is held to it, so a pair that
-  has been moved across one it must not cross is refused where it happens.
+  has been moved across one it must not cross is refused where it happens. What the pop gathered into a shared
+  production `inline-bare-actions` hands back where the caller carries on somewhere: a call whose production is actions
+  alone goes nowhere, so being a call buys nothing and costs a push, and it is made under the continuation the way
+  pushes ahead of it — an indentation coming off there would be taken back from under that push rather than from under
+  the one that set it. Spliced, the actions run before the way pushes anything. No way in the grammar now carries on
+  over a call that pops.
 
   `read-indents` then drops the parameter: every read of `n` becomes `Indent`, the indentation in force, and the
   declaration and the argument go with it, leaving `m` and `f` the only parameters the final grammar declares. The two

@@ -493,6 +493,13 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      goes on the stack ahead of where the pop would land, so the pop would meet that rather than the indentation it
      comes off. Twelve holders come to five. What it is for is `defer-pops` below, which cannot see a pop standing
      behind a call.
+   - `inline-bare-actions` — landed. A call whose production is actions alone goes nowhere, so being a call buys nothing
+     and costs a push. It matters where the caller carries on somewhere: the call is made under the continuation the way
+     pushes ahead of it, so an indentation coming off there would be taken back from under that push rather than from
+     under the one that set it. Spliced, the actions run before the way pushes anything. Three sites, and *no way in the
+     grammar carries on over a call that pops* — the invariant the written-out form needs, closed statically. Refused on
+     the same terms as any other splice. It leaves three calls to an actions-only production standing, ones the sweep
+     made after its single pass; none of them pops, so a fixpoint is a tidying and not a fix.
    - Tried and reverted, so it is not tried twice: giving the holders a copy where other ways reach the same production.
      It is correct and universal and costs four meter points, each copy being a production with decision points of its
      own, and it moved no read of `m`. It also cannot be a step of its own — the sweep merges a copy back into what it

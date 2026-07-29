@@ -3099,6 +3099,43 @@ def strip_pop_levels(grammar, namer):
     return result
 
 
+def inline_bare_actions(grammar, namer):
+    """
+    Splice a call whose production is actions alone: it goes nowhere, so being a call buys nothing and costs a push.
+
+    What this is for is where the caller carries on somewhere. A call is made under the continuation the way pushes
+    ahead of it, so an indentation the callee comes off would be taken back from under that push rather than from under
+    the push that set it. Spliced, the actions run before the way pushes anything, which is where they read as written.
+    The pops `sink-pops` gathers into a shared production are the ones this reaches, that production being the pop and
+    nothing else.
+
+    Refused on the same terms as any other splice: a gate is a decision and the production is where it is taken, a
+    recovery on either side rides the very call the splice removes, and an action binding a parameter the call renames
+    would write somewhere else.
+    """
+
+    def spliced(alternative):
+        call = alternative.first
+        callee = None if call is None else grammar.get(call.name)
+        if callee is None or not isinstance(callee.body, ir.Choice) or len(callee.body.alternatives) != 1:
+            return alternative
+        [way] = callee.body.alternatives
+        if way.gate.peek is not None or way.gate.guards or way.recover is not None:
+            return alternative
+        if alternative.recover is not None:
+            return alternative
+        if way.first is not None or way.second is not None or not way.actions:
+            return alternative  # it goes somewhere, or does nothing at all, and the sweep answers for that one
+        moved = _moved_actions(way.actions, callee, call)
+        if moved is None:
+            return alternative  # an action binds a parameter the call renames, where no substitution reaches the target
+        return dataclasses.replace(
+            alternative, actions=alternative.actions + moved, first=alternative.second, second=None
+        )
+
+    return _gated(grammar, spliced)
+
+
 def prune_params(grammar, namer):
     """
     Drop each parameter a production does not need, with the argument every call passed it.
@@ -4201,6 +4238,7 @@ STEPS = [
     ("prune-params", prune_params),
     ("clear-params", clear_params),
     ("read-globals", read_globals),
+    ("inline-bare-actions", inline_bare_actions),
 ]
 
 
