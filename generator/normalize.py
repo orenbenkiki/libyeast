@@ -2886,6 +2886,128 @@ def defer_pops(grammar, namer):
     return result
 
 
+def hoist_pushes(grammar, namer):
+    """
+    Move a push that leads every way of a production out into the ways that call it.
+
+    A production every way of which begins by pushing the same indentation pushes it however it is entered, so the push
+    can stand in the callers instead — last among their actions, which is the moment before the call. Nothing happens
+    between the two points but the call itself and the callee's own gate, and a gate consumes nothing and is refused
+    here where it reads the indentation. A gate that then fails leaves the push made, which costs nothing: the path is
+    failing, and a failing path gives the stack back, by the rewind that undoes it or the cut that unwinds it.
+
+    Every caller must take it, or one would enter the callee without the push its ways no longer make. So a production a
+    parse enters by name is refused, and so is one a `(recover)` names — a cut reaches that without a caller having run
+    — and so is a call standing beside another, where the end of the actions is not the moment before this one.
+
+    What it is for is `cancel-indent-pairs` behind it: a caller that has just popped the same indentation now pushes it
+    back in the same action list, where the two can be seen to be nothing.
+    """
+    arrivals = collections.defaultdict(list)
+    guarded = set()
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for way in production.body.alternatives:
+            if way.recover is not None:
+                guarded.add(way.recover.name)
+            calls = [reference for reference in (way.first, way.second) if reference is not None]
+            for reference in calls:
+                arrivals[reference.name].append((way, reference, len(calls) == 1))
+
+    def leading(production):
+        """The push every way of `production` begins with, where they all begin with the same one, else `None`."""
+        ways = production.body.alternatives if isinstance(production.body, ir.Choice) else ()
+        if not ways or not all(way.actions and isinstance(way.actions[0], ir.PushIndent) for way in ways):
+            return None
+        pushes = {way.actions[0] for way in ways}
+        if len(pushes) != 1 or any(_reads_indent(way.gate) for way in ways):
+            return None
+        return next(iter(pushes))
+
+    entered = entered_by_name(grammar)
+    hoisted = {}
+    for name, production in grammar.items():
+        push = leading(production)
+        if push is None or name in entered or name in guarded or not arrivals[name]:
+            continue
+        if all(
+            alone and _travels(push.level, reference, production)
+            for way, reference, alone in arrivals[name]
+            if reference.name == name
+        ):
+            hoisted[name] = push
+    if not hoisted:
+        return grammar
+
+    # The push comes off a copy, not off the production itself: what a caller wants is a production that no longer makes
+    # it, and what a parse entering by name wants is one that still does. So the callers take the copy and the original
+    # is left whole for them — swept where nothing enters it, which is what a fixture naming one is pinned by.
+    copies = {name: namer.fresh(name) for name in sorted(hoisted)}
+
+    def rewritten(way, strip):
+        """`way` calling the copy of what it called and making that copy's push itself, its own leading one gone."""
+        actions = way.actions[1:] if strip else way.actions
+        called = [
+            (slot, reference)
+            for slot in ("first", "second")
+            if (reference := getattr(way, slot)) is not None and reference.name in copies
+        ]
+        if not called:
+            return dataclasses.replace(way, actions=actions)
+        [(slot, reference)] = called
+        moved = dataclasses.replace(reference, name=copies[reference.name])
+        return dataclasses.replace(way, actions=actions + (hoisted[reference.name],), **{slot: moved})
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            body = ir.Choice(tuple(rewritten(way, False) for way in body.alternatives))
+        result[name] = dataclasses.replace(production, body=body)
+    for name, copy in copies.items():
+        ways = tuple(rewritten(way, True) for way in grammar[name].body.alternatives)
+        result[copy] = dataclasses.replace(grammar[name], name=copy, body=ir.Choice(ways))
+    return result
+
+
+def cancel_indent_pairs(grammar, namer):
+    """
+    Take out a pop and a push of the same indentation standing next to each other.
+
+    The pop says which level it takes off and the push says which it puts on, both read at the same point — the pop's
+    once it has popped, the push's as it pushes — so where the two are the same expression the stack is left exactly as
+    it was found. Neither is doing anything, and what stood around them goes on measuring against what it did.
+    """
+
+    def cancelled(actions):
+        """`actions` with each adjacent pop and push of one level gone, as many times as the pair stands."""
+        kept, index = [], 0
+        while index < len(actions):
+            here = actions[index]
+            following = actions[index + 1] if index + 1 < len(actions) else None
+            if (
+                isinstance(here, ir.PopIndent)
+                and isinstance(following, ir.PushIndent)
+                and here.level is not None
+                and here.level == following.level
+            ):
+                index += 2
+                continue
+            kept.append(here)
+            index += 1
+        return tuple(kept)
+
+    result = {}
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            ways = tuple(dataclasses.replace(way, actions=cancelled(way.actions)) for way in body.alternatives)
+            body = ir.Choice(ways)
+        result[name] = dataclasses.replace(production, body=body)
+    return result
+
+
 def strip_pop_levels(grammar, namer):
     """
     Take the level off every pop, nothing needing it past here.
@@ -3994,6 +4116,8 @@ STEPS = [
     ("read-indents", read_indents),
     ("sink-pops", sink_pops),
     ("defer-pops", defer_pops),
+    ("hoist-pushes", hoist_pushes),
+    ("cancel-indent-pairs", cancel_indent_pairs),
     ("strip-pop-levels", strip_pop_levels),
     ("prune-params", prune_params),
     ("clear-params", clear_params),

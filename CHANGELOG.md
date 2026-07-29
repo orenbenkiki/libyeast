@@ -315,7 +315,7 @@ All notable changes to this project are documented here. The format follows
   an alias context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's
   rejection: nothing can be seen to refuse what matches at every position, and a consuming copy that says no where the
   base matched empty would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus
-  parses green in that hybrid the whole way, so the meter is honest at every step: 600 of 768 productions run committed,
+  parses green in that hybrid the whole way, so the meter is honest at every step: 603 of 771 productions run committed,
   and the 168 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
   first conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix
   wrappers so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan
@@ -385,6 +385,19 @@ All notable changes to this project are documented here. The format follows
   `(recover)` left standing the pushes of the parse it abandoned, where a cut reaching `_fail` had always cleared them.
   The recovery now takes back what the abandoned parse never got to. The comparison stays live at `push-indents`, the
   last grammar to carry both.
+
+  The block collections push their indentation once before their loop and pop it once after, where they pushed and
+  popped it per entry. `hoist-pushes` and `cancel-indent-pairs` are what take the pair out: a production every way of
+  which begins with the same push makes it however it is entered, so the callers make it instead, last among their own
+  actions — a gate consumes nothing and is refused where it reads the indentation, and a gate that then fails leaves a
+  push the failing path gives back. The push comes off a copy rather than the production itself, what a caller wants
+  being a production that no longer makes it and what a parse entering by name wants being one that still does; the
+  original is left whole and swept where nothing enters it, which is what pins a fixture naming one to the stage before.
+  Then a pop and a push of one level standing next to each other are nothing, and both go.
+
+  So `m` is read at the top of the construct that measures it and the loop runs with `n+m` in force throughout, where it
+  used to be re-read on every entry to rebuild what had just been popped. Ways reading it outside a pop level fall from
+  31 to 18, which is the whole point of the pop carrying a level and of everything that moved a pop to reach this.
 
   A pop says which indentation it takes off. `PushIndent` and `PopIndent` are minted together and the level is written
   on both, carried with the pop wherever it moves and re-scoped where it crosses a call, so a step moving the pop — or

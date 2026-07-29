@@ -490,6 +490,17 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      has happened, that being the scope it was written in, and checked there: the pairing is a refusal, not a claim.
      What was rejected and why: a tag naming the pair would make two otherwise-equal productions unequal, and the
      sweep's merge is where every gain has come from. A level is a value, so two pops of the same level still merge.
+   - `hoist-pushes` and `cancel-indent-pairs` — landed, and between them the loop's push and pop come out of it. A
+     production every way of which begins with the same push makes it however it is entered, so the callers make it
+     instead, last among their actions. *A gate consumes nothing and is refused where it reads the indentation, and a
+     gate that then fails leaves a push the failing path gives back.* The push comes off a **copy**: what a caller wants
+     is a production that no longer makes it and what a parse entering by name wants is one that still does, so the
+     original is left whole and swept where nothing enters it — which is what pins a fixture naming one to the stage
+     before. Then a pop and a push of one level standing next to each other are nothing and both go, which is what the
+     level on the pop was for.
+   - What that buys, which is the thing this whole run of steps was for: the block collections push once before their
+     loop and pop once after it, where they pushed and popped per entry. `m` is read at the top of the construct and the
+     loop runs with `n+m` in force throughout. Ways reading `m` outside a pop level fall from 31 to 18.
    - `strip-pop-levels` — landed. The level goes once `defer-pops`, the last step to read it, has run. Left standing it
      is a read of what it names at every pop — the auto-detected indent among them — which keeps a value live where the
      parse has no use for it, and would have the check read one a nested construct has since written. Ten ways stop
@@ -526,9 +537,9 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
    and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
    Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
-   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 244. Of those, 133
+   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 247. Of those, 133
    offer a blind choice between a way that reads and one that does not — the debt, and the decision points that are a
-   call to one of them against its zero-width way are the greedy optional. The other 111 match empty single-way, which
+   call to one of them against its zero-width way are the greedy optional. The other 114 match empty single-way, which
    is the shape the canonical form mints on purpose and the invariant below allows. It is not a shape awaiting a
    certificate; it is the elimination not having been carried through. The empty match is moved one node sideways into
    an inline choice, and the first step that gives a choice a production of its own hands it back. Five moves, in this
