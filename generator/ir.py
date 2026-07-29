@@ -33,7 +33,7 @@ RECOVER = "l-recover"
 FINITE_PARAMS = ("c", "t", "r")
 FINITE_DEFAULTS = {"r": "n"}
 
-# The parameters that are one value for the parse rather than one per frame: what `normalize.read_globals` takes off
+# The parameters that are one value for the parse rather than one per call: what `normalize.read_globals` takes off
 # every declaration and every call, leaving the reads and the writes to reach the single slot. A global is what does not
 # nest — the auto-detected indent is measured by the construct that opens and read while it stands, the block scalar's
 # floor by its leading empty lines and read by its first content line, one construct at a time — and `clear-params` is
@@ -125,7 +125,7 @@ class Match:
 @dataclass(frozen=True)
 class Global:
     """
-    The value of the global `name` — one for the parse, not one per frame.
+    The value of the global `name` — one for the parse, not one per call.
 
     A value read off the single slot rather than a parameter passed to get here: `SetVar` and `Increase` write it,
     `ClearVar` says where it stops applying, and nothing declares it or carries it down a call.
@@ -469,11 +469,11 @@ class Alternative:
     """
     One way a production may go: a `Gate` to enter on, the `actions` it performs, and up to two productions it hands
     control to. `first` is the call and `second` the continuation — run `first`, and when it returns resume at `second`
-    — so a frame is pushed once per edge. `second` alone is a tail call; neither is a return. Nothing follows `second`,
-    which is why a sequence's trailing actions become a continuation of their own. `recover` rides the push: where it
-    names a recovery production, a cut unwinding out of `first` stops at this frame — the error is emitted, the markers
-    `first` opened are closed down to here, `recover` matches what this rule gives up, and the parse resumes at the
-    frame's own return as though `first` had matched. A recovery that does not match sends the cut on up.
+    — so an edge is one push. `second` alone is a tail call; neither is a return. Nothing follows `second`, which is why
+    a sequence's trailing actions become a continuation of their own. `recover` rides the push: where it names a
+    recovery production, a cut unwinding out of `first` stops at it — the error is emitted, the markers `first` opened
+    are closed down to here, `recover` matches what this rule gives up, and the parse resumes where `first` would have
+    returned as though it had matched. A recovery that does not match sends the cut on up.
     """
 
     gate: object
@@ -842,8 +842,8 @@ class PopMessage:
     A zero-width action that closes the committed region the innermost `PushMessage` opened — reaching it is what makes
     the region's commitment kept, so a later failure backtracks through it softly. Paired with `PushMessage`:
     `Commit(message, item)` lowers to `PushMessage(message), item, PopMessage`. The pair may be cut across a minted
-    helper: it reads nothing off the frame, pairing with its push dynamically, so unlike a `(token)`'s code there is no
-    outer value to pass.
+    helper: like a `(token)`'s code it pairs with its push on the parse's own stack, so where the halves stand is
+    nothing the split has to know.
     """
 
     def references(self):
@@ -941,7 +941,7 @@ class CommitProvisional:
     """
     A zero-width action that resolves the open run: its tokens are decided and may be handed back. One-for-one with
     `ys_queue_resolve_run`. Paired with `OpenProvisional` dynamically, as a committed region's push and pop are — the
-    run is the queue's, not a frame's, so the pair may be cut across productions.
+    run is the queue's, not any one call's, so the pair may be cut across productions.
     """
 
     def references(self):
@@ -1005,7 +1005,7 @@ class Recover:
     """
     `(recover)`: where a `(cut)` inside `item` stops unwinding, when `recovery` says it stops here.
 
-    A cut unwinds past every frame between it and whatever will answer for it. This is a rule saying "that is me": the
+    A cut unwinds past every call between it and whatever will answer for it. This is a rule saying "that is me": the
     error is emitted, the markers `item` opened are closed down to this point and no further, and `recovery` matches
     whatever of the input this rule is willing to give up — after which the parse carries on from here as though `item`
     had matched, so a repetition around it takes its next turn.

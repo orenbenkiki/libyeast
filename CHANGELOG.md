@@ -104,16 +104,16 @@ All notable changes to this project are documented here. The format follows
   having no call site to hold the choice. The step checks its own post-condition on what the parse can enter: a
   production still matching empty, or a repetition still repeating what can, is a fault raised where it was made rather
   than a puzzle for a later step. `declare-bindings` completes it: a value leaves a production only through a declared
-  parameter passed by reference, so a binding a production does not declare is written into its own frame and dropped on
-  return, surviving only where the write stands above every frame that reads it — which a distributed residue, or any
-  later step minting a helper out of the middle of a body, is exactly what breaks. Each production is given the
-  parameters its own body binds, the `(if)` that will lower to a `(set)` counted with the `(set)`s, so every minted
-  helper carries them and the write reaches the reader wherever the split lands; no call site changes, an argument a
-  caller does not give leaving the parameter the ambient value it read before. What a production binds for itself is
-  what it detects — the block header's auto-detected indent `m`, the leading empties' floor `f` — which is why no caller
-  passes one and no fixture names one: a fixture entering a production that declares one enters with it unset, as a
-  fresh parse does. `trim-runs` recognizes a plain or quoted scalar's in-line run `(s-white* content)*` and rewrites it
-  as a single trimmed run that keeps inner whitespace and gives back trailing; `hoist-char-runs` factors a run over an
+  parameter passed by reference, so a binding a production does not declare is the call's own and gone when it returns,
+  surviving only where the write stands above every call that reads it — which a distributed residue, or any later step
+  minting a helper out of the middle of a body, is exactly what breaks. Each production is given the parameters its own
+  body binds, the `(if)` that will lower to a `(set)` counted with the `(set)`s, so every minted helper carries them and
+  the write reaches the reader wherever the split lands; no call site changes, an argument a caller does not give
+  leaving the parameter the ambient value it read before. What a production binds for itself is what it detects — the
+  block header's auto-detected indent `m`, the leading empties' floor `f` — which is why no caller passes one and no
+  fixture names one: a fixture entering a production that declares one enters with it unset, as a fresh parse does.
+  `trim-runs` recognizes a plain or quoted scalar's in-line run `(s-white* content)*` and rewrites it as a single
+  trimmed run that keeps inner whitespace and gives back trailing; `hoist-char-runs` factors a run over an
   almost-character-set — a URI, a tag, quoted content, its handful of escapes and guards the exception — into a
   character-set bulk with a slow path, seeing through a `(---)` difference to reach the set beneath, and
   `hoist-trimmed-runs` factors a trimmed run the same way so its common runs are the two-set trimming scan
@@ -135,11 +135,11 @@ All notable changes to this project are documented here. The format follows
   unwinds past an unclosed push raises its message, one past the pop backtracks softly, the `reached` flag of the old
   scope now the pop having run. The extent is written in the grammar rather than implied by the tree shape, so it
   survives every later split; a helper may hold one half of the pair, the pop pairing with its push dynamically and
-  reading no frame value back, which is what lets it be cut where a `(token)`'s code must be passed. A gate is never
-  hoisted past a `PushMessage` — refusing entry to a region the grammar committed to must stay the error it names, not
-  soften into a skip — which `gate-hoist` and the alternative shaping both hold to. `flatten` then splices nested
-  `Seq`/`Alt`, drops the `Empty` no-ops a sequence carries, and unwraps singleton `Seq`/`Alt`. `span-consumes` then
-  rewrites every repetition over a character class as the single scan the canonical form spells: a `Star` becomes a
+  reading nothing off the call it stands in, which is what lets it be cut where a `(token)`'s code must be passed. A
+  gate is never hoisted past a `PushMessage` — refusing entry to a region the grammar committed to must stay the error
+  it names, not soften into a skip — which `gate-hoist` and the alternative shaping both hold to. `flatten` then splices
+  nested `Seq`/`Alt`, drops the `Empty` no-ops a sequence carries, and unwraps singleton `Seq`/`Alt`. `span-consumes`
+  then rewrites every repetition over a character class as the single scan the canonical form spells: a `Star` becomes a
   `ConsumeSpan`, a `TrimStar` a `ConsumeTrimmedSpan`, a `({N})` repetition a `ConsumeCountedSpan` — a run of exactly so
   many, which keeps an escape's eight hex digits and an indent's `n` spaces each one scan rather than a state per
   character. `literal-consumes` rewrites what a sequence's own shape spells rather than a repetition: characters
@@ -152,180 +152,179 @@ All notable changes to this project are documented here. The format follows
   terminal its gate peeks — a single character, or a char-set `x+`, whose at-least-one is exactly what a gate on `[x]`
   proves — and `binarize` down to the canonical form's two production calls, each moving what follows into a fresh
   `_<N>` helper called in its place, so `A -> B C D` becomes `A -> B A_1` and `A_1 -> C D`. Two calls is one stack push
-  per edge. What a helper may hold is bounded by the scopes a production's frame carries: a `(max)` window is not
-  passed, so a moved segment opens and closes it together, while a `(token)`'s code is — a helper split out of the
-  middle of one takes the code its caller was entered under as a parameter, so its close restores the outer code rather
-  than the pushed one, and a declared parameter beats the scope in force where a production is entered.
-  `alternative-shape` then writes each production the way the state machine reads it: a terminal character class, or a
-  `Choice` of `Alternative`s, each a `Gate` to enter on — the character the next one must be, and the zero-width
-  conditions that must hold with it — the actions it performs, and up to two productions, the call and the continuation
-  to resume at when it returns, which is one frame pushed per edge. Nothing follows the continuation, since a production
-  returns exactly when it does, so an alternative is cut at its first call and what follows becomes a continuation of
-  its own — a scalar's `end` marker after its last call included, which is how it gets a state to sit in. A gated
-  character is taken by a `ConsumeChar`, which consumes exactly one, always: the gate has found it, so one that finds
-  nothing is a gate that did not do its job, and the interpreter and the generated parser both say so rather than
-  matching nothing. A char-set `x+` becomes its gate's peek with a `ConsumeSpan` behind it — the gate proves the span
-  takes at least one, so a plus costs no node of its own — while a `x*` stays an action, a scan that cannot fail needing
-  no decision. `lower-recovers` then moves each `(recover)` from the action it stood in onto the edge it protects: the
-  alternative calls the guarded production as its `first` and names the recovery in `recover`, so the frame pushed for
-  the call is the one a cut unwinds to — the handler is the frame, the resume point its own return, and the calls the
-  alternative already had move behind it, into a minted continuation helper where there were two. Failure carries no
-  continuation of its own: a dead-end is an error, the unwind searches the stack for the nearest recovery-carrying
-  frame, and the parse resumes at that frame's return as though the guarded call had matched — which is why a recovery
-  rides the push where a message brackets a region. With it the residue is fully spelled: no scope and no repetition
-  stands where the canonical form wants a gate, an action or a call, and the count the check keeps is the net that puts
-  a leftover back on the board. `refine-indents` then turns each exact-count indentation call into the one maximal scan
-  judged after the fact, in the shape `s-indent-le` already spells: an alternative calling `s-indent(k)` with a
-  continuation behind it takes `PushCode(indent) ConsumeSpan(space) Le·Le PopCode` inline — the count an equality on the
-  length of the indent token the scan is building — and promotes the continuation to the call, wherever the
-  continuation's first set is pinned, excludes the space, and cannot match empty, so the maximal scan steals nothing an
-  exact count would have left. Counted consumes of different `k` share no literal prefix; refined, they are the
-  identical scan with the counts as residual guards, which is what the prefix factoring needs to see. `factor-prefixes`
-  grew two admissions to match, each locally checked: an identical maximal scan joins the prefix where every leftover's
-  first set is pinned, cannot match empty, and excludes the scanned set — a shorter run then leaves a character no
-  leftover admits, so the maximal run is the only one that proceeds and the factoring reorders nothing, a condition the
-  refined indents meet by construction. `gate-hoist` then gives an alternative that goes on a call the characters that
-  call can begin with, so the decision is made where it is taken rather than one production down — a first set falls
-  straight out of the shaped form, being the union of a production's alternatives' peeks. A union too wide is safe,
-  since the peek only has to hold wherever the call could match, and one that cannot be pinned down leaves the gate as
-  it was; an alternative whose actions reach a `(cut)` before the call is left alone, since the cut has committed and a
-  gate refusing first would take that commitment away. A character to go on is carried by 1037 of the 1183 alternatives
-  that consume or call; the 146 without one are determinize's to give. An alternative the call hoisting cannot reach — a
-  nullable callee, a run before the call, a chain of both — is `gate-hoist-wide`'s, peeked as its whole begin set,
-  actions, call and continuation together, where that is pinned down and cannot match empty: an empty match must stay
-  enterable with no character left to peek, so a nullable alternative keeps its empty gate for the follow-set
-  certificate to decide. A hoisted gate makes the decision the production it calls used to make — where the character is
-  not one that call can begin with, the call never happens — so the coverage gate counts the gate saying no as that
-  production saying no, or gating a rule correctly would make it look untested. The coverage gate holds a minted helper
-  covered by the base it came from, as it does a monomorphic copy: a helper is a piece of the base's own body moved, so
-  requiring more of it than of the body it came from would ask the corpus for what the untransformed grammar never
-  needed. Determinism is then tracked production by production rather than claimed all at once:
-  `deterministic_productions` names every production whose decisions are statically proved one-gate-decidable — a
-  terminal and a single-alternative choice decide nothing, and alternatives peeking pairwise-disjoint character sets can
-  hold at most one gate, so committing to the first that holds is the parse backtracking finds; a guard on a gate only
-  narrows the one candidate its peek admits, deciding nothing between alternatives, and its refusal falls through
-  exactly as backtracking does — and the interpreter enters exactly those committed, the whole gate evaluated, no second
-  try, backtracking everywhere else. An ungated last alternative — the empty way out of a loop, or a call whose first
-  set no gate could pin — certifies too, where everything it can begin with, its own first set widened by the
-  production's follow set where it may match empty, is pinned down and disjoint from every peek: where a gate holds the
-  last way cannot succeed, entered fresh or backtracked into, and for a last alternative entered-and-failed is the same
-  as not entered. `split-conflicts` then confines every overlap the gates still hold: the characters only one
-  alternative accepts stay its own, and the characters a set of alternatives share go to a minted production holding
-  those alternatives in their order, called behind a gate on exactly them — the original's gates become disjoint, and
-  the overlap waits in a helper whose alternatives all peek the same characters, ready for their common prefix to be
-  factored. Two inlinings then put what a factoring must see into one list. `inline-under-gate` gives a call only the
-  ways its caller's gate can reach: an alternative that peeks a character and then calls, taking nothing on the way,
-  enters the callee where it peeked, so a way whose own peek admits no character the caller's does can never fire and a
-  minted copy holding the rest is what the call means there — and where one way is left and it reads nothing, its
-  actions splice into the caller's and the continuation becomes the call, which is how the block header's indentation
-  side surfaces as the auto-detect it is rather than a call to a choice. `inline-single-way` carries the sweep's
-  splicing of a do-nothing production to one that does something: a call whose production has one ungated way decides
-  nothing, so its actions join the caller's and its own calls become the caller's, each parameter bound to the argument
-  the call passes. Both refuse where the production is load-bearing — a gated way is a decision, the canonical form
-  holds two calls and not three, a recovery rides the very call a splice removes, and an action binding a parameter the
-  call renames is a loud fault. `factor-prefixes` factors it: the longest identical run of zero-width actions and
-  fixed-width consumes — a length-ambiguous run stops it, backtracking over it being an order a factoring must not
-  reshuffle, as does a frame-scoped pair's half — moves into one alternative that calls a minted decision production
-  holding what remains of each way, handed the code where a leftover closes a `(token)` the prefix opened; a second gate
-  hoisting then gives each leftover the characters it can go on, one character deeper than the gate the alternatives
-  shared. One round reaches the fixpoint: what stands after it differs in its emissions before the decision or is
-  committed to by order — the deep end the certificates are still to reach. The provisional run is what reaches past a
-  character: a run of held tokens, its `start` and a `MarkProvisional` cutting it into the region before the mark and
-  the region from it on — re-taken within a run the mark moves, the last taken winning, what a line scan spends per
-  fresh line — opened by `OpenProvisional` and resolved by `CommitProvisional`, with two actions that read it —
-  `RetypeProvisional(rest, breaks, region)` rewriting the held tokens in a region by kind, a break-consumed token to one
-  code, any other to the second, `None` keeping a kind its own; and `InjectBefore(codes, at)` inserting decided markers,
-  in order, at the run's start or its mark. One obligation makes the mechanism sound: no held token is dropped or grown,
-  so the readings a run decides between agree token for token and every difference between them is a zero-width marker.
-  The five are one-for-one with the `ys_queue` runtime and zero-width to every analysis, held balanced by a net that
-  walks the run's state — closed, open, marked — through the call graph, refusing a mark or an injection or a retype
-  that names a mark none was taken, and undone in the interpreter through a trail its rewind pops — a retyped code, an
-  injected marker — the run start and its mark values the checkpoint restores, so backtracking rewinds through any
-  provisional action and a hybrid run rewinds through a commit. `speculate-folds` spends them first: the flow fold's
-  break is emitted provisionally and the next line read through — an indent and whites whose codes no outcome changes —
-  to the one character that decides it, a break committing the trimmed way, anything else, the stream's end included,
-  retyping the held break to `line-fold` with the follower's prefix already consumed. The site is fused by name, the
-  first step to name a production rather than a shape — fusion being forced, a content line's spaces being the
-  follower's, read before the decision, by a runtime that never rewinds input — and a certificate lemma lets two
-  alternatives share a peek where their guards are complementary, `Lt(x, y)` against `Le(y, x)`, the indentation loop's
-  own case. The first and follow sets behind all of this are computed over the shaped grammar as codepoint intervals,
-  every answer erring wide — a certificate stands on disjointness, so too wide refuses safely; the invalid-byte class
-  rides an alternation peek as its own unit, which is what pins the unparsed recovery's any-byte loop. A gate holds a
-  literal whole: `LiteralPeek(text, then, barrier)` enters where the input begins the text and the character after it,
-  if any, matches `then` or avoids `barrier` — the end of the input passing either, the polarity each literal's own —
-  and `ConsumePeeked` takes what the gate found without scanning the bytes twice. The CR LF break certifies so, in place
-  and without a state per character, and the certificate reads a literal-gated alternative as backtracking's own: where
-  the gate refuses, the next way is exactly where the failed literal lands, and where it holds, the literal commits
-  whole, the way the grammar means one. The first sets reach through what used to fog them: a difference begins with
-  what its base does, less every exclusion that is one character class — the interpreter probes exclusions before the
-  base, which makes the subtraction exact — and a recovery widens nothing, riding the call's edge to resume at the
-  frame's return, changing what may follow but never what an alternative begins with entered fresh. Those two facts
-  emptied the unpinned-fallthrough category whole: every follow set the certificates consult is pinned, and the hoisting
-  mints the gates it had been starved of — the quoted continuation lines gating on printable-non-white the way their
-  seam grapheme always meant. A literal gate climbs to where the decision is made: an alternative whose whole way in is
-  a call opening on a literal-gated production takes that gate as its own, the follow test declared rather than derived
-  — a first set cannot see the line structure that decides a marker, and a derived class admitted `----` to the marker
-  reading the spec gives a plain scalar, which the hybrid net and the marker fixtures caught on the spot — so the
-  explicit document commits on `---`-then-boundary at the stream's own choice, `c-forbidden`'s class carried as the
-  gate's `then`, and the certificate reads a literal spelled through single-way calls as one spelled in place. A way
-  guarded by the end of the input begins with no character, so its begins pin empty — while staying nullable, the gate
-  hoisting keeping an empty match enterable with nothing left to peek, and only the certificate knowing that nothing
-  follows the end — which certifies the break-or-end tails whole, the comment ends and the chomped last breaks, the
-  comment chain cascading behind them. The directive keywords carry their name barrier — `YAML` and `TAG` are the whole
-  name only where no `ns-char` follows, the reserved directive's own greedy name claiming a longer one, and a seen
-  keyword commits, its version's faults the grammar's own cut to judge — so `%YAMLX` is a reserved directive named
-  `YAMLX` where `%YAML` alone is the committed keyword's error. The block header reads chomping first through
-  `reorder-declared` — one generic swap of a two-way choice whose targets and reasons are data, `DECLARED_REORDERS`,
-  never a name recognized in transformation code — and the reasons are per-copy arguments that hold only after
-  monomorphize: the strip and keep copies gate their chomping way on a literal, no empty match left to enter through,
-  where in the base grammar clip's empty chomping branch would let a chomp-first ordering swallow nothing on `|2-` and
-  commit the valid trailing `-` into an error. Alternative order is semantics under backtracking-with-commits, and a
-  reorder's soundness is position-dependent — the same swap is unsound in the base and proved where the step stands.
-  `extend-returns` folds a declared site the same declared way: a call-then-continuation whose continuation is actions
-  alone is absorbed into the call's own family — the actions appended to every return path through minted copies, a tail
-  call retargeting to its target's copy, a recursion meeting its own copy and folding, every other caller untouched and
-  the dead productions purged — a language identity, stream-faithful because the appended actions run exactly where the
-  continuation ran, and refused where the continuation closes a scope it does not open. Its first declared targets fold
-  the sequence loops' end-marker helpers, so each loop's exit way carries its own `end-sequence` inline — the seam
-  toward the parent's next scan absorbed one declared helper at a time, each fold corpus-held, rather than by one atomic
-  flip. The mapping loop's exit folds beside the sequence's and earns its declaration twice: absorbing the helper leaves
-  the way that carried it a single call, and a way with a call *and* a continuation cannot hand its pop down — the
-  continuation goes on the stack ahead of where the pop would land. So the seam absorbed is also what lets a pop reach
-  the loop's own scan, which stops that scan reading an auto-detected indent a nested collection has since replaced. And
-  what no disjointness can prove now stands declared: the assurance ledger commits a production on a written reason —
-  the header's chomp-first subsumption and a digit at the indicator being the indicator — each entry held to
-  backtracking by the hybrid corpus, refused when its name goes stale or the analysis catches up, and counted on its own
-  gate line so the declared few never grow quietly. Every step's grammar is then swept of what the step leaves behind,
-  the three passes running to a fixpoint since each feeds the others. A production whose whole body is one ungated,
-  action-free call, with no continuation and no recovery of its own, is what it calls, so every reference to it becomes
-  a reference to that callee — a production that decides nothing and does nothing costing a push either way. Productions
-  that behave alike are spelled once: same parameters, and the same body once every reference in it is read as the group
-  of what it names rather than by the name itself, which is what tells two loops apart from one loop written twice —
-  `b-l-spaced`'s empty-line scan, `b-l-trimmed`'s and `l-keep-empty`'s are one production, where comparing the bodies as
-  written sees three. The groups are the coarsest partition that stays stable under that reading. And last, so it sees
-  what the other two strand, every production no parse can enter is purged — each IR node spells the productions it
-  references, and reachability closes over the ones a parse enters by name — so the fold's old family is gone the step
-  its fused replacement lands, and the meter stands on what the machine holds. None of the three changes what the
-  grammar matches or emits. Only a merge is a rename, and only a merge a point of interest follows: two productions that
-  behave alike are one thing under two names, so what tracked either tracks the one kept, where a spliced production is
-  consumed rather than renamed and its callee holds none of its role — following one slid a declaration meant for a
-  line-prefix wrapper onto the indent scan underneath it and dissolved the very call the indent refinement exists to
-  refine. That splicing is the declared line-prefix inlines done universally, so both of those entries retired when the
-  universal rule caught up with them, leaving two. Which productions hold a point is read as membership of what the
-  point already tracks, never by comparing names: the sweep spells two alike productions once and keeps whichever name
-  it keeps, so a holder can end up answering to a family it has nothing to do with — the sequence loop's own exit seam
-  went by a flow-sequence name — and a test on the name then asks about a production the sweep discarded. Read by
-  membership, each loop's declaration takes its resume-policy twin in beside the original, both being the same
-  end-marker helper. A fixture the sweep strands is not dropped: it pins to the last stage whose grammar can run it,
-  guards that grammar token for token, and credits coverage from where it stands — 194 of the 694, the fold family's
-  four, `c-reserved`'s three (a production the spec defines and nothing references, the base grammar's own), the helpers
-  the declared extensions absorbed, the nullable productions their consuming copies replaced, and the bare monomorphic
-  copies only a fixture enters, the root reaching an escape char, a tag property or an alias context-pinned alone. A
-  base that is total where the fixtures run it is excused the coverage gate's rejection: nothing can be seen to refuse
-  what matches at every position, and a consuming copy that says no where the base matched empty would be asking the
-  corpus for a refusal the untransformed grammar had nowhere to show. The corpus parses green in that hybrid the whole
-  way, so the meter is honest at every step: 584 of 752 productions run committed, and the 168 still backtracking are
-  the determinize work itself, driven to none, at which point it becomes a gate. The first conflict the local moves
+  per edge. What a helper may hold is bounded by the scopes a call held of its own: a `(max)` window is not passed, so a
+  moved segment opens and closes it together, while a `(token)`'s code is — a helper split out of the middle of one
+  takes the code its caller was entered under as a parameter, so its close restores the outer code rather than the
+  pushed one, and a declared parameter beats the scope in force where a production is entered. `alternative-shape` then
+  writes each production the way the state machine reads it: a terminal character class, or a `Choice` of
+  `Alternative`s, each a `Gate` to enter on — the character the next one must be, and the zero-width conditions that
+  must hold with it — the actions it performs, and up to two productions, the call and the continuation to resume at
+  when it returns, which is one push per edge. Nothing follows the continuation, since a production returns exactly when
+  it does, so an alternative is cut at its first call and what follows becomes a continuation of its own — a scalar's
+  `end` marker after its last call included, which is how it gets a state to sit in. A gated character is taken by a
+  `ConsumeChar`, which consumes exactly one, always: the gate has found it, so one that finds nothing is a gate that did
+  not do its job, and the interpreter and the generated parser both say so rather than matching nothing. A char-set `x+`
+  becomes its gate's peek with a `ConsumeSpan` behind it — the gate proves the span takes at least one, so a plus costs
+  no node of its own — while a `x*` stays an action, a scan that cannot fail needing no decision. `lower-recovers` then
+  moves each `(recover)` from the action it stood in onto the edge it protects: the alternative calls the guarded
+  production as its `first` and names the recovery in `recover`, so what the call pushes is what a cut unwinds to — the
+  handler answers for that call, the resume point where it returns, and the calls the alternative already had move
+  behind it, into a minted continuation helper where there were two. Failure carries no continuation of its own: a
+  dead-end is an error, the unwind searches the stack for the nearest recovery-carrying push, and the parse resumes
+  where that call returns as though it had matched — which is why a recovery rides the push where a message brackets a
+  region. With it the residue is fully spelled: no scope and no repetition stands where the canonical form wants a gate,
+  an action or a call, and the count the check keeps is the net that puts a leftover back on the board. `refine-indents`
+  then turns each exact-count indentation call into the one maximal scan judged after the fact, in the shape
+  `s-indent-le` already spells: an alternative calling `s-indent(k)` with a continuation behind it takes
+  `PushCode(indent) ConsumeSpan(space) Le·Le PopCode` inline — the count an equality on the length of the indent token
+  the scan is building — and promotes the continuation to the call, wherever the continuation's first set is pinned,
+  excludes the space, and cannot match empty, so the maximal scan steals nothing an exact count would have left. Counted
+  consumes of different `k` share no literal prefix; refined, they are the identical scan with the counts as residual
+  guards, which is what the prefix factoring needs to see. `factor-prefixes` grew two admissions to match, each locally
+  checked: an identical maximal scan joins the prefix where every leftover's first set is pinned, cannot match empty,
+  and excludes the scanned set — a shorter run then leaves a character no leftover admits, so the maximal run is the
+  only one that proceeds and the factoring reorders nothing, a condition the refined indents meet by construction.
+  `gate-hoist` then gives an alternative that goes on a call the characters that call can begin with, so the decision is
+  made where it is taken rather than one production down — a first set falls straight out of the shaped form, being the
+  union of a production's alternatives' peeks. A union too wide is safe, since the peek only has to hold wherever the
+  call could match, and one that cannot be pinned down leaves the gate as it was; an alternative whose actions reach a
+  `(cut)` before the call is left alone, since the cut has committed and a gate refusing first would take that
+  commitment away. A character to go on is carried by 1037 of the 1183 alternatives that consume or call; the 146
+  without one are determinize's to give. An alternative the call hoisting cannot reach — a nullable callee, a run before
+  the call, a chain of both — is `gate-hoist-wide`'s, peeked as its whole begin set, actions, call and continuation
+  together, where that is pinned down and cannot match empty: an empty match must stay enterable with no character left
+  to peek, so a nullable alternative keeps its empty gate for the follow-set certificate to decide. A hoisted gate makes
+  the decision the production it calls used to make — where the character is not one that call can begin with, the call
+  never happens — so the coverage gate counts the gate saying no as that production saying no, or gating a rule
+  correctly would make it look untested. The coverage gate holds a minted helper covered by the base it came from, as it
+  does a monomorphic copy: a helper is a piece of the base's own body moved, so requiring more of it than of the body it
+  came from would ask the corpus for what the untransformed grammar never needed. Determinism is then tracked production
+  by production rather than claimed all at once: `deterministic_productions` names every production whose decisions are
+  statically proved one-gate-decidable — a terminal and a single-alternative choice decide nothing, and alternatives
+  peeking pairwise-disjoint character sets can hold at most one gate, so committing to the first that holds is the parse
+  backtracking finds; a guard on a gate only narrows the one candidate its peek admits, deciding nothing between
+  alternatives, and its refusal falls through exactly as backtracking does — and the interpreter enters exactly those
+  committed, the whole gate evaluated, no second try, backtracking everywhere else. An ungated last alternative — the
+  empty way out of a loop, or a call whose first set no gate could pin — certifies too, where everything it can begin
+  with, its own first set widened by the production's follow set where it may match empty, is pinned down and disjoint
+  from every peek: where a gate holds the last way cannot succeed, entered fresh or backtracked into, and for a last
+  alternative entered-and-failed is the same as not entered. `split-conflicts` then confines every overlap the gates
+  still hold: the characters only one alternative accepts stay its own, and the characters a set of alternatives share
+  go to a minted production holding those alternatives in their order, called behind a gate on exactly them — the
+  original's gates become disjoint, and the overlap waits in a helper whose alternatives all peek the same characters,
+  ready for their common prefix to be factored. Two inlinings then put what a factoring must see into one list.
+  `inline-under-gate` gives a call only the ways its caller's gate can reach: an alternative that peeks a character and
+  then calls, taking nothing on the way, enters the callee where it peeked, so a way whose own peek admits no character
+  the caller's does can never fire and a minted copy holding the rest is what the call means there — and where one way
+  is left and it reads nothing, its actions splice into the caller's and the continuation becomes the call, which is how
+  the block header's indentation side surfaces as the auto-detect it is rather than a call to a choice.
+  `inline-single-way` carries the sweep's splicing of a do-nothing production to one that does something: a call whose
+  production has one ungated way decides nothing, so its actions join the caller's and its own calls become the
+  caller's, each parameter bound to the argument the call passes. Both refuse where the production is load-bearing — a
+  gated way is a decision, the canonical form holds two calls and not three, a recovery rides the very call a splice
+  removes, and an action binding a parameter the call renames is a loud fault. `factor-prefixes` factors it: the longest
+  identical run of zero-width actions and fixed-width consumes — a length-ambiguous run stops it, backtracking over it
+  being an order a factoring must not reshuffle, as does a window pair's half — moves into one alternative that calls a
+  minted decision production holding what remains of each way, handed the code where a leftover closes a `(token)` the
+  prefix opened; a second gate hoisting then gives each leftover the characters it can go on, one character deeper than
+  the gate the alternatives shared. One round reaches the fixpoint: what stands after it differs in its emissions before
+  the decision or is committed to by order — the deep end the certificates are still to reach. The provisional run is
+  what reaches past a character: a run of held tokens, its `start` and a `MarkProvisional` cutting it into the region
+  before the mark and the region from it on — re-taken within a run the mark moves, the last taken winning, what a line
+  scan spends per fresh line — opened by `OpenProvisional` and resolved by `CommitProvisional`, with two actions that
+  read it — `RetypeProvisional(rest, breaks, region)` rewriting the held tokens in a region by kind, a break-consumed
+  token to one code, any other to the second, `None` keeping a kind its own; and `InjectBefore(codes, at)` inserting
+  decided markers, in order, at the run's start or its mark. One obligation makes the mechanism sound: no held token is
+  dropped or grown, so the readings a run decides between agree token for token and every difference between them is a
+  zero-width marker. The five are one-for-one with the `ys_queue` runtime and zero-width to every analysis, held
+  balanced by a net that walks the run's state — closed, open, marked — through the call graph, refusing a mark or an
+  injection or a retype that names a mark none was taken, and undone in the interpreter through a trail its rewind pops
+  — a retyped code, an injected marker — the run start and its mark values the checkpoint restores, so backtracking
+  rewinds through any provisional action and a hybrid run rewinds through a commit. `speculate-folds` spends them first:
+  the flow fold's break is emitted provisionally and the next line read through — an indent and whites whose codes no
+  outcome changes — to the one character that decides it, a break committing the trimmed way, anything else, the
+  stream's end included, retyping the held break to `line-fold` with the follower's prefix already consumed. The site is
+  fused by name, the first step to name a production rather than a shape — fusion being forced, a content line's spaces
+  being the follower's, read before the decision, by a runtime that never rewinds input — and a certificate lemma lets
+  two alternatives share a peek where their guards are complementary, `Lt(x, y)` against `Le(y, x)`, the indentation
+  loop's own case. The first and follow sets behind all of this are computed over the shaped grammar as codepoint
+  intervals, every answer erring wide — a certificate stands on disjointness, so too wide refuses safely; the
+  invalid-byte class rides an alternation peek as its own unit, which is what pins the unparsed recovery's any-byte
+  loop. A gate holds a literal whole: `LiteralPeek(text, then, barrier)` enters where the input begins the text and the
+  character after it, if any, matches `then` or avoids `barrier` — the end of the input passing either, the polarity
+  each literal's own — and `ConsumePeeked` takes what the gate found without scanning the bytes twice. The CR LF break
+  certifies so, in place and without a state per character, and the certificate reads a literal-gated alternative as
+  backtracking's own: where the gate refuses, the next way is exactly where the failed literal lands, and where it
+  holds, the literal commits whole, the way the grammar means one. The first sets reach through what used to fog them: a
+  difference begins with what its base does, less every exclusion that is one character class — the interpreter probes
+  exclusions before the base, which makes the subtraction exact — and a recovery widens nothing, riding the call's edge
+  to resume where the call returns, changing what may follow but never what an alternative begins with entered fresh.
+  Those two facts emptied the unpinned-fallthrough category whole: every follow set the certificates consult is pinned,
+  and the hoisting mints the gates it had been starved of — the quoted continuation lines gating on printable-non-white
+  the way their seam grapheme always meant. A literal gate climbs to where the decision is made: an alternative whose
+  whole way in is a call opening on a literal-gated production takes that gate as its own, the follow test declared
+  rather than derived — a first set cannot see the line structure that decides a marker, and a derived class admitted
+  `----` to the marker reading the spec gives a plain scalar, which the hybrid net and the marker fixtures caught on the
+  spot — so the explicit document commits on `---`-then-boundary at the stream's own choice, `c-forbidden`'s class
+  carried as the gate's `then`, and the certificate reads a literal spelled through single-way calls as one spelled in
+  place. A way guarded by the end of the input begins with no character, so its begins pin empty — while staying
+  nullable, the gate hoisting keeping an empty match enterable with nothing left to peek, and only the certificate
+  knowing that nothing follows the end — which certifies the break-or-end tails whole, the comment ends and the chomped
+  last breaks, the comment chain cascading behind them. The directive keywords carry their name barrier — `YAML` and
+  `TAG` are the whole name only where no `ns-char` follows, the reserved directive's own greedy name claiming a longer
+  one, and a seen keyword commits, its version's faults the grammar's own cut to judge — so `%YAMLX` is a reserved
+  directive named `YAMLX` where `%YAML` alone is the committed keyword's error. The block header reads chomping first
+  through `reorder-declared` — one generic swap of a two-way choice whose targets and reasons are data,
+  `DECLARED_REORDERS`, never a name recognized in transformation code — and the reasons are per-copy arguments that hold
+  only after monomorphize: the strip and keep copies gate their chomping way on a literal, no empty match left to enter
+  through, where in the base grammar clip's empty chomping branch would let a chomp-first ordering swallow nothing on
+  `|2-` and commit the valid trailing `-` into an error. Alternative order is semantics under backtracking-with-commits,
+  and a reorder's soundness is position-dependent — the same swap is unsound in the base and proved where the step
+  stands. `extend-returns` folds a declared site the same declared way: a call-then-continuation whose continuation is
+  actions alone is absorbed into the call's own family — the actions appended to every return path through minted
+  copies, a tail call retargeting to its target's copy, a recursion meeting its own copy and folding, every other caller
+  untouched and the dead productions purged — a language identity, stream-faithful because the appended actions run
+  exactly where the continuation ran, and refused where the continuation closes a scope it does not open. Its first
+  declared targets fold the sequence loops' end-marker helpers, so each loop's exit way carries its own `end-sequence`
+  inline — the seam toward the parent's next scan absorbed one declared helper at a time, each fold corpus-held, rather
+  than by one atomic flip. The mapping loop's exit folds beside the sequence's and earns its declaration twice:
+  absorbing the helper leaves the way that carried it a single call, and a way with a call *and* a continuation cannot
+  hand its pop down — the continuation goes on the stack ahead of where the pop would land. So the seam absorbed is also
+  what lets a pop reach the loop's own scan, which stops that scan reading an auto-detected indent a nested collection
+  has since replaced. And what no disjointness can prove now stands declared: the assurance ledger commits a production
+  on a written reason — the header's chomp-first subsumption and a digit at the indicator being the indicator — each
+  entry held to backtracking by the hybrid corpus, refused when its name goes stale or the analysis catches up, and
+  counted on its own gate line so the declared few never grow quietly. Every step's grammar is then swept of what the
+  step leaves behind, the three passes running to a fixpoint since each feeds the others. A production whose whole body
+  is one ungated, action-free call, with no continuation and no recovery of its own, is what it calls, so every
+  reference to it becomes a reference to that callee — a production that decides nothing and does nothing costing a push
+  either way. Productions that behave alike are spelled once: same parameters, and the same body once every reference in
+  it is read as the group of what it names rather than by the name itself, which is what tells two loops apart from one
+  loop written twice — `b-l-spaced`'s empty-line scan, `b-l-trimmed`'s and `l-keep-empty`'s are one production, where
+  comparing the bodies as written sees three. The groups are the coarsest partition that stays stable under that
+  reading. And last, so it sees what the other two strand, every production no parse can enter is purged — each IR node
+  spells the productions it references, and reachability closes over the ones a parse enters by name — so the fold's old
+  family is gone the step its fused replacement lands, and the meter stands on what the machine holds. None of the three
+  changes what the grammar matches or emits. Only a merge is a rename, and only a merge a point of interest follows: two
+  productions that behave alike are one thing under two names, so what tracked either tracks the one kept, where a
+  spliced production is consumed rather than renamed and its callee holds none of its role — following one slid a
+  declaration meant for a line-prefix wrapper onto the indent scan underneath it and dissolved the very call the indent
+  refinement exists to refine. That splicing is the declared line-prefix inlines done universally, so both of those
+  entries retired when the universal rule caught up with them, leaving two. Which productions hold a point is read as
+  membership of what the point already tracks, never by comparing names: the sweep spells two alike productions once and
+  keeps whichever name it keeps, so a holder can end up answering to a family it has nothing to do with — the sequence
+  loop's own exit seam went by a flow-sequence name — and a test on the name then asks about a production the sweep
+  discarded. Read by membership, each loop's declaration takes its resume-policy twin in beside the original, both being
+  the same end-marker helper. A fixture the sweep strands is not dropped: it pins to the last stage whose grammar can
+  run it, guards that grammar token for token, and credits coverage from where it stands — 194 of the 694, the fold
+  family's four, `c-reserved`'s three (a production the spec defines and nothing references, the base grammar's own),
+  the helpers the declared extensions absorbed, the nullable productions their consuming copies replaced, and the bare
+  monomorphic copies only a fixture enters, the root reaching an escape char, a tag property or an alias context-pinned
+  alone. A base that is total where the fixtures run it is excused the coverage gate's rejection: nothing can be seen to
+  refuse what matches at every position, and a consuming copy that says no where the base matched empty would be asking
+  the corpus for a refusal the untransformed grammar had nowhere to show. The corpus parses green in that hybrid the
+  whole way, so the meter is honest at every step: 584 of 752 productions run committed, and the 168 still backtracking
+  are the determinize work itself, driven to none, at which point it becomes a gate. The first conflict the local moves
   determinized whole is the empty line's: `inline-singles` splices the declared prefix wrappers so `l-empty`'s two ways
   surface as the scans they are, the refinement and the factoring leave one shared scan with `==n` against `<n` residue,
   the factoring raises a leftover's leading assertions into its gate's guards, and a new certificate reads a choice of
@@ -360,10 +359,10 @@ All notable changes to this project are documented here. The format follows
   alike — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed
   recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set — a
   `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard
-  that lowers them, a nullable production. No action reads a value off a frame, and the one rule left over what the
-  parse gives back is that pushes and pops balance — held by the run itself, where a `(token)` code popped with none
-  pushed and a `(max)` window closed with none open are each refused where they happen rather than deduced. The
-  apparatus that existed because a close read its own frame is gone with the reason for it: the `code` parameter
+  that lowers them, a nullable production. No action reads a value off the call it stands in, and the one rule left over
+  what the parse gives back is that pushes and pops balance — held by the run itself, where a `(token)` code popped with
+  none pushed and a `(max)` window closed with none open are each refused where they happen rather than deduced. The
+  apparatus that existed because a close read a value the call held is gone with the reason for it: the `code` parameter
   `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns` each added, the refusal to
   move a run of actions closing a scope it did not open, and the fold's own refusal of the same.
 
@@ -469,9 +468,10 @@ All notable changes to this project are documented here. The format follows
 
   The reader and not the writer, which is the whole of it. A block scalar's indentation is written deep inside the
   header and handed up to the scalar that asked for it, so clearing where it was written takes it from the one thing
-  that wanted it. And not the frame above a region of the call graph either: a production reached between two reads by
-  an enclosing loop is outside such a region and inside the parse's, so a clear left there takes the value away between
-  two of a loop's own reads. Both were tried and both failed loudly, which is how the reader came to be the answer.
+  that wanted it. And not the production above a region of the call graph either: a production reached between two reads
+  by an enclosing loop is outside such a region and inside the parse's, so a clear left there takes the value away
+  between two of a loop's own reads. Both were tried and both failed loudly, which is how the reader came to be the
+  answer.
 
   Reading a parameter nothing holds a value for is a fault, so the placement is the corpus's to refuse rather than an
   argument's to make. No read crosses a clear over 694 fixtures and 402 suite cases; withholding the clears changes
@@ -480,10 +480,10 @@ All notable changes to this project are documented here. The format follows
 
   `prune-params` drops a parameter no production needs, with the argument every call passed it: what a production needs
   is what reaches a read — its own gate and actions, and whatever it hands to a production that needs one — and a write
-  counts, since a binding a frame does not declare is dropped on return. A least fixpoint, so a parameter a chain of
-  frames only relayed dies through the chain at once: `m` goes from 91 declarations to 76 and `f` from 15 to 9. It found
-  `_is_using` answering `False` for a `Param` a field holds directly, the generic walker never visiting one — latent,
-  its two callers asking only about the parameters where the two agree, and corrected here.
+  counts, since a binding a production does not declare is the call's own and gone when it returns. A least fixpoint, so
+  a parameter a chain of productions only relayed dies through the chain at once: `m` goes from 91 declarations to 76
+  and `f` from 15 to 9. It found `_is_using` answering `False` for a `Param` a field holds directly, the generic walker
+  never visiting one — latent, its two callers asking only about the parameters where the two agree, and corrected here.
 
   Neither step decides anything, and the meter's fall is not theirs. Each leaves it exactly where it found it on its own
   output — 473 points through `read-indents`, 426 through `prune-params` — and every point that goes, goes to the sweep:
@@ -568,8 +568,8 @@ All notable changes to this project are documented here. The format follows
   built but not handed back, and the state it is in — the whole of it in one struct, none of it in the C call stack,
   which is what lets `ys_read_token` hand back a token from the middle of a production and resume there. The queue holds
   a run of undecided tokens, whose codes are rewritten and ahead of which a marker is injected when the parser learns
-  what they were, and the stack's frames carry the grammar's one runtime parameter, `n`. The automaton that drives them
-  is not generated yet, so `ys_read_token` still returns a "not implemented" error.
+  what they were, and the stack carries the grammar's one runtime parameter, `n`. The automaton that drives them is not
+  generated yet, so `ys_read_token` still returns a "not implemented" error.
 
 - A conformance suite, `tests/spec/`. It was built once from YamlReference's vendored `tests/` — the fixtures that align
   with libyeast's grammar, each expected output turned into what libyeast emits rather than what YamlReference does: a
@@ -680,8 +680,8 @@ All notable changes to this project are documented here. The format follows
   two lookaheads rather than the one character class `ns-char - c-comment` because a difference is a character set, and
   the decoder's key has twenty of those and no room for a twenty-first.
 
-- `(recover)` says where a failed cut stops unwinding. A cut unwinds past every frame between it and whatever answers
-  for it; this is a rule saying "that is me". The block collections wrap their entry in one, naming the `n+m` they have
+- `(recover)` says where a failed cut stops unwinding. A cut unwinds past every call between it and whatever answers for
+  it; this is a rule saying "that is me". The block collections wrap their entry in one, naming the `n+m` they have
   already computed, so no indentation is recovered from the runtime and the recovery reads the parameters of the rule
   that declares it rather than of whatever failed below it. The error is emitted, the markers the entry opened are
   closed down to that depth and no further, the run is given up, and the parse carries on as though the entry had
@@ -691,7 +691,7 @@ All notable changes to this project are documented here. The format follows
   on unwinding, which is why the other two policies are byte-identical to what they were. Flow collections get none —
   recovery is by indentation and a flow node is one level of it, so there is nothing inside one to resume at.
 
-- An error closes the markers it opened. A raise skipped the frames that would have emitted them, so a malformed
+- An error closes the markers it opened. A raise skipped the returns that would have emitted them, so a malformed
   document used to end with its `begin-` markers hanging: harmless while everything after an error was unparsed, and
   wrong the moment the parse resumes, because the next document then parses as a child of the one that failed rather
   than its sibling — and a caller reaching for the documents an error did not cost it would find them nested inside the

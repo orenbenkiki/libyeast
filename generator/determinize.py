@@ -33,11 +33,11 @@ _CONSUMES = (ir.ConsumeChar, ir.ConsumeSpan, ir.ConsumeCountedSpan, ir.ConsumeLi
 # depth.
 _DEPTH_CAP = 120
 
-# A configuration is the parse's state at a frontier: `frames` the return stack (each a `(name, alternative, cursor)`
-# triple), `code` the run code a `PushCode` last set, and `origin` the conflict alternative the path descends from. The
-# cursor is `0` (apply this alternative's actions), `1`/`2` (call its first/second production), `3` (return), or
-# `("act", index)` (resume actions after a consumed one).
-Config = collections.namedtuple("Config", ("frames", "code", "origin"))
+# A configuration is the parse's state at a frontier: `continuations` the stack of where to carry on (each a `(name,
+# alternative, cursor)` triple), `code` the run code a `PushCode` last set, and `origin` the conflict alternative the
+# path descends from. The cursor is `0` (apply this alternative's actions), `1`/`2` (call its first/second production),
+# `3` (return), or `("act", index)` (resume actions after a consumed one).
+Config = collections.namedtuple("Config", ("continuations", "code", "origin"))
 
 # A parked configuration and what it will consume next: `spans` the character set of a consume, or `None` for an
 # accepting path that consumes nothing more.
@@ -73,15 +73,15 @@ def _closure(grammar, configs):
     parked, work, seen = [], list(configs), set()
     while work:
         config = work.pop()
-        if len(config.frames) > _DEPTH_CAP:
+        if len(config.continuations) > _DEPTH_CAP:
             raise RuntimeError("the determinizer walk did not converge — an unbounded run the emission must loop")
         if config in seen:
             continue
         seen.add(config)
-        if not config.frames:
+        if not config.continuations:
             parked.append(Parked(config, None))  # an accepting path: nothing more to consume
             continue
-        name, alternative, cursor = config.frames[-1]
+        name, alternative, cursor = config.continuations[-1]
         chosen = grammar[name].body.alternatives[alternative]
         if cursor == 0 or (isinstance(cursor, tuple) and cursor[0] == "act"):
             start = 0 if cursor == 0 else cursor[1]
@@ -91,28 +91,33 @@ def _closure(grammar, configs):
                 if isinstance(action, ir.PushCode):
                     code = action.code
                 elif isinstance(action, _CONSUMES):
-                    resumed = config.frames[:-1] + ((name, alternative, ("act", index + 1)),)
+                    resumed = config.continuations[:-1] + ((name, alternative, ("act", index + 1)),)
                     parked.append(
-                        Parked(config._replace(frames=resumed, code=code), _consume_spans(grammar, action, chosen.gate))
+                        Parked(
+                            config._replace(continuations=resumed, code=code),
+                            _consume_spans(grammar, action, chosen.gate),
+                        )
                     )
                     parked_here = True
                     break
             if not parked_here:
-                work.append(config._replace(frames=config.frames[:-1] + ((name, alternative, 1),), code=code))
+                work.append(
+                    config._replace(continuations=config.continuations[:-1] + ((name, alternative, 1),), code=code)
+                )
             continue
         if cursor in (1, 2):
             reference = chosen.first if cursor == 1 else chosen.second
-            resume = config.frames[:-1] + ((name, alternative, cursor + 1),)
+            resume = config.continuations[:-1] + ((name, alternative, cursor + 1),)
             if reference is None:
-                work.append(config._replace(frames=resume))
+                work.append(config._replace(continuations=resume))
             elif _is_terminal(grammar, reference.name):
                 spans = normalize._peek_spans(ir.Ref(name=reference.name, args=()), grammar)
-                parked.append(Parked(config._replace(frames=resume), spans))
+                parked.append(Parked(config._replace(continuations=resume), spans))
             else:
                 for index in range(len(grammar[reference.name].body.alternatives)):
-                    work.append(config._replace(frames=resume + ((reference.name, index, 0),)))
+                    work.append(config._replace(continuations=resume + ((reference.name, index, 0),)))
             continue
-        work.append(config._replace(frames=config.frames[:-1]))  # cursor 3: return to the caller
+        work.append(config._replace(continuations=config.continuations[:-1]))  # cursor 3: return to the caller
     return parked
 
 
@@ -127,15 +132,16 @@ def _step(grammar, parked, codepoint):
     return _closure(grammar, advanced)
 
 
-def _caller_frame(grammar, root):
+def _caller_continuation(grammar, root):
     """
     The caller's continuation to root a conflict beneath, so a path that returns reaches its follow rather than
     stopping.
 
     A conflict resolves on what comes *after* it — the folded fold line accepts where a content line follows, and that
-    line is the caller's, not the conflict's. So the walk is rooted at the conflict with the frame of the production
-    that calls it sitting under it, its cursor past the call. Returns the single such frame, or raises where the
-    conflict is not called from exactly one place — the follow would then be several, which this does not yet handle.
+    line is the caller's, not the conflict's. So the walk is rooted at the conflict with the continuation of the
+    production that calls it sitting under it, its cursor past the call. Returns the single such one, or raises where
+    the conflict is not called from exactly one place — the follow would then be several, which this does not yet
+    handle.
     """
     callers = []
     for name, production in grammar.items():
@@ -153,8 +159,8 @@ def _caller_frame(grammar, root):
 
 def _rooted(grammar, root):
     """The conflict's live alternatives, each parked at its first consume, rooted beneath the caller's continuation."""
-    frame = _caller_frame(grammar, root)
-    starts = [Config((frame, (root, index, 0)), None, index) for index in range(len(grammar[root].body.alternatives))]
+    caller = _caller_continuation(grammar, root)
+    starts = [Config((caller, (root, index, 0)), None, index) for index in range(len(grammar[root].body.alternatives))]
     return _closure(grammar, starts)
 
 

@@ -58,8 +58,8 @@ class CommitFailure(Exception):
     """
     Raised when the parse fails after passing a `(cut)`.
 
-    It carries the cut's message `code`, and unwinds past the backtracking frames — which is what a commit is: none of
-    them gets to try another way — to the handler that turns it into an error token and the unparsed recovery.
+    It carries the cut's message `code`, and unwinds past every choice still standing — which is what a commit is: none
+    of them gets to try another way — to the handler that turns it into an error token and the unparsed recovery.
     """
 
     def __init__(self, code):
@@ -173,7 +173,7 @@ class Emitter:
         # call and passed to it as well, so the argument reads `n` under the push its own value made — the two disagree
         # there and nowhere else, and only until the argument goes
         self.globals = ()  # the `ir.GLOBAL_PARAMS` no production of this grammar declares, which `run` reads off it.
-        # One value for the parse rather than one per frame, so a call carries what the callee left in one back out;
+        # One value for the parse rather than one per call, so a call carries what the callee left in one back out;
         # until `read-globals` takes the declarations away they are parameters, scoped like any other
         self.shadow = {}  # a stack per global, what a `(set)` puts on and a `(clear)` takes off. A read takes the top,
         # which is right however the writes nest, so the parse stands whatever the two numbers below say What the two
@@ -616,7 +616,7 @@ def _fail(emitter, message):
     Emit the error where the parse stopped — `message`, or bare when empty — and close what it left open.
 
     The emitter is already at the end of what cleanly matched: at the last cut for a committed failure, at the start for
-    an uncommitted one. A raise skips the frames that would have closed the `(wrap)`s the parse was inside, so they are
+    an uncommitted one. A raise skips the returns that would have closed the `(wrap)`s the parse was inside, so they are
     closed here instead: a `begin` marker gets its `end` on every path, which is what lets the fold that rebuilds the
     production tree stand on an errored stream at all — and, once the parse resumes, is what keeps the next document a
     sibling of the failed one rather than a child of it.
@@ -630,7 +630,7 @@ def _fail(emitter, message):
     and the recovery is entitled to the guards its own rules declare and no others; the `(max)` window goes for the same
     reason, so the recovery reads on past the edge the abandoned parse had failed against.
     """
-    emitter.code = "unparsed-text"  # a raise skips the token frames' cleanup; from here on the input is unparsed
+    emitter.code = "unparsed-text"  # a raise skips the tokens' cleanup; from here on the input is unparsed
     emitter.stack = ()  # and skips their pops, so what they left on the stack goes with the codes it would restore
     emitter.forbidden = ()
     emitter.ceiling = None
@@ -705,10 +705,10 @@ def match(node, emitter, grammar, k):
         # so a callee reads what is in force rather than a copy taken at the call.
         emitter.env = {**saved_env, **dict(zip(production.params, arguments))}
 
-        # A global is the parse's rather than the frame's, so what the callee left in one reaches the caller whatever
+        # A global is the parse's rather than any one call's, so what the callee left in one reaches the caller whatever
         # the call passed — and a `ClearVar` reaches it too, which is why this carries a cleared value out where the
         # by-reference pass keeps the caller's. Only where nothing declares them: until `read-globals` takes the
-        # declarations away they are parameters, and a frame's own binding is the by-reference pass's to carry.
+        # declarations away they are parameters, and a call's own binding is the by-reference pass's to carry.
         def continue_out():
             callee_env = emitter.env
             callee_forbidden = emitter.forbidden
@@ -805,7 +805,7 @@ def match(node, emitter, grammar, k):
         parts = () if node.gate.peek is None else (ir.Look(node.gate.peek),)
         parts += tuple(node.gate.guards) + tuple(node.actions)
         # A recovery riding the edge is the `(recover)` scope over the call it protects — the same handler, its resume
-        # point the frame's own return, which is exactly the continuation the call already has here.
+        # point where the call returns, which is exactly the continuation the call already has here.
         first = node.first if node.recover is None else ir.Recover(node.recover, node.first)
         parts += tuple(item for item in (first, node.second) if item is not None)
         return match(ir.Seq(parts), emitter, grammar, k)
@@ -1229,9 +1229,9 @@ def match(node, emitter, grammar, k):
             return match(node.item, emitter, grammar, k)
         except CommitFailure as failure:
             # The cut asks whether this rule answers for it. Undo what the abandoned parse left of the scopes it was
-            # inside — those frames never got to, including a `(max)` window it failed inside of — and put this rule's
-            # own back: the recovery is this rule's to name, so it reads this rule's parameters and not those of
-            # whatever failed somewhere below it.
+            # inside — their closes never ran, including a `(max)` window it failed inside of — and put this rule's own
+            # back: the recovery is this rule's to name, so it reads this rule's parameters and not those of whatever
+            # failed somewhere below it.
             stopped = emitter.checkpoint()
             emitter.code = code
             emitter.stack = stack  # what the abandoned parse pushed and never got to take back

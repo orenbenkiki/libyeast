@@ -216,10 +216,10 @@ an ordered list of alternatives. An alternative is `gate  actions…  [P1  actio
   allowed only as the last alternative.
 - **actions** operate on the parser's own state (below). Consuming the peeked character is itself an action, not part of
   the gate — `ConsumePeeked` likewise takes a peeked literal on the gate's word, the bytes never scanned twice.
-- **P1, P2** are zero, one, or two production invocations. Two means *run P1 then P2*: push a frame whose return is P2,
-  go to P1, and when P1 returns resume at P2 — so P1 is the call, P2 the continuation, and at most one push per edge.
-  One is a tail-goto; none returns. There are no actions after P2: a production returns exactly when its P2 does. A
-  sequence of three splits through a helper, `A → B A₁`, `A₁ → C D`, and the `_<N>` suffix names where it came from.
+- **P1, P2** are zero, one, or two production invocations. Two means *run P1 then P2*: push P2 as where to carry on, go
+  to P1, and when P1 returns resume there — so P1 is the call, P2 the continuation, and at most one push per edge. One
+  is a tail-goto; none returns. There are no actions after P2: a production returns exactly when its P2 does. A sequence
+  of three splits through a helper, `A → B A₁`, `A₁ → C D`, and the `_<N>` suffix names where it came from.
 
 Alternatives are tested in order and the first whose gate fires is **committed** — no backtracking. Two alternatives may
 share a gate; order resolves the overlap, and proving that the earlier one is safe to commit to is the whole of
@@ -231,7 +231,8 @@ determinization.
   and set the code its characters carry, or take back what the push displaced from the stack), `Emit(code)` (a
   zero-width marker, which also cuts), and `OpenWindow(limit, message)`/`CloseWindow` (open and close the `(max)`
   character window, past which a committed `Consume` fails the window's cut — a count of the opens standing, since
-  windows do not nest). No action reads a value off a frame. These are what `Token`/`Wrap`/`Emit`/`(max)` lower to.
+  windows do not nest). No action reads a value off the call it stands in. These are what `Token`/`Wrap`/`Emit`/`(max)`
+  lower to.
 - **Provisional run** — `OpenProvisional`, `MarkProvisional`, `InjectBefore(codes, at)`,
   `RetypeProvisional(rest, breaks, region)`, `CommitProvisional`, spelled in full under *The provisional mechanism*
   below, which is also where each speculation's use of them is written out. One-for-one with the `ys_queue` run, and
@@ -302,7 +303,7 @@ for.
 
 **Before every commit, every transform is read for correctness against the semantics of the nodes it moves** — by hand,
 whatever the gates say. The gates are a net and not a substitute: a transformation that moves an action into another
-frame, or copies one without binding its parameters, changes nothing the corpus can see wherever the sites it hits
+production, or copies one without binding its parameters, changes nothing the corpus can see wherever the sites it hits
 happen to be identities, and stays wrong for the next site. Three transforms were found doing exactly that with the
 whole suite green, and each was found by reading the code and asking what the node means, never by running it. The
 reading is cheapest where the answer is structural, which is what the two changes below are for; it is not skipped
@@ -319,10 +320,10 @@ is expected to surface kinds that were being classified by falling through — `
 scope in an alternative's actions were, until one asked.
 
 **The state invariant.** Every value the parse carries is a **global singleton**, possibly empty, or an entry in **the
-one unified stack**. There is no third place — no per-production frame holding a value, no scope implied by the tree
-shape, no slot reachable only from where it was written. The C parser is a state machine and that stack; a value fitting
-neither is a value it cannot hold, so a transformation producing one has produced something the parser cannot run,
-whatever the corpus says.
+one unified stack**. There is no third place — nothing a call holds of its own, no scope implied by the tree shape, no
+slot reachable only from where it was written. The C parser is a state machine and that stack; a value fitting neither
+is a value it cannot hold, so a transformation producing one has produced something the parser cannot run, whatever the
+corpus says.
 
 - *Globals* are what does not nest: the position and its mark, the open run and the code its characters carry, the
   `(max)` window and the count of opens standing over it, `m` and `f` — computed indentations rather than scopes.
@@ -350,14 +351,14 @@ stack holds what the parse must restore, this holds what the parse has produced 
 at a time, its extent is written in the grammar by `OpenProvisional`/`CommitProvisional`, and nothing reads a value out
 of it. So the invariant covers state, and the pending run is accounted for separately rather than smuggled into it.
 
-1. *The frame is gone, and the code is on the stack* — done, and what it turned up is worth keeping written down. Four
-   values used to live in the interpreter's frame rather than in the nodes: the run `code` a `(token)` restores, the
-   `(match)` origin, and the `ceiling` and `ceiling_message` a `(max)` restores. The origin went with the operator that
-   needed it — a `(match)` is the open run, so an indentation is the length of the token the rule is building and
-   nothing is remembered about where it began. The window is two globals, the window and the count of opens standing,
-   since windows do not nest. The code is the unified stack's, its push putting what it displaces there for its own pop
-   to take back, so `_bound` reaches every action whole and moving one is a substitution rather than an argument about
-   frames.
+1. *Nothing is held per call, and the code is on the stack* — done, and what it turned up is worth keeping written down.
+   Four values used to live in the interpreter's own per-call state rather than in the nodes: the run `code` a `(token)`
+   restores, the `(match)` origin, and the `ceiling` and `ceiling_message` a `(max)` restores. The origin went with the
+   operator that needed it — a `(match)` is the open run, so an indentation is the length of the token the rule is
+   building and nothing is remembered about where it began. The window is two globals, the window and the count of opens
+   standing, since windows do not nest. The code is the unified stack's, its push putting what it displaces there for
+   its own pop to take back, so `_bound` reaches every action whole and moving one is a substitution rather than an
+   argument about where a value is held.
    - A per-production device was tried first and is the second mechanism the invariant forbids. It cost a whole
      apparatus to make safe — a slot named per nesting depth, a gate on which slots an enclosing open holds, and a
      fixpoint over the call graph proving that a pop whose push a factoring left in a caller reaches a slot nothing
@@ -368,7 +369,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    - The workaround the stack replaces goes with it: the `code` parameter `single-consumes`, `binarize`,
      `alternative-shape`, `factor-prefixes` and `extend-returns` each added, `_moved_actions` refusing to move a run of
      actions closing a scope it did not open, and the fold's own refusal of the same. All three existed because a close
-     read its own frame, and none of them has a reason now.
+     read a value the call held, and none of them has a reason now.
    - What stays implicit is the `(set)` target, a name rather than an expression.
 1. *`n` on the same stack* — done. `n` was a parameter, put in scope by the call rather than by an action, and taken
    back out on the way home. `push-indents` mints a `PushIndent` at each of the thirty-three calls measured against an
@@ -450,27 +451,28 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      their combinations, and three passes of the one generic operation would give the same grammar with three
      separately-diffed steps. The copies are made per combination, so the split wants care it has not earned yet.
 1. *The new steps, earliest and simplest first.* The first two are landed — they exist to put the pieces in one place,
-   nothing being orderable or comparable while it sits in different frames — and both belong after `split-conflicts`,
-   which is what narrows a gate enough for either to see anything. `inline-under-gate` gives a call only the ways its
-   caller's gate can reach, splicing the survivor's actions in where one bare way is left; `inline-single-way` splices a
-   call whose production has one ungated way, actions and calls alike. What they bought: the block header's two ways
-   both go on the chomping call now, told apart by the auto-detect bundle standing in front of it in one of them.
+   nothing being orderable or comparable while it sits in different productions — and both belong after
+   `split-conflicts`, which is what narrows a gate enough for either to see anything. `inline-under-gate` gives a call
+   only the ways its caller's gate can reach, splicing the survivor's actions in where one bare way is left;
+   `inline-single-way` splices a call whose production has one ungated way, actions and calls alike. What they bought:
+   the block header's two ways both go on the chomping call now, told apart by the auto-detect bundle standing in front
+   of it in one of them.
    - `inline-single-way` still refuses a *gated* single way, so a callee whose peek the caller's gate already implies
      stays a call — `c-chomping-indicator_t_keep` is one, gated on the `'+'` its caller is gated on. Widening the side
      condition to "the callee's peek contains the caller's" is the next small move, and it puts the chomping consume
      into both header lists.
    - Even then the header does not factor, and the reason is worth keeping: the `order-actions` side condition needs a
-     non-break consume *earlier in the same list*, and the scalar's own `|`/`>` is consumed two frames up in
+     non-break consume *earlier in the same list*, and the scalar's own `|`/`>` is consumed two calls up in
      `c-l+folded`. Either that call is inlined too, or the condition is met another way.
    - `order-actions` — within one action list every action moves as early as it may, leaving a canonical order the later
-     steps compare with `==`. Four side conditions, each read off the list: a frame-scoped action never crosses its
-     partner; an emitter never crosses a consume or another emitter, the stream's order being the output; a
-     position-reading action crosses a consume only where that consume's set excludes line breaks and an earlier consume
-     in the same list does too, the at-line-start bit being clear on both sides; and a value-reading action never
-     crosses what writes what it reads. That third condition is the whole of the block header's difficulty: the
-     auto-detected indent reads the position through one bit, the two orderings run it a character apart, and the bit is
-     already clear — because the scalar's own indicator was consumed two frames up, which is why the fact has to be
-     brought into the list before the rule can see it.
+     steps compare with `==`. Four side conditions, each read off the list: a scope action never crosses its partner; an
+     emitter never crosses a consume or another emitter, the stream's order being the output; a position-reading action
+     crosses a consume only where that consume's set excludes line breaks and an earlier consume in the same list does
+     too, the at-line-start bit being clear on both sides; and a value-reading action never crosses what writes what it
+     reads. That third condition is the whole of the block header's difficulty: the auto-detected indent reads the
+     position through one bit, the two orderings run it a character apart, and the bit is already clear — because the
+     scalar's own indicator was consumed two calls up, which is why the fact has to be brought into the list before the
+     rule can see it.
    - `factor-calls` — a shared leading call joins the prefix. *Holds where the call is identical in name and arguments
      across every way and their gates are equal.* One production today; the shape the three steps above create.
    - `subsume-ways` returns when it has work, and wider than it left: dropping an earlier way whose later twin carries
@@ -556,7 +558,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      — the asymmetry with the indentation, and why `n` wanted a stack where `m` and `f` want a clear.
      - The reader and not the writer: a block scalar's indentation is written deep in the header and handed up to the
        scalar that asked for it, so clearing where it was written takes it from the one thing that wanted it. And not
-       the frame above a region of the call graph: a production reached between two reads by an enclosing loop is
+       the production above a region of the call graph: a production reached between two reads by an enclosing loop is
        outside such a region and inside the parse's. Both were tried and both failed loudly, which is how the reader
        came to be the answer.
      - Reading a parameter nothing holds a value for is a fault, so the placement is the corpus's to refuse. Withholding
@@ -564,10 +566,11 @@ of it. So the invariant covers state, and the pending run is accounted for separ
        once, which is what says the refusal is live rather than decorative.
    - `prune-params` — landed. A parameter a production does not need goes, with the argument every call passed it: what
      a production needs is what reaches a read — its own gate and actions, and whatever it hands to a production that
-     needs one — and a write counts, a binding a frame does not declare being dropped on return. *A least fixpoint, so a
-     parameter a chain of frames only relayed dies through the chain at once.* It took `m` from 91 declarations to 76
-     and `f` from 15 to 9, and it decides nothing: the meter is unmoved on the step's own output, and the four points it
-     loses are the sweep merging twelve productions the dead arguments had been telling apart.
+     needs one — and a write counts, a binding a production does not declare being the call's own and gone when it
+     returns. *A least fixpoint, so a parameter a chain of productions only relayed dies through the chain at once.* It
+     took `m` from 91 declarations to 76 and `f` from 15 to 9, and it decides nothing: the meter is unmoved on the
+     step's own output, and the four points it loses are the sweep merging twelve productions the dead arguments had
+     been telling apart.
    - And after each of them, the standing question of the third law: which of the six points does it retire? The
      reordered header choices are the first owed an answer — `order-actions` and `factor-calls` between them should
      leave the two orderings comparing equal, at which point there is nothing to swap and nothing to declare committed,
@@ -594,8 +597,8 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      still rewritten, or it keeps the production it names alive and nullable.
    - *The invariant is that no production offers both a way that reads and a way that does not.* Not "nothing matches
      empty": a single-way action bundle — a continuation carrying a `PopMessage`, a guard the canonical form gives its
-     own frame — matches empty and decides nothing, and the canonical form mints those deliberately, so the stronger
-     rule would forbid the target. What is forbidden is the blind choice between reading and not.
+     own production — matches empty and decides nothing, and the canonical form mints those deliberately, so the
+     stronger rule would forbid the target. What is forbidden is the blind choice between reading and not.
    - *Properness is enforced after every step from the elimination on*, since it is the tail's property and not the
      property of the step that reaches it. Measured against the four steps that break it today — `lower-star`,
      `lift-choices`, `binarize`, `alternative-shape` — the first three break it only because their input is improper,

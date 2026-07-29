@@ -637,7 +637,7 @@ def lower_commits(grammar, namer):
     becomes explicit actions bracketing exactly `item`, so a failure inside the unclosed region raises `message` and one
     past the close backtracks softly, as the scope did. The extent survives every later split by being written in the
     grammar rather than implied by the tree shape; a helper may hold one half of the pair, since the pop pairs with its
-    push dynamically and reads no frame value back. Removes the `Commit` node kind.
+    push on the parse's own stack and reads nothing off the call it stands in. Removes the `Commit` node kind.
     """
     return {
         name: dataclasses.replace(production, body=_lower_commits(production.body))
@@ -702,17 +702,16 @@ def flatten(grammar, namer):
     }
 
 
-# The `(max)` window, whose close reads the value its own frame carries: a segment moved out must open and close it
-# together. A `(token)`'s code is not one of these — its pair works off the parse's own stack, so where the halves stand
-# is nothing a move has to know.
+# The `(max)` window: a segment moved out must open and close it together. A `(token)`'s code and a `(commit)`'s message
+# are not among these — each pairs off the parse's own stack, so where the halves stand is nothing a move has to know.
 _OPENS = (ir.OpenWindow,)
 _CLOSES = (ir.CloseWindow,)
 
 
 def _scope_start(items, index):
     """
-    Where the segment holding `items[index]` begins — `index` itself, or the open of the innermost frame-held scope
-    around it, so that what is moved out to a helper carries that scope's open and close together.
+    Where the segment holding `items[index]` begins — `index` itself, or the open of the innermost window around it, so
+    that what is moved out to a helper carries that window's open and close together.
     """
     depth, start = 0, 0
     for position in range(index + 1):
@@ -727,14 +726,11 @@ def _scope_start(items, index):
 
 def _balanced_end(items, start):
     """
-    The end of the longest run of `items` from `start` that opens no frame-held scope it does not also close, or `None`
-    where the very first item closes one opened before it.
+    The end of the longest run of `items` from `start` that opens no window it does not also close, or `None` where the
+    very first item closes one opened before it.
 
-    A `(token)`, a `(<<<)` and a `(max)` lower to a pair that opens a scope and closes it by reading the production's
-    own value back off its frame. A helper holding one half of a pair would be entered under the opened value and read
-    that back instead of the outer one — a `(token)`'s characters would keep its code past its end. So what is moved out
-    to a helper is a whole segment between them, and the pair stays where it was, closing in the production that opened
-    it.
+    What is moved out to a helper is a whole segment between a `(max)`'s open and its close, the pair staying where it
+    was and closing in the production that opened it.
     """
     end, depth = None, 0
     for index in range(start, len(items)):
@@ -980,8 +976,8 @@ def alternative_shape(grammar, namer):
 def lower_recovers(grammar, namer):
     """
     Move each `(recover)` from the action it stands in onto the edge it protects: the alternative calls the guarded
-    production as its `first` and names the recovery in `recover`, so the frame pushed for the call is the one a cut
-    unwinds to — the handler is the frame, and the resume point its own return. The calls the alternative already had
+    production as its `first` and names the recovery in `recover`, so what the call pushes is what a cut unwinds to —
+    the handler answers for that call, and the resume point is where it returns. The calls the alternative already had
     move behind it: one becomes the continuation as it is, two move into a minted `_<N>` helper the edge resumes at.
     Only the canonical shape moves — a `Recover` standing as the sole action, its item and recovery plain references;
     anything else stays, for `unshaped_actions` to count.
@@ -1229,7 +1225,7 @@ def inline_single_way(grammar, namer):
             return alternative
         moved = _moved_actions(way.actions, callee, call)
         if moved is None:
-            return alternative  # the actions read the callee's own frame, or bind a parameter the call renames
+            return alternative  # an action binds a parameter the call renames, where no substitution reaches the target
         mapping = dict(zip(callee.params, call.args))
         bound = [_bound(held, mapping) for held in calls]
         following = [held for held in (alternative.second,) if held is not None]
@@ -1775,8 +1771,8 @@ def split_conflicts(grammar, namer):
     return result
 
 
-# Where a common prefix must stop: a frame-scoped pair's half, which a helper may not hold alone, and a length-ambiguous
-# run, whose backtracking order a factoring must not reshuffle.
+# Where a common prefix must stop: a window pair's half, which a helper may not hold alone, and a length-ambiguous run,
+# whose backtracking order a factoring must not reshuffle.
 _PREFIX_STOP = (ir.OpenWindow, ir.CloseWindow, ir.ConsumeTrimmedSpan)
 # The fixed-width consumes a prefix may hold: each takes exactly what it takes or fails, identically in every
 # alternative that shares it, so factoring it out reorders nothing.
@@ -2816,9 +2812,9 @@ def read_indents(grammar, namer):
 def _needing(grammar, param):
     """
     The productions that need `param`: the ones whose own gate or actions read or write it, and the ones that hand it to
-    a production that needs it. A write is a need — a binding a production does not declare is written into its own
-    frame and dropped on return, which is what `declare-bindings` gives it. A least fixpoint, so a parameter a chain of
-    frames only relayed dies through the whole chain at once rather than one frame per pass.
+    a production that needs it. A write is a need — a binding a production does not declare is the call's own and gone
+    when it returns, which is what `declare-bindings` gives it. A least fixpoint, so a parameter a chain of productions
+    only relayed dies through the whole chain at once rather than one link per pass.
     """
 
     def owns(way):
@@ -3028,7 +3024,7 @@ def read_globals(grammar, namer):
     """
     Read a global off its one slot rather than out of a parameter.
 
-    `ir.GLOBAL_PARAMS` are one value for the parse and not one per frame, so the declaration goes from every production
+    `ir.GLOBAL_PARAMS` are one value for the parse and not one per call, so the declaration goes from every production
     that carried one and the argument from every call that passed it, and every read becomes a `Global`. The writes
     stand where they are: a `(set)` or an `(increase)` names its target, and reaching the slot is what it always meant.
 
@@ -3167,10 +3163,10 @@ def clear_params(grammar, namer):
 
     The reader and not the writer, which is the whole of it. A block scalar's indentation is written deep inside the
     header and handed up to the scalar that asked for it, so clearing where it was written would take it from the one
-    thing that wanted it: the header hands the value on rather than being done with it. And not the frame above a region
-    of the call graph either, which is what this used to do — a production reached between two reads by an enclosing
-    loop is outside such a region and inside the parse's, and a clear left there takes the value away between two of the
-    loop's own reads.
+    thing that wanted it: the header hands the value on rather than being done with it. And not the production above a
+    region of the call graph either, which is what this used to do — a production reached between two reads by an
+    enclosing loop is outside such a region and inside the parse's, and a clear left there takes the value away between
+    two of the loop's own reads.
     """
     minted = {}
     every = {param for production in grammar.values() for param in production.params}
@@ -3217,7 +3213,7 @@ def extend_returns(grammar, namer):
     the memo and folds. The copies stay within the extension's own walk, so every other caller of the original stands
     untouched and the purge sweeps what dies. A declared name the grammar does not hold, or a site or continuation that
     is not the shape the fold speaks about, is a loud fault. Appending actions that close a `(token)` or `(match)` scope
-    they do not open would read the copy's own frame where the original read the site's; such an extension is refused
+    they do not open would close against the copy's own open where the original closed against the site's; so refused
     rather than mis-scoped.
     """
     result = dict(grammar)
@@ -3351,10 +3347,10 @@ def provisional_faults(grammar):
     The provisional-run actions that do not balance: an open inside an open run, a mark outside one, a retype or inject
     outside one, a marked-region retype or a mark injection where no mark was taken, or a production carrying the
     actions that no root ever reaches. The run is the queue's, one for the whole parse, so its state flows through calls
-    rather than frames: each production maps the states it is entered under to the states it can return in, the fixpoint
-    seeded at the roots — the productions no body references — with no run open. The walk errs wide: a state joins
-    wherever any path could carry it, a recovery is walked from every state its call spans, and a fault here is a step's
-    to avoid, never an input's to trigger.
+    rather than being one per call: each production maps the states it is entered under to the states it can return in,
+    the fixpoint seeded at the roots — the productions no body references — with no run open. The walk errs wide: a
+    state joins wherever any path could carry it, a recovery is walked from every state its call spans, and a fault here
+    is a step's to avoid, never an input's to trigger.
     """
     faults = set()
     referenced = set()
@@ -4108,14 +4104,14 @@ def _bound_params(node, found):
 def declare_bindings(grammar, namer):
     """
     Give each production the parameters its own body binds and does not declare. A value leaves a production only
-    through a declared parameter passed by reference, so a binding a production does not declare is written into its own
-    frame and dropped on return; it survives only where the write stands above every frame that reads it, which nothing
-    holds it to — and a step that mints a helper out of the middle of such a body puts a frame exactly there. Declared,
-    every helper a later step mints carries it, a minted call passing each declared parameter as itself, so the write
-    reaches the reader wherever the split lands. No call site changes: an argument a caller does not give leaves the
-    parameter unbound, which is the ambient value the production read before. What a production binds for itself is what
-    it detects — the block header's auto-detected indent `m` and the leading empties' floor `f` — and the new parameter
-    is appended, so every positional argument still lands where it did.
+    through a declared parameter passed by reference, so a binding a production does not declare is the call's own and
+    gone when it returns; it survives only where the write stands above every call that reads it, which nothing holds it
+    to — and a step that mints a helper out of the middle of such a body puts a call exactly there. Declared, every
+    helper a later step mints carries it, a minted call passing each declared parameter as itself, so the write reaches
+    the reader wherever the split lands. No call site changes: an argument a caller does not give leaves the parameter
+    unbound, which is the ambient value the production read before. What a production binds for itself is what it
+    detects — the block header's auto-detected indent `m` and the leading empties' floor `f` — and the new parameter is
+    appended, so every positional argument still lands where it did.
     """
     result = {}
     for name, production in grammar.items():

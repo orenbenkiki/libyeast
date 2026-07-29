@@ -52,8 +52,8 @@ returns a "not implemented" error — so what exists is the project framework an
   it has built but not yet handed back, and the state it is in — none of it in the C call stack, which is what lets
   `ys_read_token` hand back a token from the middle of a production and resume there on the next call. `parser.h` says
   why each piece is shaped as it is: why the queue's undecided tokens are a suffix and the marker injected ahead of them
-  needs no room made for it, why a frame carries `n` and nothing carries `c`, and why an error can always be reported. A
-  resource failure — the reader, or the cap or the allocator — is recorded as the arm's `fault` and reported as
+  needs no room made for it, why the stack carries `n` and nothing carries `c`, and why an error can always be reported.
+  A resource failure — the reader, or the cap or the allocator — is recorded as the arm's `fault` and reported as
   `ys_read_token`'s return, not as a token; there is one terminal `is_done` state, reached by a clean end-of-stream or
   by a fault alike. There is one automaton, not a scanner and a parser: in yeast the automaton's output already *is* the
   token stream, so a second layer would need a vocabulary that does not exist — and would be the one thing on the hot
