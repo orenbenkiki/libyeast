@@ -606,10 +606,18 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      empty": a single-way action bundle — a continuation carrying a `PopMessage`, a guard the canonical form gives its
      own production — matches empty and decides nothing, and the canonical form mints those deliberately, so the
      stronger rule would forbid the target. What is forbidden is the blind choice between reading and not.
-   - *Properness is enforced after every step from the elimination on*, since it is the tail's property and not the
-     property of the step that reaches it. Measured against the four steps that break it today — `lower-star`,
-     `lift-choices`, `binarize`, `alternative-shape` — the first three break it only because their input is improper,
-     and with the distribution carried through they preserve it.
+   - *Properness is read after every step from the elimination on* — landed as a count, since it is the tail's property
+     and not the property of the step that reaches it. It reads **221** at the pipeline's end and **252** at the worst
+     of the 46 stages it covers, printed beside the meter and driven to none, at which point it becomes a gate.
+     `eliminate-empties` still asserts it hard on its own output; what the count is measuring is the four steps that
+     hand nullability back — `lower-star`, `lift-choices`, `binarize`, `alternative-shape` — of which the first three
+     break it only because their input is improper, and with the distribution carried through they preserve it.
+     - What it took to read at all: `_is_nullable` knew only the pre-canonical vocabulary and refused a `Choice`, so the
+       check could not run past `alternative-shape`; the gate and its guards take nothing and a recovery is no way an
+       alternative offers, which leaves the actions and the two calls. It answers a different question from
+       `_alternative_first`'s nullability and keeps its own convention — a span run is a value the scan decides, not a
+       way the parse chooses — so the two stay separate deliberately. The repetition half read `node.item` on a
+       `TrimStar`, which spells it `full`: latent for as long as the check ran at one stage only.
    - *`lower-star` is the one that breaks it by construction*, `_N ::= x _N | <empty>` being a production that decides
      between reading and not. It emits the one-or-more helper and leaves the empty at the site: `_N ::= x _N | x`, and
      `_N | <empty>` where the star stood, which the elimination then distributes like any other.

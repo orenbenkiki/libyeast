@@ -3897,6 +3897,16 @@ def _is_nullable(node, nullable, grammar):
         )
     if isinstance(node, ir.Ref):
         return node.name in nullable
+    if isinstance(node, ir.Choice):
+        return any(_is_nullable(alternative, nullable, grammar) for alternative in node.alternatives)
+    if isinstance(node, ir.Alternative):
+        # The gate is a lookahead and its guards are zero-width, so neither takes anything; a recovery reads the input
+        # and is no way the alternative offers. What is left is the actions and the two calls.
+        return all(_is_nullable(action, nullable, grammar) for action in node.actions) and all(
+            _is_nullable(reference, nullable, grammar)
+            for reference in (node.first, node.second)
+            if reference is not None
+        )
     raise TypeError(f"cannot decide whether {type(node).__name__} matches empty")
 
 
@@ -3918,6 +3928,32 @@ def _nullable_set(grammar, opaque=frozenset()):
     return nullable
 
 
+def keeps_empty_ways(grammar):
+    """
+    The productions entitled to match empty: the ones a parse enters by name, and the ones a `(recover)` names. Each is
+    entered where there is no call site to hold the choice an empty way would be, so there is nowhere to distribute it
+    to. Read from the grammar as it stands, a recovery being an `ir.Recover`'s subtree before `lower-recovers` and an
+    alternative's own `recover` after it.
+    """
+
+    def named_inside(node, found):
+        if isinstance(node, ir.Ref):
+            found.add(node.name)
+        ir.rebuilt(node, lambda child: (named_inside(child, found), child)[1])
+
+    def recoveries(node, found):
+        if isinstance(node, ir.Recover):
+            named_inside(node.recovery, found)
+        if isinstance(node, ir.Alternative) and node.recover is not None:
+            named_inside(node.recover, found)
+        ir.rebuilt(node, lambda child: (recoveries(child, found), child)[1])
+
+    found = entered_by_name(grammar)
+    for production in grammar.values():
+        recoveries(production.body, found)
+    return found
+
+
 def improper_faults(grammar, exempt):
     """
     What is not proper about `grammar`, as error strings — empty when nothing matches empty that must not. Two
@@ -3934,7 +3970,9 @@ def improper_faults(grammar, exempt):
     for name in sorted(grammar):
 
         def walk(node, owner=name):
-            if isinstance(node, (ir.Star, ir.Plus, ir.TrimStar)) and _is_nullable(node.item, spinning, grammar):
+            # What a repetition repeats: a `TrimStar` spells it `full`, every other repetition `item`.
+            repeated = node.full if isinstance(node, ir.TrimStar) else getattr(node, "item", None)
+            if isinstance(node, (ir.Star, ir.Plus, ir.TrimStar)) and _is_nullable(repeated, spinning, grammar):
                 faults.append(f"{owner}: a repetition repeats what can match empty, and would spin on it")
             ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
 
@@ -3962,22 +4000,7 @@ def eliminate_empties(grammar, namer):
     run the scan decides, not a way a parse chooses, and stays.
     """
 
-    def named_inside(node, found):
-        if isinstance(node, ir.Ref):
-            found.add(node.name)
-        ir.rebuilt(node, lambda child: (named_inside(child, found), child)[1])
-
-    def recovery_names(node, found):
-        if isinstance(node, ir.Recover):
-            named_inside(node.recovery, found)
-        ir.rebuilt(node, lambda child: (recovery_names(child, found), child)[1])
-
-    # The productions a parse enters by name rather than through a call, and the ones a `(recover)` names. Each keeps
-    # its empty ways: they are entered where there is no call site to hold the choice this distributes into one.
-    exempt = entered_by_name(grammar)
-    for production in grammar.values():
-        recovery_names(production.body, exempt)
-
+    exempt = keeps_empty_ways(grammar)
     nullable_all = _nullable_set(grammar)  # every production that may match empty, exempt included
     strip = _nullable_set(grammar, frozenset(exempt))  # the ones this makes consuming — exempt kept nullable
 

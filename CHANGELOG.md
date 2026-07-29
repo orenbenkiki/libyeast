@@ -458,6 +458,19 @@ All notable changes to this project are documented here. The format follows
   reads one value could not have answered, which came off when each loop's declaration took its resume-policy twin in
   beside the original, and the refusal then landed for nothing.
 
+  Properness is read over the tail rather than at the one step that makes it. From the elimination on, no production but
+  the ones a parse enters by name may match empty, since one that does holds a decision its call sites were to have
+  taken — and `eliminate-empties` asserting that on its own output says nothing about the four later steps that hand
+  nullability back. It now reads at every stage from there: 221 productions at the pipeline's end and 252 at the worst
+  of the 46, printed beside the meter and driven to none, at which point it becomes a gate. Reading it at all wanted two
+  things. The nullability the check asks about knew only the vocabulary the elimination runs in and refused a `Choice`,
+  so it stopped where the canonical form begins: a gate and its guards take nothing and a recovery is no way an
+  alternative offers, which leaves the actions and the two calls, and the answer is that production's. It is a different
+  question from the one the begin sets ask and keeps its own convention — a span run is a value the scan decides, not a
+  way the parse chooses — so the two readings stay apart on purpose. And the half that refuses a repetition of what can
+  match empty read the repeated thing under one name where a trimmed run spells it another, which nothing had reached
+  for as long as the check ran at a single stage.
+
   A clear is idempotent and the stack does not refuse an unbalanced one. There are 48, all the same thing: a clear
   stands on every way that reads a parameter, and a value routinely has more than one reader. "From here nothing holds a
   value" is as true said twice as once, so they are not an imbalance to repair — and a later step may merge two

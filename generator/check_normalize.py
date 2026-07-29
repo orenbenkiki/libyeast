@@ -158,6 +158,19 @@ def _check():
     # The assurance ledger: committed on a declared reason rather than a proof, each entry held to backtracking by the
     # hybrid run above and to freshness by its own net — watched here so the declared few never grow quietly.
     print(f"    {len(committed)} production(s) committed by declaration — the assurance ledger")
+    # Properness, over the tail rather than at the one step that makes it: from the elimination on, no production but
+    # the ones a parse enters by name may match empty, since one that does holds a decision its call sites were to have
+    # taken. `eliminate_empties` asserts this on its own output; what this counts is the four later steps that hand
+    # nullability back — driven to none, at which point it becomes a gate.
+    labels = [label for label, _grammar in stages]
+    tail = stages[labels.index("eliminate-empties") :]
+    improper = [
+        len(normalize.improper_faults(grammar, normalize.keeps_empty_ways(grammar))) for _label, grammar in tail
+    ]
+    print(
+        f"    {improper[-1]} production(s) match empty where no call site can hold the choice, "
+        f"{max(improper)} at the worst of the {len(tail)} stages from the elimination on"
+    )
     # What the corpus asked of a global that one value for the parse could not have answered. Every run above has been
     # answered from a stack beside the slot, so this is what stands between the two and not a count of anything that
     # went wrong: at none, the machine can hold the slot alone.
