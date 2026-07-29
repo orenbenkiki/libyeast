@@ -3979,6 +3979,23 @@ def _nullable_set(grammar, opaque=frozenset()):
     return nullable
 
 
+def blind_choices(grammar):
+    """
+    The productions offering a way that reads against a way that does not — the choice no character can decide, taken
+    blind. It is what the ε-elimination distributes to the call sites, and what a production matching empty costs: the
+    rest of what matches empty is a single way that decides nothing, which the canonical form mints on purpose.
+    """
+    every = _nullable_set(grammar)
+    names = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) < 2:
+            continue
+        empties = [_is_nullable(way, every, grammar) for way in production.body.alternatives]
+        if any(empties) and not all(empties):
+            names.append(name)
+    return sorted(names)
+
+
 def keeps_empty_ways(grammar):
     """
     The productions entitled to match empty: the ones a parse enters by name, and the ones a `(recover)` names. Each is

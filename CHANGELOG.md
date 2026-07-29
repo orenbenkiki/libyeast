@@ -466,14 +466,18 @@ All notable changes to this project are documented here. The format follows
   the ones a parse enters by name may match empty, since one that does holds a decision its call sites were to have
   taken — and `eliminate-empties` asserting that on its own output says nothing about the four later steps that hand
   nullability back. It now reads at every stage from there: 221 productions at the pipeline's end and 252 at the worst
-  of the 46, printed beside the meter and driven to none, at which point it becomes a gate. Reading it at all wanted two
-  things. The nullability the check asks about knew only the vocabulary the elimination runs in and refused a `Choice`,
-  so it stopped where the canonical form begins: a gate and its guards take nothing and a recovery is no way an
-  alternative offers, which leaves the actions and the two calls, and the answer is that production's. It is a different
-  question from the one the begin sets ask and keeps its own convention — a span run is a value the scan decides, not a
-  way the parse chooses — so the two readings stay apart on purpose. And the half that refuses a repetition of what can
-  match empty read the repeated thing under one name where a trimmed run spells it another, which nothing had reached
-  for as long as the check ran at a single stage.
+  of the 46, printed beside the meter and driven to none, at which point it becomes a gate. Beside it stands what the
+  debt costs: 127 productions choose blind between a way that reads and one that does not, and they hold 272 of the
+  meter's 422 points. What matches empty and decides nothing is not the problem — a single way carrying a `PopMessage`,
+  a guard given a production of its own, is a shape the canonical form mints deliberately. The blind choice is, and it
+  is where the phase's remaining mass sits. Reading it at all wanted two things. The nullability the check asks about
+  knew only the vocabulary the elimination runs in and refused a `Choice`, so it stopped where the canonical form
+  begins: a gate and its guards take nothing and a recovery is no way an alternative offers, which leaves the actions
+  and the two calls, and the answer is that production's. It is a different question from the one the begin sets ask and
+  keeps its own convention — a span run is a value the scan decides, not a way the parse chooses — so the two readings
+  stay apart on purpose. And the half that refuses a repetition of what can match empty read the repeated thing under
+  one name where a trimmed run spells it another, which nothing had reached for as long as the check ran at a single
+  stage.
 
   A clear is idempotent and the stack does not refuse an unbalanced one. There are 48, all the same thing: a clear
   stands on every way that reads a parameter, and a value routinely has more than one reader. "From here nothing holds a

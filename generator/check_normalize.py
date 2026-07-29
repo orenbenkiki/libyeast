@@ -170,9 +170,16 @@ def _check():
     improper = [
         len(normalize.improper_faults(grammar, normalize.keeps_empty_ways(grammar))) for _label, grammar in tail
     ]
+    blind = normalize.blind_choices(final)
     print(
         f"    {improper[-1]} production(s) match empty where no call site can hold the choice, "
         f"{max(improper)} at the worst of the {len(tail)} stages from the elimination on"
+    )
+    # What that debt costs the meter: a production offering a way that reads against one that does not is a choice no
+    # character decides, and the points under it are the ε-elimination's rather than the determinizer's.
+    print(
+        f"    {len(blind)} production(s) choose blind between reading and not, holding "
+        f"{sum(count for name, count in failing.items() if name in set(blind))} of the {sum(failing.values())} points"
     )
     # What the corpus asked of a global that one value for the parse could not have answered. Every run above has been
     # answered from a stack beside the slot, so this is what stands between the two and not a count of anything that

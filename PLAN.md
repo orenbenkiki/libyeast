@@ -359,6 +359,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    standing, since windows do not nest. The code is the unified stack's, its push putting what it displaces there for
    its own pop to take back, so `_bound` reaches every action whole and moving one is a substitution rather than an
    argument about where a value is held.
+
    - A per-production device was tried first and is the second mechanism the invariant forbids. It cost a whole
      apparatus to make safe — a slot named per nesting depth, a gate on which slots an enclosing open holds, and a
      fixpoint over the call graph proving that a pop whose push a factoring left in a caller reaches a slot nothing
@@ -371,11 +372,13 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      actions closing a scope it did not open, and the fold's own refusal of the same. All three existed because a close
      read a value the call held, and none of them has a reason now.
    - What stays implicit is the `(set)` target, a name rather than an expression.
+
 1. *`n` on the same stack* — done. `n` was a parameter, put in scope by the call rather than by an action, and taken
    back out on the way home. `push-indents` mints a `PushIndent` at each of the thirty-three calls measured against an
    `n` other than the one in force — the other seven hundred passed it through and push nothing — and `read-indents`
    then drops the parameter: every read becomes `Indent`, the indentation in force, and the declaration and the argument
    go with it, leaving `m` and `f` — which `read-globals` takes below, so the final grammar declares nothing at all.
+
    - What held it: the two mechanisms stood side by side for a whole gate, every read of `n` compared against the stack
      over 694 fixtures and 402 suite cases before the reads became the stack's. The comparison is live still, at
      `push-indents`, which is the last grammar carrying both — so the drop is proved rather than argued, and the
@@ -400,11 +403,13 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    - Unchecked, and holding by construction rather than by a refusal: a `(recover)` rebinds `n` exactly as the call it
      rides does, at all seven sites, which is why the push made for the call answers for the recovery too. Nothing
      compares the two, and `push-indents` does not look at a recovery's arguments at all.
+
 1. *`m` and `f` are globals* — done, and with them the last parameter goes. `read-globals` takes the declaration off
    every production and the argument off every call, and every read becomes a `Global`. **The final grammar declares no
    parameters and passes no arguments at all**: `Indent` reads the stack, `Global` reads the one slot, and the state
    invariant holds — every value the parse carries is a global singleton or an entry in the unified stack, with no third
    place left.
+
    - A global is what does not nest, and making that true is what the loop work was for. While the block collections
      pushed per entry they re-read `m` on every turn to rebuild what they had just popped, so a nested collection
      writing the one slot in between took the enclosing loop's value away — which is exactly how a first attempt at this
@@ -412,15 +417,32 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    - What holds it: reading a global nothing holds a value for is a fault, and the clears say where each region ends.
      The interpreter carries a global out of every call where nothing declares it — before `read-globals` they are
      parameters and scoped like any other, which is what keeps the base grammar's own runs unchanged.
-1. *The call written out.* `first` and `second` are a call and where to carry on, which the machine performs — the last
-   thing a production does that the grammar does not spell. `PushContinuation(second)` and a jump to `first` say it, and
-   a `Pop` and a jump say the way home. Nothing is left that pushes or pops without an action naming it, and an inlining
-   becomes what it should be: deleting a push and a jump, with no value riding either.
+
+1. *The call written out — last of everything, after the meter reads none.* `first` and `second` are a call and where to
+   carry on, which the machine performs — the last thing a production does that the grammar does not spell.
+   `PushContinuation(second)` and a jump to `first` say it, and a `Pop` and a jump say the way home. Nothing is left
+   that pushes or pops without an action naming it, and an inlining becomes what it should be: deleting a push and a
+   jump, with no value riding either. The C parser is a state machine, its globals, one stack and the pending tokens,
+   and nothing else; while a call is a field the grammar does not spell, codegen would be the thing deciding where a
+   push goes, which is the pipeline's job and not its consumer's. So it is required, and it is required last.
+
+   - *Why last, measured rather than assumed.* It takes the continuation out of a typed field and puts it in the action
+     list. `second` is read in 50 places across 23 functions, `_alternative_first`, `_follow_classes` and `_is_sure_way`
+     among them — the begin sets and the certificates, which is the whole determinize phase. Every one of those reads
+     gets worse. Two standing steps also gain a side condition they do not have: `factor-prefixes` factors the longest
+     identical run of actions and could take a push away from the jump it belongs to, and every splice moves action
+     runs, where moving a push moves where the continuation is pushed. Written out first, the phase pays that on every
+     step; written out last, when no step reshapes a way any more, it costs nothing and gives up nothing.
+   - *What it was going to guard is guarded without it.* That no way carries on over a call taking an indentation off is
+     read off the grammar, so it stands while a call is still a field — landed above as a gate. The machine's kind
+     assertions are the stronger answer and arrive with the machine; until then nothing rests on a probe.
+
 1. *A gate verifier, mechanistic and in both directions.* A gate is correct when its character set is exactly what the
    options behind it can consume first: every character the gate admits is consumable by one of them, and every
    character one of them can consume is admitted by the gate. The first direction failing means the gate lets through a
    character nothing takes; the second means it refuses a character the alternative could have matched, which is a lost
    parse.
+
    - The set is computed by walking an alternative's elements carrying `alive`, the characters at which the walk can
      still stand here having consumed nothing: an element that must consume contributes `alive ∩ its own set` and ends
      the walk, one that may consume nothing contributes the same and leaves `alive` alone, and a call contributes
@@ -431,10 +453,12 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      cannot decide a set exactly it says so and counts it, rather than passing.
    - It runs after every step from `gate-hoist` on, beside the properness check, and an alternative that can match empty
      is judged on the characters where it can, which its callees' own gates decide.
+
 1. *The standing steps, repaired* — done, and what it turned up is worth keeping written down. The splits landed and
    changed no grammar: `lower-tokens` and `lower-wraps`, `span-consumes` and `literal-consumes`, `hoist-char-runs` and
    `hoist-trimmed-runs`, `gate-hoist` and `gate-hoist-wide`, and the leftover's leading `Lt`/`Le` rising into its gate
    as `hoist-residue-guards`. Three things came out of doing them, none of them a split:
+
    - `flatten` was not compound at all. Its docstring claimed it expanded a fixed `(k)` repetition into its copies, and
      nothing in it ever did — `span-consumes` removes every `Rep`, literal count and runtime count alike. The claim was
      corrected rather than a step written for it.
@@ -450,6 +474,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    - Left alone for now, noted so it is not rediscovered: `monomorphize` specializes `c`, `t` and `r` in one pass over
      their combinations, and three passes of the one generic operation would give the same grammar with three
      separately-diffed steps. The copies are made per combination, so the split wants care it has not earned yet.
+
 1. *The new steps, earliest and simplest first.* The first two are landed — they exist to put the pieces in one place,
    nothing being orderable or comparable while it sits in different productions — and both belong after
    `split-conflicts`, which is what narrows a gate enough for either to see anything. `inline-under-gate` gives a call
@@ -457,6 +482,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    `inline-single-way` splices a call whose production has one ungated way, actions and calls alike. What they bought:
    the block header's two ways both go on the chomping call now, told apart by the auto-detect bundle standing in front
    of it in one of them.
+
    - `inline-single-way` still refuses a *gated* single way, so a callee whose peek the caller's gate already implies
      stays a call — `c-chomping-indicator_t_keep` is one, gated on the `'+'` its caller is gated on. Widening the side
      condition to "the callee's peek contains the caller's" is the next small move, and it puts the chomping consume
@@ -591,17 +617,25 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      and both the reorder and the ledger entry go rather than being carried. A declaration the analysis catches up with
      is refused by the staleness net already; a declaration a transformation makes unnecessary must be removed in the
      same change, not left standing because it still parses.
+
 1. *Carrying the elimination through, which is where the meter's mass actually is.* The grammar is proper at
    `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
    and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
    Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
-   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 233. Of those, 133
-   offer a blind choice between a way that reads and one that does not — the debt, and the decision points that are a
-   call to one of them against its zero-width way are the greedy optional. The other 100 match empty single-way, which
-   is the shape the canonical form mints on purpose and the invariant below allows. It is not a shape awaiting a
-   certificate; it is the elimination not having been carried through. The empty match is moved one node sideways into
-   an inline choice, and the first step that gives a choice a production of its own hands it back. Five moves, in this
-   order, each corpus-held:
+   149, `binarize` to 172, `alternative-shape` to 236, and the rest of the pipeline settles it at **221**, having peaked
+   at 252. Of those, **125** offer a blind choice between a way that reads and one that does not — the debt, and the
+   decision points that are a call to one of them against its zero-width way are the greedy optional. The other 96 match
+   empty with a single way or with every way, which is the shape the canonical form mints on purpose and the invariant
+   below allows. It is not a shape awaiting a certificate; it is the elimination not having been carried through. The
+   empty match is moved one node sideways into an inline choice, and the first step that gives a choice a production of
+   its own hands it back.
+
+   **This is where the meter is, and the number says so.** Counting every production that chooses blind, the two exempt
+   roots among them, there are 127, and they hold **272 of the meter's 422 points** — 64% of what Phase 03 has left. So
+   the elimination is not one contributor among several: nothing else in the phase is worth starting until it is done,
+   and a certificate designed against those points would be a certificate for a shape that should not exist. Both counts
+   print beside the meter and are driven to none together. Five moves, in this order, each corpus-held:
+
    - *The distribution goes outward, into ways.* `Ref(P)` at a site does not become `P_consuming | residue`; the way
      holding it becomes two ways of the enclosing choice. The shortcut sits in three places and all three must go: the
      call site, the consuming copy's body, and `residue` itself, which builds an alternation of empty matches and is the
@@ -631,12 +665,14 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    - *The elimination must not hand back what the lowerings removed.* Spelling the consuming form of a `x*` as a `x+`
      puts a complex `Plus` back after `lower-plus` has taken them out and multiplies the complex `Star`s from 9 to 36;
      the consuming form has to be written in the vocabulary that stands where the step runs.
+
 1. *Then the certificates.* What the elimination carried through does not dissolve is theirs — the count is not worth
    guessing at until it has been. A subsumption certificate — a way whose language contains a later way's, read through
    one level of inlining — is what retires the assurance ledger's two remaining entries rather than leaving them
    declared. The points that are neither greedy optional nor ledger want the breakdown the greedy optional has before
    anything is designed for them; that classification is cheap and comes first of the two, and it is what would put a
    derived number on both halves rather than the one nothing computed.
+
 1. *And then the determinizer*, pointed by what the meter still flags, through the landings below.
 
 **Determinize, what remains.** The goal is the grammar deterministic **as invoked from the root**, not every production
