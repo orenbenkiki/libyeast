@@ -311,54 +311,59 @@ All notable changes to this project are documented here. The format follows
   than renamed and its callee holds none of the frame's role — following one slid a declaration meant for a line-prefix
   wrapper onto the indent scan underneath it and dissolved the very call the indent refinement exists to refine. That
   splicing is the declared line-prefix inlines done universally, so both of those entries retired when the universal
-  rule caught up with them, leaving two. A fixture the sweep strands is not dropped: it pins to the last stage whose
-  grammar can run it, guards that grammar token for token, and credits coverage from where it stands — 185 of the 694,
-  the fold family's four, `c-reserved`'s three (a production the spec defines and nothing references, the base grammar's
-  own), the frames the declared extensions absorbed, the nullable productions their consuming copies replaced, and the
-  bare monomorphic copies only a fixture enters, the root reaching an escape char, a tag property or an alias
-  context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's rejection: nothing
-  can be seen to refuse what matches at every position, and a consuming copy that says no where the base matched empty
-  would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus parses green in
-  that hybrid the whole way, so the meter is honest at every step: 588 of 756 productions run committed, and the 168
-  still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The first
-  conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix wrappers
-  so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan with
-  `==n` against `<n` residue, the factoring raises a leftover's leading assertions into its gate's guards, and a new
-  certificate reads a choice of guard-led ways that are pairwise complementary — at most one enterable anywhere, so
-  committing to the first that holds is the way backtracking finds — which is what took the meter below its 240 floor.
-  Beside it stand two more local moves: the sure-way certificate — a peek-gated way with refusal-free actions and no
-  calls cannot fail once entered, so against a fallthrough the gate's answer is backtracking's own, which proves the
-  in-line separation and retires the indentation indicator's ledger entry, the staleness net demanding the removal — and
-  `hoist-residue-guards`, raising a leading `Lt` or `Le` into the gate's guards, where it is judged at the very position
-  the gate is, so a choice of guard-led ways is a shape the certificates can read. And the meter itself is corrected:
-  the goal is the grammar deterministic as invoked from the root, not every production at every hypothetical entry, so
-  the meter counts root-reachable decision points — each a production judged under one reachable context's follow, the
-  contexts computed root-down as follow classes, a nullable way's begins widened by its context exactly as one level of
-  inlining would place them. The certificates sharpened the same way — every ungated way judged by its effective begins,
-  not the last alone — which alone proved nine more productions in isolation; the isolation count stays printed as a
-  diagnostic beside the true meter's 422 points across 168 productions, among them the greedy optional — a way that
-  reads against the zero-width residue behind it, the shape the elimination distributes and the one the certificates
-  still owe. Every step must change the grammar, and one that does not is a fault named where it stands: a step goes
-  idle when what it looks for has stopped reaching it — a shape an earlier step now spells differently, a declared site
-  whose content moved — which is a regression in the step before it rather than a step to leave standing, and it is what
-  caught the line-prefix declarations dissolving the indent scan. The check reads a transform's own output, before the
-  sweep, so a step is judged on what it did rather than on what the sweep did after it; the way-subsumption step retired
-  to it, its shape reaching it nowhere in the pipeline once the universal splicing had absorbed the spliced separations
-  it was written for. `check_normalize` holds every step token-and-event identical over the whole corpus — 694
-  conformance fixtures and 402 YAML Test Suite cases, seven of them pinning the document-marker boundary the spec's
-  `c-forbidden` spells and the Clojure reference agrees on: `---foo`, `---#foo`, `----` and their `...` kin are content,
-  `--- foo` a boundary, `... foo` malformed; four pinning the sequence dedent hand-off any committed block structure
-  must reproduce — at a dedent each exiting level's end markers stand before the dedent line's indent token, the owner
-  level continues past it, and a zero-column dedent carries no indent token at all; and two pinning the sequence entry's
-  committed dash, the Clojure reference agreeing both are errors — `- @` is an entry whose body fails inside the entry's
-  own committed region, where `-b` is refused at the gate, the sequence closing before a stream-level error —
-  backtracking and hybrid alike — and ends on two own-gates over the result: every long text token, a scalar's text or a
-  name's or the unparsed recovery's, is matched in bulk rather than one character per loop; and every run consumes a
-  character set — a `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize
-  supplies the guard that lowers them, a nullable production. No action reads a value off a frame, and the one rule left
-  over what the parse gives back is that pushes and pops balance — held by the run itself, where a `(token)` code popped
-  with none pushed and a `(max)` window closed with none open are each refused where they happen rather than deduced.
-  The apparatus that existed because a close read its own frame is gone with the reason for it: the `code` parameter
+  rule caught up with them, leaving two. Which productions hold a point is read as membership of what the point already
+  tracks, never by comparing names: the sweep spells two alike productions once and keeps whichever name it keeps, so a
+  holder can end up answering to a family it has nothing to do with — the sequence loop's own exit seam went by a
+  flow-sequence name — and a test on the name then asks about a production the sweep discarded. Read by membership, each
+  loop's declaration takes its resume-policy twin in beside the original, both being the same end-marker frame. A
+  fixture the sweep strands is not dropped: it pins to the last stage whose grammar can run it, guards that grammar
+  token for token, and credits coverage from where it stands — 194 of the 694, the fold family's four, `c-reserved`'s
+  three (a production the spec defines and nothing references, the base grammar's own), the frames the declared
+  extensions absorbed, the nullable productions their consuming copies replaced, and the bare monomorphic copies only a
+  fixture enters, the root reaching an escape char, a tag property or an alias context-pinned alone. A base that is
+  total where the fixtures run it is excused the coverage gate's rejection: nothing can be seen to refuse what matches
+  at every position, and a consuming copy that says no where the base matched empty would be asking the corpus for a
+  refusal the untransformed grammar had nowhere to show. The corpus parses green in that hybrid the whole way, so the
+  meter is honest at every step: 584 of 752 productions run committed, and the 168 still backtracking are the
+  determinize work itself, driven to none, at which point it becomes a gate. The first conflict the local moves
+  determinized whole is the empty line's: `inline-singles` splices the declared prefix wrappers so `l-empty`'s two ways
+  surface as the scans they are, the refinement and the factoring leave one shared scan with `==n` against `<n` residue,
+  the factoring raises a leftover's leading assertions into its gate's guards, and a new certificate reads a choice of
+  guard-led ways that are pairwise complementary — at most one enterable anywhere, so committing to the first that holds
+  is the way backtracking finds — which is what took the meter below its 240 floor. Beside it stand two more local
+  moves: the sure-way certificate — a peek-gated way with refusal-free actions and no calls cannot fail once entered, so
+  against a fallthrough the gate's answer is backtracking's own, which proves the in-line separation and retires the
+  indentation indicator's ledger entry, the staleness net demanding the removal — and `hoist-residue-guards`, raising a
+  leading `Lt` or `Le` into the gate's guards, where it is judged at the very position the gate is, so a choice of
+  guard-led ways is a shape the certificates can read. And the meter itself is corrected: the goal is the grammar
+  deterministic as invoked from the root, not every production at every hypothetical entry, so the meter counts
+  root-reachable decision points — each a production judged under one reachable context's follow, the contexts computed
+  root-down as follow classes, a nullable way's begins widened by its context exactly as one level of inlining would
+  place them. The certificates sharpened the same way — every ungated way judged by its effective begins, not the last
+  alone — which alone proved nine more productions in isolation; the isolation count stays printed as a diagnostic
+  beside the true meter's 422 points across 168 productions, among them the greedy optional — a way that reads against
+  the zero-width residue behind it, the shape the elimination distributes and the one the certificates still owe. Every
+  step must change the grammar, and one that does not is a fault named where it stands: a step goes idle when what it
+  looks for has stopped reaching it — a shape an earlier step now spells differently, a declared site whose content
+  moved — which is a regression in the step before it rather than a step to leave standing, and it is what caught the
+  line-prefix declarations dissolving the indent scan. The check reads a transform's own output, before the sweep, so a
+  step is judged on what it did rather than on what the sweep did after it; the way-subsumption step retired to it, its
+  shape reaching it nowhere in the pipeline once the universal splicing had absorbed the spliced separations it was
+  written for. `check_normalize` holds every step token-and-event identical over the whole corpus — 694 conformance
+  fixtures and 402 YAML Test Suite cases, seven of them pinning the document-marker boundary the spec's `c-forbidden`
+  spells and the Clojure reference agrees on: `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a
+  boundary, `... foo` malformed; four pinning the sequence dedent hand-off any committed block structure must reproduce
+  — at a dedent each exiting level's end markers stand before the dedent line's indent token, the owner level continues
+  past it, and a zero-column dedent carries no indent token at all; and two pinning the sequence entry's committed dash,
+  the Clojure reference agreeing both are errors — `- @` is an entry whose body fails inside the entry's own committed
+  region, where `-b` is refused at the gate, the sequence closing before a stream-level error — backtracking and hybrid
+  alike — and ends on two own-gates over the result: every long text token, a scalar's text or a name's or the unparsed
+  recovery's, is matched in bulk rather than one character per loop; and every run consumes a character set — a
+  `ConsumeTrimmedSpan` both sets, a `ConsumeSpan` its set, a `Star` its element or, until determinize supplies the guard
+  that lowers them, a nullable production. No action reads a value off a frame, and the one rule left over what the
+  parse gives back is that pushes and pops balance — held by the run itself, where a `(token)` code popped with none
+  pushed and a `(max)` window closed with none open are each refused where they happen rather than deduced. The
+  apparatus that existed because a close read its own frame is gone with the reason for it: the `code` parameter
   `single-consumes`, `binarize`, `alternative-shape`, `factor-prefixes` and `extend-returns` each added, the refusal to
   move a run of actions closing a scope it did not open, and the fold's own refusal of the same.
 

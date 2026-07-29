@@ -1993,8 +1993,15 @@ def _refs_picker(*required):
 
 def _loop_seam_picker(grammar, candidates):
     """
-    The block sequence loop's exit seam: the single-way production whose call and continuation are both helpers of its
-    own base — the loop and the frame it returns through. Before that shape takes form the whole family holds it.
+    A block loop's exit seam: the single-way production that calls and carries on at the point's own — the loop and the
+    frame it returns through. Before that shape takes form the whole family holds it.
+
+    Read as membership of `candidates` rather than by comparing names. A name is not a thing to reason from here: the
+    sweep merges two productions that spell the same and keeps whichever name it keeps, so a holder can end up called
+    after a family it has nothing to do with — the sequence loop's own seam answers to a flow-sequence name today. What
+    the point tracks is content, and `candidates` is that content's current extent, so asking whether the call and the
+    continuation are in it asks the question the names only approximate. It also takes the resume-policy copies in
+    beside the original, which return through the frame the family they copy already had.
     """
     seam = [
         name
@@ -2003,8 +2010,8 @@ def _loop_seam_picker(grammar, candidates):
         and len(grammar[name].body.alternatives) == 1
         and (way := grammar[name].body.alternatives[0]).first is not None
         and way.second is not None
-        and _base(way.first.name) == _base(name)
-        and _base(way.second.name) == _base(name)
+        and way.first.name in candidates
+        and way.second.name in candidates
     ]
     return seam or sorted(candidates)
 
