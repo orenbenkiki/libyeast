@@ -636,13 +636,47 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    and a certificate designed against those points would be a certificate for a shape that should not exist. Both counts
    print beside the meter and are driven to none together. Five moves, in this order, each corpus-held:
 
-   - *The distribution goes outward, into ways.* `Ref(P)` at a site does not become `P_consuming | residue`; the way
-     holding it becomes two ways of the enclosing choice. The shortcut sits in three places and all three must go: the
-     call site, the consuming copy's body, and `residue` itself, which builds an alternation of empty matches and is the
-     one that keeps handing the shape back. Sequences take the product of their parts' ways, alternations the
-     concatenation, and every wrapper — a `(token)`, a `(<<<)`, a `(commit)` — wraps each way it holds. Inside a
-     lookahead or a difference a choice is a pattern rather than a decision and stays where it is, but the reference is
-     still rewritten, or it keeps the production it names alive and nullable.
+   - *The split is binary and local, and it wants the sequence split first.* `Ref(P)` at a site does not become
+     `P_consuming | residue` — a choice of its own, which the first step to give a choice a production hands back as a
+     production matching empty. What it becomes is two ways of a choice whose other member reads. Two steps, in this
+     order:
+     1. *Split every sequence toward binary before the elimination runs*, associating **outward from a part that reads**
+        so that every helper minted holds one. `P ::= (A|ε)(B|ε)(C|ε)D` becomes `P ::= (A|ε) P1`, `P1 ::= (B|ε) P2`,
+        `P2 ::= (C|ε) D` — the reader last, so the association is rightward. `P ::= A (B|ε)(C|ε)` associates leftward,
+        its rightward helper `(B|ε)(C|ε)` holding no reader at all. A fixed direction is the only thing that breaks
+        this, and it breaks either way round: rightward on the 48 sequences whose splits all stand before a reader,
+        leftward on the 82 whose splits all stand after one.
+        - What the direction serves, counted: **82** grow rightward, **48** leftward, **47** hold no reader and are the
+          ordered which-reads-first case `consuming_form` already spells, **42** need no split at all, and exactly
+          **one** — `s-l+flow-in-block`, `(s-separate|ε) ns-flow-node (s-l-comments|ε)` — splits on both sides of its
+          reader. That one wants no two-directional machinery either: grown from the reader it is two ordinary moves,
+          `P1 ::= ns-flow-node (s-l-comments|ε)` and then `(s-separate|ε) P1`, each helper holding a reader.
+        - And a nullable part is not the same as a part that splits. Of the 325 nullable parts in those sequences,
+          **240** become a choice the elimination distributes and **85** are single-way — a `<start-of-line>`, a
+          lookahead, a negative lookahead, an `Emit`, an `Empty`. Those match empty and offer no choice, so they need
+          neither a reader nor a direction and ride in whatever way they land in; `s-indent-le-line` is a reader and
+          three of them and needs no split at all.
+     1. *Then the ε-split is local*: `H ::= (X|ε) T` becomes `H ::= X T | T`. Two ways, and both read because the helper
+        holds a reader by construction. No product, no outward travel, nothing to unwind.
+     - *There is no combinatorial explosion in this grammar, and the number says so.* No sequence holds more than **3**
+       parts that split — 119 hold one, 56 two, 3 three — so even a blind product would top out at 8. The readerless
+       sequences do not want a product either: their consuming form is *which part is the first to read*, k ordered
+       ways, and `consuming_form` already spells exactly that. Distributing outward with a product instead reaches 24
+       ways in one production (`s-l+block-collection_c_block-in`, `3 × 4 × 2`) — the price of the wrong shape, not a
+       floor.
+     - *`binarize` is the step that already does the splitting, and it stands at 21 while the elimination is at 4.* That
+       ordering is the defect. The two steps above are that gap closed, not new machinery.
+     - Of the three places the old shape lived, only the call site holds debt: **112 of the 127 blind choices and 217 of
+       the meter's 422 points**. `consuming_form`'s own choice holds none, every way it builds having a consuming part,
+       so the production minted over it never matches empty; `residue`'s alternation of empty matches holds at most the
+       15 productions with more than one empty way. Inside a lookahead or a difference a choice is a pattern rather than
+       a decision and stays where it is, but the reference is still rewritten, or it keeps the production it names alive
+       and nullable.
+     - A residue is an action chain, not an ε: the one distributed out of `s-flow-folded_6` carries `PopCode`,
+       `RetypeProvisional` and `CommitProvisional`. Those may be moved, each pairing dynamically off the parse's own
+       stack or the queue's run rather than reading anything the call holds. A residue carrying a `CloseWindow` may not,
+       the window's pair being the one that is not dynamic — the side condition `_OPENS`/`_CLOSES` states from the other
+       direction.
    - *The invariant is that no production offers both a way that reads and a way that does not.* Not "nothing matches
      empty": a single-way action bundle — a continuation carrying a `PopMessage`, a guard the canonical form gives its
      own production — matches empty and decides nothing, and the canonical form mints those deliberately, so the
