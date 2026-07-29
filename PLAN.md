@@ -526,18 +526,25 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      `m`, which took the level being the pop's own rather than looked up one hop from the callers that push it.
    - *A global is run as a stack beside itself.* A `(set)` on a global puts its value on a stack of that global's own
      and a `(clear)` takes it off; a read takes the top, which is right however the writes nest. Beside it stands the
-     one slot a global would be, and two numbers say how far the two are apart: `flattened`, the reads where the top and
-     the slot differ — what one value for the parse could not have answered — and `unpaired`, the clears with nothing to
-     take off. Both are counted rather than refused, so the parse stands whatever they say, and both are driven to none:
-     at none the slot **is** the stack, and the machine can hold one value where it now holds a stack of them.
+     one slot a global would be, and one number says how far apart they are: the reads where the top and the slot
+     differ, which one value for the parse could not have answered. Counted rather than refused, so the parse stands
+     whatever it says, and driven to none: at none the slot **is** the stack, and the machine can hold one value where
+     it now holds a stack of them. It reads **0**, which is what licenses `m` and `f` as globals.
      - What it is for is that a transformation can be judged by a number instead of by whether the corpus survives it.
        Narrowing `sink-pops` to refuse a holder that carries its own continuation — which is what the unified stack
        wants, and what breaks the mapping loop's hoist — is a distance rather than a wall once there is a number on it.
-     - It reads 0 and 48 as it stands, and the 48 are the first thing it turned up: `clear-params` puts a clear on every
-       way that reads the parameter, and more than one such way runs against a single write — the block scalar has three
-       reader ways behind one header write. Against a slot, clearing an already-clear slot is nothing, which is why the
-       corpus never minded and nothing had asked. Against a stack it is a pop too many, and it is the first of the two
-       numbers to drive down.
+     - A clear is idempotent, and the stack does not refuse an unbalanced one. It turned up 48 of them, all the same
+       thing: `clear-params` puts a clear on every way that reads a parameter, and a value routinely has more than one
+       reader. "From here nothing holds a value" is as true said twice as once, so they are not an imbalance to repair —
+       and a later step may merge two consecutive clears, or drop one behind another, so that a clear never stands in
+       the way of a factoring that would otherwise see a common prefix.
+     - What that trades away is a structural refusal: an unbalanced clear would have been caught and is not. What stands
+       in its place is the corpus — token for token over the fixtures, folded to events over the suite, at every stage.
+       A clear misplaced far enough to matter takes a value from a read that wanted it, which those nets do catch.
+     - And the clears are safety rather than the licence. What says a global may hold one value for the parse is the
+       count above being none; the clears earn their place by making a read past a value's life a fault instead of a
+       stale answer. If they ever stand in the way of something worth more — a factoring they hide, a shape they
+       complicate — they can go entirely and the licence is unchanged.
    - `clear-params` — landed. The way that **reads** a parameter clears it where it returns, behind its calls, there
      being nothing of its own after them. *A value ends where the last thing wanting it is done, which is a point the
      parse passes through rather than a set of productions: the way holding the read takes it, uses it, and by the time

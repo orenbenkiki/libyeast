@@ -3137,6 +3137,18 @@ def clear_params(grammar, namer):
     nothing of its own after them. Past that a read takes the unset value a fresh parse gives, and reading one is a
     fault.
 
+    The clears are safety and not the licence. What says a global may hold one value for the parse is that no read ever
+    wants an older one — the count of reads a single slot could not answer, which the run prints and which is none. The
+    clears earn their place by making a read past a value's life a fault rather than a stale answer, and if they ever
+    stand in the way of something worth more they can go entirely without that licence changing.
+
+    A clear is idempotent — it says "from here nothing holds a value", which is as true said twice as once — and a value
+    routinely has more than one reader to say it. So more clears stand than there are values, and that is not an
+    imbalance to repair: two consecutive clears of one parameter are one clear, a clear behind a clear is the first
+    alone, and a later step is free to say so. Nothing here should let them stand in the way of a factoring: a clear
+    between two ways that are otherwise the same prefix is a difference in spelling and not in what the parse does, and
+    a step that compares prefixes may drop or merge them to see past.
+
     The reader and not the writer, which is the whole of it. A block scalar's indentation is written deep inside the
     header and handed up to the scalar that asked for it, so clearing where it was written would take it from the one
     thing that wanted it: the header hands the value on rather than being done with it. And not the frame above a region

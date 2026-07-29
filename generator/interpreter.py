@@ -73,12 +73,12 @@ class DepthExceeded(Exception):
 
 BYTE_ORDER_MARK = 0xFEFF  # consumed without ending the start of a line, unlike any other character
 
-# What the runs have asked of a global that one value for the parse could not have answered. `flattened` counts the
-# reads where the stack's top and the slot beside it differ, `unpaired` the clears with nothing to take off. Neither
-# refuses — the stack answers correctly either way — so a grammar is judged by these falling rather than by whether the
-# corpus survives it, and at none the slot is the stack. A grammar whose productions still declare the parameters holds
-# no globals at all and adds nothing here, so what this counts is the tail of the pipeline where they are.
-ASKED = {"flattened": 0, "unpaired": 0}
+# What the runs have asked of a global that one value for the parse could not have answered: the reads where the stack
+# beside it holds something other than the slot does. It does not refuse — the stack answers correctly either way — so a
+# grammar is judged by this falling rather than by whether the corpus survives it, and at none the slot is the stack. A
+# grammar whose productions still declare the parameters holds no globals at all and adds nothing here, so what this
+# counts is the tail of the pipeline where they are.
+ASKED = {"flattened": 0}
 
 
 def _decode_one(raw, offset):
@@ -925,12 +925,16 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.ClearVar):
         checkpoint = emitter.checkpoint()
         if node.param in emitter.globals:
-            # Counted, not refused: the stack answers correctly either way, and a clear with nothing to take off is one
-            # of the two numbers the transformations drive to none rather than a reason to stop the parse.
-            held = emitter.shadow.get(node.param, ())
-            if not held:
-                ASKED["unpaired"] += 1
-            emitter.shadow[node.param] = held[:-1]
+            # A clear says "from here nothing holds a value", and that is idempotent: saying it of a value already clear
+            # is not the error that popping an empty stack would be, and a value routinely has more than one reader to
+            # say it. So this takes one off where there is one and does nothing where there is not.
+            #
+            # What that gives up is a structural refusal: an unbalanced clear would have been caught here and is not.
+            # What stands in its place is the corpus — the fixtures reproduced token for token and the suite folded to
+            # its events, at every stage. A clear misplaced far enough to matter takes a value from a read that wanted
+            # it, and that is a divergence those nets do catch; this one refusal is what is being traded for the
+            # idempotence, knowingly.
+            emitter.shadow[node.param] = emitter.shadow.get(node.param, ())[:-1]
         emitter.env[node.param] = None  # back to the state a fresh parse gives it, which reading is a fault
         if k():
             return True
