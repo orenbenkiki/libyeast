@@ -33,6 +33,7 @@ import check_grammar_coverage
 import check_interpreter
 import check_star
 import gate
+import interpreter
 import normalize
 import spec_tests
 
@@ -157,6 +158,14 @@ def _check():
     # The assurance ledger: committed on a declared reason rather than a proof, each entry held to backtracking by the
     # hybrid run above and to freshness by its own net — watched here so the declared few never grow quietly.
     print(f"    {len(committed)} production(s) committed by declaration — the assurance ledger")
+    # What the corpus asked of a global that one value for the parse could not have answered. Every run above has been
+    # answered from a stack beside the slot, so these are what stands between the two and not a count of anything that
+    # went wrong: driven to none, and at none the machine can hold the slot alone.
+    asked = interpreter.ASKED
+    print(
+        f"    {asked['flattened']} read(s) one value for a global could not answer, "
+        f"{asked['unpaired']} clear(s) with nothing to take off"
+    )
 
 
 def main():

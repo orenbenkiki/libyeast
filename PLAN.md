@@ -531,9 +531,13 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      take off. Both are counted rather than refused, so the parse stands whatever they say, and both are driven to none:
      at none the slot **is** the stack, and the machine can hold one value where it now holds a stack of them.
      - What it is for is that a transformation can be judged by a number instead of by whether the corpus survives it.
-       As committed both read zero. Narrowing `sink-pops` to refuse a holder that carries its own continuation — which
-       is what the unified stack wants, and what breaks the mapping loop's hoist — takes them to 9 and 4, which is the
-       distance that narrowing has left to go rather than a wall it runs into.
+       Narrowing `sink-pops` to refuse a holder that carries its own continuation — which is what the unified stack
+       wants, and what breaks the mapping loop's hoist — is a distance rather than a wall once there is a number on it.
+     - It reads 0 and 48 as it stands, and the 48 are the first thing it turned up: `clear-params` puts a clear on every
+       way that reads the parameter, and more than one such way runs against a single write — the block scalar has three
+       reader ways behind one header write. Against a slot, clearing an already-clear slot is nothing, which is why the
+       corpus never minded and nothing had asked. Against a stack it is a pop too many, and it is the first of the two
+       numbers to drive down.
    - `clear-params` — landed. The way that **reads** a parameter clears it where it returns, behind its calls, there
      being nothing of its own after them. *A value ends where the last thing wanting it is done, which is a point the
      parse passes through rather than a set of productions: the way holding the read takes it, uses it, and by the time

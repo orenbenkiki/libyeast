@@ -73,6 +73,13 @@ class DepthExceeded(Exception):
 
 BYTE_ORDER_MARK = 0xFEFF  # consumed without ending the start of a line, unlike any other character
 
+# What the runs have asked of a global that one value for the parse could not have answered. `flattened` counts the
+# reads where the stack's top and the slot beside it differ, `unpaired` the clears with nothing to take off. Neither
+# refuses — the stack answers correctly either way — so a grammar is judged by these falling rather than by whether the
+# corpus survives it, and at none the slot is the stack. A grammar whose productions still declare the parameters holds
+# no globals at all and adds nothing here, so what this counts is the tail of the pipeline where they are.
+ASKED = {"flattened": 0, "unpaired": 0}
+
 
 def _decode_one(raw, offset):
     """
@@ -169,11 +176,9 @@ class Emitter:
         # One value for the parse rather than one per frame, so a call carries what the callee left in one back out;
         # until `read-globals` takes the declarations away they are parameters, scoped like any other
         self.shadow = {}  # a stack per global, what a `(set)` puts on and a `(clear)` takes off. A read takes the top,
-        # which is right however the writes nest, so the parse stands whatever the two numbers below say
-        self.flattened = 0  # reads where the top and the slot beside it differ — what one value for the parse could not
-        # have answered. Driven to none, and at none the slot is the stack
-        self.unpaired = 0  # clears with nothing to take off, a write and its clear not having paired. Driven to none
-        # beside it, since a stack the parse does not balance is not one a machine can keep
+        # which is right however the writes nest, so the parse stands whatever the two numbers below say What the two
+        # mechanisms differ by is tallied module-wide rather than per run, in `ASKED`: it is one number over the whole
+        # corpus rather than a property of any one parse, and it is what a step is judged by.
 
     def checkpoint(self):
         return (
@@ -456,7 +461,7 @@ def evaluate(expression, emitter, grammar):
         if not held:
             raise AssertionError(f"`{expression.name}` is read where nothing holds a value for it")
         if held[-1] != emitter.env.get(expression.name):
-            emitter.flattened += 1
+            ASKED["flattened"] += 1
         return held[-1]
     if isinstance(expression, ir.Indent):
         return _indent(emitter)
@@ -924,7 +929,7 @@ def match(node, emitter, grammar, k):
             # of the two numbers the transformations drive to none rather than a reason to stop the parse.
             held = emitter.shadow.get(node.param, ())
             if not held:
-                emitter.unpaired += 1
+                ASKED["unpaired"] += 1
             emitter.shadow[node.param] = held[:-1]
         emitter.env[node.param] = None  # back to the state a fresh parse gives it, which reading is a fault
         if k():

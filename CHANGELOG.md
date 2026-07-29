@@ -436,10 +436,14 @@ All notable changes to this project are documented here. The format follows
   two counters say how far apart the two are: the reads where the top and the slot differ, which one value for the parse
   could not have answered, and the clears with nothing to take off. Driven to none, and at none the slot is the stack.
 
-  What that buys is a transformation judged by a number instead of by whether the corpus survives it. Both counters read
-  zero as things stand. Narrowing `sink-pops` to refuse a holder carrying its own continuation — what the unified stack
-  wants once calls are written out, and what costs the mapping loop its hoist — takes them to 9 and 4, which is a
-  distance rather than a wall.
+  What that buys is a transformation judged by a number instead of by whether the corpus survives it: narrowing
+  `sink-pops` to refuse a holder carrying its own continuation — what the unified stack wants once calls are written
+  out, and what costs the mapping loop its hoist — becomes a distance rather than a wall.
+
+  The counters read 0 and 48, and the 48 are the first thing the mechanism turned up. `clear-params` puts a clear on
+  every way that reads the parameter, and more than one such way runs against a single write — a block scalar has three
+  reader ways behind one header write. Against a slot, clearing an already-clear slot is nothing, which is why the
+  corpus never minded and nothing had asked; against a stack it is a pop too many.
 
   `clear-params` says where a parameter stops applying: the way that **reads** it clears it where it returns, behind its
   calls, there being nothing of its own after them. A value ends where the last thing wanting it is done, and that is a
