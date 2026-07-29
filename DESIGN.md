@@ -100,7 +100,7 @@ returns a "not implemented" error — so what exists is the project framework an
   `grammar2decoder.py` (emit `src/decoder_tables.h`), `wire.py` (the yeast wire format in Python), `spec_tests.py` (the
   conformance fixtures), `interpreter.py` (a backtracking interpreter of the grammar, run against those fixtures),
   `normalize.py` (the ordered pipeline of semantics-preserving transformations toward the canonical form, each step's
-  output swept of the frames that only call something else, the productions that behave alike, and the ones no parse can
+  output swept of the productions that only call something else, the ones that behave alike, and the ones no parse can
   enter — reachability closed from the productions a parse enters by name, the root's copy under each resume policy and
   the recovery a failed cut lands on), `determinize.py` (the divergence analysis that derives a conflict's provisional
   decision), `star.py` (the YAML Test Suite folded to events), and the gate checks `check_annotated_roundtrip.py`,
@@ -161,7 +161,7 @@ turned out to be a canonical form that had not been written down. When a simplif
 hypothesis is a missing normalizing step, not an inherent conflict.
 
 **A named site is a code smell, and the target is none.** Every declaration in the pipeline's tables — a site named for
-inlining, a two-way choice named for reordering, a frame named for absorbing, a production named as committed — is a
+inlining, a two-way choice named for reordering, a helper named for absorbing, a production named as committed — is a
 place a universal rule was not found and a hand-picked target stood in for it. The base grammar matches the right
 language and emits the right tokens, so mechanical universal steps should reach a deterministic grammar with nothing
 singled out; a singled-out site is evidence of a step not yet written. A reordering rule is the sharpest of the four,

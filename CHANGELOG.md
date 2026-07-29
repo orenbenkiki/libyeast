@@ -219,20 +219,20 @@ All notable changes to this project are documented here. The format follows
   minted copy holding the rest is what the call means there — and where one way is left and it reads nothing, its
   actions splice into the caller's and the continuation becomes the call, which is how the block header's indentation
   side surfaces as the auto-detect it is rather than a call to a choice. `inline-single-way` carries the sweep's
-  splicing of a do-nothing frame to a frame that does something: a call whose production has one ungated way decides
+  splicing of a do-nothing production to one that does something: a call whose production has one ungated way decides
   nothing, so its actions join the caller's and its own calls become the caller's, each parameter bound to the argument
-  the call passes. Both refuse where the frame is load-bearing — a gated way is a decision, the canonical form holds two
-  calls and not three, a recovery rides the very frame a splice removes, and an action binding a parameter the call
-  renames is a loud fault. `factor-prefixes` factors it: the longest identical run of zero-width actions and fixed-width
-  consumes — a length-ambiguous run stops it, backtracking over it being an order a factoring must not reshuffle, as
-  does a frame-scoped pair's half — moves into one alternative that calls a minted decision production holding what
-  remains of each way, handed the code where a leftover closes a `(token)` the prefix opened; a second gate hoisting
-  then gives each leftover the characters it can go on, one character deeper than the gate the alternatives shared. One
-  round reaches the fixpoint: what stands after it differs in its emissions before the decision or is committed to by
-  order — the deep end the certificates are still to reach. The provisional run is what reaches past a character: a run
-  of held tokens, its `start` and a `MarkProvisional` cutting it into the region before the mark and the region from it
-  on — re-taken within a run the mark moves, the last taken winning, what a line scan spends per fresh line — opened by
-  `OpenProvisional` and resolved by `CommitProvisional`, with two actions that read it —
+  the call passes. Both refuse where the production is load-bearing — a gated way is a decision, the canonical form
+  holds two calls and not three, a recovery rides the very call a splice removes, and an action binding a parameter the
+  call renames is a loud fault. `factor-prefixes` factors it: the longest identical run of zero-width actions and
+  fixed-width consumes — a length-ambiguous run stops it, backtracking over it being an order a factoring must not
+  reshuffle, as does a frame-scoped pair's half — moves into one alternative that calls a minted decision production
+  holding what remains of each way, handed the code where a leftover closes a `(token)` the prefix opened; a second gate
+  hoisting then gives each leftover the characters it can go on, one character deeper than the gate the alternatives
+  shared. One round reaches the fixpoint: what stands after it differs in its emissions before the decision or is
+  committed to by order — the deep end the certificates are still to reach. The provisional run is what reaches past a
+  character: a run of held tokens, its `start` and a `MarkProvisional` cutting it into the region before the mark and
+  the region from it on — re-taken within a run the mark moves, the last taken winning, what a line scan spends per
+  fresh line — opened by `OpenProvisional` and resolved by `CommitProvisional`, with two actions that read it —
   `RetypeProvisional(rest, breaks, region)` rewriting the held tokens in a region by kind, a break-consumed token to one
   code, any other to the second, `None` keeping a kind its own; and `InjectBefore(codes, at)` inserting decided markers,
   in order, at the run's start or its mark. One obligation makes the mechanism sound: no held token is dropped or grown,
@@ -284,48 +284,48 @@ All notable changes to this project are documented here. The format follows
   `extend-returns` folds a declared site the same declared way: a call-then-continuation whose continuation is actions
   alone is absorbed into the call's own family — the actions appended to every return path through minted copies, a tail
   call retargeting to its target's copy, a recursion meeting its own copy and folding, every other caller untouched and
-  the dead frames purged — a language identity, stream-faithful because the appended actions run exactly where the
+  the dead productions purged — a language identity, stream-faithful because the appended actions run exactly where the
   continuation ran, and refused where the continuation closes a scope it does not open. Its first declared targets fold
-  the sequence loops' end-marker frames, so each loop's exit way carries its own `end-sequence` inline — the seam toward
-  the parent's next scan absorbed frame by declared frame, each fold corpus-held, rather than by one atomic flip. The
-  mapping loop's exit folds beside the sequence's and earns its declaration twice: absorbing the frame leaves the way
-  that carried it a single call, and a way with a call *and* a continuation cannot hand its pop down — the continuation
-  goes on the stack ahead of where the pop would land. So the seam absorbed is also what lets a pop reach the loop's own
-  scan, which stops that scan reading an auto-detected indent a nested collection has since replaced. And what no
-  disjointness can prove now stands declared: the assurance ledger commits a production on a written reason — the
-  header's chomp-first subsumption and a digit at the indicator being the indicator — each entry held to backtracking by
-  the hybrid corpus, refused when its name goes stale or the analysis catches up, and counted on its own gate line so
-  the declared few never grow quietly. Every step's grammar is then swept of what the step leaves behind, the three
-  passes running to a fixpoint since each feeds the others. A production whose whole body is one ungated, action-free
-  call, with no continuation and no recovery of its own, is what it calls, so every reference to it becomes a reference
-  to that callee — a frame that decides nothing and does nothing costing a push either way. Productions that behave
-  alike are spelled once: same parameters, and the same body once every reference in it is read as the group of what it
-  names rather than by the name itself, which is what tells two loops apart from one loop written twice — `b-l-spaced`'s
-  empty-line scan, `b-l-trimmed`'s and `l-keep-empty`'s are one production, where comparing the bodies as written sees
-  three. The groups are the coarsest partition that stays stable under that reading. And last, so it sees what the other
-  two strand, every production no parse can enter is purged — each IR node spells the productions it references, and
-  reachability closes over the ones a parse enters by name — so the fold's old family is gone the step its fused
-  replacement lands, and the meter stands on what the machine holds. None of the three changes what the grammar matches
-  or emits. Only a merge is a rename, and only a merge a point of interest follows: two productions that behave alike
-  are one thing under two names, so what tracked either tracks the one kept, where a spliced frame is consumed rather
-  than renamed and its callee holds none of the frame's role — following one slid a declaration meant for a line-prefix
-  wrapper onto the indent scan underneath it and dissolved the very call the indent refinement exists to refine. That
-  splicing is the declared line-prefix inlines done universally, so both of those entries retired when the universal
-  rule caught up with them, leaving two. Which productions hold a point is read as membership of what the point already
-  tracks, never by comparing names: the sweep spells two alike productions once and keeps whichever name it keeps, so a
-  holder can end up answering to a family it has nothing to do with — the sequence loop's own exit seam went by a
-  flow-sequence name — and a test on the name then asks about a production the sweep discarded. Read by membership, each
-  loop's declaration takes its resume-policy twin in beside the original, both being the same end-marker frame. A
-  fixture the sweep strands is not dropped: it pins to the last stage whose grammar can run it, guards that grammar
-  token for token, and credits coverage from where it stands — 194 of the 694, the fold family's four, `c-reserved`'s
-  three (a production the spec defines and nothing references, the base grammar's own), the frames the declared
-  extensions absorbed, the nullable productions their consuming copies replaced, and the bare monomorphic copies only a
-  fixture enters, the root reaching an escape char, a tag property or an alias context-pinned alone. A base that is
-  total where the fixtures run it is excused the coverage gate's rejection: nothing can be seen to refuse what matches
-  at every position, and a consuming copy that says no where the base matched empty would be asking the corpus for a
-  refusal the untransformed grammar had nowhere to show. The corpus parses green in that hybrid the whole way, so the
-  meter is honest at every step: 584 of 752 productions run committed, and the 168 still backtracking are the
-  determinize work itself, driven to none, at which point it becomes a gate. The first conflict the local moves
+  the sequence loops' end-marker helpers, so each loop's exit way carries its own `end-sequence` inline — the seam
+  toward the parent's next scan absorbed one declared helper at a time, each fold corpus-held, rather than by one atomic
+  flip. The mapping loop's exit folds beside the sequence's and earns its declaration twice: absorbing the helper leaves
+  the way that carried it a single call, and a way with a call *and* a continuation cannot hand its pop down — the
+  continuation goes on the stack ahead of where the pop would land. So the seam absorbed is also what lets a pop reach
+  the loop's own scan, which stops that scan reading an auto-detected indent a nested collection has since replaced. And
+  what no disjointness can prove now stands declared: the assurance ledger commits a production on a written reason —
+  the header's chomp-first subsumption and a digit at the indicator being the indicator — each entry held to
+  backtracking by the hybrid corpus, refused when its name goes stale or the analysis catches up, and counted on its own
+  gate line so the declared few never grow quietly. Every step's grammar is then swept of what the step leaves behind,
+  the three passes running to a fixpoint since each feeds the others. A production whose whole body is one ungated,
+  action-free call, with no continuation and no recovery of its own, is what it calls, so every reference to it becomes
+  a reference to that callee — a production that decides nothing and does nothing costing a push either way. Productions
+  that behave alike are spelled once: same parameters, and the same body once every reference in it is read as the group
+  of what it names rather than by the name itself, which is what tells two loops apart from one loop written twice —
+  `b-l-spaced`'s empty-line scan, `b-l-trimmed`'s and `l-keep-empty`'s are one production, where comparing the bodies as
+  written sees three. The groups are the coarsest partition that stays stable under that reading. And last, so it sees
+  what the other two strand, every production no parse can enter is purged — each IR node spells the productions it
+  references, and reachability closes over the ones a parse enters by name — so the fold's old family is gone the step
+  its fused replacement lands, and the meter stands on what the machine holds. None of the three changes what the
+  grammar matches or emits. Only a merge is a rename, and only a merge a point of interest follows: two productions that
+  behave alike are one thing under two names, so what tracked either tracks the one kept, where a spliced production is
+  consumed rather than renamed and its callee holds none of its role — following one slid a declaration meant for a
+  line-prefix wrapper onto the indent scan underneath it and dissolved the very call the indent refinement exists to
+  refine. That splicing is the declared line-prefix inlines done universally, so both of those entries retired when the
+  universal rule caught up with them, leaving two. Which productions hold a point is read as membership of what the
+  point already tracks, never by comparing names: the sweep spells two alike productions once and keeps whichever name
+  it keeps, so a holder can end up answering to a family it has nothing to do with — the sequence loop's own exit seam
+  went by a flow-sequence name — and a test on the name then asks about a production the sweep discarded. Read by
+  membership, each loop's declaration takes its resume-policy twin in beside the original, both being the same
+  end-marker helper. A fixture the sweep strands is not dropped: it pins to the last stage whose grammar can run it,
+  guards that grammar token for token, and credits coverage from where it stands — 194 of the 694, the fold family's
+  four, `c-reserved`'s three (a production the spec defines and nothing references, the base grammar's own), the helpers
+  the declared extensions absorbed, the nullable productions their consuming copies replaced, and the bare monomorphic
+  copies only a fixture enters, the root reaching an escape char, a tag property or an alias context-pinned alone. A
+  base that is total where the fixtures run it is excused the coverage gate's rejection: nothing can be seen to refuse
+  what matches at every position, and a consuming copy that says no where the base matched empty would be asking the
+  corpus for a refusal the untransformed grammar had nowhere to show. The corpus parses green in that hybrid the whole
+  way, so the meter is honest at every step: 584 of 752 productions run committed, and the 168 still backtracking are
+  the determinize work itself, driven to none, at which point it becomes a gate. The first conflict the local moves
   determinized whole is the empty line's: `inline-singles` splices the declared prefix wrappers so `l-empty`'s two ways
   surface as the scans they are, the refinement and the factoring leave one shared scan with `==n` against `<n` residue,
   the factoring raises a leftover's leading assertions into its gate's guards, and a new certificate reads a choice of
@@ -372,9 +372,9 @@ All notable changes to this project are documented here. The format follows
   and the call carries on at a production that takes it back: the pop, and then wherever the alternative was carrying
   on. So the point an indentation stops applying is an action the grammar writes, in the one place nothing of the
   alternative's own runs, rather than a property of the edge that a shared continuation could not have said for itself.
-  Whether a frame is what a pop wants is `sink-pops`', on a grammar where every one of them stands. A pop holder is an
+  Whether a helper is what a pop wants is `sink-pops`', on a grammar where every one of them stands. A pop holder is an
   ungated way whose actions are the pop and only the pop; where every reference to what one calls is such a way, the pop
-  leads that production's own ways instead and the holders stop doing it, a frame with nothing left going to the sweep.
+  leads that production's own ways instead and the holders stop doing it, one with nothing left going to the sweep.
   There is no other way in for it to be wrong for, however many holders say it. It runs to a fixpoint, because sinking
   makes holders — a way that did nothing of its own before its call becomes one once the pop above it has come down,
   which is the only way the block collections are reached, on a second round. A continuation whose arguments read the
@@ -382,7 +382,7 @@ All notable changes to this project are documented here. The format follows
   and a recovery, which a cut reaches with the stack as it stood before the call ran. Nor does a way that calls *and*
   carries on hand its pop down: where to carry on goes on the stack ahead of where the pop would land, so the pop would
   meet that rather than the indentation it comes off. Twelve holders come to five. What it is for is `defer-pops`, which
-  cannot see a pop behind a frame. One production is the pop and nothing else, `x-pop-indent`, shared by the nineteen
+  cannot see a pop behind a call. One production is the pop and nothing else, `x-pop-indent`, shared by the nineteen
   pushes with nowhere else to go; the other fourteen hold a continuation behind it. Each declares no parameters and
   reads the ambient ones, so a continuation's arguments are evaluated after the pop, where the stack and the parameter
   agree. A continuation that changes the indentation has no return of its own to take it back, so its call goes into a

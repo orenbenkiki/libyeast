@@ -1138,13 +1138,13 @@ def inline_under_gate(grammar, namer):
     nothing on the way, enters the callee at the very position it peeked — so a way of that callee whose own peek admits
     no character the caller's does can never fire, and a minted copy holding the rest is what the call means there. And
     where one way is left and it reads nothing, the call is that way's actions: they splice into the caller's own and
-    the continuation becomes the call, one frame fewer between a decision and what it decides.
+    the continuation becomes the call, one production fewer between a decision and what it decides.
 
     The side conditions are read off the alternative and the two peeks. The actions before the call must all be
     zero-width, or the callee would be entered somewhere other than where the gate looked; both peeks must be pinned, an
     unpinned one saying nothing about what it excludes; and a way with no peek of its own stays, being enterable
     wherever the caller is. The splice needs the surviving way bare — no peek, no guards, no calls — and the alternative
-    to carry no recovery, a recovery riding the very frame the splice would remove.
+    to carry no recovery, a recovery riding the very call the splice would remove.
     """
 
     def live_ways(callee, spans):
@@ -1204,13 +1204,13 @@ def inline_single_way(grammar, namer):
     """
     Splice a call whose production has one ungated way: it decides nothing, so what it does belongs where it is called —
     its actions appended to the caller's, its own calls taken as the caller's, each parameter bound to the argument the
-    call passes. It is the sweep's splicing of a do-nothing frame carried to a frame that does something, and what
+    call passes. It is the sweep's splicing of a do-nothing production carried to one that does something, and what
     brings a scalar's own indicator into the same action list as the header it opens, where a canonical order can reach
     both.
 
-    Refused rather than mis-spliced where the frame is load-bearing: a way gated on a character or a guard is a
+    Refused rather than mis-spliced where the production is load-bearing: a way gated on a character or a guard is a
     decision, not a wrapper; the canonical form holds two calls to an alternative, so a splice that would leave three
-    stands; a recovery on either side rides the very frame the splice removes; and a spliced action binding a parameter
+    stands; a recovery on either side rides the very call the splice removes; and a spliced action binding a parameter
     the call renames would write somewhere else, which is a loud fault rather than a silent one.
     """
 
@@ -1221,7 +1221,7 @@ def inline_single_way(grammar, namer):
             return alternative
         [way] = callee.body.alternatives
         if way.gate.peek is not None or way.gate.guards:
-            return alternative  # a gate is a decision, and the frame is where it is taken
+            return alternative  # a gate is a decision, and the production is where it is taken
         if alternative.recover is not None or way.recover is not None:
             return alternative
         calls = [held for held in (way.first, way.second) if held is not None]
@@ -1531,7 +1531,7 @@ def _alternative_first(alternative, grammar, first_of):
     `None` where they are not pinned down. Where there is a peek it is the sound first set, the alternative being
     entered only where it holds; nullability is read off the content either way, erring toward "may match empty", as
     every answer here errs wide — a follow set built from these certifies by disjointness, so too wide refuses safely. A
-    recovery does not widen the answer: it rides the call's edge and resumes at the frame's return, so it changes what
+    recovery does not widen the answer: it rides the call's edge and resumes where the call returns, so it changes what
     may follow the production, never what the alternative begins with entered fresh — the follow computation hands the
     recovery its due on the same edge. A way guarded by the end of the input begins with no character, so its begins pin
     empty — but it does match empty, there where no character is left, and the gate hoisting must keep it enterable with
@@ -1994,14 +1994,14 @@ def _refs_picker(*required):
 def _loop_seam_picker(grammar, candidates):
     """
     A block loop's exit seam: the single-way production that calls and carries on at the point's own — the loop and the
-    frame it returns through. Before that shape takes form the whole family holds it.
+    helper it returns through. Before that shape takes form the whole family holds it.
 
     Read as membership of `candidates` rather than by comparing names. A name is not a thing to reason from here: the
     sweep merges two productions that spell the same and keeps whichever name it keeps, so a holder can end up called
     after a family it has nothing to do with — the sequence loop's own seam answers to a flow-sequence name today. What
     the point tracks is content, and `candidates` is that content's current extent, so asking whether the call and the
     continuation are in it asks the question the names only approximate. It also takes the resume-policy copies in
-    beside the original, which return through the frame the family they copy already had.
+    beside the original, which return through the helper the family they copy already had.
     """
     seam = [
         name
@@ -2053,14 +2053,14 @@ DECLARED_REORDERS = {
 # actions appended to every return path, copies minted along the tail and continuation chains so every other caller of
 # `A` stands untouched and a tail recursion folds to its own copy. A language identity, and stream-faithful: the
 # appended actions run exactly where the continuation ran. What it is for: a block loop's exit way returns through a
-# chain of end-marker frames to the parent's next scan, and each extension absorbs one frame into the loop's own choice,
+# chain of end-marker helpers to the parent's next scan, and each extension absorbs one into the loop's own choice,
 # until the scan the exit shares with the continue way is local to the conflict and the held factoring can take both —
 # the seam decomposed into corpus-held identities rather than one atomic flip.
 DECLARED_EXTENSIONS = {
-    "block-seq-loop-exit": "the sequence loop's exit returns through the end-marker frame; absorbing it stands"
-    " `end-sequence` inside the loop's own exit way, one frame nearer the parent's scan — and its two resume-policy"
-    " copies with it, the point holding all three seams the family spells",
-    "block-map-loop-exit": "the mapping loop's exit is the twin of the sequence's, and absorbing its end-marker frame"
+    "block-seq-loop-exit": "the sequence loop's exit returns through the end-marker helper; absorbing it stands"
+    " `end-sequence` inside the loop's own exit way, one helper nearer the parent's scan — and its resume-policy copy"
+    " with it, the point holding both seams the family spells",
+    "block-map-loop-exit": "the mapping loop's exit is the twin of the sequence's, and absorbing its end-marker helper"
     " leaves the way that carries it a single call. That is what `sink-pops` needs to reach the loop's own scan: a way"
     " with a call and a continuation cannot hand its pop down, the continuation going on the stack ahead of where the"
     " pop would land, so the chain stops one link short and the scan goes on reading `m` a nested write has replaced",
@@ -2546,14 +2546,14 @@ def _replaced(node, needle, replacement):
     return dataclasses.replace(node, **changed) if changed else node
 
 
-def _framed(minted, namer, owner, actions, call=None, tail=None, name=None):
+def _helper(minted, namer, owner, actions, call=None, tail=None, name=None):
     """
-    A reference to a minted production holding `actions`, then `call`, then `tail` — the frame an action needs where the
-    alternative wanting it has nowhere to put it, nothing of one running after the call it makes.
+    A reference to a minted production holding `actions`, then `call`, then `tail` — the helper an action needs where
+    the alternative wanting it has nowhere to put it, nothing of one running after the call it makes.
 
     `name` names the production where every site wants the same body, so the one they share is named for what it does
-    rather than left to the sweep to merge and name it after whichever site minted it first. Without one it is a fresh
-    helper of `owner`. The production declares no parameters and reads the ambient ones, so what its calls pass is
+    rather than left to the sweep to merge and name it after whichever site minted it first. Without one it is named
+    fresh off `owner`. The production declares no parameters and reads the ambient ones, so what its calls pass is
     evaluated inside it, after whatever the actions did.
     """
     name = name or namer.fresh(owner)
@@ -2579,7 +2579,7 @@ def push_indents(grammar, namer):
     in force pushes nothing.
 
     The minted production declares no parameters and reads the ambient ones, so a continuation's arguments are evaluated
-    inside it, after the pop, where the stack and the parameter agree. Whether a frame is what the pop wants is
+    inside it, after the pop, where the stack and the parameter agree. Whether a helper is what the pop wants is
     `sink-pops`' to say, on a grammar where every one of them stands.
     """
 
@@ -2599,11 +2599,11 @@ def push_indents(grammar, namer):
     def restores(owner, continuation, level):
         """`continuation` behind a production of its own that takes `level` back off ahead of it."""
         shared = pop_indent.setdefault(level, namer.fresh(_POP_INDENT_BASE)) if continuation is None else None
-        return _framed(minted, namer, owner, (ir.PopIndent(level),), tail=continuation, name=shared)
+        return _helper(minted, namer, owner, (ir.PopIndent(level),), tail=continuation, name=shared)
 
     def wrapped(owner, call, level):
         """`call` behind a production of its own that pushes `level` and carries on where the pop takes it back."""
-        return _framed(minted, namer, owner, (ir.PushIndent(level),), call=call, tail=restores(owner, None, level))
+        return _helper(minted, namer, owner, (ir.PushIndent(level),), call=call, tail=restores(owner, None, level))
 
     def pushed(alternative, owner):
         way = alternative
@@ -2659,8 +2659,8 @@ def sink_pops(grammar, namer):
 
     A pop holder says the indentation comes off before the call it makes. Where every reference to what it calls is such
     a holder, the pop leads that production's own ways instead: there is no other way in for it to be wrong for, however
-    many holders say it, and each holder is left with the pop no longer among its actions — a frame with nothing of its
-    own left goes to the sweep.
+    many holders say it, and each holder is left with the pop no longer among its actions — a production with nothing of
+    its own left goes to the sweep.
 
     Run to a fixpoint, because sinking makes holders. A way that did nothing of its own before the call is one once the
     pop above it has come down into it, and only then is what it calls reached by holders alone — the block collections
@@ -2768,9 +2768,9 @@ def _sink_pops_once(grammar):
         elif name in holders and holders[name][0].name in sunk:
             way = body.alternatives[0]
             if way.first is None:
-                # Nothing of the holder's own is left. Its call goes in the slot the sweep splices a do-nothing frame
-                # from, a tail call being the same thing in either — the frame going with the action that was its
-                # reason. A way with a continuation of its own keeps both and simply stops doing the pop.
+                # Nothing of the holder's own is left. Its call goes in the slot the sweep splices a do-nothing
+                # production from, a tail call being the same thing in either — the production going with the action
+                # that was its reason.
                 way = dataclasses.replace(way, actions=(), first=way.second, second=None)
             else:
                 way = dataclasses.replace(way, actions=())
@@ -3188,10 +3188,10 @@ def clear_params(grammar, namer):
         """`way` with the clear where it returns — behind its calls, there being nothing of its own after them."""
         if way.first is None and way.second is None:
             return dataclasses.replace(way, actions=way.actions + (ir.ClearVar(param),))
-        bare = _framed(minted, namer, owner, (ir.ClearVar(param),), name=shared[param])
+        bare = _helper(minted, namer, owner, (ir.ClearVar(param),), name=shared[param])
         if way.second is None:
             return dataclasses.replace(way, second=bare)
-        return dataclasses.replace(way, second=_framed(minted, namer, owner, (), way.second, bare))
+        return dataclasses.replace(way, second=_helper(minted, namer, owner, (), way.second, bare))
 
     result = {}
     for name, production in grammar.items():
@@ -4245,12 +4245,12 @@ def purged(grammar):
 
 def _spliced(grammar, keep):
     """
-    `grammar` with every do-nothing frame gone: a production whose whole body is one ungated, action-free call, with no
+    `grammar` with every do-nothing production gone: one whose whole body is a single ungated, action-free call, with no
     continuation and no recovery of its own, is what it calls, so every reference to it becomes a reference to that
-    callee — its parameters bound to the call's arguments. A chain of them collapses in one pass, and a frame that
-    reaches only itself is left where it stands, a call that never returns being no simpler spelled inline.
+    callee — its parameters bound to the call's arguments. A chain of them collapses in one pass, and one that reaches
+    only itself is left where it stands, a call that never returns being no simpler spelled inline.
     """
-    frames = {}
+    passthroughs = {}
     for name, production in grammar.items():
         body = production.body
         if name in keep or not isinstance(body, ir.Choice) or len(body.alternatives) != 1:
@@ -4260,15 +4260,15 @@ def _spliced(grammar, keep):
             continue
         if way.first is None or way.second is not None or way.recover is not None:
             continue
-        frames[name] = way.first
-    if not frames:
+        passthroughs[name] = way.first
+    if not passthroughs:
         return grammar, {}
 
     def resolved(reference):
         seen = set()
-        while isinstance(reference, ir.Ref) and reference.name in frames and reference.name not in seen:
+        while isinstance(reference, ir.Ref) and reference.name in passthroughs and reference.name not in seen:
             seen.add(reference.name)
-            inner = frames[reference.name]
+            inner = passthroughs[reference.name]
             reference = _bound(inner, dict(zip(grammar[reference.name].params, reference.args)))
         return reference
 
@@ -4277,7 +4277,7 @@ def _spliced(grammar, keep):
         return resolved(node) if isinstance(node, ir.Ref) else node
 
     swept = {name: dataclasses.replace(p, body=rewrite(p.body)) for name, p in grammar.items()}
-    return swept, {name: resolved(reference).name for name, reference in frames.items()}
+    return swept, {name: resolved(reference).name for name, reference in passthroughs.items()}
 
 
 def _grouped(grammar):
@@ -4335,17 +4335,17 @@ def _merged(grammar, keep):
 def cleaned(grammar):
     """
     `grammar` with what a transformation leaves behind swept up, and the renames the sweep made — `{gone: standing}`, so
-    what tracks a production by name follows its content to where it went. The frames that only call something else are
-    spliced out, the productions that spell the very same thing are merged into one, and — last, so it sees what the
-    other two strand — every production no parse can enter is purged. Splicing and merging feed each other, a merge
-    making two frames the same call and a splice making two callers identical, so they run to a fixpoint. None of it
-    changes what the grammar matches or emits: a spliced frame ran no action and made no decision, and a merged
-    production is the one kept, character for character.
+    what tracks a production by name follows its content to where it went. The productions that only call something else
+    are spliced out, the ones that spell the very same thing are merged into one, and — last, so it sees what the other
+    two strand — every production no parse can enter is purged. Splicing and merging feed each other, a merge making two
+    productions the same call and a splice making two callers identical, so they run to a fixpoint. None of it changes
+    what the grammar matches or emits: a spliced production ran no action and made no decision, and a merged production
+    is the one kept, character for character.
 
     Only a merge is a rename. Two productions that behave alike are one thing under two names, so what tracked either
-    tracks the one kept; a spliced frame is not renamed but *consumed*, its callee a production that already stood for
-    itself and holds none of the frame's role. Following a splice would slide a point of interest off the wrapper it
-    names and onto the callee — which is how a declaration meant for a prefix wrapper came to name the indent scan
+    tracks the one kept; a spliced production is not renamed but *consumed*, its callee one that already stood for
+    itself and holds none of the spliced one's role. Following a splice would slide a point of interest off the wrapper
+    it names and onto the callee — which is how a declaration meant for a prefix wrapper came to name the indent scan
     underneath it and dissolve it.
     """
     keep = entered_by_name(grammar)
@@ -4373,9 +4373,9 @@ def stages(grammar):
     diffs the interpreter's token stream across, so a step that changes it is named. Returns the `Points` beside the
     pairs, so the analysis of the final grammar reads its committed holders from the same tracking the steps used. One
     `Namer` is threaded through the steps, so the helper productions they mint number `<base>_<N>` off a count shared
-    across them. Each step's grammar is cleaned of what the step leaves behind — the do-nothing frames, the duplicate
-    productions, and the ones the root no longer reaches — since a transformation that replaces a call site strands the
-    callee, and a frame or a duplicate the sweep leaves standing would hold the determinize meter above its honest
+    across them. Each step's grammar is cleaned of what the step leaves behind — the do-nothing productions, the
+    duplicates, and the ones the root no longer reaches — since a transformation that replaces a call site strands the
+    callee, and a do-nothing or a duplicate the sweep leaves standing would hold the determinize meter above its honest
     floor. The base grammar is kept whole: it is the grammar as frozen at the completeness gate, cleaned by no step.
 
     Every step must change the grammar, and one that does not is a fault. A step earns its place by doing something: it

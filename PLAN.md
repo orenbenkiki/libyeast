@@ -390,8 +390,8 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      One production is the pop and nothing else — `x-pop-indent`, shared by every push with nowhere else to go — and the
      rest hold a continuation behind it. Each declares no parameters and reads the ambient ones, so a continuation's
      arguments are evaluated inside it, after the pop, where the stack and the parameter agree.
-   - Whether a frame is what a pop wants is `sink-pops`', on a grammar where every one of them stands: minting the frame
-     and deciding to keep it are two jobs, and split they are two local rules rather than one that looks ahead.
+   - Whether a helper is what a pop wants is `sink-pops`', on a grammar where every one of them stands: minting the
+     helper and deciding to keep it are two jobs, and split they are two local rules rather than one that looks ahead.
    - What the check caught, none of which an argument would have: a continuation that changes the indentation has no
      return of its alternative's to take it back, and needs a production holding that call alone; and an in-grammar
      `(recover)` left the pushes of the parse it abandoned standing, where `_fail` had always cleared them — a real
@@ -456,7 +456,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    call whose production has one ungated way, actions and calls alike. What they bought: the block header's two ways
    both go on the chomping call now, told apart by the auto-detect bundle standing in front of it in one of them.
    - `inline-single-way` still refuses a *gated* single way, so a callee whose peek the caller's gate already implies
-     stays a frame — `c-chomping-indicator_t_keep` is one, gated on the `'+'` its caller is gated on. Widening the side
+     stays a call — `c-chomping-indicator_t_keep` is one, gated on the `'+'` its caller is gated on. Widening the side
      condition to "the callee's peek contains the caller's" is the next small move, and it puts the chomping consume
      into both header lists.
    - Even then the header does not factor, and the reason is worth keeping: the `order-actions` side condition needs a
@@ -482,7 +482,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      unreachable. *Reads the root-down entry sets the meter already computes.*
    - `sink-pops` — landed. A pop holder is an ungated way whose actions are the pop and only the pop; where every
      reference to what one calls is such a way, the pop leads that production's own ways instead and the holders stop
-     doing it, a frame with nothing left going to the sweep. *There is no other way in for the pop to be wrong for,
+     doing it, a production with nothing left going to the sweep. *There is no other way in for the pop to be wrong for,
      however many holders say it.* Run to a fixpoint, because sinking makes holders — a way that did nothing of its own
      before its call becomes one once the pop above it has come down, which is how the block collections are reached at
      all, on the second round. A continuation whose arguments read the indentation keeps its holders, those being read
@@ -490,7 +490,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      stack as it stood before the call. Nor does a way that calls *and* carries on hand its pop down: where to carry on
      goes on the stack ahead of where the pop would land, so the pop would meet that rather than the indentation it
      comes off. Twelve holders come to five. What it is for is `defer-pops` below, which cannot see a pop standing
-     behind a frame.
+     behind a call.
    - Tried and reverted, so it is not tried twice: giving the holders a copy where other ways reach the same production.
      It is correct and universal and costs four meter points, each copy being a production with decision points of its
      own, and it moved no read of `m`. It also cannot be a step of its own — the sweep merges a copy back into what it
@@ -661,10 +661,10 @@ prefix and the implicit key land after, spending the same shared scan.
      and one generic transform embodies all three: `extend-returns` folds a declared site's call-then-continuation so
      the continuation's actions run inside the call's own family, appended to every return path through minted copies, a
      tail recursion folding to its own copy — reassociation, distribution, and the tail-fold in one walk, each
-     application a corpus-held identity, so the seam is absorbed frame by frame rather than in one atomic flip. The
-     first target is landed: the sequence loop's exit carries its own `end-sequence`, one frame nearer the parent's
-     scan; the chain continues through the wrapper and entry frames until the parent's scan is local to the conflict.
-     The mapping loop's exit is landed beside it, and for a second reason worth keeping: absorbing its end-marker frame
+     application a corpus-held identity, so the seam is absorbed one helper at a time rather than in one atomic flip.
+     The first target is landed: the sequence loop's exit carries its own `end-sequence`, one helper nearer the parent's
+     scan; the chain continues through the wrapper and entry helpers until the parent's scan is local to the conflict.
+     The mapping loop's exit is landed beside it, and for a second reason worth keeping: absorbing its end-marker helper
      leaves the way that carried it a single call, and a way with a call *and* a continuation cannot hand its pop down —
      the continuation goes on the stack ahead of where the pop would land. So the seam being absorbed is also what lets
      `sink-pops` reach the loop's own scan, which stops it reading an `m` a nested write has since replaced.
