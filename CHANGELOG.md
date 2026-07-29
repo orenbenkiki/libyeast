@@ -386,6 +386,19 @@ All notable changes to this project are documented here. The format follows
   The recovery now takes back what the abandoned parse never got to. The comparison stays live at `push-indents`, the
   last grammar to carry both.
 
+- `m` and `f` are globals, and with them the last parameter goes. `read-globals` takes the declaration off every
+  production and the argument off every call, and every read becomes a `Global`. The final grammar declares no
+  parameters and passes no arguments anywhere: `Indent` reads the stack, `Global` reads the one slot, and every value
+  the parse carries is one of those two — a global singleton or an entry in the unified stack, with no third place left
+  for anything to live. A global is carried out of every call where nothing declares it; until `read-globals` runs they
+  are parameters, scoped like any other, which is what leaves the base grammar's own runs alone.
+
+  What makes them globals is that they do not nest, and that had to be made true rather than assumed. While the block
+  collections pushed their indentation per entry they re-read `m` on every turn to rebuild what they had just popped, so
+  a nested collection writing the one slot in between took the enclosing loop's value away. A first attempt at this
+  failed on exactly that, named by a sequence inside a sequence. Reading a global nothing holds a value for is a fault,
+  and the clears say where each region ends.
+
   The block collections push their indentation once before their loop and pop it once after, where they pushed and
   popped it per entry. `hoist-pushes` and `cancel-indent-pairs` are what take the pair out: a production every way of
   which begins with the same push makes it however it is entered, so the callers make it instead, last among their own

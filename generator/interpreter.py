@@ -165,6 +165,9 @@ class Emitter:
         self.passing_arguments = False  # while a call's arguments are read. The new indentation is pushed before the
         # call and passed to it as well, so the argument reads `n` under the push its own value made — the two disagree
         # there and nowhere else, and only until the argument goes
+        self.globals = ()  # the `ir.GLOBAL_PARAMS` no production of this grammar declares, which `run` reads off it.
+        # One value for the parse rather than one per frame, so a call carries what the callee left in one back out;
+        # until `read-globals` takes the declarations away they are parameters, scoped like any other
 
     def checkpoint(self):
         return (
@@ -436,6 +439,11 @@ def evaluate(expression, emitter, grammar):
             # that did has ended. Passing it on is not reading it — an out-parameter travels to its setter unset.
             raise AssertionError(f"`{expression.name}` is read where nothing holds a value for it")
         return value
+    if isinstance(expression, ir.Global):
+        value = emitter.env.get(expression.name)
+        if value is None:
+            raise AssertionError(f"`{expression.name}` is read where nothing holds a value for it")
+        return value
     if isinstance(expression, ir.Indent):
         return _indent(emitter)
     if isinstance(expression, ir.Match):
@@ -678,6 +686,10 @@ def match(node, emitter, grammar, k):
         # so a callee reads what is in force rather than a copy taken at the call.
         emitter.env = {**saved_env, **dict(zip(production.params, arguments))}
 
+        # A global is the parse's rather than the frame's, so what the callee left in one reaches the caller whatever
+        # the call passed — and a `ClearVar` reaches it too, which is why this carries a cleared value out where the
+        # by-reference pass keeps the caller's. Only where nothing declares them: until `read-globals` takes the
+        # declarations away they are parameters, and a frame's own binding is the by-reference pass's to carry.
         def continue_out():
             callee_env = emitter.env
             callee_forbidden = emitter.forbidden
@@ -686,6 +698,8 @@ def match(node, emitter, grammar, k):
                 value = callee_env.get(parameter)
                 if value is not None:
                     caller_env[parameter] = value
+            for name in emitter.globals:
+                caller_env[name] = callee_env.get(name)
             emitter.env = (
                 caller_env  # the caller sees its own parameters again, with any by-reference result carried out
             )
@@ -1220,6 +1234,9 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset()):
     emitter.deterministic = deterministic
     emitter.holds_indent = any(
         isinstance(node, ir.PushIndent) for name in grammar for node in _nodes(grammar[name].body)
+    )
+    emitter.globals = tuple(
+        name for name in ir.GLOBAL_PARAMS if not any(name in grammar[held].params for held in grammar)
     )
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in parameters.items()}
     if "r" in grammar[production].params:

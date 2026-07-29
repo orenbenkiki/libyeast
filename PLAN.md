@@ -374,8 +374,7 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    back out on the way home. `push-indents` mints a `PushIndent` at each of the thirty-three calls measured against an
    `n` other than the one in force — the other seven hundred passed it through and push nothing — and `read-indents`
    then drops the parameter: every read becomes `Indent`, the indentation in force, and the declaration and the argument
-   go with it. The final grammar declares `m` and `f` and nothing else, and `prune-params` behind it drops even those
-   wherever nothing reads them.
+   go with it, leaving `m` and `f` — which `read-globals` takes below, so the final grammar declares nothing at all.
    - What held it: the two mechanisms stood side by side for a whole gate, every read of `n` compared against the stack
      over 694 fixtures and 402 suite cases before the reads became the stack's. The comparison is live still, at
      `push-indents`, which is the last grammar carrying both — so the drop is proved rather than argued, and the
@@ -400,6 +399,18 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    - Unchecked, and holding by construction rather than by a refusal: a `(recover)` rebinds `n` exactly as the call it
      rides does, at all seven sites, which is why the push made for the call answers for the recovery too. Nothing
      compares the two, and `push-indents` does not look at a recovery's arguments at all.
+1. *`m` and `f` are globals* — done, and with them the last parameter goes. `read-globals` takes the declaration off
+   every production and the argument off every call, and every read becomes a `Global`. **The final grammar declares no
+   parameters and passes no arguments at all**: `Indent` reads the stack, `Global` reads the one slot, and the state
+   invariant holds — every value the parse carries is a global singleton or an entry in the unified stack, with no third
+   place left.
+   - A global is what does not nest, and making that true is what the loop work was for. While the block collections
+     pushed per entry they re-read `m` on every turn to rebuild what they had just popped, so a nested collection
+     writing the one slot in between took the enclosing loop's value away — which is exactly how a first attempt at this
+     failed, and the fixture that named it was `- a` / `- - c`, a sequence inside a sequence.
+   - What holds it: reading a global nothing holds a value for is a fault, and the clears say where each region ends.
+     The interpreter carries a global out of every call where nothing declares it — before `read-globals` they are
+     parameters and scoped like any other, which is what keeps the base grammar's own runs unchanged.
 1. *The call written out.* `first` and `second` are a call and where to carry on, which the machine performs — the last
    thing a production does that the grammar does not spell. `PushContinuation(second)` and a jump to `first` say it, and
    a `Pop` and a jump say the way home. Nothing is left that pushes or pops without an action naming it, and an inlining

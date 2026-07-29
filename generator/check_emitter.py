@@ -42,7 +42,15 @@ RESTORED = (  # in alphabetical order
     "trail",
     "window_depth",
 )
-READ_ONLY = ("byte_at", "chars", "deterministic", "holds_indent", "passing_arguments", "raw")  # in alphabetical order
+READ_ONLY = (  # in alphabetical order
+    "byte_at",
+    "chars",
+    "deterministic",
+    "globals",
+    "holds_indent",
+    "passing_arguments",
+    "raw",
+)
 # Balanced by its own pushes and pops rather than by a checkpoint: the production stack the depth guard traces is the
 # live chain of entered productions, pushed on entry and popped on exit even as an exception unwinds, so a rewind —
 # which happens inside a production, its entry still standing — must leave it alone, not truncate it. The committed

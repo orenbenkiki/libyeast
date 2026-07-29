@@ -3008,6 +3008,60 @@ def cancel_indent_pairs(grammar, namer):
     return result
 
 
+def read_globals(grammar, namer):
+    """
+    Read a global off its one slot rather than out of a parameter.
+
+    `ir.GLOBAL_PARAMS` are one value for the parse and not one per frame, so the declaration goes from every production
+    that carried one and the argument from every call that passed it, and every read becomes a `Global`. The writes
+    stand where they are: a `(set)` or an `(increase)` names its target, and reaching the slot is what it always meant.
+
+    What holds it is where the value ends. `clear-params` has put a `ClearVar` where each region does, and reading a
+    global nothing holds a value for is a fault — so a value outliving the construct that measured it is refused rather
+    than read by whatever comes next. That is what the block collections' push and pop coming out of their loop bought:
+    while each pushed per entry, the loop read `m` again on every turn to rebuild what it had just popped, and a nested
+    collection writing the one slot in between took it away.
+    """
+    at = {
+        name: [index for index, param in enumerate(production.params) if param in ir.GLOBAL_PARAMS]
+        for name, production in grammar.items()
+    }
+
+    def dropped(node):
+        """`node` with the global arguments gone from every call whose callee no longer declares one."""
+        node = ir.rebuilt(node, dropped)
+        if not isinstance(node, ir.Ref) or not at.get(node.name):
+            return node
+        gone = set(at[node.name])
+        return dataclasses.replace(
+            node, args=tuple(argument for index, argument in enumerate(node.args) if index not in gone)
+        )
+
+    def read(node):
+        """`node` with each read of a global naming the slot rather than a parameter that no longer stands."""
+        if isinstance(node, ir.Param) and node.name in ir.GLOBAL_PARAMS:
+            return ir.Global(node.name)
+        if not dataclasses.is_dataclass(node):
+            return node
+        changed = {}
+        for field in dataclasses.fields(node):
+            value = getattr(node, field.name)
+            if dataclasses.is_dataclass(value):
+                changed[field.name] = read(value)
+            elif isinstance(value, tuple) and value and all(dataclasses.is_dataclass(item) for item in value):
+                changed[field.name] = tuple(read(item) for item in value)
+        return dataclasses.replace(node, **changed) if changed else node
+
+    return {
+        name: dataclasses.replace(
+            production,
+            params=tuple(param for param in production.params if param not in ir.GLOBAL_PARAMS),
+            body=read(dropped(production.body)),
+        )
+        for name, production in grammar.items()
+    }
+
+
 def strip_pop_levels(grammar, namer):
     """
     Take the level off every pop, nothing needing it past here.
@@ -4121,6 +4175,7 @@ STEPS = [
     ("strip-pop-levels", strip_pop_levels),
     ("prune-params", prune_params),
     ("clear-params", clear_params),
+    ("read-globals", read_globals),
 ]
 
 

@@ -33,6 +33,14 @@ RECOVER = "l-recover"
 FINITE_PARAMS = ("c", "t", "r")
 FINITE_DEFAULTS = {"r": "n"}
 
+# The parameters that are one value for the parse rather than one per frame: what `normalize.read_globals` takes off
+# every declaration and every call, leaving the reads and the writes to reach the single slot. A global is what does not
+# nest — the auto-detected indent is measured by the construct that opens and read while it stands, the block scalar's
+# floor by its leading empty lines and read by its first content line, one construct at a time — and `clear-params` is
+# what says where each stops applying, so a read past its region is refused rather than answered from what the last one
+# left. In alphabetical order.
+GLOBAL_PARAMS = ("f", "m")
+
 
 def specialized(base, bindings):
     """
@@ -109,6 +117,21 @@ class Match:
     rule reads when it must act on that text, the characters being in hand already, with nothing remembered about where
     they began.
     """
+
+    def references(self):
+        return []
+
+
+@dataclass(frozen=True)
+class Global:
+    """
+    The value of the global `name` — one for the parse, not one per frame.
+
+    A value read off the single slot rather than a parameter passed to get here: `SetVar` and `Increase` write it,
+    `ClearVar` says where it stops applying, and nothing declares it or carries it down a call.
+    """
+
+    name: str
 
     def references(self):
         return []
