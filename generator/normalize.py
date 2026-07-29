@@ -2019,6 +2019,7 @@ POINTS = {
     "block-empty-line": ("l-empty", _refs_picker("s-indent-lt", "s-line-prefix_c_block-in")),
     "shorter-indent": ("s-indent-lt", _refs_picker("s-space")),
     "block-seq-loop-exit": ("l+block-sequence", _loop_seam_picker),
+    "block-map-loop-exit": ("l+block-mapping", _loop_seam_picker),
 }
 
 # The declared reorders: points of interest whose two alternatives the `reorder-declared` step swaps, each with the
@@ -2052,6 +2053,10 @@ DECLARED_EXTENSIONS = {
     "block-seq-loop-exit": "the sequence loop's exit returns through the end-marker frame; absorbing it stands"
     " `end-sequence` inside the loop's own exit way, one frame nearer the parent's scan — and its two resume-policy"
     " copies with it, the point holding all three seams the family spells",
+    "block-map-loop-exit": "the mapping loop's exit is the twin of the sequence's, and absorbing its end-marker frame"
+    " leaves the way that carries it a single call. That is what `sink-pops` needs to reach the loop's own scan: a way"
+    " with a call and a continuation cannot hand its pop down, the continuation going on the stack ahead of where the"
+    " pop would land, so the chain stops one link short and the scan goes on reading `m` a nested write has replaced",
 }
 
 

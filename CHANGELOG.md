@@ -287,40 +287,44 @@ All notable changes to this project are documented here. The format follows
   the dead frames purged — a language identity, stream-faithful because the appended actions run exactly where the
   continuation ran, and refused where the continuation closes a scope it does not open. Its first declared targets fold
   the sequence loops' end-marker frames, so each loop's exit way carries its own `end-sequence` inline — the seam toward
-  the parent's next scan absorbed frame by declared frame, each fold corpus-held, rather than by one atomic flip. And
-  what no disjointness can prove now stands declared: the assurance ledger commits a production on a written reason —
-  the header's chomp-first subsumption and a digit at the indicator being the indicator — each entry held to
-  backtracking by the hybrid corpus, refused when its name goes stale or the analysis catches up, and counted on its own
-  gate line so the declared few never grow quietly. Every step's grammar is then swept of what the step leaves behind,
-  the three passes running to a fixpoint since each feeds the others. A production whose whole body is one ungated,
-  action-free call, with no continuation and no recovery of its own, is what it calls, so every reference to it becomes
-  a reference to that callee — a frame that decides nothing and does nothing costing a push either way. Productions that
-  behave alike are spelled once: same parameters, and the same body once every reference in it is read as the group of
-  what it names rather than by the name itself, which is what tells two loops apart from one loop written twice —
-  `b-l-spaced`'s empty-line scan, `b-l-trimmed`'s and `l-keep-empty`'s are one production, where comparing the bodies as
-  written sees three. The groups are the coarsest partition that stays stable under that reading. And last, so it sees
-  what the other two strand, every production no parse can enter is purged — each IR node spells the productions it
-  references, and reachability closes over the ones a parse enters by name — so the fold's old family is gone the step
-  its fused replacement lands, and the meter stands on what the machine holds. None of the three changes what the
-  grammar matches or emits. Only a merge is a rename, and only a merge a point of interest follows: two productions that
-  behave alike are one thing under two names, so what tracked either tracks the one kept, where a spliced frame is
-  consumed rather than renamed and its callee holds none of the frame's role — following one slid a declaration meant
-  for a line-prefix wrapper onto the indent scan underneath it and dissolved the very call the indent refinement exists
-  to refine. That splicing is the declared line-prefix inlines done universally, so both of those entries retired when
-  the universal rule caught up with them, leaving two. A fixture the sweep strands is not dropped: it pins to the last
-  stage whose grammar can run it, guards that grammar token for token, and credits coverage from where it stands — 185
-  of the 694, the fold family's four, `c-reserved`'s three (a production the spec defines and nothing references, the
-  base grammar's own), the frames the declared extensions absorbed, the nullable productions their consuming copies
-  replaced, and the bare monomorphic copies only a fixture enters, the root reaching an escape char, a tag property or
-  an alias context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's
-  rejection: nothing can be seen to refuse what matches at every position, and a consuming copy that says no where the
-  base matched empty would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus
-  parses green in that hybrid the whole way, so the meter is honest at every step: 590 of 758 productions run committed,
-  and the 168 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
-  first conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix
-  wrappers so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan
-  with `==n` against `<n` residue, the factoring raises a leftover's leading assertions into its gate's guards, and a
-  new certificate reads a choice of guard-led ways that are pairwise complementary — at most one enterable anywhere, so
+  the parent's next scan absorbed frame by declared frame, each fold corpus-held, rather than by one atomic flip. The
+  mapping loop's exit folds beside the sequence's and earns its declaration twice: absorbing the frame leaves the way
+  that carried it a single call, and a way with a call *and* a continuation cannot hand its pop down — the continuation
+  goes on the stack ahead of where the pop would land. So the seam absorbed is also what lets a pop reach the loop's own
+  scan, which stops that scan reading an auto-detected indent a nested collection has since replaced. And what no
+  disjointness can prove now stands declared: the assurance ledger commits a production on a written reason — the
+  header's chomp-first subsumption and a digit at the indicator being the indicator — each entry held to backtracking by
+  the hybrid corpus, refused when its name goes stale or the analysis catches up, and counted on its own gate line so
+  the declared few never grow quietly. Every step's grammar is then swept of what the step leaves behind, the three
+  passes running to a fixpoint since each feeds the others. A production whose whole body is one ungated, action-free
+  call, with no continuation and no recovery of its own, is what it calls, so every reference to it becomes a reference
+  to that callee — a frame that decides nothing and does nothing costing a push either way. Productions that behave
+  alike are spelled once: same parameters, and the same body once every reference in it is read as the group of what it
+  names rather than by the name itself, which is what tells two loops apart from one loop written twice — `b-l-spaced`'s
+  empty-line scan, `b-l-trimmed`'s and `l-keep-empty`'s are one production, where comparing the bodies as written sees
+  three. The groups are the coarsest partition that stays stable under that reading. And last, so it sees what the other
+  two strand, every production no parse can enter is purged — each IR node spells the productions it references, and
+  reachability closes over the ones a parse enters by name — so the fold's old family is gone the step its fused
+  replacement lands, and the meter stands on what the machine holds. None of the three changes what the grammar matches
+  or emits. Only a merge is a rename, and only a merge a point of interest follows: two productions that behave alike
+  are one thing under two names, so what tracked either tracks the one kept, where a spliced frame is consumed rather
+  than renamed and its callee holds none of the frame's role — following one slid a declaration meant for a line-prefix
+  wrapper onto the indent scan underneath it and dissolved the very call the indent refinement exists to refine. That
+  splicing is the declared line-prefix inlines done universally, so both of those entries retired when the universal
+  rule caught up with them, leaving two. A fixture the sweep strands is not dropped: it pins to the last stage whose
+  grammar can run it, guards that grammar token for token, and credits coverage from where it stands — 185 of the 694,
+  the fold family's four, `c-reserved`'s three (a production the spec defines and nothing references, the base grammar's
+  own), the frames the declared extensions absorbed, the nullable productions their consuming copies replaced, and the
+  bare monomorphic copies only a fixture enters, the root reaching an escape char, a tag property or an alias
+  context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's rejection: nothing
+  can be seen to refuse what matches at every position, and a consuming copy that says no where the base matched empty
+  would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus parses green in
+  that hybrid the whole way, so the meter is honest at every step: 588 of 756 productions run committed, and the 168
+  still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The first
+  conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix wrappers
+  so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan with
+  `==n` against `<n` residue, the factoring raises a leftover's leading assertions into its gate's guards, and a new
+  certificate reads a choice of guard-led ways that are pairwise complementary — at most one enterable anywhere, so
   committing to the first that holds is the way backtracking finds — which is what took the meter below its 240 floor.
   Beside it stand two more local moves: the sure-way certificate — a peek-gated way with refusal-free actions and no
   calls cannot fail once entered, so against a fallthrough the gate's answer is backtracking's own, which proves the

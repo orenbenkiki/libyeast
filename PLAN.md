@@ -574,9 +574,9 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
    and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
    Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
-   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 234. Of those, 133
+   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 233. Of those, 133
    offer a blind choice between a way that reads and one that does not — the debt, and the decision points that are a
-   call to one of them against its zero-width way are the greedy optional. The other 101 match empty single-way, which
+   call to one of them against its zero-width way are the greedy optional. The other 100 match empty single-way, which
    is the shape the canonical form mints on purpose and the invariant below allows. It is not a shape awaiting a
    certificate; it is the elimination not having been carried through. The empty match is moved one node sideways into
    an inline choice, and the first step that gives a choice a production of its own hands it back. Five moves, in this
@@ -660,6 +660,10 @@ prefix and the implicit key land after, spending the same shared scan.
      application a corpus-held identity, so the seam is absorbed frame by frame rather than in one atomic flip. The
      first target is landed: the sequence loop's exit carries its own `end-sequence`, one frame nearer the parent's
      scan; the chain continues through the wrapper and entry frames until the parent's scan is local to the conflict.
+     The mapping loop's exit is landed beside it, and for a second reason worth keeping: absorbing its end-marker frame
+     leaves the way that carried it a single call, and a way with a call *and* a continuation cannot hand its pop down —
+     the continuation goes on the stack ahead of where the pop would land. So the seam being absorbed is also what lets
+     `sink-pops` reach the loop's own scan, which stops it reading an `m` a nested write has since replaced.
    - *Held-prefix factoring* — the one move that is not an identity, and the exact spot the provisional mechanism
      enters. Factoring the scan across a zero-width emission — `(Emit·I·x | I·y)` — would commute the marker past the
      indent token in the stream, which is the dedent's marker order: exiting levels' end markers stand before the dedent
