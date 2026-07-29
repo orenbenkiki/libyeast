@@ -430,6 +430,17 @@ All notable changes to this project are documented here. The format follows
   action that is itself a call or a scope around one stops the move. The block sequence's next-entry scan compares
   against `Indent` directly now, and the pop stands against the push that follows it with no scan between.
 
+  A global is run as a stack beside itself, so that what is asked of it can be counted rather than gambled on. A `(set)`
+  puts its value on a stack of that global's own and a `(clear)` takes it off, and a read takes the top — right however
+  the writes nest, so the parse stands whatever the numbers say. Beside it stands the one slot a global would be, and
+  two counters say how far apart the two are: the reads where the top and the slot differ, which one value for the parse
+  could not have answered, and the clears with nothing to take off. Driven to none, and at none the slot is the stack.
+
+  What that buys is a transformation judged by a number instead of by whether the corpus survives it. Both counters read
+  zero as things stand. Narrowing `sink-pops` to refuse a holder carrying its own continuation — what the unified stack
+  wants once calls are written out, and what costs the mapping loop its hoist — takes them to 9 and 4, which is a
+  distance rather than a wall.
+
   `clear-params` says where a parameter stops applying: the way that **reads** it clears it where it returns, behind its
   calls, there being nothing of its own after them. A value ends where the last thing wanting it is done, and that is a
   point the parse passes through rather than a set of productions — the way holding the read takes the value, uses it,

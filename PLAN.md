@@ -524,6 +524,16 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      new; an action that is itself a call or a scope around one stops the move. What it is for is the pop standing
      against the push that follows it, a scan no longer between them. It reaches all four sites where a loop re-reads
      `m`, which took the level being the pop's own rather than looked up one hop from the callers that push it.
+   - *A global is run as a stack beside itself.* A `(set)` on a global puts its value on a stack of that global's own
+     and a `(clear)` takes it off; a read takes the top, which is right however the writes nest. Beside it stands the
+     one slot a global would be, and two numbers say how far the two are apart: `flattened`, the reads where the top and
+     the slot differ — what one value for the parse could not have answered — and `unpaired`, the clears with nothing to
+     take off. Both are counted rather than refused, so the parse stands whatever they say, and both are driven to none:
+     at none the slot **is** the stack, and the machine can hold one value where it now holds a stack of them.
+     - What it is for is that a transformation can be judged by a number instead of by whether the corpus survives it.
+       As committed both read zero. Narrowing `sink-pops` to refuse a holder that carries its own continuation — which
+       is what the unified stack wants, and what breaks the mapping loop's hoist — takes them to 9 and 4, which is the
+       distance that narrowing has left to go rather than a wall it runs into.
    - `clear-params` — landed. The way that **reads** a parameter clears it where it returns, behind its calls, there
      being nothing of its own after them. *A value ends where the last thing wanting it is done, which is a point the
      parse passes through rather than a set of productions: the way holding the read takes it, uses it, and by the time

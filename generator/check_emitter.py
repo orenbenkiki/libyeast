@@ -37,6 +37,7 @@ RESTORED = (  # in alphabetical order
     "provisional",
     "provisional_mark",
     "run",
+    "shadow",
     "stack",
     "tokens",
     "trail",
@@ -55,8 +56,11 @@ READ_ONLY = (  # in alphabetical order
 # live chain of entered productions, pushed on entry and popped on exit even as an exception unwinds, so a rewind —
 # which happens inside a production, its entry still standing — must leave it alone, not truncate it. The committed
 # regions likewise: push and pop restore their records on their own failure paths, a region once reached stays reached
-# whatever backtracking does after, and recovery truncates what an abandoned parse left open.
-TRANSIENT = ("commitments", "entered")
+# whatever backtracking does after, and recovery truncates what an abandoned parse left open. Two counters beside them,
+# and deliberately not restored: they tally what the parse asked for rather than what it produced, so a way that was
+# tried and rewound still asked. Counting the speculative reads over-counts and never under-counts, which is the safe
+# direction for a number being driven to none.
+TRANSIENT = ("commitments", "entered", "flattened", "unpaired")
 
 
 def _dirty(emitter):
@@ -64,6 +68,7 @@ def _dirty(emitter):
     emitter.code = "text"
     emitter.consume()
     emitter.env["n"] = 99
+    emitter.shadow["m"] = (99,)
     emitter.stack += ("text",)
     emitter.marker("begin-scalar")
     emitter.forbidden += (None,)
@@ -92,6 +97,7 @@ def _state(emitter):
         list(emitter.trail),
         emitter.code,
         dict(emitter.env),
+        dict(emitter.shadow),
         emitter.stack,
         emitter.is_sol,
         emitter.forbidden,

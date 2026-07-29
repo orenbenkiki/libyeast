@@ -168,6 +168,12 @@ class Emitter:
         self.globals = ()  # the `ir.GLOBAL_PARAMS` no production of this grammar declares, which `run` reads off it.
         # One value for the parse rather than one per frame, so a call carries what the callee left in one back out;
         # until `read-globals` takes the declarations away they are parameters, scoped like any other
+        self.shadow = {}  # a stack per global, what a `(set)` puts on and a `(clear)` takes off. A read takes the top,
+        # which is right however the writes nest, so the parse stands whatever the two numbers below say
+        self.flattened = 0  # reads where the top and the slot beside it differ — what one value for the parse could not
+        # have answered. Driven to none, and at none the slot is the stack
+        self.unpaired = 0  # clears with nothing to take off, a write and its clear not having paired. Driven to none
+        # beside it, since a stack the parse does not balance is not one a machine can keep
 
     def checkpoint(self):
         return (
@@ -180,6 +186,7 @@ class Emitter:
             self.provisional_mark,
             self.code,
             dict(self.env),
+            dict(self.shadow),
             self.stack,
             self.is_sol,
             self.forbidden,
@@ -201,6 +208,7 @@ class Emitter:
             self.provisional_mark,
             self.code,
             env,
+            shadow,
             self.stack,
             self.is_sol,
             self.forbidden,
@@ -214,6 +222,7 @@ class Emitter:
         # branch, so handing a branch the checkpoint's own dictionary would let its `(set)` reach back into what the
         # branch after it rewinds to. Everything else here is either a value or a length, and cannot be written through.
         self.env = dict(env)
+        self.shadow = dict(shadow)  # copied out for the same reason: a branch's `(set)` must not reach back through it
         # The journal is undone before the token list is cut back: its entries are the only mutations that are not
         # appends, and popping them newest first restores every index they were recorded at. The run start and its mark
         # are values the checkpoint restored above, so a rewound trail leaves only the token surgery to reverse.
@@ -440,10 +449,15 @@ def evaluate(expression, emitter, grammar):
             raise AssertionError(f"`{expression.name}` is read where nothing holds a value for it")
         return value
     if isinstance(expression, ir.Global):
-        value = emitter.env.get(expression.name)
-        if value is None:
+        # The stack answers, which is right however the writes nest; the slot beside it is what one value for the parse
+        # would have held, and the two differing is a read a global could not have answered. Counted rather than
+        # refused: it is the number the transformations drive to none, and at none the slot is the stack.
+        held = emitter.shadow.get(expression.name, ())
+        if not held:
             raise AssertionError(f"`{expression.name}` is read where nothing holds a value for it")
-        return value
+        if held[-1] != emitter.env.get(expression.name):
+            emitter.flattened += 1
+        return held[-1]
     if isinstance(expression, ir.Indent):
         return _indent(emitter)
     if isinstance(expression, ir.Match):
@@ -895,13 +909,23 @@ def match(node, emitter, grammar, k):
         return False
     if isinstance(node, ir.SetVar):
         checkpoint = emitter.checkpoint()
-        emitter.env[node.param] = evaluate(node.value, emitter, grammar)
+        value = evaluate(node.value, emitter, grammar)
+        emitter.env[node.param] = value
+        if node.param in emitter.globals:  # the stack beside the slot, which a nested write puts its own value on
+            emitter.shadow[node.param] = emitter.shadow.get(node.param, ()) + (value,)
         if k():
             return True
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.ClearVar):
         checkpoint = emitter.checkpoint()
+        if node.param in emitter.globals:
+            # Counted, not refused: the stack answers correctly either way, and a clear with nothing to take off is one
+            # of the two numbers the transformations drive to none rather than a reason to stop the parse.
+            held = emitter.shadow.get(node.param, ())
+            if not held:
+                emitter.unpaired += 1
+            emitter.shadow[node.param] = held[:-1]
         emitter.env[node.param] = None  # back to the state a fresh parse gives it, which reading is a fault
         if k():
             return True
@@ -909,7 +933,13 @@ def match(node, emitter, grammar, k):
         return False
     if isinstance(node, ir.Increase):
         checkpoint = emitter.checkpoint()
-        emitter.env[node.param] = max(emitter.env.get(node.param, 0), emitter.mark.column)
+        raised = max(emitter.env.get(node.param, 0), emitter.mark.column)
+        emitter.env[node.param] = raised
+        if node.param in emitter.globals:
+            # Raising a floor is not establishing one: it moves what stands rather than putting something new on. Where
+            # nothing stands it is the first, which is what reading it as zero already meant.
+            held = emitter.shadow.get(node.param, ())
+            emitter.shadow[node.param] = (held[:-1] + (raised,)) if held else (raised,)
         if k():
             return True
         emitter.rewind(checkpoint)
