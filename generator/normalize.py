@@ -2619,31 +2619,52 @@ def push_indents(grammar, namer):
 
 def _pop_holder(production):
     """
-    The continuation a bare pop holder carries on at — one ungated way, the pop its only action, and nothing else of its
-    own — or `None` where `production` is not one. It is what `push-indents` mints wherever an indentation comes off.
+    The call a pop holder makes with nothing of its own in front of it — one ungated way whose actions are the pop and
+    only the pop, its `first` where it has one and its `second` where it does not — or `None` for anything else.
+
+    What `push-indents` mints wherever an indentation comes off is one of these, and so is any way that has come to have
+    the pop as all it does before calling on. A recovery is not: a cut lands on one with the stack as it stood before
+    the call ran, so a pop moved inside that call would not have happened where the recovery reads it.
     """
     ways = production.body.alternatives if isinstance(production.body, ir.Choice) else ()
     if len(ways) != 1:
         return None
     [way] = ways
-    if way.gate.peek is not None or way.gate.guards or way.first is not None or way.recover is not None:
+    if way.gate.peek is not None or way.gate.guards or way.recover is not None:
         return None
-    return way.second if way.actions == (ir.PopIndent(),) else None
+    if way.actions != (ir.PopIndent(),):
+        return None
+    return way.first if way.first is not None else way.second
 
 
 def sink_pops(grammar, namer):
     """
     Put the pop at the head of the production its holders carry on at, where they are the only way in.
 
-    A bare pop holder says the indentation comes off before its continuation runs. Where every reference to that
-    continuation is such a holder, the pop can lead the continuation's own ways instead: there is no other way in for it
-    to be wrong for, and each holder is left with nothing of its own to do, which the sweep splices out. However many
-    holders there are — one indentation coming off before one continuation, said in several places.
+    A pop holder says the indentation comes off before the call it makes. Where every reference to what it calls is such
+    a holder, the pop leads that production's own ways instead: there is no other way in for it to be wrong for, however
+    many holders say it, and each holder is left with the pop no longer among its actions — a frame with nothing of its
+    own left goes to the sweep.
+
+    Run to a fixpoint, because sinking makes holders. A way that did nothing of its own before the call is one once the
+    pop above it has come down into it, and only then is what it calls reached by holders alone — the block collections
+    take two rounds for exactly that reason. A round that sinks nothing is the end; a grammar that never stops is
+    refused rather than looped over.
 
     A continuation whose arguments read the indentation keeps its holders, those being read before the pop rather than
-    after; nothing else a call passes is touched by what the pop restores. So is one a parse enters by name, which is
-    reached without a holder having run at all.
+    after; nothing else a call passes is touched by what the pop restores. So does one a parse enters by name, reached
+    without a holder having run at all.
     """
+    for _round in range(len(grammar) + 1):
+        sunk = _sink_pops_once(grammar)
+        if sunk is None:
+            return grammar
+        grammar = sunk
+    raise AssertionError("`sink-pops` did not settle: a pop is going round a cycle rather than coming to rest")
+
+
+def _sink_pops_once(grammar):
+    """`grammar` with every pop its holders can hand down moved into what they call, or `None` where none can."""
     holders = {name: _pop_holder(production) for name, production in grammar.items()}
     holders = {name: tail for name, tail in holders.items() if tail is not None}
 
@@ -2667,6 +2688,8 @@ def sink_pops(grammar, namer):
         and grammar[tail.name].body.alternatives
         and all(owner in holders for owner in arrivals[tail.name])
     }
+    if not sunk:
+        return None
 
     result = {}
     for name, production in grammar.items():
@@ -2676,9 +2699,14 @@ def sink_pops(grammar, namer):
                 tuple(dataclasses.replace(way, actions=(ir.PopIndent(),) + way.actions) for way in body.alternatives)
             )
         elif name in holders and holders[name].name in sunk:
-            # Nothing of the holder's own is left. Its call goes in the slot the sweep splices a do-nothing frame from,
-            # a tail call being the same thing in either — so the frame goes with the action that was its reason.
-            way = dataclasses.replace(body.alternatives[0], actions=(), first=holders[name], second=None)
+            way = body.alternatives[0]
+            if way.first is None:
+                # Nothing of the holder's own is left. Its call goes in the slot the sweep splices a do-nothing frame
+                # from, a tail call being the same thing in either — the frame going with the action that was its
+                # reason. A way with a continuation of its own keeps both and simply stops doing the pop.
+                way = dataclasses.replace(way, actions=(), first=way.second, second=None)
+            else:
+                way = dataclasses.replace(way, actions=())
             body = ir.Choice((way,))
         result[name] = dataclasses.replace(production, body=body)
     return result
