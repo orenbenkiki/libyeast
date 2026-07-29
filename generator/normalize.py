@@ -3129,51 +3129,52 @@ _CLEAR_BASE = "x-clear"
 
 def clear_params(grammar, namer):
     """
-    Clear a parameter where the last call needing it returns, in the productions that do not need it themselves.
+    Clear a parameter where the way that reads it returns.
 
-    A production needs a parameter where it reads it or hands it to something that reads, so the ones that need it are a
-    region of the call graph, and nothing between the outermost and the innermost is touched. Past a clear a read takes
-    the unset value a fresh parse gives, and reading one is a fault.
+    A value stops applying where the last thing wanting it is done, and that is a point the parse passes through rather
+    than a set of productions. The way holding the read is that point's own: it takes the value, uses it, and by the
+    time it comes back nothing else wants it. So the reader clears, where it returns — behind its calls, there being
+    nothing of its own after them. Past that a read takes the unset value a fresh parse gives, and reading one is a
+    fault.
 
-    What the corpus holds is narrower than where the clears stand, and the difference is load-bearing. A clear writes
-    the frame it runs in, so it reaches that frame and whatever it calls, and no read there crosses one over every
-    fixture and suite case. It says nothing about a frame above, a clear never reaching one — so nothing has yet asked
-    whether a caller still wants the value. Some do: a block collection reads its own on the next entry of its loop, and
-    a clear that escaped its frame would take that away, which is what a global for `m` runs into. The clears go by the
-    call graph and the call graph is not the control flow — a production reached between two reads by an enclosing loop
-    is outside the region by this rule and inside it by the parse. Hoisting a loop's push and pop out of it is what
-    would make the two agree.
+    The reader and not the writer, which is the whole of it. A block scalar's indentation is written deep inside the
+    header and handed up to the scalar that asked for it, so clearing where it was written would take it from the one
+    thing that wanted it: the header hands the value on rather than being done with it. And not the frame above a region
+    of the call graph either, which is what this used to do — a production reached between two reads by an enclosing
+    loop is outside such a region and inside the parse's, and a clear left there takes the value away between two of the
+    loop's own reads.
     """
     minted = {}
-    needs = {
-        param: _needing(grammar, param)
-        for param in {param for production in grammar.values() for param in production.params}
-    }
-    shared = {param: namer.fresh(f"{_CLEAR_BASE}-{param}") for param in sorted(needs)}
+    every = {param for production in grammar.values() for param in production.params}
+    shared = {param: namer.fresh(f"{_CLEAR_BASE}-{param}") for param in sorted(every)}
+
+    def reads(way):
+        """The parameters this way reads itself, which are the ones it is the last of."""
+        return {
+            param
+            for param in every
+            if _is_using(way.gate, param) or any(_is_using(action, param) for action in way.actions)
+        }
 
     def stops(way, owner, param):
-        """`way` with the clear where the last call needing `param` returns, or `way` where none of them does."""
-        inside = {reference.name for reference in (way.first, way.second, way.recover) if reference is not None}
-        if way.second is not None and way.second.name in needs[param]:
-            # The last one is the continuation, and nothing of this way outlives it: the call takes a frame of its own,
-            # and the clear is what that frame carries on at.
-            tail = _framed(minted, namer, owner, (ir.ClearVar(param),), name=shared[param])
-            return dataclasses.replace(way, second=_framed(minted, namer, owner, (), way.second, tail))
-        if inside & needs[param]:
-            bare = shared[param] if way.second is None else None
-            return dataclasses.replace(
-                way, second=_framed(minted, namer, owner, (ir.ClearVar(param),), tail=way.second, name=bare)
-            )
-        return way
+        """`way` with the clear where it returns — behind its calls, there being nothing of its own after them."""
+        if way.first is None and way.second is None:
+            return dataclasses.replace(way, actions=way.actions + (ir.ClearVar(param),))
+        bare = _framed(minted, namer, owner, (ir.ClearVar(param),), name=shared[param])
+        if way.second is None:
+            return dataclasses.replace(way, second=bare)
+        return dataclasses.replace(way, second=_framed(minted, namer, owner, (), way.second, bare))
 
     result = {}
     for name, production in grammar.items():
         body = production.body
         if isinstance(body, ir.Choice):
-            for param in sorted(needs):  # sorted, so the helpers a run mints carry the same names as the last one's
-                if name in needs[param]:
-                    continue  # inside the region, where the parameter still applies
-                body = ir.Choice(tuple(stops(way, name, param) for way in body.alternatives))
+            ways = []
+            for way in body.alternatives:
+                for param in sorted(reads(way)):  # sorted, so a run mints the names the last one did
+                    way = stops(way, name, param)
+                ways.append(way)
+            body = ir.Choice(tuple(ways))
         result[name] = dataclasses.replace(production, body=body)
     result.update(minted)
     return result

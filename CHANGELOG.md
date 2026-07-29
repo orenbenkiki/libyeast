@@ -315,7 +315,7 @@ All notable changes to this project are documented here. The format follows
   an alias context-pinned alone. A base that is total where the fixtures run it is excused the coverage gate's
   rejection: nothing can be seen to refuse what matches at every position, and a consuming copy that says no where the
   base matched empty would be asking the corpus for a refusal the untransformed grammar had nowhere to show. The corpus
-  parses green in that hybrid the whole way, so the meter is honest at every step: 603 of 771 productions run committed,
+  parses green in that hybrid the whole way, so the meter is honest at every step: 590 of 758 productions run committed,
   and the 168 still backtracking are the determinize work itself, driven to none, at which point it becomes a gate. The
   first conflict the local moves determinized whole is the empty line's: `inline-singles` splices the declared prefix
   wrappers so `l-empty`'s two ways surface as the scans they are, the refinement and the factoring leave one shared scan
@@ -430,14 +430,21 @@ All notable changes to this project are documented here. The format follows
   action that is itself a call or a scope around one stops the move. The block sequence's next-entry scan compares
   against `Indent` directly now, and the pop stands against the push that follows it with no scan between.
 
-  `clear-params` says where a parameter stops applying. A production that needs one stands inside the region it measures
-  — whether it reads it or only hands it to something that reads — so the frame above them all is where the value ends,
-  and it clears it where the last call needing it returns. There being no outer value to restore to, the clear is what a
-  restore would be, which is why the indentation wanted a stack and `m` and `f` want this: twelve clears, eight for `m`
-  and four for `f`, placed by the device the pop already uses, with `x-clear-m` where the clear is the whole body.
+  `clear-params` says where a parameter stops applying: the way that **reads** it clears it where it returns, behind its
+  calls, there being nothing of its own after them. A value ends where the last thing wanting it is done, and that is a
+  point the parse passes through rather than a set of productions — the way holding the read takes the value, uses it,
+  and by the time it comes back nothing else wants it.
+
+  The reader and not the writer, which is the whole of it. A block scalar's indentation is written deep inside the
+  header and handed up to the scalar that asked for it, so clearing where it was written takes it from the one thing
+  that wanted it. And not the frame above a region of the call graph either: a production reached between two reads by
+  an enclosing loop is outside such a region and inside the parse's, so a clear left there takes the value away between
+  two of a loop's own reads. Both were tried and both failed loudly, which is how the reader came to be the answer.
+
   Reading a parameter nothing holds a value for is a fault, so the placement is the corpus's to refuse rather than an
-  argument's to make: no read crosses a clear over 694 fixtures and 402 suite cases, and the refusal was proved live by
-  placing the clears inside the region instead and watching it fire.
+  argument's to make. No read crosses a clear over 694 fixtures and 402 suite cases; withholding the clears changes
+  nothing, which is what correct placement looks like, and misplacing them at the writer instead fires at once, which is
+  what says the refusal is live rather than decorative.
 
   `prune-params` drops a parameter no production needs, with the argument every call passed it: what a production needs
   is what reaches a read — its own gate and actions, and whatever it hands to a production that needs one — and a write

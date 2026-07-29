@@ -523,15 +523,20 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      crosses actions only, an alternative's calls running after all of them, so no callee is measured against anything
      new; an action that is itself a call or a scope around one stops the move. What it is for is the pop standing
      against the push that follows it, a scan no longer between them. It reaches all four sites where a loop re-reads
-     `m`, which took the level being the pop's own rather than looked up one hop from the callers that push it. Where a
-     production that does not need a parameter calls into ones that do, it clears it where the last of them returns:
-     `ClearVar(param)`, put after that call by the same device the pop uses, and `x-clear-m` where the clear is the
-     whole body. *A production that needs a parameter is inside the region it measures, so nothing between the outermost
-     frame to need it and the innermost is touched.* Clearing is what restoring would be, there being no outer value to
-     restore to — which is the asymmetry with the indentation, and why `n` wanted a stack where `m` and `f` want a
-     clear. Twelve of them, eight for `m` and four for `f`. Reading a parameter nothing holds a value for is a fault, so
-     what the clears assert is the corpus's to refuse: over 694 fixtures and 402 suite cases no read ever crosses one,
-     and the refusal was proved live by putting the clears inside the region instead and watching it fire.
+     `m`, which took the level being the pop's own rather than looked up one hop from the callers that push it.
+   - `clear-params` — landed. The way that **reads** a parameter clears it where it returns, behind its calls, there
+     being nothing of its own after them. *A value ends where the last thing wanting it is done, which is a point the
+     parse passes through rather than a set of productions: the way holding the read takes it, uses it, and by the time
+     it comes back nothing else wants it.* Clearing is what restoring would be, there being no outer value to restore to
+     — the asymmetry with the indentation, and why `n` wanted a stack where `m` and `f` want a clear.
+     - The reader and not the writer: a block scalar's indentation is written deep in the header and handed up to the
+       scalar that asked for it, so clearing where it was written takes it from the one thing that wanted it. And not
+       the frame above a region of the call graph: a production reached between two reads by an enclosing loop is
+       outside such a region and inside the parse's. Both were tried and both failed loudly, which is how the reader
+       came to be the answer.
+     - Reading a parameter nothing holds a value for is a fault, so the placement is the corpus's to refuse. Withholding
+       the clears changes nothing, which is what correct placement looks like; misplacing them at the writer fires at
+       once, which is what says the refusal is live rather than decorative.
    - `prune-params` — landed. A parameter a production does not need goes, with the argument every call passed it: what
      a production needs is what reaches a read — its own gate and actions, and whatever it hands to a production that
      needs one — and a write counts, a binding a frame does not declare being dropped on return. *A least fixpoint, so a
@@ -548,9 +553,9 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    `eliminate-empties` but for seven productions it exempts — the root's copy under each resume policy, `l-recover`'s,
    and the one a `(recover)` names — each entered without a call, so holding no choice a call site could have taken.
    Four steps then hand nullability back, and the count is theirs: `lower-star` takes it from 7 to 46, `lift-choices` to
-   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 247. Of those, 133
+   149, `binarize` to 179, `alternative-shape` to 243, and the rest of the pipeline settles it at 234. Of those, 133
    offer a blind choice between a way that reads and one that does not — the debt, and the decision points that are a
-   call to one of them against its zero-width way are the greedy optional. The other 114 match empty single-way, which
+   call to one of them against its zero-width way are the greedy optional. The other 101 match empty single-way, which
    is the shape the canonical form mints on purpose and the invariant below allows. It is not a shape awaiting a
    certificate; it is the elimination not having been carried through. The empty match is moved one node sideways into
    an inline choice, and the first step that gives a choice a production of its own hands it back. Five moves, in this
