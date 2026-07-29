@@ -2632,11 +2632,13 @@ def push_indents(grammar, namer):
 def _pop_holder(production):
     """
     The call a pop holder makes with nothing of its own in front of it — one ungated way whose actions are the pop and
-    only the pop, its `first` where it has one and its `second` where it does not — or `None` for anything else.
+    only the pop, and which calls or carries on but not both — or `None` for anything else.
 
     What `push-indents` mints wherever an indentation comes off is one of these, and so is any way that has come to have
     the pop as all it does before calling on. A recovery is not: a cut lands on one with the stack as it stood before
-    the call ran, so a pop moved inside that call would not have happened where the recovery reads it.
+    the call ran, so a pop moved inside that call would not have happened where the recovery reads it. Neither is a way
+    that calls *and* carries on: where to carry on goes on the stack ahead of where the pop would land, so a pop handed
+    into the call would meet it there instead of the indentation it comes off.
     """
     ways = production.body.alternatives if isinstance(production.body, ir.Choice) else ()
     if len(ways) != 1:
@@ -2645,6 +2647,8 @@ def _pop_holder(production):
     if way.gate.peek is not None or way.gate.guards or way.recover is not None:
         return None
     if len(way.actions) != 1 or not isinstance(way.actions[0], ir.PopIndent):
+        return None
+    if way.first is not None and way.second is not None:
         return None
     return way.first if way.first is not None else way.second
 

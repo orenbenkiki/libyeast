@@ -487,8 +487,10 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      before its call becomes one once the pop above it has come down, which is how the block collections are reached at
      all, on the second round. A continuation whose arguments read the indentation keeps its holders, those being read
      before the pop rather than after, as does one a parse enters by name, and a recovery, which a cut reaches with the
-     stack as it stood before the call. Twelve holders come to five. What it is for is `defer-pops` below, which cannot
-     see a pop standing behind a frame.
+     stack as it stood before the call. Nor does a way that calls *and* carries on hand its pop down: where to carry on
+     goes on the stack ahead of where the pop would land, so the pop would meet that rather than the indentation it
+     comes off. Twelve holders come to five. What it is for is `defer-pops` below, which cannot see a pop standing
+     behind a frame.
    - Tried and reverted, so it is not tried twice: giving the holders a copy where other ways reach the same production.
      It is correct and universal and costs four meter points, each copy being a production with decision points of its
      own, and it moved no read of `m`. It also cannot be a step of its own — the sweep merges a copy back into what it
@@ -531,8 +533,10 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      whatever it says, and driven to none: at none the slot **is** the stack, and the machine can hold one value where
      it now holds a stack of them. It reads **0**, which is what licenses `m` and `f` as globals.
      - What it is for is that a transformation can be judged by a number instead of by whether the corpus survives it.
-       Narrowing `sink-pops` to refuse a holder that carries its own continuation — which is what the unified stack
-       wants, and what breaks the mapping loop's hoist — is a distance rather than a wall once there is a number on it.
+       `sink-pops` refuses a holder that carries its own continuation — which is what the unified stack wants, and what
+       breaks the mapping loop's hoist. The corpus is green either way, so against the corpus alone that is a gamble;
+       against the number it is a distance, and it read three until each loop's declaration took its resume-policy twin
+       in beside the original.
      - A clear is idempotent, and the stack does not refuse an unbalanced one. It turned up 48 of them, all the same
        thing: `clear-params` puts a clear on every way that reads a parameter, and a value routinely has more than one
        reader. "From here nothing holds a value" is as true said twice as once, so they are not an imbalance to repair —

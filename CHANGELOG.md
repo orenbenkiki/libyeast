@@ -379,13 +379,15 @@ All notable changes to this project are documented here. The format follows
   makes holders — a way that did nothing of its own before its call becomes one once the pop above it has come down,
   which is the only way the block collections are reached, on a second round. A continuation whose arguments read the
   indentation keeps its holders, those being read before the pop rather than after, as does one a parse enters by name,
-  and a recovery, which a cut reaches with the stack as it stood before the call ran. Twelve holders come to five. What
-  it is for is `defer-pops`, which cannot see a pop behind a frame. One production is the pop and nothing else,
-  `x-pop-indent`, shared by the nineteen pushes with nowhere else to go; the other fourteen hold a continuation behind
-  it. Each declares no parameters and reads the ambient ones, so a continuation's arguments are evaluated after the pop,
-  where the stack and the parameter agree. A continuation that changes the indentation has no return of its own to take
-  it back, so its call goes into a production holding it alone. Every entry on the stack says what kind it is and every
-  pop is held to it, so a pair that has been moved across one it must not cross is refused where it happens.
+  and a recovery, which a cut reaches with the stack as it stood before the call ran. Nor does a way that calls *and*
+  carries on hand its pop down: where to carry on goes on the stack ahead of where the pop would land, so the pop would
+  meet that rather than the indentation it comes off. Twelve holders come to five. What it is for is `defer-pops`, which
+  cannot see a pop behind a frame. One production is the pop and nothing else, `x-pop-indent`, shared by the nineteen
+  pushes with nowhere else to go; the other fourteen hold a continuation behind it. Each declares no parameters and
+  reads the ambient ones, so a continuation's arguments are evaluated after the pop, where the stack and the parameter
+  agree. A continuation that changes the indentation has no return of its own to take it back, so its call goes into a
+  production holding it alone. Every entry on the stack says what kind it is and every pop is held to it, so a pair that
+  has been moved across one it must not cross is refused where it happens.
 
   `read-indents` then drops the parameter: every read of `n` becomes `Indent`, the indentation in force, and the
   declaration and the argument go with it, leaving `m` and `f` the only parameters the final grammar declares. The two
@@ -446,9 +448,11 @@ All notable changes to this project are documented here. The format follows
   could not have answered. It reads zero, which is what licenses `m` and `f` as globals — and at zero the slot is the
   stack.
 
-  What that buys is a transformation judged by a number instead of by whether the corpus survives it: narrowing
-  `sink-pops` to refuse a holder carrying its own continuation — what the unified stack wants once calls are written
-  out, and what costs the mapping loop its hoist — becomes a distance rather than a wall.
+  What that buys is a transformation judged by a number instead of by whether the corpus survives it. Refusing a holder
+  that carries its own continuation is what the unified stack wants, and it costs the mapping loop its hoist; the corpus
+  is green either way, so against the corpus alone the choice is a gamble. Against the number it is a distance — three
+  reads one value could not have answered, which came off when each loop's declaration took its resume-policy twin in
+  beside the original, and the refusal then landed for nothing.
 
   A clear is idempotent and the stack does not refuse an unbalanced one. There are 48, all the same thing: a clear
   stands on every way that reads a parameter, and a value routinely has more than one reader. "From here nothing holds a
