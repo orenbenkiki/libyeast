@@ -4311,6 +4311,28 @@ class Step:
     lapses: dict = dataclasses.field(default_factory=dict)
 
 
+def _without(*kinds):
+    """
+    A test counting the nodes of `kinds` a grammar still holds — what a lowering step makes true, that the shape it
+    rewrites is gone and nothing later spells it again. Named for the kinds, since the name is the invariant's.
+    """
+
+    def test(grammar):
+        faults = []
+
+        def walk(name, node):
+            if isinstance(node, kinds):
+                faults.append(f"{name}: a {type(node).__name__} survives the step that lowers it")
+            ir.rebuilt(node, lambda child: (walk(name, child), child)[1])
+
+        for name, production in grammar.items():
+            walk(name, production.body)
+        return faults
+
+    test.__name__ = "no_" + "_or_".join(kind.__name__.lower() for kind in kinds)
+    return test
+
+
 def _is_proper(grammar):
     """The productions matching empty that no call site can hold the choice for — `eliminate-empties`' invariant."""
     return improper_faults(grammar, keeps_empty_ways(grammar))
@@ -4319,11 +4341,12 @@ def _is_proper(grammar):
 # The pipeline, in order.
 STEPS = [
     Step("lift-chomping", lift_chomping),
-    Step("monomorphize", monomorphize),
-    Step("lower-optionals", lower_optionals),
+    Step("monomorphize", monomorphize, _without(ir.Case, ir.Flip), settles=True),
+    Step("lower-optionals", lower_optionals, _without(ir.Opt), settles=True),
     Step("eliminate-empties", eliminate_empties, _is_proper, settles=True),
     Step("declare-bindings", declare_bindings),
-    Step("lower-plus", lower_plus),
+    # A `x+` over a character class stays for `span-consumes` to take, so this reduces the count and settles nothing.
+    Step("lower-plus", lower_plus, _without(ir.Plus)),
     Step("trim-runs", trim_runs),
     Step("hoist-char-runs", hoist_char_runs),
     Step("hoist-trimmed-runs", hoist_trimmed_runs),
@@ -4336,11 +4359,11 @@ STEPS = [
             " match at the site for the elimination to distribute"
         },
     ),
-    Step("lower-tokens", lower_tokens),
-    Step("lower-wraps", lower_wraps),
-    Step("lower-windows", lower_windows),
-    Step("lower-binds", lower_binds),
-    Step("lower-commits", lower_commits),
+    Step("lower-tokens", lower_tokens, _without(ir.Token), settles=True),
+    Step("lower-wraps", lower_wraps, _without(ir.Wrap), settles=True),
+    Step("lower-windows", lower_windows, _without(ir.Max), settles=True),
+    Step("lower-binds", lower_binds, _without(ir.Bind), settles=True),
+    Step("lower-commits", lower_commits, _without(ir.Commit), settles=True),
     Step("flatten", flatten),
     Step("span-consumes", span_consumes),
     Step("literal-consumes", literal_consumes),
@@ -4471,9 +4494,18 @@ def invariant_faults(stages):
                 faults.append(f"[{label}] settles `{named}` and leaves {count} standing")
             settled = (settled or (step.settles and owns)) and not count
             standing = count
-        if not any(step.settles for step in owners):
-            faults.append(f"`{named}` is tested by {len(owners)} step(s) and settled by none")
     return faults
+
+
+def unsettled_invariants():
+    """
+    The invariants some step reduces and no step settles — a count driven down, with nothing yet claiming to finish it.
+
+    Not a fault: a step that only chips at a count is doing its job, and naming a settler before one exists would be a
+    claim rather than a check. Counted so the gap is read rather than assumed away.
+    """
+    tested = {step.test for step in STEPS if step.test is not None}
+    return sorted(test.__name__ for test in tested if not any(step.settles for step in STEPS if step.test is test))
 
 
 def entered_by_name(grammar):

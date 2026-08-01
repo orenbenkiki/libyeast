@@ -155,6 +155,8 @@ def _check():
     # A step without a test transforms the grammar and promises something nothing checks. Driven to none, at which point
     # `Step.test` loses its default and a step without one stops being expressible.
     print(f"    {len(normalize.untested_steps())} of {len(normalize.STEPS)} step(s) carry no test of their own")
+    # An invariant some step reduces and no step claims to finish. Driven to none, naming a settler as one is earned.
+    print(f"    {len(normalize.unsettled_invariants())} invariant(s) reduced by a step and settled by none")
     # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
     # of productions still backtracking — driven to none, at which point it becomes a gate.
     print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic in isolation")
