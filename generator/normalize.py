@@ -4385,6 +4385,117 @@ def _no_declared_params(grammar):
     ]
 
 
+def _no_unflattened(grammar):
+    """
+    A sequence or alternation nested in its own kind, one holding a single item, or an `Empty` a sequence carries.
+
+    Read of what the grammar matches with, not of what a gate peeks: a peek is a character-class expression a later step
+    builds out of the peeks it hoists, so an alternation inside one holding another is that step's shape and not this
+    one's. An alternation of nothing is a production that matches nowhere rather than a wrapper left standing, and is
+    likewise none of this.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, (ir.Seq, ir.Alt)):
+                if len(node.items) == 1:
+                    faults.append(f"{owner}: a {type(node).__name__} of one stands unwrapped")
+                if any(isinstance(item, type(node)) for item in node.items):
+                    faults.append(f"{owner}: a {type(node).__name__} holds another, unspliced")
+                if isinstance(node, ir.Seq) and any(isinstance(item, ir.Empty) for item in node.items):
+                    faults.append(f"{owner}: a sequence carries an `Empty` that matches nothing")
+            if isinstance(node, ir.Alternative):
+                for held in node.actions:
+                    walk(held, owner)
+                for held in (node.first, node.second, node.recover):
+                    if held is not None:
+                        walk(held, owner)
+                return  # its gate is a peek and its guards, neither of them a shape this speaks about
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+def _is_shaped(grammar):
+    """
+    Productions the state machine cannot read: a body that is neither a `Choice` of ways nor a terminal holding none.
+
+    After `alternative-shape` a production is one or the other, so a `Choice` or an `Alternative` standing anywhere but
+    as a body's own top level is a way the machine has nowhere to put.
+    """
+    faults = []
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            for way in body.alternatives:
+                for held in (way.gate.peek,) + tuple(way.gate.guards) + tuple(way.actions):
+                    if _holds_a_way(held):
+                        faults.append(f"{name}: a way stands inside a gate or an action")
+            continue
+        if _holds_a_way(body):
+            faults.append(f"{name}: its body is not a choice, yet holds one")
+    return faults
+
+
+def _holds_a_way(node):
+    """Whether `node` holds a `Choice` or an `Alternative` anywhere inside it."""
+    if node is None:
+        return False
+    if isinstance(node, (ir.Choice, ir.Alternative)):
+        return True
+    found = []
+    ir.rebuilt(node, lambda child: (found.append(child) if _holds_a_way(child) else None, child)[1])
+    return bool(found)
+
+
+def _at_most_two_calls(grammar):
+    """
+    Ways calling more than the two productions the canonical form allows — one call and where to carry on.
+
+    Read in whichever vocabulary stands: an `Alternative` says its two outright, and before the shaping a way is a
+    sequence whose calls are its references to productions that are not character classes, the terminals a gate tests.
+    """
+    faults = []
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            continue  # `first` and `second` are the two, and there is no third field to hold another
+        ways = body.items if isinstance(body, ir.Alt) else (body,)
+        for way in ways:
+            items = way.items if isinstance(way, ir.Seq) else (way,)
+            calls = [item for item in items if isinstance(item, ir.Ref) and not is_one_char(item, grammar)]
+            if len(calls) > 2:
+                faults.append(f"{name}: a way calls {len(calls)} productions, and the shape holds two")
+    return faults
+
+
+def _no_cancelling_indents(grammar):
+    """A pop and a push of one indentation standing next to each other, which together do nothing."""
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, ir.Alternative):
+                for before, after in zip(node.actions, node.actions[1:]):
+                    if (
+                        isinstance(before, ir.PopIndent)
+                        and isinstance(after, ir.PushIndent)
+                        and before.level is not None
+                        and before.level == after.level
+                    ):
+                        faults.append(f"{owner}: a pop and a push of one indentation stand together")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+NO_UNFLATTENED = Invariant("flattened", _no_unflattened)
+SHAPED = Invariant("every-body-is-a-choice-or-a-terminal", _is_shaped)
+TWO_CALLS = Invariant("at-most-two-calls-a-way", _at_most_two_calls)
+NO_CANCELLING_INDENTS = Invariant("no-pop-beside-its-push", _no_cancelling_indents)
 NO_POP_LEVELS = Invariant("pop-levels-stripped", _no_pop_levels)
 NO_INDENT_PARAM = Invariant("indent-off-the-stack", _no_indent_param)
 NO_DECLARED_PARAMS = Invariant("nothing-declares-a-parameter", _no_declared_params)
@@ -4428,7 +4539,7 @@ STEPS = [
     Step("lower-windows", lower_windows, _absent("no-window", ir.Max), settles=True),
     Step("lower-binds", lower_binds, _absent("no-bind", ir.Bind), settles=True),
     Step("lower-commits", lower_commits, _absent("no-commit", ir.Commit), settles=True),
-    Step("flatten", flatten),
+    Step("flatten", flatten, NO_UNFLATTENED, settles=True),
     Step("span-consumes", span_consumes),
     Step("literal-consumes", literal_consumes),
     Step(
@@ -4444,6 +4555,8 @@ STEPS = [
     Step(
         "binarize",
         binarize,
+        TWO_CALLS,
+        settles=True,
         lapses={
             "proper": "the tail of an alternative moves into a helper, and a tail of zero-width actions matches"
             " empty; it preserves properness wherever its input is proper, so this stands with the entry above"
@@ -4452,6 +4565,8 @@ STEPS = [
     Step(
         "alternative-shape",
         alternative_shape,
+        SHAPED,
+        settles=True,
         lapses={
             "proper": "a way is cut at its first call and what follows becomes a continuation of its own, so a"
             " trailing run of zero-width actions is a production matching empty — a single way that decides nothing,"
@@ -4504,7 +4619,7 @@ STEPS = [
     Step("sink-pops", sink_pops),
     Step("defer-pops", defer_pops),
     Step("hoist-pushes", hoist_pushes),
-    Step("cancel-indent-pairs", cancel_indent_pairs),
+    Step("cancel-indent-pairs", cancel_indent_pairs, NO_CANCELLING_INDENTS, settles=True),
     Step("strip-pop-levels", strip_pop_levels, NO_POP_LEVELS, settles=True),
     Step("prune-params", prune_params),
     Step(
