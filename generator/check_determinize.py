@@ -31,7 +31,7 @@ EXPECTED_RETYPE = (None, "line-fold", "all")
 
 def _grammar_before(step_name):
     """The grammar as it stands just before `step_name` runs — the conflict the determinizer is handed."""
-    names = [name for name, _transform in normalize.STEPS]
+    names = [step.name for step in normalize.STEPS]
     if step_name not in names:
         raise AssertionError(f"{step_name}: no such pipeline step")
     # stages() opens with the base, so the grammar at a step's index is the one the step before it produced — purged of

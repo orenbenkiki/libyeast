@@ -301,6 +301,29 @@ points of interest are retired as the universal steps reach them. The meter is w
 after — it will move as a consequence of the repairs, and where it moves the other way the shape is what is being paid
 for.
 
+**A step establishes an invariant; it does not move the meter.** The meter moves when the last step of a sequence lands.
+What each step before it buys is a property everything after it may lean on, and the pipeline works by accumulating
+those — more invariants, a simpler grammar, until simple machinery (common-prefix factoring, gate disjointness) is
+enough to decide it. Judging an intermediate step by the headline number is a category error, and it is how a correct
+step gets thrown away.
+
+So a step is `Step(name, transform, test, settles, lapses)` and the pipeline enforces the rest. `test` counts the places
+its invariant is broken; an invariant is a **count, not a yes-or-no**, several steps may chip at one between them, and
+`settles` marks the one that takes it to none. `invariant_faults` holds every step to the law — **a count never rises, a
+settling step leaves none, and none stays none** — and `lapses` is the only licence to break it, `{invariant: reason}`,
+empty for nearly every step and carrying a written reason where it is not. An invariant is named by its test, so two
+steps naming one test are chipping at one count.
+
+*This is how a new step is designed, in this order*: what invariant do we want, how is it measured, and only then how it
+is achieved. A step whose invariant cannot be stated is a step nobody can hold to anything.
+
+`test` defaults to `None` today and that is **temporary scaffolding**: 47 of the 49 steps carry no test, the gate prints
+the number, and at none the default goes and a step without a test stops being expressible. Four lapses stand declared —
+`lower-star`, `lift-choices`, `binarize` and `alternative-shape` breaking properness, which is this phase's open debt —
+and four more the law caught the day it landed: `lower-recovers`, `push-indents` and `clear-params` mint helpers holding
+actions alone, which match empty and decide nothing, while `speculate-folds` adds six of which only two are that shape
+and the other four are choices nobody has read.
+
 **Before every commit, every transform is read for correctness against the semantics of the nodes it moves** — by hand,
 whatever the gates say. The gates are a net and not a substitute: a transformation that moves an action into another
 production, or copies one without binding its parameters, changes nothing the corpus can see wherever the sites it hits

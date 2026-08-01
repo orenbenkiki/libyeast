@@ -4279,58 +4279,201 @@ def non_char_set_runs(grammar):
     return faults
 
 
-# The pipeline, in order, as `(name, transform)` pairs.
+@dataclasses.dataclass(frozen=True)
+class Step:
+    """
+    One step of the pipeline: what it is called, what it does, what it makes true, and whether it finishes making it.
+
+    A step's job is to establish an invariant, not to move a meter. The meter moves when the last step of a sequence
+    lands; what every step before it buys is a property the rest may lean on, which is how the grammar comes to be
+    simple enough for common-prefix factoring and gate disjointness to decide it.
+
+    An invariant is a count and not a yes-or-no. `test` counts the places its invariant is broken, several steps may
+    chip at one count between them — the gate hoists do — and `settles` marks the step that takes it to none. `test` and
+    `transform` are both shared where two steps do the same work on different grounds.
+
+    `lapses` is what this step is allowed to break: `{invariant: reason}`, empty for nearly every step, holding a
+    written reason where a step undoes something an earlier one settled. `invariant_faults` holds the pipeline to the
+    law — a count never rises, a settling step leaves none, and none stays none — and reads a lapse as the one licence
+    to break it.
+
+    An invariant is named by its test, so two steps naming the same test are chipping at one count.
+
+    **`test` defaulting to `None` is temporary.** A step without one transforms the grammar and promises something
+    nothing checks, which is the shape every hard day here has started from. `untested_steps` counts them and the gate
+    prints the number; at none the default goes and a step without a test stops being expressible.
+    """
+
+    name: str
+    transform: object
+    test: object = None
+    settles: bool = False
+    lapses: dict = dataclasses.field(default_factory=dict)
+
+
+def _is_proper(grammar):
+    """The productions matching empty that no call site can hold the choice for — `eliminate-empties`' invariant."""
+    return improper_faults(grammar, keeps_empty_ways(grammar))
+
+
+# The pipeline, in order.
 STEPS = [
-    ("lift-chomping", lift_chomping),
-    ("monomorphize", monomorphize),
-    ("lower-optionals", lower_optionals),
-    ("eliminate-empties", eliminate_empties),
-    ("declare-bindings", declare_bindings),
-    ("lower-plus", lower_plus),
-    ("trim-runs", trim_runs),
-    ("hoist-char-runs", hoist_char_runs),
-    ("hoist-trimmed-runs", hoist_trimmed_runs),
-    ("lower-star", lower_star),
-    ("lower-tokens", lower_tokens),
-    ("lower-wraps", lower_wraps),
-    ("lower-windows", lower_windows),
-    ("lower-binds", lower_binds),
-    ("lower-commits", lower_commits),
-    ("flatten", flatten),
-    ("span-consumes", span_consumes),
-    ("literal-consumes", literal_consumes),
-    ("lift-choices", lift_choices),
-    ("single-consumes", single_consumes),
-    ("binarize", binarize),
-    ("alternative-shape", alternative_shape),
-    ("lower-recovers", lower_recovers),
-    ("inline-singles", inline_singles),
-    ("refine-indents", refine_indents),
-    ("gate-hoist", gate_hoist),
-    ("gate-hoist-wide", gate_hoist_wide),
-    ("split-conflicts", split_conflicts),
-    ("inline-under-gate", inline_under_gate),
-    ("inline-single-way", inline_single_way),
-    ("factor-prefixes", factor_prefixes),
-    ("hoist-residue-guards", hoist_residue_guards),
-    ("gate-hoist-leftovers", gate_hoist),
-    ("gate-hoist-leftovers-wide", gate_hoist_wide),
-    ("speculate-folds", speculate_folds),
-    ("gate-literals", gate_literals),
-    ("reorder-declared", reorder_declared),
-    ("extend-returns", extend_returns),
-    ("push-indents", push_indents),
-    ("read-indents", read_indents),
-    ("sink-pops", sink_pops),
-    ("defer-pops", defer_pops),
-    ("hoist-pushes", hoist_pushes),
-    ("cancel-indent-pairs", cancel_indent_pairs),
-    ("strip-pop-levels", strip_pop_levels),
-    ("prune-params", prune_params),
-    ("clear-params", clear_params),
-    ("read-globals", read_globals),
-    ("inline-bare-actions", inline_bare_actions),
+    Step("lift-chomping", lift_chomping),
+    Step("monomorphize", monomorphize),
+    Step("lower-optionals", lower_optionals),
+    Step("eliminate-empties", eliminate_empties, _is_proper, settles=True),
+    Step("declare-bindings", declare_bindings),
+    Step("lower-plus", lower_plus),
+    Step("trim-runs", trim_runs),
+    Step("hoist-char-runs", hoist_char_runs),
+    Step("hoist-trimmed-runs", hoist_trimmed_runs),
+    Step(
+        "lower-star",
+        lower_star,
+        lapses={
+            "_is_proper": "`x*` lowers to `_N ::= x _N | <empty>`, which decides between reading and not — the one"
+            " step breaking properness by construction, until it emits the one-or-more helper and leaves the empty"
+            " match at the site for the elimination to distribute"
+        },
+    ),
+    Step("lower-tokens", lower_tokens),
+    Step("lower-wraps", lower_wraps),
+    Step("lower-windows", lower_windows),
+    Step("lower-binds", lower_binds),
+    Step("lower-commits", lower_commits),
+    Step("flatten", flatten),
+    Step("span-consumes", span_consumes),
+    Step("literal-consumes", literal_consumes),
+    Step(
+        "lift-choices",
+        lift_choices,
+        lapses={
+            "_is_proper": "the inline `Alt(reads, empty)` the elimination leaves at a call site becomes a production"
+            " of its own here, and that production matches empty — the ε-elimination not carried through, which is"
+            " this phase's open debt and the reason the count does not stay at none"
+        },
+    ),
+    Step("single-consumes", single_consumes),
+    Step(
+        "binarize",
+        binarize,
+        lapses={
+            "_is_proper": "the tail of an alternative moves into a helper, and a tail of zero-width actions matches"
+            " empty; it preserves properness wherever its input is proper, so this stands with the entry above"
+        },
+    ),
+    Step(
+        "alternative-shape",
+        alternative_shape,
+        lapses={
+            "_is_proper": "a way is cut at its first call and what follows becomes a continuation of its own, so a"
+            " trailing run of zero-width actions is a production matching empty — a single way that decides nothing,"
+            " which the invariant permits and this count does not yet tell apart"
+        },
+    ),
+    Step(
+        "lower-recovers",
+        lower_recovers,
+        lapses={
+            "_is_proper": "an alternative with two calls behind the guarded one puts them in a minted helper the edge"
+            " resumes at, and a helper holding actions alone matches empty — four of them, each a single way deciding"
+            " nothing, which is the shape the invariant permits"
+        },
+    ),
+    Step("inline-singles", inline_singles),
+    Step("refine-indents", refine_indents),
+    Step("gate-hoist", gate_hoist),
+    Step("gate-hoist-wide", gate_hoist_wide),
+    Step("split-conflicts", split_conflicts),
+    Step("inline-under-gate", inline_under_gate),
+    Step("inline-single-way", inline_single_way),
+    Step("factor-prefixes", factor_prefixes),
+    Step("hoist-residue-guards", hoist_residue_guards),
+    Step("gate-hoist-leftovers", gate_hoist),
+    Step("gate-hoist-leftovers-wide", gate_hoist_wide),
+    Step(
+        "speculate-folds",
+        speculate_folds,
+        lapses={
+            "_is_proper": "the provisional productions the determinizer generates carry six that match empty, and only"
+            " two are the single-way bundle the invariant permits — the other four are choices, and what they decide"
+            " between has not been read. Held here so the number is on the record rather than lost in the total"
+        },
+    ),
+    Step("gate-literals", gate_literals),
+    Step("reorder-declared", reorder_declared),
+    Step("extend-returns", extend_returns),
+    Step(
+        "push-indents",
+        push_indents,
+        lapses={
+            "_is_proper": "where an indentation comes off, the pop goes in a production of its own — `x-pop-indent` and"
+            " the eleven others are a pop and nothing else, so each matches empty by shape while deciding nothing"
+        },
+    ),
+    Step("read-indents", read_indents),
+    Step("sink-pops", sink_pops),
+    Step("defer-pops", defer_pops),
+    Step("hoist-pushes", hoist_pushes),
+    Step("cancel-indent-pairs", cancel_indent_pairs),
+    Step("strip-pop-levels", strip_pop_levels),
+    Step("prune-params", prune_params),
+    Step(
+        "clear-params",
+        clear_params,
+        lapses={
+            "_is_proper": "a way with nothing of its own after its calls takes the clear in a minted production —"
+            " `x-clear-m` is a `ClearVar` and nothing else, matching empty and deciding nothing"
+        },
+    ),
+    Step("read-globals", read_globals),
+    Step("inline-bare-actions", inline_bare_actions, carried_over_pop_faults, settles=True),
 ]
+
+
+def untested_steps():
+    """
+    The steps that carry no test — each transforming the grammar and promising something nothing checks.
+
+    Driven to none: at none, `Step.test` loses its default and a step without one stops being expressible. Until then
+    this is the honest measure of how much of the pipeline rests on nothing but the corpus.
+    """
+    return [step.name for step in STEPS if step.test is None]
+
+
+def invariant_faults(stages):
+    """
+    Where the pipeline breaks its own law, as error strings — empty where it holds.
+
+    Each step's `test` counts the places its invariant is broken, and the law over the stages is: the count never rises,
+    the step that settles it leaves none, and past that it stays none. A step whose `lapses` names the invariant is
+    licensed to break it and says why; a step that breaks it without one is a fault named where it stands.
+
+    The invariant is named by its test, so several steps chipping at one count are read as one law. A count is measured
+    from the first stage whose step names it, the stages before it being no business of the invariant's.
+    """
+    faults = []
+    for test in {step.test for step in STEPS if step.test is not None}:
+        named = test.__name__
+        owners = [step for step in STEPS if step.test is test]
+        first = min(index for index, step in enumerate(STEPS) if step.test is test)
+        settled, standing = False, None
+        for index in range(first, len(STEPS)):
+            step, (label, grammar) = STEPS[index], stages[index + 1]
+            count = len(test(grammar))
+            licensed = named in step.lapses
+            owns = step.test is test  # `settles` speaks about the step's own invariant and no other
+            if standing is not None and count > standing and not licensed:
+                faults.append(f"[{label}] `{named}` rises from {standing} to {count}, and the step declares no lapse")
+            if settled and count and not licensed:
+                faults.append(f"[{label}] `{named}` is settled and stands at {count}, and the step declares no lapse")
+            if step.settles and owns and count and not licensed:
+                faults.append(f"[{label}] settles `{named}` and leaves {count} standing")
+            settled = (settled or (step.settles and owns)) and not count
+            standing = count
+        if not any(step.settles for step in owners):
+            faults.append(f"`{named}` is tested by {len(owners)} step(s) and settled by none")
+    return faults
 
 
 def entered_by_name(grammar):
@@ -4512,14 +4655,14 @@ def stages(grammar):
     namer = Namer()
     namer.points.settle("base", grammar)
     result = [("base", grammar)]
-    for name, transform in STEPS:
-        produced = transform(grammar, namer)
+    for step in STEPS:
+        produced = step.transform(grammar, namer)
         if produced == grammar:
-            raise AssertionError(f"the `{name}` step changed nothing — what it looks for no longer reaches it")
+            raise AssertionError(f"the `{step.name}` step changed nothing — what it looks for no longer reaches it")
         grammar, renames = cleaned(produced)
         namer.points.follow(renames)
-        namer.points.settle(name, grammar)
-        result.append((name, grammar))
+        namer.points.settle(step.name, grammar)
+        result.append((step.name, grammar))
     return result, namer.points
 
 

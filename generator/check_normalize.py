@@ -126,8 +126,10 @@ def _check():
         errors.append(f"[char-set-runs] {fault}")
     for fault in normalize.provisional_faults(stages[-1][1]):
         errors.append(f"[provisional] {fault}")
-    for fault in normalize.carried_over_pop_faults(stages[-1][1]):
-        errors.append(f"[stack] {fault}")
+    # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
+    # stays none after — a step breaking one saying so in its `lapses` and why.
+    for fault in normalize.invariant_faults(stages):
+        errors.append(f"[invariant] {fault}")
     for fault in normalize.declared_faults(stages[-1][1], committed):
         errors.append(f"[ledger] {fault}")
     residue = normalize.unshaped_actions(stages[-1][1])
@@ -141,7 +143,7 @@ def _check():
         f"suite cases — backtracking, and hybrid with {len(deterministic)} production(s) entered committed — every "
         f"long text token matched in bulk by a character-set run",
     )
-    print("    " + " -> ".join(name for name, _transform in normalize.STEPS))
+    print("    " + " -> ".join(step.name for step in normalize.STEPS))
     # The stranded fixtures: each guards the last stage whose grammar can still run it, the purge having taken its
     # production out of every later one.
     stranded = len(fixtures) - len(groups[-1])
@@ -150,6 +152,9 @@ def _check():
     # discovered later. The determinize phase is what resolves each of them.
     print(f"    {len(residue)} action(s) the canonical form does not spell: a leftover scope or a nullable repetition")
     print(f"    {len(normalize.ungated_alternatives(stages[-1][1]))} alternative(s) with no character to go on")
+    # A step without a test transforms the grammar and promises something nothing checks. Driven to none, at which point
+    # `Step.test` loses its default and a step without one stops being expressible.
+    print(f"    {len(normalize.untested_steps())} of {len(normalize.STEPS)} step(s) carry no test of their own")
     # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
     # of productions still backtracking — driven to none, at which point it becomes a gate.
     print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic in isolation")

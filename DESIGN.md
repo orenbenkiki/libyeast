@@ -160,6 +160,17 @@ is a rule in the wrong shape: it cannot be proved by eye, it is where the subtle
 turned out to be a canonical form that had not been written down. When a simplification looks impossible, the first
 hypothesis is a missing normalizing step, not an inherent conflict.
 
+**A step establishes an invariant, and carries the test for it.** The normalization pipeline works by accumulating
+properties: each step makes the grammar simpler in one stated way, everything after it may lean on that, and it is the
+accumulation that brings the grammar within reach of simple machinery — common-prefix factoring, gate disjointness —
+rather than any one clever transformation. So a step is not a function; it is
+`Step(name, transform, test, settles, lapses)`. `test` counts the places its invariant is broken, since an invariant
+here is a count and not a yes-or-no; `settles` marks the step that takes that count to none; `lapses` is a written
+reason for breaking one, and the only licence to. The pipeline enforces the law itself — a count never rises, a settling
+step leaves none, none stays none — so a property established in the middle cannot lapse silently at the end, which is
+exactly what happened while properness was checked at one site only. A new step is designed in that order: the invariant
+first, then how to measure it, then how to achieve it.
+
 **A named site is a code smell, and the target is none.** Every declaration in the pipeline's tables — a site named for
 inlining, a two-way choice named for reordering, a helper named for absorbing, a production named as committed — is a
 place a universal rule was not found and a hand-picked target stood in for it. The base grammar matches the right
