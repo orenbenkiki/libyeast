@@ -4306,8 +4306,9 @@ class Step:
     simple enough for common-prefix factoring and gate disjointness to decide it.
 
     An invariant is a count and not a yes-or-no. `invariant` says which one this step is about and how to count where it
-    is broken, several steps may chip at one between them — naming it in each — and `settles` marks the step that takes
-    it to none. An `Invariant` and a `transform` are both shared where two steps do the same work on different grounds.
+    is broken. A step naming one is taken to finish it, that being what a step is for; `settles=False` is the exception,
+    for a step that only chips at a count several share — the gate hoists do, and no one of them leaves none. An
+    `Invariant` and a `transform` are both shared where two steps do the same work on different grounds.
 
     `lapses` is what this step is allowed to break: `{invariant: reason}`, empty for nearly every step, holding a
     written reason where a step undoes something an earlier one settled. `invariant_faults` holds the pipeline to the
@@ -4325,7 +4326,7 @@ class Step:
     name: str
     transform: object
     invariant: Invariant = None
-    settles: bool = False
+    settles: bool = True
     lapses: dict = dataclasses.field(default_factory=dict)
 
 
@@ -4492,6 +4493,20 @@ def _no_cancelling_indents(grammar):
     return faults
 
 
+def _no_leading_guards(grammar):
+    """Alternatives still opening with an assertion the gate could have been judged on at the same position."""
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            if way.actions and isinstance(way.actions[0], (ir.Lt, ir.Le)):
+                faults.append(f"{name}[{index}]: leads with an assertion its gate could hold")
+    return faults
+
+
+GATED = Invariant("every-way-gated", ungated_alternatives)
+NO_LEADING_GUARDS = Invariant("no-leading-guard", _no_leading_guards)
 NO_UNFLATTENED = Invariant("flattened", _no_unflattened)
 SHAPED = Invariant("every-body-is-a-choice-or-a-terminal", _is_shaped)
 TWO_CALLS = Invariant("at-most-two-calls-a-way", _at_most_two_calls)
@@ -4513,12 +4528,12 @@ PROPER = Invariant("proper", _is_proper)
 # The pipeline, in order.
 STEPS = [
     Step("lift-chomping", lift_chomping),
-    Step("monomorphize", monomorphize, _absent("no-context-case", ir.Case, ir.Flip), settles=True),
-    Step("lower-optionals", lower_optionals, _absent("no-optional", ir.Opt), settles=True),
-    Step("eliminate-empties", eliminate_empties, PROPER, settles=True),
+    Step("monomorphize", monomorphize, _absent("no-context-case", ir.Case, ir.Flip)),
+    Step("lower-optionals", lower_optionals, _absent("no-optional", ir.Opt)),
+    Step("eliminate-empties", eliminate_empties, PROPER),
     Step("declare-bindings", declare_bindings),
     # A `x+` over a character class stays for `span-consumes` to take, so this reduces the count and settles nothing.
-    Step("lower-plus", lower_plus, _absent("no-plus", ir.Plus)),
+    Step("lower-plus", lower_plus, _absent("no-plus", ir.Plus), settles=False),
     Step("trim-runs", trim_runs),
     Step("hoist-char-runs", hoist_char_runs),
     Step("hoist-trimmed-runs", hoist_trimmed_runs),
@@ -4528,18 +4543,19 @@ STEPS = [
         # A `x*` over a character class stays for `span-consumes` to take, so this reduces the count and settles
         # nothing.
         _absent("no-star", ir.Star),
+        settles=False,
         lapses={
             "proper": "`x*` lowers to `_N ::= x _N | <empty>`, which decides between reading and not — the one"
             " step breaking properness by construction, until it emits the one-or-more helper and leaves the empty"
             " match at the site for the elimination to distribute"
         },
     ),
-    Step("lower-tokens", lower_tokens, _absent("no-token", ir.Token), settles=True),
-    Step("lower-wraps", lower_wraps, _absent("no-wrap", ir.Wrap), settles=True),
-    Step("lower-windows", lower_windows, _absent("no-window", ir.Max), settles=True),
-    Step("lower-binds", lower_binds, _absent("no-bind", ir.Bind), settles=True),
-    Step("lower-commits", lower_commits, _absent("no-commit", ir.Commit), settles=True),
-    Step("flatten", flatten, NO_UNFLATTENED, settles=True),
+    Step("lower-tokens", lower_tokens, _absent("no-token", ir.Token)),
+    Step("lower-wraps", lower_wraps, _absent("no-wrap", ir.Wrap)),
+    Step("lower-windows", lower_windows, _absent("no-window", ir.Max)),
+    Step("lower-binds", lower_binds, _absent("no-bind", ir.Bind)),
+    Step("lower-commits", lower_commits, _absent("no-commit", ir.Commit)),
+    Step("flatten", flatten, NO_UNFLATTENED),
     Step("span-consumes", span_consumes),
     Step("literal-consumes", literal_consumes),
     Step(
@@ -4586,22 +4602,34 @@ STEPS = [
     ),
     Step("inline-singles", inline_singles),
     Step("refine-indents", refine_indents),
-    Step("gate-hoist", gate_hoist),
-    Step("gate-hoist-wide", gate_hoist_wide),
+    # The four hoists chip at one count between them, and none settles it: 141 ways still have no character to go on.
+    Step("gate-hoist", gate_hoist, GATED, settles=False),
+    Step("gate-hoist-wide", gate_hoist_wide, GATED, settles=False),
     Step("split-conflicts", split_conflicts),
     Step("inline-under-gate", inline_under_gate),
     Step("inline-single-way", inline_single_way),
-    Step("factor-prefixes", factor_prefixes),
-    Step("hoist-residue-guards", hoist_residue_guards),
-    Step("gate-hoist-leftovers", gate_hoist),
-    Step("gate-hoist-leftovers-wide", gate_hoist_wide),
+    Step(
+        "factor-prefixes",
+        factor_prefixes,
+        lapses={
+            "every-way-gated": "the minted decision's ways are told apart by an indentation comparison and not by a"
+            " character — `Le` against `Lt` — so neither can carry a peek. `hoist-residue-guards` raises those into"
+            " the gate's guards, where they are judged at the same position, but a guard is not a character and the"
+            " way stays ungated"
+        },
+    ),
+    Step("hoist-residue-guards", hoist_residue_guards, NO_LEADING_GUARDS),
+    Step("gate-hoist-leftovers", gate_hoist, GATED, settles=False),
+    Step("gate-hoist-leftovers-wide", gate_hoist_wide, GATED, settles=False),
     Step(
         "speculate-folds",
         speculate_folds,
         lapses={
             "proper": "the provisional productions the determinizer generates carry six that match empty, and only"
             " two are the single-way bundle the invariant permits — the other four are choices, and what they decide"
-            " between has not been read. Held here so the number is on the record rather than lost in the total"
+            " between has not been read. Held here so the number is on the record rather than lost in the total",
+            "every-way-gated": "the provisional productions are minted after the last hoist has run, so a way of"
+            " theirs leading with a call has nothing to have given it the characters that call begins with",
         },
     ),
     Step("gate-literals", gate_literals),
@@ -4612,26 +4640,30 @@ STEPS = [
         push_indents,
         lapses={
             "proper": "where an indentation comes off, the pop goes in a production of its own — `x-pop-indent` and"
-            " the eleven others are a pop and nothing else, so each matches empty by shape while deciding nothing"
+            " the eleven others are a pop and nothing else, so each matches empty by shape while deciding nothing",
+            "every-way-gated": "a minted holder's way leads with the push and then calls, and the hoists have run, so"
+            " nothing gives it the characters its call begins with",
         },
     ),
-    Step("read-indents", read_indents, NO_INDENT_PARAM, settles=True),
+    Step("read-indents", read_indents, NO_INDENT_PARAM),
     Step("sink-pops", sink_pops),
     Step("defer-pops", defer_pops),
     Step("hoist-pushes", hoist_pushes),
-    Step("cancel-indent-pairs", cancel_indent_pairs, NO_CANCELLING_INDENTS, settles=True),
-    Step("strip-pop-levels", strip_pop_levels, NO_POP_LEVELS, settles=True),
+    Step("cancel-indent-pairs", cancel_indent_pairs, NO_CANCELLING_INDENTS),
+    Step("strip-pop-levels", strip_pop_levels, NO_POP_LEVELS),
     Step("prune-params", prune_params),
     Step(
         "clear-params",
         clear_params,
         lapses={
             "proper": "a way with nothing of its own after its calls takes the clear in a minted production —"
-            " `x-clear-m` is a `ClearVar` and nothing else, matching empty and deciding nothing"
+            " `x-clear-m` is a `ClearVar` and nothing else, matching empty and deciding nothing",
+            "every-way-gated": "the way the clear is threaded through is a call and a continuation and nothing else,"
+            " minted past the hoists, so no character stands in front of it",
         },
     ),
-    Step("read-globals", read_globals, NO_DECLARED_PARAMS, settles=True),
-    Step("inline-bare-actions", inline_bare_actions, NO_CARRIED_POP, settles=True),
+    Step("read-globals", read_globals, NO_DECLARED_PARAMS),
+    Step("inline-bare-actions", inline_bare_actions, NO_CARRIED_POP),
 ]
 
 
