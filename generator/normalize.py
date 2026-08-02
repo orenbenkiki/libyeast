@@ -4305,6 +4305,117 @@ def _nullable_set(grammar, opaque=frozenset()):
     return nullable
 
 
+def distribute_empties(grammar, namer):
+    """
+    Give a production's empty way to the sites that call it: the callee keeps only the ways that read, and each caller
+    gains a way that does what the empty way did and carries on without the call.
+
+    The way given away is a bare fall-through — last in the choice, on no gate, calling nothing — so what moves is an
+    action list and nothing else. Where the callee's other ways all read, it stops choosing blind and the choice stands
+    one level up, at the sites that can see what follows it. That is where an empty match belongs, and where it keeps
+    moving until a root production holds it or a reading continuation absorbs it.
+
+    Order is untouched. A caller's way enters the callee, which tries its reading ways and then its empty one; the
+    skipping way stands immediately behind the way that calls, so the two are tried in that same order. It carries that
+    way's own gate: reaching the callee's empty way meant entering the way that called it, which the gate is what
+    allows, so a skipping way on no gate would be taken where the callee was never entered at all.
+
+    All or nothing per callee: a site whose call carries a recovery cannot drop it, so that callee keeps its empty way
+    rather than losing it at some sites and not others.
+    """
+    handed = set()
+    while True:
+        moved = _distributed_once(grammar, handed)
+        if moved is None:
+            return grammar
+        grammar = moved
+
+
+def _distributed_once(grammar, handed):
+    """
+    `grammar` with every empty way its callers can take handed over, or `None` where there is none left to hand.
+
+    A production hands its empty way over once — `handed` remembers which have — so the walk outward terminates where
+    the call graph runs in a circle rather than sending one empty way round it for ever.
+    """
+    entitled = set(keeps_empty_ways(grammar))
+    every = _nullable_set(grammar)
+
+    def given_away(name):
+        """The bare empty way `name` may hand to its callers, or `None` where it has none to hand over."""
+        production = grammar.get(name)
+        if production is None or name in entitled or name in handed or not isinstance(production.body, ir.Choice):
+            return None
+        ways = production.body.alternatives
+        if len(ways) < 2:
+            return None
+        empties = [_is_nullable(way, every, grammar) for way in ways]
+        if sum(empties) != 1 or not empties[-1]:
+            return None
+        last = ways[-1]
+        if last.gate.peek is not None or last.gate.guards or last.first is not None or last.second is not None:
+            return None
+        return last
+
+    givers = {name: way for name in grammar if (way := given_away(name)) is not None}
+
+    def skipping(way, name, empty):
+        """`way` with the call to `name` dropped and `empty`'s actions in its place, or `None` where it cannot drop."""
+        if way.recover is not None:
+            return None
+        if way.first is not None and way.first.name == name:
+            # The call led, so what it did comes where it stood: the way's own actions, then the empty way's, then
+            # whatever the call carried on at.
+            return ir.Alternative(way.gate, way.actions + empty.actions, None, way.second, None)
+        if way.second is not None and way.second.name == name:
+            # The call was where the way carried on, so the empty way's actions would have to run after the leading call
+            # returns, which an alternative cannot say — its actions all stand before its calls. Only an empty way that
+            # does nothing at all can be dropped here.
+            if empty.actions:
+                return None
+            return ir.Alternative(way.gate, way.actions, way.first, None, None)
+        return None
+
+    def calls(way, name):
+        return (way.first is not None and way.first.name == name) or (
+            way.second is not None and way.second.name == name
+        )
+
+    # A site that cannot drop the call refuses its callee outright, and so does one calling two givers at once: the
+    # skipping way drops a single call, and a way that must drop two would need the ways of both, which is a product
+    # rather than a distribution.
+    refused = set()
+    for production in grammar.values():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for way in production.body.alternatives:
+            called = [name for name in givers if calls(way, name)]
+            if len(called) > 1:
+                refused.update(called)
+            refused.update(name for name in called if skipping(way, name, givers[name]) is None)
+    givers = {name: way for name, way in givers.items() if name not in refused}
+    if not givers:
+        return None
+    handed.update(givers)
+
+    result = {}
+    for holder, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            ways = []
+            for way in body.alternatives:
+                ways.append(way)
+                for name in givers:
+                    if calls(way, name):
+                        ways.append(skipping(way, name, givers[name]))
+                        break
+            body = ir.Choice(tuple(ways))
+        if holder in givers:
+            body = ir.Choice(body.alternatives[:-1])
+        result[holder] = dataclasses.replace(production, body=body)
+    return result
+
+
 def blind_choices(grammar):
     """
     The productions offering a way that reads against a way that does not — the choice no character can decide, taken
@@ -5472,6 +5583,19 @@ STEPS = [
         _absent("no-recover", ir.Recover),
     ),
     Step("inline-singles", inline_singles, NO_DECLARED_INLINE_CALL),
+    # Before the gate hoisting, so the ways it stands at the call sites are given the characters they can go on rather
+    # than left for the meter to count.
+    Step(
+        "distribute-empties",
+        distribute_empties,
+        PROPER,
+        reduces=("proper",),
+        lapses={
+            "every-character-question-is-a-set-or-a-literal": "the way that skips the call does what the way that"
+            " calls does up to the call, so a question standing in those actions is asked once more — the same"
+            " question, in the way beside it",
+        },
+    ),
     # 26 come to 4: what stands is what the side condition refused, a continuation that may begin with a space or match
     # empty, where the maximal scan would take what an exact count left.
     Step("refine-indents", refine_indents, NO_EXACT_INDENTS, reduces=("no-exact-indent-call",)),
@@ -5586,6 +5710,10 @@ STEPS = [
         "inline-bare-actions",
         inline_bare_actions,
         NO_CARRIED_POP,
+        # What stands is a way carrying on at a production that is actions alone over a call that pops: those actions
+        # run where the call returns, and an alternative's actions all stand before its calls, so there is nowhere in
+        # the caller to put them.
+        reduces=("nothing-carries-on-over-a-pop",),
         lapses={
             "no-standing-pop-holder": "splicing a callee that is actions alone can leave a way whose one action is the"
             " pop — one more holder, and the pop standing where the call it replaced stood, which is where it belongs"
