@@ -5048,6 +5048,38 @@ NO_UNREACHABLE_WAY = Invariant("no-unreachable-way", _unreachable_ways)
 NO_PARTIAL_OVERLAP = Invariant("no-partial-overlap", _partial_overlaps)
 
 
+def _implicit_emptiness(grammar):
+    """
+    Nodes matching empty without a choice saying so — an optional, or a repetition of what is not a character set.
+
+    An empty match is a way the parse takes, and a way it takes is a member of a choice. Written as `x?` or as `x*` the
+    emptiness is folded into the operator, where nothing can push it outward and nothing can absorb it against a
+    neighbour that reads. Written as `(x | ε)` and `(x+ | ε)` it is a way like any other, and the distribution has
+    something to move.
+
+    A run over a character set is not one of these: what it takes, none of it included, is a value the scan decides off
+    the input rather than a way the parse chooses — the same reading `_is_nullable` takes, so the two agree on what a
+    scan is.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, ir.Opt):
+                faults.append(f"{owner}: an optional folds its empty match into the operator")
+            elif isinstance(node, (ir.Star, ir.TrimStar)):
+                repeated = node.full if isinstance(node, ir.TrimStar) else node.item
+                if not is_one_char(repeated, grammar):
+                    faults.append(f"{owner}: a {type(node).__name__} over what no scan takes folds its empty match in")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+EMPTINESS_IS_A_CHOICE = Invariant("emptiness-written-as-a-choice", _implicit_emptiness)
+
+
 def _untrimmed_runs(grammar):
     """
     Runs of content written as `(w* p)*` — one iteration per character, where a single trimming scan takes the whole.
@@ -5178,11 +5210,28 @@ STEPS = [
     # Twelve computed chompings come to eight; the specialization takes the rest with the context's own.
     Step("lift-chomping", lift_chomping, CHOMPING_LEXICAL, reduces=("chomping-is-lexical",)),
     Step("monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), CHOMPING_LEXICAL)),
-    Step("lower-optionals", lower_optionals, _absent("no-optional", ir.Opt)),
+    # An optional is where most of the folded-in emptiness is; what stays is the complex repetitions, which `lower-star`
+    # takes. Together they are the first of the three moves that put every empty match at a root.
+    Step(
+        "lower-optionals",
+        lower_optionals,
+        (_absent("no-optional", ir.Opt), EMPTINESS_IS_A_CHOICE),
+        reduces=("emptiness-written-as-a-choice",),
+    ),
     Step("eliminate-empties", eliminate_empties, PROPER),
     Step("declare-bindings", declare_bindings, BINDINGS_DECLARED),
     # A `x+` over a character class stays for `span-consumes` to take, so this reduces the count and settles nothing.
-    Step("lower-plus", lower_plus, NO_PLUS, reduces=("no-plus",)),
+    Step(
+        "lower-plus",
+        lower_plus,
+        NO_PLUS,
+        reduces=("no-plus",),
+        lapses={
+            "emptiness-written-as-a-choice": "a `x+` over a complex production becomes the sequence `x x*`, and the"
+            " `x*` folds an empty match into the operator again — forty-eight of them, which `lower-star` writes out as"
+            " the choice they are two steps later"
+        },
+    ),
     Step("trim-runs", trim_runs, RUNS_TRIMMED),
     Step("hoist-char-runs", hoist_char_runs, RUNS_FACTORED, reduces=("no-unfactored-almost-class-run",)),
     # `trim-runs` makes four of these ahead of it, its trimmed run being the same alternation under another name.
@@ -5201,7 +5250,7 @@ STEPS = [
         lower_star,
         # Taking the complex repetitions out leaves every one that stands a run over a character set; a `x*` over one of
         # those stays for `span-consumes`, so the `Star`s themselves are only reduced here.
-        (NO_STAR, CHAR_SET_RUNS),
+        (NO_STAR, CHAR_SET_RUNS, EMPTINESS_IS_A_CHOICE),
         reduces=("no-star",),
     ),
     Step("lower-tokens", lower_tokens, _absent("no-token", ir.Token)),
