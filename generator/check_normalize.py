@@ -16,14 +16,19 @@ error.
 
 Each pinned group is run against its own stage. Every group passing and every step preserving the corpus over the stages
 its fixtures survive come to the same thing — a step would have to break the stream and a later one restore it exactly —
-so the fast answer is the whole answer, and the slow walk over every stage is worth its cost only when there is a step
-to name. A failure is announced the moment it is seen, and the walk then runs backward — new steps land at the
-pipeline's end, so the last stage still holding is usually near it, and the step after that stage is the culprit.
+so the fast answer is the whole answer, and naming the step that broke it is worth its cost only once something has.
+
+Hence two modes. By default it runs everything and judges at the end, which is what `make pc` and CI want: one pass, and
+a failure reported where it stands. Given `--bisect` it goes on to name the step, by binary search — a step only breaks
+what the steps before it kept, so the stages are green then red and the seam is found in a logarithmic number of corpus
+runs. `--bisect <step>` names the step to suspect first, the one just written: its two neighbouring stages are tried
+before the search, so a right guess costs two runs and a wrong one falls through to it.
 
 An empty pipeline makes the one stage the base grammar itself, so this passes exactly when the base's own gates do —
 which is how the net is proved wired before a transformation rides it.
 """
 
+import argparse
 import os
 import sys
 import threading
@@ -74,7 +79,70 @@ def _pinned(stages, fixtures):
     return groups, errors
 
 
-def _check():
+def _narrowed(corpus, fixtures, suite):
+    """
+    The fixtures and suite cases named in `corpus`, as the pair to search with. The question the search asks is which
+    step first broke *these*, so every other case is work whose answer is already known — a probe over fourteen cases
+    where the whole corpus is eleven hundred.
+    """
+    named = {line.split("]", 1)[1].split(":", 1)[0].split(None, 1)[1] for line in corpus if "]" in line}
+    # A declared divergence stays in whatever suite is asked about: its declaration is checked against the cases given,
+    # so dropping it would report the declaration stale at every probe.
+    cases = [case for case in suite if case in named or case in check_star.DIVERGENCES]
+    wanted = [fixture for fixture in fixtures if os.path.basename(fixture.input_path) in named]
+    return (wanted, cases) if (wanted or cases) else (fixtures, suite)
+
+
+def _reporting_stage(corpus, stages):
+    """
+    The earliest stage a divergence was reported at, as an index. A fixture is judged at the last stage whose grammar
+    can run it, so where one fails there the break is at that stage or below it and no stage above can be the seam.
+    """
+    labels = [label for label, _grammar in stages]
+    reported = [labels.index(line.split("]")[0].lstrip("[")) for line in corpus if line.startswith("[")]
+    return min(reported) if reported else len(stages) - 1
+
+
+def _first_broken(stages, fixtures, suite, hint=None, bound=None):
+    """
+    The earliest stage whose grammar does not reproduce the corpus, as `(label, errors)`, or `None` where every one
+    does. A step only breaks what the steps before it kept, so the stages run green then red and the seam is a binary
+    search — six probes over fifty stages rather than fifty.
+
+    `bound` is the highest stage worth asking about, the earliest one a divergence was already reported at. `hint` names
+    a step to suspect first, and its two probes bound the search whichever way they fall: a stage before it that already
+    breaks puts the seam below, its own stage breaking after a clean one before it *is* the seam, and both holding puts
+    the seam above. So a hint never costs more than it saves, and the search that follows one starts from the range it
+    left rather than from the whole pipeline.
+    """
+    labels = [label for label, _grammar in stages]
+    low = 0  # the stage at `low` is taken to hold; the one at `high` is known not to
+    high = len(stages) - 1 if bound is None else bound
+    if hint is not None and hint in labels:
+        index = labels.index(hint)
+        if 0 < index <= high:
+            if _corpus_errors(*stages[index - 1], fixtures, suite):
+                high = index - 1
+            else:
+                errors = _corpus_errors(*stages[index], fixtures, suite)
+                if errors:
+                    return stages[index][0], errors
+                low = index
+    if not _corpus_errors(*stages[high], fixtures, suite):
+        return None
+    first = _corpus_errors(*stages[low], fixtures, suite)
+    if first:
+        return stages[low][0], first
+    while high - low > 1:
+        middle = (low + high) // 2
+        if _corpus_errors(*stages[middle], fixtures, suite):
+            high = middle
+        else:
+            low = middle
+    return stages[high][0], _corpus_errors(*stages[high], fixtures, suite)
+
+
+def _check(bisect=False, hint=None):
     fixtures = spec_tests.load()
     suite = check_star.cases()
     stages, points = normalize.stages(annotated2ir.load())
@@ -87,22 +155,19 @@ def _check():
         if pinned:
             corpus += [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, pinned)]
     corpus += [f"[{final_label}] star {error}" for error in check_star.disagreements(final, suite)]
-    if corpus:  # something broke the stream; say so at once, then walk backward to name the step that did
-        print(f"FAILING: {len(corpus)} corpus divergence(s) — walking back for the step that broke them", flush=True)
+    if corpus:  # something broke the stream; say so at once, whether or not the step behind it is asked for
+        print(f"FAILING: {len(corpus)} corpus divergence(s)", flush=True)
         for divergence in corpus[:5]:
             print(f"    {divergence}", flush=True)
-        # New steps land at the pipeline's end, so the break is usually late: walk backward for the last stage that
-        # still holds, and the step after it is the culprit — one extra pass when the last step broke, where the forward
-        # walk would pay one per step.
-        culprit = corpus
-        for index in range(len(stages) - 2, -1, -1):
-            label, grammar = stages[index]
-            named = _corpus_errors(label, grammar, fixtures, suite)
-            if not named:
-                culprit = _corpus_errors(*stages[index + 1], fixtures, suite)
-                print(f"    last stage still holding: [{label}] — the step after it broke", flush=True)
-                break
-        corpus = culprit
+        if bisect:
+            print("    searching for the step that broke them", flush=True)
+            wanted, cases = _narrowed(corpus, fixtures, suite)
+            found = _first_broken(stages, wanted, cases, hint, _reporting_stage(corpus, stages))
+            if found is not None:
+                label, corpus = found
+                print(f"    [{label}] is the first stage that does not hold", flush=True)
+        else:
+            print("    re-run with `--bisect [step]` to name the step behind it", flush=True)
     errors += corpus
     deterministic = normalize.deterministic_productions(final, committed)
     if not errors:  # the hybrid run is judged only where the backtracking one stands, so a fault names its mode
@@ -187,13 +252,26 @@ def _check():
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Check that the normalization pipeline preserves the grammar's meaning"
+    )
+    parser.add_argument(
+        "--bisect",
+        nargs="?",
+        const=True,
+        metavar="STEP",
+        help="on a corpus failure, name the step behind it; STEP is the one to suspect first",
+    )
+    arguments = parser.parse_args()
+    hint = arguments.bisect if isinstance(arguments.bisect, str) else None
+
     sys.setrecursionlimit(RECURSION_LIMIT)
     threading.stack_size(STACK_BYTES)
     status = {}
 
     def worker():
         try:
-            _check()
+            _check(bisect=arguments.bisect is not None, hint=hint)
         except SystemExit as exit:  # gate.report exits on failure; carry its code back to the main thread
             status["code"] = exit.code
 
