@@ -79,13 +79,14 @@ def _check():
     suite = check_star.cases()
     stages, points = normalize.stages(annotated2ir.load())
     committed = normalize.committed_productions(points)
+    final_label, final = stages[-1]
     groups, errors = _pinned(stages, fixtures)
 
     corpus = []
     for (label, grammar), pinned in zip(stages, groups):
         if pinned:
             corpus += [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, pinned)]
-    corpus += [f"[{stages[-1][0]}] star {error}" for error in check_star.disagreements(stages[-1][1], suite)]
+    corpus += [f"[{final_label}] star {error}" for error in check_star.disagreements(final, suite)]
     if corpus:  # something broke the stream; say so at once, then walk backward to name the step that did
         print(f"FAILING: {len(corpus)} corpus divergence(s) — walking back for the step that broke them", flush=True)
         for divergence in corpus[:5]:
@@ -103,7 +104,6 @@ def _check():
                 break
         corpus = culprit
     errors += corpus
-    final = stages[-1][1]
     deterministic = normalize.deterministic_productions(final, committed)
     if not errors:  # the hybrid run is judged only where the backtracking one stands, so a fault names its mode
         errors += [
@@ -122,21 +122,21 @@ def _check():
     before_lower_tokens = dict(stages)["lower-star"]
     for offender in normalize.content_run_offenders(before_lower_tokens):
         errors.append(f"[content-runs] {offender}: a long text token is collected one character at a time")
-    for fault in normalize.non_char_set_runs(stages[-1][1]):
+    for fault in normalize.non_char_set_runs(final):
         errors.append(f"[char-set-runs] {fault}")
     # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
-    # stays none after — a step breaking one saying so in its `lapses` and why.
+    # stays none after — a step breaking one saying so in its `lapses` and why, and a step naming one doing something
+    # about it. Every structural property the pipeline claims is judged here, so nothing else below repeats one.
     for fault in normalize.invariant_faults(stages, points):
         errors.append(f"[invariant] {fault}")
-    for fault in normalize.declared_faults(stages[-1][1], committed):
+    for fault in normalize.declared_faults(final, committed):
         errors.append(f"[ledger] {fault}")
-    residue = normalize.unshaped_actions(stages[-1][1])
 
     gate.report(
         errors,
         "normalization fault(s) — a step that changes the grammar's meaning, a content run not matched in bulk, a "
-        "repetition that is not a character-set run, a provisional run that does not balance, or a way carrying on "
-        "over a call that takes an indentation off",
+        "repetition that is not a character-set run, an invariant broken with no reason given, or a declaration the "
+        "grammar has outgrown",
         f"normalization pipeline: {len(normalize.STEPS)} step(s) preserve {len(fixtures)} fixtures and {len(suite)} "
         f"suite cases — backtracking, and hybrid with {len(deterministic)} production(s) entered committed — every "
         f"long text token matched in bulk by a character-set run",
@@ -148,8 +148,8 @@ def _check():
     print(f"    {stranded} fixture(s) pinned to an earlier stage's grammar, the last to run them")
     # Not a fault: what the canonical form does not spell yet, printed so the number is watched down to none rather than
     # discovered later. The determinize phase is what resolves each of them.
+    residue = normalize.unshaped_actions(final)
     print(f"    {len(residue)} action(s) the canonical form does not spell: a leftover scope or a nullable repetition")
-    print(f"    {len(normalize.ungated_alternatives(stages[-1][1]))} alternative(s) with no character to go on")
     # A step naming neither an invariant nor a reason for having none promises what nothing checks. Driven to none, at
     # which point the default goes and a step must say one or the other.
     exempt = [step.name for step in normalize.STEPS if step.untestable]
@@ -160,44 +160,26 @@ def _check():
     # An invariant some step reduces and no step claims to finish. Driven to none, naming a settler as one is earned.
     print(f"    {len(normalize.unsettled_invariants())} invariant(s) reduced by a step and settled by none")
     # What the final grammar still breaks, whatever the steps settle between them — each one a step not yet written, and
-    # the list Phase 03 finishes by emptying.
+    # the list Phase 03 finishes by emptying. Every structural count the phase watches is in here, the meter among them,
+    # so what follows says only what the list cannot: where those counts fall and what they are made of.
     standing = normalize.standing_invariants(final, points)
     print(
         f"    {len(standing)} invariant(s) the final grammar still breaks: "
         + ", ".join(f"{name} {count}" for name, count in standing)
     )
-    # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
-    # of productions still backtracking — driven to none, at which point it becomes a gate.
-    print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic in isolation")
-    # The meter is `every-decision-goes-on-a-character`, an invariant like any other and printed with them below: the
-    # goal is the grammar deterministic as invoked from the root, not every production at every hypothetical entry, so
-    # it counts root-reachable decision points, each a production judged under one context's follow. What stands here
-    # beside it is how many productions those points fall in, which the standing list does not say.
     failing = normalize.context_conflicts(final, committed)
-    print(f"    {len(failing)} production(s) hold the undecided decision points")
+    blind = set(normalize.blind_choices(final))
+    held = sum(count for name, count in failing.items() if name in blind)
+    print(
+        f"    the undecided points fall in {len(failing)} production(s), {held} of them held by a production "
+        f"choosing blind between reading and not"
+    )
+    # The isolation count, beside the meter as the diagnostic it is: a production undecidable on its own is no conflict
+    # where every context a root parse reaches it under decides it, which is why the meter is the number driven down.
+    print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic in isolation")
     # The assurance ledger: committed on a declared reason rather than a proof, each entry held to backtracking by the
     # hybrid run above and to freshness by its own net — watched here so the declared few never grow quietly.
     print(f"    {len(committed)} production(s) committed by declaration — the assurance ledger")
-    # Properness, over the tail rather than at the one step that makes it: from the elimination on, no production but
-    # the ones a parse enters by name may match empty, since one that does holds a decision its call sites were to have
-    # taken. `eliminate_empties` asserts this on its own output; what this counts is the four later steps that hand
-    # nullability back — driven to none, at which point it becomes a gate.
-    labels = [label for label, _grammar in stages]
-    tail = stages[labels.index("eliminate-empties") :]
-    improper = [
-        len(normalize.improper_faults(grammar, normalize.keeps_empty_ways(grammar))) for _label, grammar in tail
-    ]
-    blind = normalize.blind_choices(final)
-    print(
-        f"    {improper[-1]} production(s) match empty where no call site can hold the choice, "
-        f"{max(improper)} at the worst of the {len(tail)} stages from the elimination on"
-    )
-    # What that debt costs the meter: a production offering a way that reads against one that does not is a choice no
-    # character decides, and the points under it are the ε-elimination's rather than the determinizer's.
-    print(
-        f"    {len(blind)} production(s) choose blind between reading and not, holding "
-        f"{sum(count for name, count in failing.items() if name in set(blind))} of the {sum(failing.values())} points"
-    )
     # What the corpus asked of a global that one value for the parse could not have answered. Every run above has been
     # answered from a stack beside the slot, so this is what stands between the two and not a count of anything that
     # went wrong: at none, the machine can hold the slot alone.
