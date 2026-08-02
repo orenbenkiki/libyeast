@@ -4798,6 +4798,65 @@ def _factorable_prefixes(grammar):
     return faults
 
 
+def _indent_changes(grammar, is_pushed):
+    """
+    Calls handed an indentation other than the one in force — every one, or only those no push says so for.
+
+    A call measured against an indentation of its own is where the indentation changes, and the parser has one place to
+    keep that: the stack. `is_pushed` asks the weaker question `push-indents` answers, that a push stands among the
+    way's actions; the stronger one, that no call carries an indentation at all, is what dropping the parameter leaves.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            if is_pushed and any(isinstance(action, ir.PushIndent) for action in way.actions):
+                continue
+            for reference in (way.first, way.second):
+                if reference is None:
+                    continue
+                callee = grammar.get(reference.name)
+                if callee is None or "n" not in callee.params:
+                    continue
+                held = reference.args[callee.params.index("n")]
+                if not (isinstance(held, ir.Param) and held.name == "n"):
+                    faults.append(f"{name}[{index}]: hands `{reference.name}` an indentation of its own")
+    return faults
+
+
+def _unpushed_indent_changes(grammar):
+    """Calls handed an indentation of their own with no push among the way's actions saying so."""
+    return _indent_changes(grammar, is_pushed=True)
+
+
+def _carried_indent_changes(grammar):
+    """Calls carrying an indentation at all, which the stack holds once the parameter is gone."""
+    return _indent_changes(grammar, is_pushed=False)
+
+
+def _shared_leading_pushes(grammar):
+    """
+    Productions every way of which begins by pushing the same indentation, which the callers could push instead.
+
+    A production pushing it however it is entered pushes it before the call as well, and standing there it may meet a
+    pop of the same indentation and cancel. What is left is what `hoist-pushes` refuses: a production a parse enters by
+    name, one a `(recover)` names, and a call with another beside it, where the end of the actions is not the moment
+    before this one.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice) or not production.body.alternatives:
+            continue
+        heads = [way.actions[0] if way.actions else None for way in production.body.alternatives]
+        if isinstance(heads[0], ir.PushIndent) and all(head == heads[0] for head in heads):
+            faults.append(f"{name}: every way leads with the same push, which its callers could make")
+    return faults
+
+
+INDENT_CHANGE_PUSHED = Invariant("every-indent-change-is-pushed", _unpushed_indent_changes)
+NO_CARRIED_INDENT = Invariant("no-call-carries-an-indentation", _carried_indent_changes)
+NO_SHARED_LEADING_PUSH = Invariant("no-shared-leading-push", _shared_leading_pushes)
 NO_EXACT_INDENTS = Invariant("no-exact-indent-call", _exact_indent_calls)
 NO_FACTORABLE_PREFIX = Invariant("no-factorable-prefix", _factorable_prefixes)
 NO_POINTLESS_CALL = Invariant("no-call-deciding-nothing", _calls_deciding_nothing)
@@ -4958,6 +5017,7 @@ STEPS = [
     Step(
         "push-indents",
         push_indents,
+        INDENT_CHANGE_PUSHED,
         lapses={
             "no-factorable-prefix": "the push goes at the head of the way it belongs to, so ways already peeking alike"
             " come to lead with the same action — two more, and the same second factoring would take them",
@@ -4965,10 +5025,13 @@ STEPS = [
             " the eleven others are a pop and nothing else, so each matches empty by shape while deciding nothing",
         },
     ),
-    Step("read-indents", read_indents, NO_INDENT_PARAM),
+    # Dropping the parameter is also what stops a call carrying an indentation at all: the stack is the one place left.
+    Step("read-indents", read_indents, (NO_INDENT_PARAM, NO_CARRIED_INDENT)),
     Step("sink-pops", sink_pops),
     Step("defer-pops", defer_pops),
-    Step("hoist-pushes", hoist_pushes),
+    # Ten come to four: what stands is what it refuses — a production a parse enters by name, one a `(recover)` names,
+    # and a call with another beside it.
+    Step("hoist-pushes", hoist_pushes, NO_SHARED_LEADING_PUSH, reduces=("no-shared-leading-push",)),
     Step("cancel-indent-pairs", cancel_indent_pairs, NO_CANCELLING_INDENTS),
     Step("strip-pop-levels", strip_pop_levels, NO_POP_LEVELS),
     Step("prune-params", prune_params, NO_UNNEEDED_PARAMS),
