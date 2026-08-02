@@ -4857,6 +4857,29 @@ def _shared_leading_pushes(grammar):
 INDENT_CHANGE_PUSHED = Invariant("every-indent-change-is-pushed", _unpushed_indent_changes)
 NO_CARRIED_INDENT = Invariant("no-call-carries-an-indentation", _carried_indent_changes)
 NO_SHARED_LEADING_PUSH = Invariant("no-shared-leading-push", _shared_leading_pushes)
+
+
+def _part_gated_literals(grammar):
+    """
+    Ways taking a literal of several characters whose gate peeks only the first of them.
+
+    A literal is one comparison that stands whole or takes nothing, so the decision to enter belongs on the whole of it:
+    gated on the first character alone, a way is entered where the rest cannot follow and the parse dies deeper than it
+    had to, past what a rival would have taken.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            lead = next((action for action in way.actions if not is_zero_width(action)), None)
+            if isinstance(lead, ir.ConsumeLiteral) and len(lead.text) > 1:
+                if not isinstance(way.gate.peek, ir.LiteralPeek):
+                    faults.append(f"{name}[{index}]: takes a literal its gate peeks one character of")
+    return faults
+
+
+LITERALS_GATED_WHOLE = Invariant("every-literal-gated-whole", _part_gated_literals)
 NO_EXACT_INDENTS = Invariant("no-exact-indent-call", _exact_indent_calls)
 NO_FACTORABLE_PREFIX = Invariant("no-factorable-prefix", _factorable_prefixes)
 NO_POINTLESS_CALL = Invariant("no-call-deciding-nothing", _calls_deciding_nothing)
@@ -5011,7 +5034,7 @@ STEPS = [
             " between has not been read. Held here so the number is on the record rather than lost in the total",
         },
     ),
-    Step("gate-literals", gate_literals),
+    Step("gate-literals", gate_literals, LITERALS_GATED_WHOLE),
     Step("reorder-declared", reorder_declared),
     Step("extend-returns", extend_returns),
     Step(
