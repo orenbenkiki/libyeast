@@ -5099,6 +5099,28 @@ def _movable_pops(grammar):
     return faults
 
 
+def _standing_pop_holders(grammar):
+    """
+    Ways that take an indentation off and do nothing else before calling on — a pop standing outside what it precedes.
+
+    Where every reference to the callee is such a way, the pop belongs at the head of the callee instead: there is no
+    other way in for it to be wrong for, and behind a call `defer-pops` cannot see it. What stands is a callee some
+    other way also enters, or one a parse enters by name, or a continuation whose arguments read the indentation before
+    the pop rather than after.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            if len(way.actions) != 1 or not isinstance(way.actions[0], ir.PopIndent):
+                continue
+            if way.first is not None or way.second is not None:
+                faults.append(f"{name}[{index}]: takes an indentation off and does nothing else before calling on")
+    return faults
+
+
+NO_POP_HOLDERS = Invariant("no-standing-pop-holder", _standing_pop_holders)
 POPS_DEFERRED = Invariant("no-pop-before-what-reads-it", _movable_pops)
 RUNS_TRIMMED = Invariant("no-untrimmed-run", _untrimmed_runs)
 CHOMPING_LEXICAL = Invariant("chomping-is-lexical", _computed_chomping)
@@ -5284,7 +5306,8 @@ STEPS = [
     ),
     # Dropping the parameter is also what stops a call carrying an indentation at all: the stack is the one place left.
     Step("read-indents", read_indents, (NO_INDENT_PARAM, NO_CARRIED_INDENT)),
-    Step("sink-pops", sink_pops),
+    # Nine come to five: what stands is a callee some other way also enters, or one a parse enters by name.
+    Step("sink-pops", sink_pops, NO_POP_HOLDERS, reduces=("no-standing-pop-holder",)),
     Step("defer-pops", defer_pops, POPS_DEFERRED),
     # Ten come to four: what stands is what it refuses — a production a parse enters by name, one a `(recover)` names,
     # and a call with another beside it.
@@ -5318,7 +5341,15 @@ STEPS = [
         read_globals,
         NO_DECLARED_PARAMS,
     ),
-    Step("inline-bare-actions", inline_bare_actions, NO_CARRIED_POP),
+    Step(
+        "inline-bare-actions",
+        inline_bare_actions,
+        NO_CARRIED_POP,
+        lapses={
+            "no-standing-pop-holder": "splicing a callee that is actions alone can leave a way whose one action is the"
+            " pop — one more holder, and the pop standing where the call it replaced stood, which is where it belongs"
+        },
+    ),
 ]
 
 
