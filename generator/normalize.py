@@ -4701,12 +4701,19 @@ def _many_gated_terminals(grammar):
 
 
 def _undeclared_bindings(grammar):
-    """Productions whose body writes a parameter they do not declare, so the value would be dropped on return."""
+    """
+    Productions whose body writes a parameter they do not declare, so the value would be dropped on return.
+
+    A global is not one: what no production declares is held in the one slot for the whole parse, and there is no return
+    for it to be dropped on. So the write stands alone on purpose, and only a parameter something still declares is
+    asked about here.
+    """
+    declared = {param for production in grammar.values() for param in production.params}
     return [
         f"{name}: binds `{param}` and does not declare it"
         for name, production in grammar.items()
         for param in sorted(_bound_params(production.body, set()))
-        if param not in production.params
+        if param not in production.params and not (param in ir.GLOBAL_PARAMS and param not in declared)
     ]
 
 
@@ -4860,8 +4867,6 @@ STEPS = [
             "proper": "the provisional productions the determinizer generates carry six that match empty, and only"
             " two are the single-way bundle the invariant permits — the other four are choices, and what they decide"
             " between has not been read. Held here so the number is on the record rather than lost in the total",
-            "every-way-gated": "the provisional productions are minted after the last hoist has run, so a way of"
-            " theirs leading with a call has nothing to have given it the characters that call begins with",
         },
     ),
     Step("gate-literals", gate_literals),
@@ -4873,8 +4878,6 @@ STEPS = [
         lapses={
             "proper": "where an indentation comes off, the pop goes in a production of its own — `x-pop-indent` and"
             " the eleven others are a pop and nothing else, so each matches empty by shape while deciding nothing",
-            "every-way-gated": "a minted holder's way leads with the push and then calls, and the hoists have run, so"
-            " nothing gives it the characters its call begins with",
         },
     ),
     Step("read-indents", read_indents, NO_INDENT_PARAM),
@@ -4890,19 +4893,12 @@ STEPS = [
         lapses={
             "proper": "a way with nothing of its own after its calls takes the clear in a minted production —"
             " `x-clear-m` is a `ClearVar` and nothing else, matching empty and deciding nothing",
-            "every-way-gated": "the way the clear is threaded through is a call and a continuation and nothing else,"
-            " minted past the hoists, so no character stands in front of it",
         },
     ),
     Step(
         "read-globals",
         read_globals,
         NO_DECLARED_PARAMS,
-        lapses={
-            "every-binding-declared": "the declaration goes and the write stays: a `(set)` on `m` or `f` names its"
-            " target as before, and with nothing declaring them a body reads as binding what it does not declare."
-            " What holds the value now is the one slot, so there is no return for it to be dropped on"
-        },
     ),
     Step("inline-bare-actions", inline_bare_actions, NO_CARRIED_POP),
 ]
@@ -4929,8 +4925,12 @@ def invariant_faults(stages):
     The invariant is named by its test, so several steps reducing one count are read as one law. A count is measured
     from the first stage whose step names it, the stages before it being no business of the invariant's.
     """
-    faults = []
+    faults, taken = [], set()
     by_name = {held.name: held for step in STEPS for held in step.invariants}
+    for step in STEPS:
+        for named in step.lapses:
+            if named not in by_name:
+                faults.append(f"[{step.name}] declares a lapse of `{named}`, which no step carries")
     for named in sorted(by_name):
         test = by_name[named]
         first = min(index for index, step in enumerate(STEPS) if named in {h.name for h in step.invariants})
@@ -4939,6 +4939,11 @@ def invariant_faults(stages):
             step, (label, grammar) = STEPS[index], stages[index + 1]
             count = len(test(grammar))
             licensed = named in step.lapses
+            broken = (
+                (standing is not None and count > standing) or (settled and count) or (step.does_settle(test) and count)
+            )
+            if broken and licensed:
+                taken.add((step.name, named))
             if standing is not None and count > standing and not licensed:
                 faults.append(f"[{label}] `{named}` rises from {standing} to {count}, and the step declares no lapse")
             if settled and count and not licensed:
@@ -4947,7 +4952,27 @@ def invariant_faults(stages):
                 faults.append(f"[{label}] settles `{named}` and leaves {count} standing")
             settled = (settled or step.does_settle(test)) and not count
             standing = count
+    # A lapse is a reason for something that happens. One nothing happens under is a claim the grammar has outgrown, and
+    # it goes rather than standing as a licence nobody needs — the same net the declared tables answer to.
+    for step in STEPS:
+        for named in step.lapses:
+            if named in by_name and (step.name, named) not in taken:
+                faults.append(f"[{step.name}] declares a lapse of `{named}` and does not break it")
     return faults
+
+
+def standing_invariants(grammar):
+    """
+    Every invariant the pipeline names that `grammar` still breaks, as `[(name, count)]` worst first.
+
+    What the steps settle between them is not the same question as what is true at the end: an invariant settled early
+    and broken later under a declared lapse stands here all the same, and a lapse is a reason rather than an excuse.
+    Each one standing is work still owed — a step that has not been written — so this is the list Phase 03 finishes by
+    emptying, and it says so mechanically instead of leaving it to be noticed.
+    """
+    named = {held.name: held for step in STEPS for held in step.invariants}
+    standing = [(name, len(test(grammar))) for name, test in sorted(named.items())]
+    return sorted(((name, count) for name, count in standing if count), key=lambda held: -held[1])
 
 
 def unsettled_invariants():
