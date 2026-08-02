@@ -957,8 +957,8 @@ def _rerunnable_calls(grammar):
     """
     The productions a second call to is the first: every stack left as it was found, and nothing committed on the way.
 
-    A call is taken to be one until something it reaches says otherwise, so a production that only reaches itself is
-    one — a recursion that never returns is no second run to tell from a first.
+    A call is taken to be one until something it reaches says otherwise, so a production that only reaches itself is one
+    — a recursion that never returns is no second run to tell from a first.
     """
     rerunnable = set(grammar)
     while True:
@@ -978,6 +978,10 @@ def absorb_empties(grammar, namer):
 
     Only where every way it makes reads. So it never grows a choice that still holds an empty way, never propagates one
     outward, and wants no fixpoint — each application removes an empty match and stops.
+
+    And only where a member reads. Where none does — an optional assertion, `( PushCode StartOfLine PopCode | ε )` —
+    every way it makes stands at the same position behind the same gate, and no character can ever tell them apart: the
+    empty match would be traded for a choice the meter counts instead, which is not a trade.
 
     And only over a prefix each of whose copies is the one run the undistributed form makes. What follows the choice
     runs once per way tried in either form — the undistributed one backtracks into the choice and runs it afresh — so
@@ -1010,6 +1014,9 @@ def absorb_empties(grammar, namer):
         for index, item in enumerate(node.items):
             if not isinstance(item, ir.Alt) or not any(can_match_empty(m, grammar) for m in item.items):
                 continue
+            if sum(can_match_empty(member, grammar) for member in item.items) != 1:
+                continue  # a second member matching empty makes a way standing where the empty one does, told apart by
+                # nothing: the empty match would be traded for a choice no character decides, which is not a trade
             low = prefix_start(node.items, index)
             made = tuple(
                 _flat_seq(node.items[low:index] + (member,) + node.items[index + 1 :]) for member in item.items
@@ -1516,7 +1523,31 @@ def inline_single_way(grammar, namer):
             second=held_calls[1],
         )
 
-    return _gated(grammar, spliced)
+    # An action carried in binds where it lands, so the production it lands in is the one that declares it: a callee
+    # holding a parameter its call does not pass keeps that parameter, and the splice brings the binding along with it.
+    spliced_grammar = _gated(grammar, spliced)
+    return {
+        name: (
+            dataclasses.replace(production, params=production.params + tuple(carried))
+            if (carried := _undeclared_binds(production))
+            else production
+        )
+        for name, production in spliced_grammar.items()
+    }
+
+
+def _undeclared_binds(production):
+    """The parameters `production` binds and does not declare, in the order its body binds them."""
+    carried = []
+
+    def seen(node):
+        if isinstance(node, (ir.SetVar, ir.ClearVar)) and node.param not in production.params:
+            if node.param not in carried:
+                carried.append(node.param)
+        return ir.rebuilt(node, seen)
+
+    seen(production.body)
+    return carried
 
 
 def refine_indents(grammar, namer):
@@ -5394,17 +5425,20 @@ STEPS = [
     Step("lower-commits", lower_commits, _absent("no-commit", ir.Commit)),
     Step("flatten", flatten, NO_UNFLATTENED),
     # The repetitions `lower-star` left are runs over a character set, and this is what turns them into scans, so the
-    # `Star`s it only reduced are gone here.
-    # Before `lift-choices`, which would give a choice still holding an empty way a production of its own.
+    # `Star`s it only reduced are gone here. Before `lift-choices`, which would give a choice still holding an empty way
+    # a production of its own.
     Step(
         "absorb-empties",
         absorb_empties,
         PROPER,
         reduces=("proper",),
         lapses={
-            "every-decision-goes-on-a-character": "a way that read nothing decided nothing; where the empty match goes"
-            " into the sequence around it, the ways it makes are told apart on what they read, and each of those is a"
-            " point until `factor-prefixes` takes the prefix they share back out",
+            "no-star": "what follows the choice is copied into every way it makes, so a repetition standing there is"
+            " counted once per way — `span-consumes` turns each into the scan it is, as it does the one that stood"
+            " there before",
+            "no-plus": "the same, a `Plus` standing after the choice copied into every way it makes",
+            "every-character-question-is-a-set-or-a-literal": "the same, a lookahead or a difference standing after"
+            " the choice copied into every way it makes",
         },
     ),
     Step("span-consumes", span_consumes, NO_STAR),
@@ -5452,6 +5486,9 @@ STEPS = [
         "factor-prefixes",
         factor_prefixes,
         NO_FACTORABLE_PREFIX,
+        # What stands is the prefix that is a call rather than an action: a shared `Emit` and a shared `c-folded` is a
+        # prefix the ways have in common, and this reaches only the actions, whose run must consume to be taken.
+        reduces=("no-factorable-prefix",),
         lapses={
             "every-way-gated": "the minted decision's ways are told apart by an indentation comparison and not by a"
             " character — `Le` against `Lt` — so neither can carry a peek. `hoist-residue-guards` raises those into"
@@ -5472,6 +5509,10 @@ STEPS = [
             " moment. Two of them; a second factoring is what would take them"
         },
     ),
+    # Before the determinizer: a way that consumes a literal is decided by peeking that literal whole, and a break's
+    # CRLF against its bare CR is exactly that. Speculating over a conflict a two-character gate answers is work the
+    # grammar can spell instead.
+    Step("gate-literals", gate_literals, LITERALS_GATED_WHOLE),
     Step(
         "speculate-folds",
         speculate_folds,
@@ -5485,7 +5526,6 @@ STEPS = [
             " between has not been read. Held here so the number is on the record rather than lost in the total",
         },
     ),
-    Step("gate-literals", gate_literals, LITERALS_GATED_WHOLE),
     Step(
         "extend-returns",
         extend_returns,
@@ -5506,7 +5546,9 @@ STEPS = [
     Step("read-indents", read_indents, (NO_INDENT_PARAM, NO_CARRIED_INDENT)),
     # Nine come to five: what stands is a callee some other way also enters, or one a parse enters by name.
     Step("sink-pops", sink_pops, NO_POP_HOLDERS, reduces=("no-standing-pop-holder",)),
-    Step("defer-pops", defer_pops, POPS_DEFERRED),
+    # What stands is a pop with a push right behind it: moving it down to the read would move it past the push that
+    # displaces the very level it restores, so the pair stays where it is.
+    Step("defer-pops", defer_pops, POPS_DEFERRED, reduces=("no-pop-before-what-reads-it",)),
     # Ten come to four: what stands is what it refuses — a production a parse enters by name, one a `(recover)` names,
     # and a call with another beside it.
     Step(

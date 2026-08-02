@@ -323,14 +323,14 @@ to fail proves nothing, and one that excuses what it cannot decide reports a fal
 Three nets ride on it, and each caught something the day it landed. `untested_steps` counts the steps promising what
 nothing checks, and it reads **none**: all fifty name an invariant, bar two that name a *reason* instead —
 `extend-returns`, whose property is momentary, what the step did rather than a shape the grammar keeps, and
-`clear-params`, whose property belongs to a run and not to a shape. Naming both an invariant and a
-reason is itself a fault. `standing_invariants` counts what the **final** grammar still breaks whatever the steps settle
-between them, which is the list this phase finishes by emptying, and the meter is the first line of it:
+`clear-params`, whose property belongs to a run and not to a shape. Naming both an invariant and a reason is itself a
+fault. `standing_invariants` counts what the **final** grammar still breaks whatever the steps settle between them,
+which is the list this phase finishes by emptying, and the meter is the first line of it:
 
 | standing |                                                                                                                 |
 | -------- | --------------------------------------------------------------------------------------------------------------- |
 | **750**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody            |
-| **81**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                        |
+| **81**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                         |
 | **42**   | `every-way-gated` — ways in a multi-way choice with no character to go on                                       |
 | **41**   | `every-character-question-is-a-set-or-a-literal` — a lookahead, an `(exclude)`, a difference                    |
 | 24       | `no-call-deciding-nothing` · 8 `no-standing-pop-holder` · 6 `no-factorable-prefix` · 4 `no-shared-leading-push` |
