@@ -5015,6 +5015,29 @@ def _unreachable_ways(grammar):
     return faults
 
 
+def _undecided_points(grammar, points):
+    """
+    The decision points no character decides, one entry each — the phase's own meter, and an invariant like any other.
+
+    A production judged under one reachable context's follow, the contexts computed root-down: the goal is the grammar
+    deterministic as invoked from the root, not every production at every hypothetical entry. What is committed by
+    declaration is taken as decided, that being what the assurance ledger says and what the hybrid corpus holds it to.
+
+    Nothing settles this yet. That is the phase, and saying so here rather than beside it keeps the number in the same
+    machinery as everything else it depends on.
+    """
+    if points is None:
+        return []
+    failing = context_conflicts(grammar, committed_productions(points))
+    return [
+        f"{name}: decision point {index + 1} of {count} goes on no character"
+        for name, count in sorted(failing.items())
+        for index in range(count)
+    ]
+
+
+EVERY_DECISION_DECIDED = Invariant("every-decision-goes-on-a-character", _undecided_points)
+PROVISIONAL_BALANCES = Invariant("every-provisional-run-balances", provisional_faults)
 NO_UNREACHABLE_WAY = Invariant("no-unreachable-way", _unreachable_ways)
 NO_PARTIAL_OVERLAP = Invariant("no-partial-overlap", _partial_overlaps)
 CHOMPING_LEXICAL = Invariant("chomping-is-lexical", _computed_chomping)
@@ -5171,6 +5194,10 @@ STEPS = [
     Step(
         "speculate-folds",
         speculate_folds,
+        # It opens the one provisional run there is, so the balance is its to leave and every later step's to keep; and
+        # it is the determinizer, so the meter is its count to reduce — settled by nobody, which is the phase.
+        (PROVISIONAL_BALANCES, EVERY_DECISION_DECIDED),
+        reduces=("every-decision-goes-on-a-character",),
         lapses={
             "proper": "the provisional productions the determinizer generates carry six that match empty, and only"
             " two are the single-way bundle the invariant permits — the other four are choices, and what they decide"

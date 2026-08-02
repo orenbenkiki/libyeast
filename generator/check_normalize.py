@@ -124,8 +124,6 @@ def _check():
         errors.append(f"[content-runs] {offender}: a long text token is collected one character at a time")
     for fault in normalize.non_char_set_runs(stages[-1][1]):
         errors.append(f"[char-set-runs] {fault}")
-    for fault in normalize.provisional_faults(stages[-1][1]):
-        errors.append(f"[provisional] {fault}")
     # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
     # stays none after — a step breaking one saying so in its `lapses` and why.
     for fault in normalize.invariant_faults(stages, points):
@@ -167,11 +165,12 @@ def _check():
     # The determinize meter: the corpus is parsed with every proved production entered committed, so this is the count
     # of productions still backtracking — driven to none, at which point it becomes a gate.
     print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic in isolation")
-    # The correct meter: the goal is the grammar deterministic as invoked from the root, not every production at every
-    # hypothetical entry — so this counts root-reachable decision points, each a production judged under one context's
-    # follow, the one-level-inline judgment. This is the number driven to none.
+    # The meter is `every-decision-goes-on-a-character`, an invariant like any other and printed with them below: the
+    # goal is the grammar deterministic as invoked from the root, not every production at every hypothetical entry, so
+    # it counts root-reachable decision points, each a production judged under one context's follow. What stands here
+    # beside it is how many productions those points fall in, which the standing list does not say.
     failing = normalize.context_conflicts(final, committed)
-    print(f"    {sum(failing.values())} root-context decision point(s) undecided, across {len(failing)} production(s)")
+    print(f"    {len(failing)} production(s) hold the undecided decision points")
     # The assurance ledger: committed on a declared reason rather than a proof, each entry held to backtracking by the
     # hybrid run above and to freshness by its own net — watched here so the declared few never grow quietly.
     print(f"    {len(committed)} production(s) committed by declaration — the assurance ledger")
