@@ -4732,6 +4732,34 @@ def _unneeded_parameters(grammar):
 NO_PLUS = _absent("no-plus", ir.Plus)
 NO_STAR = _absent("no-star", ir.Star)
 CHAR_SET_RUNS = Invariant("every-repetition-is-a-character-set-run", non_char_set_runs)
+
+
+def _calls_deciding_nothing(grammar):
+    """
+    Calls to a production whose one way is ungated and carries no recovery — a frame entered to decide nothing.
+
+    What it does belongs where it is called: the state machine pays a push and a return for a production that takes no
+    decision. `inline-single-way` splices what it can and refuses where the production is load-bearing — a way that
+    would leave three calls, a recovery on either side, an action binding a parameter the call renames — so this counts
+    what is left rather than what it declined, and each one is a splice some step still owes.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            if way.first is None or way.recover is not None:
+                continue
+            callee = grammar.get(way.first.name)
+            if callee is None or not isinstance(callee.body, ir.Choice) or len(callee.body.alternatives) != 1:
+                continue
+            [inner] = callee.body.alternatives
+            if inner.gate.peek is None and not inner.gate.guards and inner.recover is None:
+                faults.append(f"{name}[{index}]: calls `{way.first.name}`, whose one way decides nothing")
+    return faults
+
+
+NO_POINTLESS_CALL = Invariant("no-call-deciding-nothing", _calls_deciding_nothing)
 ONE_GATED_TERMINAL = Invariant("one-gated-terminal-a-way", _many_gated_terminals)
 BINDINGS_DECLARED = Invariant("every-binding-declared", _undeclared_bindings)
 NO_UNNEEDED_PARAMS = Invariant("no-unneeded-parameter", _unneeded_parameters)
@@ -4846,7 +4874,8 @@ STEPS = [
     Step("gate-hoist-wide", gate_hoist_wide, GATED, reduces=("every-way-gated",)),
     Step("split-conflicts", split_conflicts),
     Step("inline-under-gate", inline_under_gate),
-    Step("inline-single-way", inline_single_way),
+    # 298 calls come to 9: what stands is what the splice refuses, each a production still load-bearing somewhere.
+    Step("inline-single-way", inline_single_way, NO_POINTLESS_CALL, reduces=("no-call-deciding-nothing",)),
     Step(
         "factor-prefixes",
         factor_prefixes,
@@ -4893,6 +4922,9 @@ STEPS = [
         lapses={
             "proper": "a way with nothing of its own after its calls takes the clear in a minted production —"
             " `x-clear-m` is a `ClearVar` and nothing else, matching empty and deciding nothing",
+            "no-call-deciding-nothing": "the same minted production, reached by a call: a way with nothing of its own"
+            " after its calls has nowhere else to put the clear, so the call is what carries it. `inline-bare-actions`"
+            " takes back the ones whose caller can hold the actions itself",
         },
     ),
     Step(

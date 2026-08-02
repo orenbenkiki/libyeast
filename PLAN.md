@@ -307,22 +307,46 @@ those — more invariants, a simpler grammar, until simple machinery (common-pre
 enough to decide it. Judging an intermediate step by the headline number is a category error, and it is how a correct
 step gets thrown away.
 
-So a step is `Step(name, transform, test, settles, lapses)` and the pipeline enforces the rest. `test` counts the places
-its invariant is broken; an invariant is a **count, not a yes-or-no**, several steps may reduce one between them, and
-`settles` marks the one that takes it to none. `invariant_faults` holds every step to the law — **a count never rises, a
-settling step leaves none, and none stays none** — and `lapses` is the only licence to break it, `{invariant: reason}`,
-empty for nearly every step and carrying a written reason where it is not. An invariant is named by its test, so two
-steps naming one test are reducing one count.
+So a step is `Step(name, transform, invariants, reduces, lapses)` and the pipeline enforces the rest. `invariants` names
+what it makes true and how to count where each is broken; an invariant is a **count, not a yes-or-no**, and several
+steps may reduce one between them. A step naming an invariant is taken to **finish** it, that being what a step is for,
+and `reduces` names the ones among them it only lowers. `invariant_faults` holds every step to the law — **a count never
+rises, a settling step leaves none, and none stays none** — and `lapses` is the only licence to break it,
+`{invariant: reason}`, empty for nearly every step. An invariant goes by its name, so two steps naming one are reducing
+one count.
 
-*This is how a new step is designed, in this order*: what invariant do we want, how is it measured, and only then how it
-is achieved. A step whose invariant cannot be stated is a step nobody can hold to anything.
+*This is how a new step is designed, in this order*: **the invariant first, then how to measure it, and only then how to
+achieve it**. Write the test before the transform and watch it report a non-zero count; a test that has never been seen
+to fail proves nothing, and one that excuses what it cannot decide reports a false zero —
+`is_one_char(node) and _peek_spans(node) is not None` silently skipped every case that had gone wrong.
 
-`test` defaults to `None` today and that is **temporary scaffolding**: 47 of the 49 steps carry no test, the gate prints
-the number, and at none the default goes and a step without a test stops being expressible. Four lapses stand declared —
-`lower-star`, `lift-choices`, `binarize` and `alternative-shape` breaking properness, which is this phase's open debt —
-and four more the law caught the day it landed: `lower-recovers`, `push-indents` and `clear-params` mint helpers holding
-actions alone, which match empty and decide nothing, while `speculate-folds` adds six of which only two are that shape
-and the other four are choices nobody has read.
+Three nets ride on it, and each caught something the day it landed. `untested_steps` counts the steps promising what
+nothing checks — **18 of 50**, scaffolding, and at none the default goes and a step without an invariant stops being
+expressible. `standing_invariants` counts what the **final** grammar still breaks whatever the steps settle between
+them, which is the list this phase finishes by emptying: **`proper` 221, `every-way-gated` 46,
+`every-character-question-is-a-set-or-a-literal` 39, `no-call-deciding-nothing` 8**. And a lapse must be *taken*: one
+naming an invariant no step carries, or one the step does not actually break, is a stale declaration and a fault. That
+net retired four lapses at once — three left behind when `every-way-gated` was narrowed to multi-way choices, and one on
+`read-globals` which turned out to mark a mis-defined invariant rather than a special step, `every-binding-declared`
+having counted a global as an undeclared binding when a global *has* no declaration.
+
+**What is left, and what is known about it.** Eighteen steps carry no invariant. `refine-indents`, `factor-prefixes` and
+`clear-params` look statable and are the next to try. The indentation family — `push-indents`, `sink-pops`,
+`defer-pops`, `hoist-pushes` — moves pushes and pops about, and what each leaves true wants reading rather than
+guessing, `nothing-carries-on-over-a-pop` already covering part of it. The declared-site steps — `inline-singles`,
+`reorder-declared`, `extend-returns`, `speculate-folds`, `gate-literals` — each already assert their own site's shape,
+and the question is whether that assertion is the invariant or whether they want another. `lift-chomping`, `trim-runs`,
+`hoist-char-runs`, `hoist-trimmed-runs` and `inline-under-gate` are the ones nobody has stated.
+
+**One open anomaly.** Counting pairs of ways in a choice whose peeks share a character, the number *rises* at the step
+meant to remove them — 73 to **77 at `split-conflicts`**, 78 at the end. Either the test is too strict, two ways sharing
+a character being decidable by their guards, which that step is entitled to leave; or the step does not do what it says.
+Not attached, because a test whose curve cannot be explained is worse than none.
+
+Two counts are reduced and settled by nobody **on purpose**, and are work owed rather than oversight: `every-way-gated`,
+the 46 ways in a multi-way choice with no character to go on, which the four gate hoists reduce between them; and
+`no-call-deciding-nothing`, 298 calls brought to 9 by `inline-single-way` and standing at 8, each one a splice it
+refused because the callee is load-bearing somewhere.
 
 **Before every commit, every transform is read for correctness against the semantics of the nodes it moves** — by hand,
 whatever the gates say. The gates are a net and not a substitute: a transformation that moves an action into another
