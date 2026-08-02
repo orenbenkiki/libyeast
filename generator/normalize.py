@@ -460,6 +460,34 @@ def lower_char_sets(grammar, namer):
     }
 
 
+def _other_character_questions(grammar):
+    """
+    Everything that asks about characters and is neither a `CharSet` nor a literal — what the machine has no way to ask.
+
+    The parser tests one key: a bit for a set, a comparison for a named character, and a literal it takes whole. A
+    lookahead, a look-behind, an `(exclude)` and a difference are none of those; each is a question about the input the
+    state machine cannot put to it, and every one left is a step still owed. The raw character nodes are here too, since
+    a set said any other way is the same problem.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind, ir.ExcludeAt, ir.Diff)):
+                faults.append(f"{owner}: a {type(node).__name__} asks what the machine has no way to ask")
+                return
+            if isinstance(node, (ir.Char, ir.Range, ir.Invalid)):
+                faults.append(f"{owner}: a {type(node).__name__} is a character set said as something else")
+                return
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+ONLY_SETS_AND_LITERALS = Invariant("every-character-question-is-a-set-or-a-literal", _other_character_questions)
+
+
 def _unlowered_character_sets(grammar):
     """
     Character sets written as something other than a `CharSet` — the one shape the parser can be given.
@@ -1475,10 +1503,14 @@ def ungated_alternatives(grammar):
     The alternatives no gate decides — those entered without a character to go on, which the determinize phase must
     settle by other means. An alternative that consumes nothing is one on purpose, the unconditional fallthrough a
     choice ends with, and is not counted.
+
+    Nor is a production's only way: a choice of one takes no decision, so there is nothing there for a character to
+    settle and a gate would say nothing. What this counts is a way standing among others with nothing to tell it from
+    them, which is the shape the determinize phase has to answer for.
     """
     ungated = []
     for name, production in grammar.items():
-        if not isinstance(production.body, ir.Choice):
+        if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) < 2:
             continue
         for alternative in production.body.alternatives:
             if alternative.gate.peek is not None:
@@ -4408,10 +4440,12 @@ class Step:
     lands; what every step before it buys is a property the rest may lean on, which is how the grammar comes to be
     simple enough for common-prefix factoring and gate disjointness to decide it.
 
-    An invariant is a count and not a yes-or-no. `invariant` says which one this step is about and how to count where it
-    is broken. A step naming one is taken to finish it, that being what a step is for; `settles=False` is the exception,
-    for a step that only reduces a count several share — the gate hoists do, and no one of them leaves none. An
-    `Invariant` and a `transform` are both shared where two steps do the same work on different grounds.
+    An invariant is a count and not a yes-or-no. `invariants` says which ones this step is about and how to count where
+    each is broken — a step often makes more than one thing true, and `lower-star` leaves both no complex `Star` and
+    every repetition a character-set run. A step naming an invariant is taken to **finish** it, that being what a step
+    is for; `reduces` names the ones among them it only lowers the count of, for a count several steps share — the gate
+    hoists do, and no one of them leaves none. An `Invariant` and a `transform` are both shared where two steps do the
+    same work on different grounds.
 
     `lapses` is what this step is allowed to break: `{invariant: reason}`, empty for nearly every step, holding a
     written reason where a step undoes something an earlier one settled. `invariant_faults` holds the pipeline to the
@@ -4421,16 +4455,24 @@ class Step:
     An invariant goes by its name, so two steps naming the same one are reducing a single count and the set of them is
     collected by name rather than by how many steps mention it.
 
-    **`invariant` defaulting to `None` is temporary.** A step without one transforms the grammar and promises something
-    nothing checks, which is the shape every hard day here has started from. `untested_steps` counts them and the gate
-    prints the number; at none the default goes and a step without an invariant stops being expressible.
+    **An empty `invariants` is temporary.** A step with none transforms the grammar and promises something nothing
+    checks, which is the shape every hard day here has started from. `untested_steps` counts them and the gate prints
+    the number; at none the default goes and a step without an invariant stops being expressible.
     """
 
     name: str
     transform: object
-    invariant: Invariant = None
-    settles: bool = True
+    invariants: object = ()
+    reduces: tuple = ()
     lapses: dict = dataclasses.field(default_factory=dict)
+
+    def __post_init__(self):
+        held = (self.invariants,) if isinstance(self.invariants, Invariant) else tuple(self.invariants)
+        object.__setattr__(self, "invariants", held)
+
+    def does_settle(self, invariant):
+        """Whether this step is the one that takes `invariant`'s count to none."""
+        return invariant.name in {held.name for held in self.invariants} and invariant.name not in self.reduces
 
 
 def _absent(name, *kinds):
@@ -4638,6 +4680,54 @@ def _every_alternation_is_a_character_class(grammar):
 ALTERNATIONS_ARE_CLASSES = Invariant("every-alternation-is-a-character-class", _every_alternation_is_a_character_class)
 GATED = Invariant("every-way-gated", ungated_alternatives)
 NO_LEADING_GUARDS = Invariant("no-leading-guard", _no_leading_guards)
+
+
+def _many_gated_terminals(grammar):
+    """Sequences holding more than one terminal the gate would have to peek — a state has one gated character."""
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, ir.Seq):
+                wanted = sum(
+                    1 for item in node.items if is_one_char(item.item if isinstance(item, ir.Plus) else item, grammar)
+                )
+                if wanted > 1:
+                    faults.append(f"{owner}: a way holds {wanted} terminals the gate would peek, and a state has one")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+def _undeclared_bindings(grammar):
+    """Productions whose body writes a parameter they do not declare, so the value would be dropped on return."""
+    return [
+        f"{name}: binds `{param}` and does not declare it"
+        for name, production in grammar.items()
+        for param in sorted(_bound_params(production.body, set()))
+        if param not in production.params
+    ]
+
+
+def _unneeded_parameters(grammar):
+    """Parameters a production declares that nothing it holds or hands on ever reads."""
+    every = {param for production in grammar.values() for param in production.params}
+    needed = {param: _needing(grammar, param) for param in every}
+    return [
+        f"{name}: declares `{param}`, which nothing reaches a read of"
+        for name, production in grammar.items()
+        for param in production.params
+        if name not in needed[param]
+    ]
+
+
+NO_PLUS = _absent("no-plus", ir.Plus)
+NO_STAR = _absent("no-star", ir.Star)
+CHAR_SET_RUNS = Invariant("every-repetition-is-a-character-set-run", non_char_set_runs)
+ONE_GATED_TERMINAL = Invariant("one-gated-terminal-a-way", _many_gated_terminals)
+BINDINGS_DECLARED = Invariant("every-binding-declared", _undeclared_bindings)
+NO_UNNEEDED_PARAMS = Invariant("no-unneeded-parameter", _unneeded_parameters)
 NO_UNFLATTENED = Invariant("flattened", _no_unflattened)
 SHAPED = Invariant("every-body-is-a-choice-or-a-terminal", _is_shaped)
 TWO_CALLS = Invariant("at-most-two-calls-a-way", _at_most_two_calls)
@@ -4662,21 +4752,28 @@ STEPS = [
     Step("monomorphize", monomorphize, _absent("no-context-case", ir.Case, ir.Flip)),
     Step("lower-optionals", lower_optionals, _absent("no-optional", ir.Opt)),
     Step("eliminate-empties", eliminate_empties, PROPER),
-    Step("declare-bindings", declare_bindings),
+    Step("declare-bindings", declare_bindings, BINDINGS_DECLARED),
     # A `x+` over a character class stays for `span-consumes` to take, so this reduces the count and settles nothing.
-    Step("lower-plus", lower_plus, _absent("no-plus", ir.Plus), settles=False),
+    Step("lower-plus", lower_plus, NO_PLUS, reduces=("no-plus",)),
     Step("trim-runs", trim_runs),
     Step("hoist-char-runs", hoist_char_runs),
     Step("hoist-trimmed-runs", hoist_trimmed_runs),
     # After the run hoists, which read the characters an alternation holds one by one to prove a run factorable.
-    Step("lower-char-sets", lower_char_sets, CHAR_SETS_LOWERED),
+    Step(
+        "lower-char-sets",
+        lower_char_sets,
+        (CHAR_SETS_LOWERED, ONLY_SETS_AND_LITERALS),
+        # A lookahead, an `(exclude)` and a difference over more than a character stand until a step is written for
+        # each, so what the machine can ask is only reduced here.
+        reduces=("every-character-question-is-a-set-or-a-literal",),
+    ),
     Step(
         "lower-star",
         lower_star,
-        # A `x*` over a character class stays for `span-consumes` to take, so this reduces the count and settles
-        # nothing.
-        _absent("no-star", ir.Star),
-        settles=False,
+        # Taking the complex repetitions out leaves every one that stands a run over a character set; a `x*` over one of
+        # those stays for `span-consumes`, so the `Star`s themselves are only reduced here.
+        (NO_STAR, CHAR_SET_RUNS),
+        reduces=("no-star",),
         lapses={
             "proper": "`x*` lowers to `_N ::= x _N | <empty>`, which decides between reading and not — the one"
             " step breaking properness by construction, until it emits the one-or-more helper and leaves the empty"
@@ -4689,8 +4786,11 @@ STEPS = [
     Step("lower-binds", lower_binds, _absent("no-bind", ir.Bind)),
     Step("lower-commits", lower_commits, _absent("no-commit", ir.Commit)),
     Step("flatten", flatten, NO_UNFLATTENED),
-    Step("span-consumes", span_consumes),
-    Step("literal-consumes", literal_consumes),
+    # The repetitions `lower-star` left are runs over a character set, and this is what turns them into scans, so the
+    # `Star`s it only reduced are gone here.
+    Step("span-consumes", span_consumes, NO_STAR),
+    # A literal run collapses several gated terminals into one `ConsumeLiteral`, so this reduces the count it shares.
+    Step("literal-consumes", literal_consumes, ONE_GATED_TERMINAL, reduces=("one-gated-terminal-a-way",)),
     Step(
         "lift-choices",
         lift_choices,
@@ -4701,12 +4801,11 @@ STEPS = [
             " this phase's open debt and the reason the count does not stay at none"
         },
     ),
-    Step("single-consumes", single_consumes),
+    Step("single-consumes", single_consumes, ONE_GATED_TERMINAL),
     Step(
         "binarize",
         binarize,
         TWO_CALLS,
-        settles=True,
         lapses={
             "proper": "the tail of an alternative moves into a helper, and a tail of zero-width actions matches"
             " empty; it preserves properness wherever its input is proper, so this stands with the entry above"
@@ -4715,8 +4814,8 @@ STEPS = [
     Step(
         "alternative-shape",
         alternative_shape,
-        SHAPED,
-        settles=True,
+        # Cutting a way at its first call leaves nothing a `Plus` can stand in, so the last of those go here too.
+        (SHAPED, NO_PLUS),
         lapses={
             "proper": "a way is cut at its first call and what follows becomes a continuation of its own, so a"
             " trailing run of zero-width actions is a production matching empty — a single way that decides nothing,"
@@ -4727,7 +4826,6 @@ STEPS = [
         "lower-recovers",
         lower_recovers,
         _absent("no-recover", ir.Recover),
-        settles=True,
         lapses={
             "proper": "an alternative with two calls behind the guarded one puts them in a minted helper the edge"
             " resumes at, and a helper holding actions alone matches empty — four of them, each a single way deciding"
@@ -4737,8 +4835,8 @@ STEPS = [
     Step("inline-singles", inline_singles),
     Step("refine-indents", refine_indents),
     # The four hoists reduce one count between them, and none settles it: 141 ways still have no character to go on.
-    Step("gate-hoist", gate_hoist, GATED, settles=False),
-    Step("gate-hoist-wide", gate_hoist_wide, GATED, settles=False),
+    Step("gate-hoist", gate_hoist, GATED, reduces=("every-way-gated",)),
+    Step("gate-hoist-wide", gate_hoist_wide, GATED, reduces=("every-way-gated",)),
     Step("split-conflicts", split_conflicts),
     Step("inline-under-gate", inline_under_gate),
     Step("inline-single-way", inline_single_way),
@@ -4753,8 +4851,8 @@ STEPS = [
         },
     ),
     Step("hoist-residue-guards", hoist_residue_guards, NO_LEADING_GUARDS),
-    Step("gate-hoist-leftovers", gate_hoist, GATED, settles=False),
-    Step("gate-hoist-leftovers-wide", gate_hoist_wide, GATED, settles=False),
+    Step("gate-hoist-leftovers", gate_hoist, GATED, reduces=("every-way-gated",)),
+    Step("gate-hoist-leftovers-wide", gate_hoist_wide, GATED, reduces=("every-way-gated",)),
     Step(
         "speculate-folds",
         speculate_folds,
@@ -4785,7 +4883,7 @@ STEPS = [
     Step("hoist-pushes", hoist_pushes),
     Step("cancel-indent-pairs", cancel_indent_pairs, NO_CANCELLING_INDENTS),
     Step("strip-pop-levels", strip_pop_levels, NO_POP_LEVELS),
-    Step("prune-params", prune_params),
+    Step("prune-params", prune_params, NO_UNNEEDED_PARAMS),
     Step(
         "clear-params",
         clear_params,
@@ -4796,7 +4894,16 @@ STEPS = [
             " minted past the hoists, so no character stands in front of it",
         },
     ),
-    Step("read-globals", read_globals, NO_DECLARED_PARAMS),
+    Step(
+        "read-globals",
+        read_globals,
+        NO_DECLARED_PARAMS,
+        lapses={
+            "every-binding-declared": "the declaration goes and the write stays: a `(set)` on `m` or `f` names its"
+            " target as before, and with nothing declaring them a body reads as binding what it does not declare."
+            " What holds the value now is the one slot, so there is no return for it to be dropped on"
+        },
+    ),
     Step("inline-bare-actions", inline_bare_actions, NO_CARRIED_POP),
 ]
 
@@ -4805,10 +4912,10 @@ def untested_steps():
     """
     The steps naming no invariant — each transforming the grammar and promising something nothing checks.
 
-    Driven to none: at none, `Step.invariant` loses its default and a step without one stops being expressible. Until
+    Driven to none: at none, `Step.invariants` loses its default and a step without one stops being expressible. Until
     then this is the honest measure of how much of the pipeline rests on nothing but the corpus.
     """
-    return [step.name for step in STEPS if step.invariant is None]
+    return [step.name for step in STEPS if not step.invariants]
 
 
 def invariant_faults(stages):
@@ -4823,23 +4930,22 @@ def invariant_faults(stages):
     from the first stage whose step names it, the stages before it being no business of the invariant's.
     """
     faults = []
-    for named in sorted({step.invariant.name for step in STEPS if step.invariant is not None}):
-        held = [step for step in STEPS if step.invariant is not None and step.invariant.name == named]
-        test = held[0].invariant
-        first = min(index for index, step in enumerate(STEPS) if step in held)
+    by_name = {held.name: held for step in STEPS for held in step.invariants}
+    for named in sorted(by_name):
+        test = by_name[named]
+        first = min(index for index, step in enumerate(STEPS) if named in {h.name for h in step.invariants})
         settled, standing = False, None
         for index in range(first, len(STEPS)):
             step, (label, grammar) = STEPS[index], stages[index + 1]
             count = len(test(grammar))
             licensed = named in step.lapses
-            owns = step in held  # `settles` speaks about the invariant the step itself names and no other
             if standing is not None and count > standing and not licensed:
                 faults.append(f"[{label}] `{named}` rises from {standing} to {count}, and the step declares no lapse")
             if settled and count and not licensed:
                 faults.append(f"[{label}] `{named}` is settled and stands at {count}, and the step declares no lapse")
-            if step.settles and owns and count and not licensed:
+            if step.does_settle(test) and count and not licensed:
                 faults.append(f"[{label}] settles `{named}` and leaves {count} standing")
-            settled = (settled or (step.settles and owns)) and not count
+            settled = (settled or step.does_settle(test)) and not count
             standing = count
     return faults
 
@@ -4851,13 +4957,8 @@ def unsettled_invariants():
     Not a fault: a step that only reduces a count is doing its job, and naming a settler before one exists would be a
     claim rather than a check. Counted so the gap is read rather than assumed away.
     """
-    held = [step for step in STEPS if step.invariant is not None]
     return sorted(
-        {
-            step.invariant.name
-            for step in held
-            if not any(other.settles for other in held if other.invariant.name == step.invariant.name)
-        }
+        {held.name for step in STEPS for held in step.invariants if not any(other.does_settle(held) for other in STEPS)}
     )
 
 
