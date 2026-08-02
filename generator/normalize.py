@@ -5040,6 +5040,67 @@ EVERY_DECISION_DECIDED = Invariant("every-decision-goes-on-a-character", _undeci
 PROVISIONAL_BALANCES = Invariant("every-provisional-run-balances", provisional_faults)
 NO_UNREACHABLE_WAY = Invariant("no-unreachable-way", _unreachable_ways)
 NO_PARTIAL_OVERLAP = Invariant("no-partial-overlap", _partial_overlaps)
+
+
+def _untrimmed_runs(grammar):
+    """
+    Runs of content written as `(w* p)*` — one iteration per character, where a single trimming scan takes the whole.
+
+    A plain scalar's in-line run and a quoted one's are this shape: the whitespace inside kept, the whitespace at the
+    end given back. Left as a repetition of a repetition it is a long text token collected a character at a time, and
+    the machine has a scan that takes all of it and trims the tail.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if (
+                isinstance(node, ir.Star)
+                and isinstance(node.item, ir.Seq)
+                and len(node.item.items) == 2
+                and isinstance(node.item.items[0], ir.Star)
+                and is_one_char(node.item.items[0].item, grammar)
+            ):
+                faults.append(f"{owner}: a run of content taken one iteration per character")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+def _movable_pops(grammar):
+    """
+    Pops standing before an action that reads the very level they restore from — the pop belongs after it.
+
+    Until the pop runs the stack holds the level it carries, so an expression equal to that level among the actions
+    behind it is the same measurement read one action later. Standing before them the pop takes the indentation off
+    while something still measures against it, which is a reading the machine would have to keep a copy for.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            for position, action in enumerate(way.actions):
+                if not isinstance(action, ir.PopIndent) or action.level is None:
+                    continue
+                for later in way.actions[position + 1 :]:
+                    found = []
+
+                    def walk(node, wanted=action.level):
+                        if node == wanted:
+                            found.append(node)
+                        ir.rebuilt(node, lambda child: (walk(child, wanted), child)[1])
+
+                    walk(later)
+                    if found:
+                        faults.append(f"{name}[{index}]: a pop stands before what reads the level it restores")
+                        break
+    return faults
+
+
+POPS_DEFERRED = Invariant("no-pop-before-what-reads-it", _movable_pops)
+RUNS_TRIMMED = Invariant("no-untrimmed-run", _untrimmed_runs)
 CHOMPING_LEXICAL = Invariant("chomping-is-lexical", _computed_chomping)
 RUNS_FACTORED = Invariant("no-unfactored-almost-class-run", _unfactored_class_runs)
 NO_DECLARED_INLINE_CALL = Invariant("no-call-to-a-declared-inline", _declared_inline_calls)
@@ -5078,7 +5139,7 @@ STEPS = [
     Step("declare-bindings", declare_bindings, BINDINGS_DECLARED),
     # A `x+` over a character class stays for `span-consumes` to take, so this reduces the count and settles nothing.
     Step("lower-plus", lower_plus, NO_PLUS, reduces=("no-plus",)),
-    Step("trim-runs", trim_runs),
+    Step("trim-runs", trim_runs, RUNS_TRIMMED),
     Step("hoist-char-runs", hoist_char_runs, RUNS_FACTORED, reduces=("no-unfactored-almost-class-run",)),
     # `trim-runs` makes four of these ahead of it, its trimmed run being the same alternation under another name.
     Step("hoist-trimmed-runs", hoist_trimmed_runs, RUNS_FACTORED),
@@ -5224,10 +5285,20 @@ STEPS = [
     # Dropping the parameter is also what stops a call carrying an indentation at all: the stack is the one place left.
     Step("read-indents", read_indents, (NO_INDENT_PARAM, NO_CARRIED_INDENT)),
     Step("sink-pops", sink_pops),
-    Step("defer-pops", defer_pops),
+    Step("defer-pops", defer_pops, POPS_DEFERRED),
     # Ten come to four: what stands is what it refuses — a production a parse enters by name, one a `(recover)` names,
     # and a call with another beside it.
-    Step("hoist-pushes", hoist_pushes, NO_SHARED_LEADING_PUSH, reduces=("no-shared-leading-push",)),
+    Step(
+        "hoist-pushes",
+        hoist_pushes,
+        NO_SHARED_LEADING_PUSH,
+        reduces=("no-shared-leading-push",),
+        lapses={
+            "no-pop-before-what-reads-it": "the push lands last among the caller's actions, and a caller that has just"
+            " popped the same indentation now reads that level after the pop. Four of them, and `cancel-indent-pairs`"
+            " behind this takes exactly those out — the pair together doing nothing"
+        },
+    ),
     Step("cancel-indent-pairs", cancel_indent_pairs, NO_CANCELLING_INDENTS),
     Step("strip-pop-levels", strip_pop_levels, NO_POP_LEVELS),
     Step("prune-params", prune_params, NO_UNNEEDED_PARAMS),
