@@ -31,6 +31,13 @@ def denote(grammar, node, seen=()):
     """
     if isinstance(node, (ir.Token, ir.Wrap)):
         return denote(grammar, node.item, seen)
+    if isinstance(node, ir.CharSet):
+        # Already the set as the parser sees it; a single interval of one character is the literal it denotes.
+        spans = [span for span in node.spans if span[0] >= 0]
+        if len(spans) == 1 and spans[0][0] == spans[0][1]:
+            return ("literal", spans[0][0])
+        parts = tuple(("range", low, high) for low, high in spans)
+        return None if not parts else parts[0] if len(parts) == 1 else ("union", parts)
     if isinstance(node, ir.Char):
         return ("literal", node.cp)
     if isinstance(node, ir.Range):

@@ -69,6 +69,7 @@ ALWAYS = (
 )
 NEVER_SURE = (
     ir.Char,
+    ir.CharSet,  # a set says no where the character is not one of its own
     ir.ConsumeCountedSpan,  # a run of exactly so many says no where the characters run out
     ir.ConsumeLiteral,  # a fixed sequence says no where the input does not spell it
     ir.Diff,

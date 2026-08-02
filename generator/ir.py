@@ -310,6 +310,26 @@ class Invalid:
 
 
 @dataclass(frozen=True)
+class CharSet:
+    """
+    One character out of `spans` — the set as the parser sees it, and the only question it can ask about a character.
+
+    `spans` is a tuple of inclusive `(low, high)` codepoint intervals, sorted and disjoint and merged, so two nodes
+    denoting the same characters are the same node and the sweep spells them once. The invalid byte is the interval
+    `(-1, -1)`, a unit no character can hold, which is how a set holding it beside real characters says so.
+
+    A union and a subtraction are worked out where this is made, never carried: `chars.Model` gives every character a
+    key holding one bit per set the grammar tests, so what the parser runs is a bit test and nothing else. Whatever
+    combination of characters and ranges the grammar spelled, the question at run time is the same shape.
+    """
+
+    spans: tuple
+
+    def references(self):
+        return []
+
+
+@dataclass(frozen=True)
 class Seq:
     """`(all)`: an ordered concatenation."""
 

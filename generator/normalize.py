@@ -56,6 +56,24 @@ _CONSUMING_ACTS = (
     ir.ConsumeTrimmedSpan,
 )
 
+
+@dataclasses.dataclass(frozen=True)
+class Invariant:
+    """
+    Something the grammar is held to, and how to count where it is broken.
+
+    The name is what a fault reads as and what the invariant is known by, so a step naming one already named is reducing
+    that same count rather than one of its own. `test` takes a grammar and gives back the places it is broken, as error
+    strings — a list, so its length is the count and its contents say where.
+    """
+
+    name: str
+    test: object
+
+    def __call__(self, grammar):
+        return self.test(grammar)
+
+
 # What else may stand among an alternative's actions and begin a character: the character classes a lowering has not
 # turned into a scan yet, and the `(recover)` scope around what it guards. Named so that the split below is a decision
 # about every kind there is rather than a default that catches whatever nothing else claimed.
@@ -64,6 +82,7 @@ _BEGINNING_ACTS = (
     ir.Bind,
     ir.Case,
     ir.Char,
+    ir.CharSet,
     ir.Choice,
     ir.Commit,
     ir.Diff,
@@ -413,6 +432,60 @@ def _lower_optionals(node):
     return node
 
 
+def lower_char_sets(grammar, namer):
+    """
+    Rewrite every character set as one `CharSet`, the shape the parser asks its one question in.
+
+    A set of characters is written many ways — a character, a range, a union of them, a base with exclusions — and all
+    of them come to the same thing: the parser tests a key for one bit. Said once here, as the sorted disjoint intervals
+    it denotes, there is one shape to convert and the codegen has no algebra left to walk.
+
+    It also makes the spelling canonical, which is what lets the sweep do its own work: two productions denoting the
+    same characters differently — a union written in either order — are structurally unequal and do not merge, the merge
+    reading shape rather than extension. Said as intervals they are the same node and merge like anything else.
+
+    A maximal one is taken, not every one inside it: the intervals of a union are its own, and nothing asks about them
+    apart. A reference is left standing — a character set with a production of its own keeps it, and the reference is
+    what the callers hold — so nothing is purged and no fixture is stranded.
+    """
+
+    def lowered(node):
+        if isinstance(node, ir.Ref):
+            return node  # its production is where the set is said, and this is the caller's hold on it
+        said = as_char_set(node, grammar)
+        return said if isinstance(said, ir.CharSet) else ir.rebuilt(node, lowered)
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
+
+
+def _unlowered_character_sets(grammar):
+    """
+    Character sets written as something other than a `CharSet` — the one shape the parser can be given.
+
+    Whether the spans can be worked out is no part of the question. A node that matches one character is a character
+    set, and one this cannot reduce is worse than one it can, not excused: the reduction failing is how a set stops
+    being sayable at all. A reference is left alone, the set being said in the production it names.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, (ir.CharSet, ir.Ref)):
+                return  # lowered, or a hold on the production where it is
+            if is_one_char(node, grammar):
+                faults.append(f"{owner}: a {type(node).__name__} is a character set and is not a `CharSet`")
+                return
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+CHAR_SETS_LOWERED = Invariant("no-unlowered-character-set", _unlowered_character_sets)
+
+
 def lower_optionals(grammar, namer):
     """
     Rewrite each optional `x?` as the alternation `x | <empty>` — the same match, x greedily then nothing, with the
@@ -432,7 +505,7 @@ def is_one_char(node, grammar, seen=frozenset()):
     branch is (a union of char sets), so a lowered optional `x | <empty>` is not one; a `Ref` is one when its production
     is.
     """
-    if isinstance(node, (ir.Char, ir.Range, ir.Invalid)):
+    if isinstance(node, (ir.Char, ir.Range, ir.Invalid, ir.CharSet)):
         return True
     if isinstance(node, ir.Diff):
         return is_one_char(node.base, grammar, seen)
@@ -451,7 +524,7 @@ def can_match_empty(node, grammar, seen=frozenset()):
     empty, so a caller under-acts. A `Star` over a node that matches empty cannot become a right-recursive helper — it
     would spin on that empty match where the interpreter's own repetition stops.
     """
-    if isinstance(node, (ir.Char, ir.Range, ir.Invalid, ir.Diff)):
+    if isinstance(node, (ir.Char, ir.Range, ir.Invalid, ir.Diff, ir.CharSet)):
         return False
     if isinstance(node, ir.Ref):
         return node.name in seen or can_match_empty(grammar[node.name].body, grammar, seen | {node.name})
@@ -1316,7 +1389,7 @@ def gate_hoist(grammar, namer):
                 return None  # one alternative it may start anywhere with makes the whole union unknown
             if peek not in peeks:
                 peeks.append(peek)
-        found = peeks[0] if len(peeks) == 1 else ir.Alt(tuple(peeks))
+        found = as_char_set(peeks[0] if len(peeks) == 1 else ir.Alt(tuple(peeks)), grammar)
         if not seen:
             first_of[name] = found
         return found
@@ -1331,7 +1404,7 @@ def gate_hoist(grammar, namer):
                     return production_first(reference.name, seen)
             return None  # it consumes nothing, so what follows it decides — a first set does not say
         if isinstance(lead, ir.ConsumeLiteral):
-            return ir.Char(lead.text[0])
+            return _spans_node([(lead.text[0], lead.text[0])])  # the first character is what the gate dispatches on
         return lead if is_one_char(lead, grammar) else None
 
     def hoisted(alternative):
@@ -1339,7 +1412,8 @@ def gate_hoist(grammar, namer):
             return alternative
         lead = _gate_lead(alternative.actions)
         if isinstance(lead, ir.ConsumeLiteral):
-            return dataclasses.replace(alternative, gate=ir.Gate(ir.Char(lead.text[0]), alternative.gate.guards))
+            peeked = _spans_node([(lead.text[0], lead.text[0])])
+            return dataclasses.replace(alternative, gate=ir.Gate(peeked, alternative.gate.guards))
         if _is_committed_on_entry(alternative):
             return alternative
         if lead is None and alternative.first is not None:
@@ -1415,10 +1489,33 @@ def ungated_alternatives(grammar):
     return ungated
 
 
+def as_char_set(node, grammar):
+    """
+    `node` said as a `CharSet` where it is a character set, and `node` itself where it is not.
+
+    The one place that decides it, so the lowering step and everything that builds a gate afterwards agree. A reference
+    is read through here rather than left standing: in a peek it is the question "is the character one of these", not
+    the hold on a production a match needs, and an alternation of such references is one set like any other.
+    """
+    if isinstance(node, ir.LiteralPeek):
+        return node  # several characters, of which only the first is the dispatch — no set says that
+    if not is_one_char(node, grammar):
+        return node
+    spans = _peek_spans(node, grammar)
+    return node if spans is None else _spans_node(spans)
+
+
 def _spans_node(spans):
-    """`spans` as the character-class node a gate peeks — a `Char` per point, a `Range` per run, an `Alt` of several."""
-    pieces = tuple(ir.Char(lo) if lo == hi else ir.Range(lo, hi) for lo, hi in spans)
-    return pieces[0] if len(pieces) == 1 else ir.Alt(pieces)
+    """
+    `spans` as the character set a gate peeks — the one shape a character question is asked in.
+
+    The invalid byte's `(-1, -1)` is kept apart from the characters: it is a unit no character class also holds, so it
+    overlaps only itself, and coalescing it with a run starting at zero would say the parser accepts a character there.
+    """
+    invalid = [span for span in spans if span[0] < 0]
+    return ir.CharSet(
+        tuple([(-1, -1)] * bool(invalid) + [tuple(span) for span in _merged_spans([s for s in spans if s[0] >= 0])])
+    )
 
 
 def _merged_spans(spans):
@@ -1471,14 +1568,24 @@ def _peek_spans(peek, grammar):
     interval `(-1, -1)` — a unit no character class can also hold, so it overlaps only itself — and an alternation
     holding it beside character classes, the recovery's any-byte peek, is the classes' intervals with that unit.
     """
+    if isinstance(peek, ir.CharSet):
+        return [tuple(span) for span in peek.spans]
     if isinstance(peek, ir.Invalid):
         return [(-1, -1)]
     if isinstance(peek, ir.LiteralPeek):
         return [(peek.text[0], peek.text[0])]  # the first character is the dispatch; the rest is the gate's own test
-    if isinstance(peek, ir.Alt) and any(isinstance(item, ir.Invalid) for item in peek.items):
-        rest = tuple(item for item in peek.items if not isinstance(item, ir.Invalid))
-        spanned = _peek_spans(ir.Alt(items=rest), grammar) if rest else []
-        return None if spanned is None else _merged_spans([(-1, -1)] + spanned)
+    if isinstance(peek, ir.Alt):
+        # Unioned here rather than denoted, since the invalid byte has no denotation: it is a unit no character holds,
+        # and an alternation carrying one — as the `Invalid` node or as the interval a `CharSet` says it with — denotes
+        # nothing while admitting perfectly well.
+        gathered = []
+        for item in peek.items:
+            admitted = _peek_spans(item, grammar)
+            if admitted is None:
+                return None
+            gathered += admitted
+        invalid = [span for span in gathered if span[0] < 0]
+        return [(-1, -1)] * bool(invalid) + _merged_spans([span for span in gathered if span[0] >= 0])
     denotation = chars.denote(grammar, peek)
     return None if denotation is None else _denoted_spans(denotation)
 
@@ -2475,7 +2582,9 @@ def gate_literals(grammar, namer):
                             hoisted = None
                         else:
                             then, barrier = declared
-                            hoisted = dataclasses.replace(entry, then=then, barrier=barrier)
+                            # The follow test is a character question, said as the set it is now the grammar can be read
+                            # for what its references admit.
+                            hoisted = dataclasses.replace(entry, then=as_char_set(then, grammar), barrier=barrier)
                     if hoisted is not None:
                         way = dataclasses.replace(way, gate=dataclasses.replace(way.gate, peek=hoisted))
                         changed = True
@@ -3550,6 +3659,11 @@ def _first_chars(node, grammar, seen=frozenset()):
     """
     if isinstance(node, ir.Char):
         return frozenset({node.cp})
+    if isinstance(node, ir.CharSet):
+        # Single characters are a concrete few; a set holding a range is not, no more than a `Range` itself is.
+        if all(low == high >= 0 for low, high in node.spans):
+            return frozenset(low for low, _high in node.spans)
+        return None
     if isinstance(node, ir.Ref):
         return frozenset() if node.name in seen else _first_chars(grammar[node.name].body, grammar, seen | {node.name})
     if isinstance(node, ir.Alt):
@@ -3595,6 +3709,8 @@ def _does_accept(node, codepoint, grammar, seen=frozenset()):
     """Whether the character class `node` matches `codepoint`."""
     if isinstance(node, ir.Char):
         return node.cp == codepoint
+    if isinstance(node, ir.CharSet):
+        return any(low <= codepoint <= high for low, high in node.spans)
     if isinstance(node, ir.Range):
         return node.lo <= codepoint <= node.hi
     if isinstance(node, ir.Diff):
@@ -3780,7 +3896,7 @@ def _content_tail(node, active, grammar, seen=frozenset()):
         return "run" if active in CONTENT_CODES and is_one_char(node.item, grammar) else None
     if isinstance(node, ir.TrimStar):
         return "run" if active in CONTENT_CODES else None  # a maximal run, matched in bulk by a single trimming scan
-    if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid)):
+    if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid, ir.CharSet)):
         return "bare" if active in CONTENT_CODES else None
     if isinstance(node, ir.Wrap):
         return None  # a nested span or node — its content is not this loop's surface run
@@ -3828,10 +3944,14 @@ def _literal_codepoint(node, grammar, seen=frozenset()):
     """
     The one codepoint `node` spells, or `None` where it is not a single literal character. A production named for a
     character — `b-carriage-return`, `b-line-feed` — spells the one its body does, so a break's two stand together as
-    the fixed sequence they are.
+    the fixed sequence they are. A set holding one character spells it too, that being how one is written once the sets
+    are lowered.
     """
     if isinstance(node, ir.Char):
         return node.cp
+    if isinstance(node, ir.CharSet):
+        [(low, high)] = node.spans if len(node.spans) == 1 else [(None, None)]
+        return low if low == high and low is not None and low >= 0 else None
     if isinstance(node, ir.Ref) and not node.args and node.name in grammar and node.name not in seen:
         return _literal_codepoint(grammar[node.name].body, grammar, seen | {node.name})
     return None
@@ -3928,7 +4048,7 @@ def _is_nullable(node, nullable, grammar):
         return False
     if isinstance(node, _ZERO_WIDTH + (ir.Star, ir.TrimStar)):
         return True  # a repetition of none matches nothing
-    if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid) + _CONSUMING_ACTS):
+    if isinstance(node, (ir.Char, ir.Range, ir.Diff, ir.Invalid, ir.CharSet) + _CONSUMING_ACTS):
         return False
     if isinstance(node, ir.Seq):
         return all(_is_nullable(item, nullable, grammar) for item in node.items)
@@ -4280,23 +4400,6 @@ def non_char_set_runs(grammar):
 
 
 @dataclasses.dataclass(frozen=True)
-class Invariant:
-    """
-    Something the grammar is held to, and how to count where it is broken.
-
-    The name is what a fault reads as and what the invariant is known by, so a step naming one already named is chipping
-    at that same count rather than at one of its own. `test` takes a grammar and gives back the places it is broken, as
-    error strings — a list, so its length is the count and its contents say where.
-    """
-
-    name: str
-    test: object
-
-    def __call__(self, grammar):
-        return self.test(grammar)
-
-
-@dataclasses.dataclass(frozen=True)
 class Step:
     """
     One step of the pipeline: what it is called, what it does, what it makes true, and whether it finishes making it.
@@ -4307,7 +4410,7 @@ class Step:
 
     An invariant is a count and not a yes-or-no. `invariant` says which one this step is about and how to count where it
     is broken. A step naming one is taken to finish it, that being what a step is for; `settles=False` is the exception,
-    for a step that only chips at a count several share — the gate hoists do, and no one of them leaves none. An
+    for a step that only reduces a count several share — the gate hoists do, and no one of them leaves none. An
     `Invariant` and a `transform` are both shared where two steps do the same work on different grounds.
 
     `lapses` is what this step is allowed to break: `{invariant: reason}`, empty for nearly every step, holding a
@@ -4315,8 +4418,8 @@ class Step:
     law — a count never rises, a settling step leaves none, and none stays none — and reads a lapse as the one licence
     to break it.
 
-    An invariant goes by its name, so two steps naming the same one are chipping at a single count and the set of them
-    is collected by name rather than by how many steps mention it.
+    An invariant goes by its name, so two steps naming the same one are reducing a single count and the set of them is
+    collected by name rather than by how many steps mention it.
 
     **`invariant` defaulting to `None` is temporary.** A step without one transforms the grammar and promises something
     nothing checks, which is the shape every hard day here has started from. `untested_steps` counts them and the gate
@@ -4505,6 +4608,34 @@ def _no_leading_guards(grammar):
     return faults
 
 
+def _every_alternation_is_a_character_class(grammar):
+    """
+    Alternations standing below a production's own body while being no character class.
+
+    A character class is written as an alternation of characters and ranges, and that is what a gate peeks and what a
+    terminal is. Below a body, that is the only alternation there is room for: anything else is a choice with no
+    production of its own, and a state is entered on a character, so there is no state for it to be.
+
+    A lookahead, a difference and an `(exclude)` hold a pattern, matched and left behind, so an alternation inside one
+    is a way that pattern may go and not a way the parse takes. Read of what the alternation is — `is_one_char`, the
+    question the rest of the pipeline asks — and never of where the lifting looked, a test written from that walk
+    agreeing with the walk whatever either did.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name, is_body=False):
+            if isinstance(node, (ir.Look, ir.NegLook, ir.Diff, ir.ExcludeAt)):
+                return  # a pattern, matched and left behind, and its alternations are that pattern's own
+            if isinstance(node, ir.Alt) and not is_body and not is_one_char(node, grammar):
+                faults.append(f"{owner}: an alternation stands below the body and is no character class")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body, is_body=True)
+    return faults
+
+
+ALTERNATIONS_ARE_CLASSES = Invariant("every-alternation-is-a-character-class", _every_alternation_is_a_character_class)
 GATED = Invariant("every-way-gated", ungated_alternatives)
 NO_LEADING_GUARDS = Invariant("no-leading-guard", _no_leading_guards)
 NO_UNFLATTENED = Invariant("flattened", _no_unflattened)
@@ -4537,6 +4668,8 @@ STEPS = [
     Step("trim-runs", trim_runs),
     Step("hoist-char-runs", hoist_char_runs),
     Step("hoist-trimmed-runs", hoist_trimmed_runs),
+    # After the run hoists, which read the characters an alternation holds one by one to prove a run factorable.
+    Step("lower-char-sets", lower_char_sets, CHAR_SETS_LOWERED),
     Step(
         "lower-star",
         lower_star,
@@ -4561,6 +4694,7 @@ STEPS = [
     Step(
         "lift-choices",
         lift_choices,
+        ALTERNATIONS_ARE_CLASSES,
         lapses={
             "proper": "the inline `Alt(reads, empty)` the elimination leaves at a call site becomes a production"
             " of its own here, and that production matches empty — the ε-elimination not carried through, which is"
@@ -4602,7 +4736,7 @@ STEPS = [
     ),
     Step("inline-singles", inline_singles),
     Step("refine-indents", refine_indents),
-    # The four hoists chip at one count between them, and none settles it: 141 ways still have no character to go on.
+    # The four hoists reduce one count between them, and none settles it: 141 ways still have no character to go on.
     Step("gate-hoist", gate_hoist, GATED, settles=False),
     Step("gate-hoist-wide", gate_hoist_wide, GATED, settles=False),
     Step("split-conflicts", split_conflicts),
@@ -4685,7 +4819,7 @@ def invariant_faults(stages):
     the step that settles it leaves none, and past that it stays none. A step whose `lapses` names the invariant is
     licensed to break it and says why; a step that breaks it without one is a fault named where it stands.
 
-    The invariant is named by its test, so several steps chipping at one count are read as one law. A count is measured
+    The invariant is named by its test, so several steps reducing one count are read as one law. A count is measured
     from the first stage whose step names it, the stages before it being no business of the invariant's.
     """
     faults = []
@@ -4714,7 +4848,7 @@ def unsettled_invariants():
     """
     The invariants some step reduces and no step settles — a count driven down, with nothing yet claiming to finish it.
 
-    Not a fault: a step that only chips at a count is doing its job, and naming a settler before one exists would be a
+    Not a fault: a step that only reduces a count is doing its job, and naming a settler before one exists would be a
     claim rather than a check. Counted so the gap is read rather than assumed away.
     """
     held = [step for step in STEPS if step.invariant is not None]

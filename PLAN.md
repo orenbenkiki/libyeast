@@ -308,11 +308,11 @@ enough to decide it. Judging an intermediate step by the headline number is a ca
 step gets thrown away.
 
 So a step is `Step(name, transform, test, settles, lapses)` and the pipeline enforces the rest. `test` counts the places
-its invariant is broken; an invariant is a **count, not a yes-or-no**, several steps may chip at one between them, and
+its invariant is broken; an invariant is a **count, not a yes-or-no**, several steps may reduce one between them, and
 `settles` marks the one that takes it to none. `invariant_faults` holds every step to the law — **a count never rises, a
 settling step leaves none, and none stays none** — and `lapses` is the only licence to break it, `{invariant: reason}`,
 empty for nearly every step and carrying a written reason where it is not. An invariant is named by its test, so two
-steps naming one test are chipping at one count.
+steps naming one test are reducing one count.
 
 *This is how a new step is designed, in this order*: what invariant do we want, how is it measured, and only then how it
 is achieved. A step whose invariant cannot be stated is a step nobody can hold to anything.

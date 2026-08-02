@@ -27,6 +27,7 @@ CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, an
 # passing it. In alphabetical order.
 SILENT = (
     ir.Char,
+    ir.CharSet,
     ir.Cut,
     ir.Diff,
     ir.Empty,

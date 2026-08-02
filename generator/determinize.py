@@ -274,7 +274,9 @@ def determinize(grammar, namer):
 
     n = ir.Param(name="n")
     breaks = way.gate.peek  # the site's own break class, kept as it is
-    space, tab, white = ir.Char(cp=0x20), ir.Char(cp=0x09), ir.Ref(name="s-white", args=())
+    space = ir.CharSet(spans=((0x20, 0x20),))
+    tab = ir.CharSet(spans=((0x09, 0x09),))
+    white = ir.Ref(name="s-white", args=())
     below_n = ir.Lt(a=ir.Len(arg=ir.Match()), b=n)  # the indent run the enter production opened, as it stands
     at_n = ir.Le(a=n, b=ir.Len(arg=ir.Match()))
 

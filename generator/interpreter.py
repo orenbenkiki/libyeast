@@ -660,6 +660,20 @@ def match(node, emitter, grammar, k):
                 return True
             emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.CharSet):
+        # The invalid byte is the interval `(-1, -1)`, which is how a set says it holds one: the decoder gives an
+        # invalid byte no codepoint, so `None` is the character it stands for here.
+        codepoint = emitter.chars[emitter.position] if emitter.position < len(emitter.chars) else None
+        unit = -1 if codepoint is None and emitter.position < len(emitter.chars) else codepoint
+        if unit is not None and any(low <= unit <= high for low, high in node.spans):
+            if _is_forbidden_here(emitter, grammar):
+                return False
+            checkpoint = emitter.checkpoint()
+            emitter.consume()
+            if k():
+                return True
+            emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.Range):
         codepoint = emitter.chars[emitter.position] if emitter.position < len(emitter.chars) else None
         if codepoint is not None and node.lo <= codepoint <= node.hi:
