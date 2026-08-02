@@ -4759,6 +4759,47 @@ def _calls_deciding_nothing(grammar):
     return faults
 
 
+def _exact_indent_calls(grammar):
+    """
+    Calls asking for an exact count of indentation, where the machine scans maximally and judges after the fact.
+
+    A counted consume of `k` spaces shares no literal prefix with one of `j`, so two of them cannot be factored; the one
+    maximal scan with the count as a residual guard can. What stands here is what `refine-indents` refused, its side
+    condition being that the continuation cannot begin with a space nor match empty.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            if way.first is not None and way.first.name == "s-indent":
+                faults.append(f"{name}[{index}]: asks for an exact count of indentation")
+    return faults
+
+
+def _factorable_prefixes(grammar):
+    """
+    Choices whose ways all peek the same characters and all lead with the same action — a prefix standing unfactored.
+
+    Where the gate cannot tell the ways apart, what they share belongs in front of the decision: taken once, the choice
+    behind it is one character deeper and the gates that far along may decide it. A prefix left standing is a decision
+    made on nothing.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) < 2:
+            continue
+        ways = production.body.alternatives
+        peeked = [None if way.gate.peek is None else _peek_spans(way.gate.peek, grammar) for way in ways]
+        if any(spans is None for spans in peeked) or any(spans != peeked[0] for spans in peeked):
+            continue
+        if all(way.actions for way in ways) and all(way.actions[0] == ways[0].actions[0] for way in ways):
+            faults.append(f"{name}: every way peeks the same and leads with the same action")
+    return faults
+
+
+NO_EXACT_INDENTS = Invariant("no-exact-indent-call", _exact_indent_calls)
+NO_FACTORABLE_PREFIX = Invariant("no-factorable-prefix", _factorable_prefixes)
 NO_POINTLESS_CALL = Invariant("no-call-deciding-nothing", _calls_deciding_nothing)
 ONE_GATED_TERMINAL = Invariant("one-gated-terminal-a-way", _many_gated_terminals)
 BINDINGS_DECLARED = Invariant("every-binding-declared", _undeclared_bindings)
@@ -4868,7 +4909,9 @@ STEPS = [
         },
     ),
     Step("inline-singles", inline_singles),
-    Step("refine-indents", refine_indents),
+    # 26 come to 4: what stands is what the side condition refused, a continuation that may begin with a space or match
+    # empty, where the maximal scan would take what an exact count left.
+    Step("refine-indents", refine_indents, NO_EXACT_INDENTS, reduces=("no-exact-indent-call",)),
     # The four hoists reduce one count between them, and none settles it: 141 ways still have no character to go on.
     Step("gate-hoist", gate_hoist, GATED, reduces=("every-way-gated",)),
     Step("gate-hoist-wide", gate_hoist_wide, GATED, reduces=("every-way-gated",)),
@@ -4879,6 +4922,7 @@ STEPS = [
     Step(
         "factor-prefixes",
         factor_prefixes,
+        NO_FACTORABLE_PREFIX,
         lapses={
             "every-way-gated": "the minted decision's ways are told apart by an indentation comparison and not by a"
             " character — `Le` against `Lt` — so neither can carry a peek. `hoist-residue-guards` raises those into"
@@ -4888,7 +4932,17 @@ STEPS = [
     ),
     Step("hoist-residue-guards", hoist_residue_guards, NO_LEADING_GUARDS),
     Step("gate-hoist-leftovers", gate_hoist, GATED, reduces=("every-way-gated",)),
-    Step("gate-hoist-leftovers-wide", gate_hoist_wide, GATED, reduces=("every-way-gated",)),
+    Step(
+        "gate-hoist-leftovers-wide",
+        gate_hoist_wide,
+        GATED,
+        reduces=("every-way-gated",),
+        lapses={
+            "no-factorable-prefix": "giving ways the characters their calls begin with makes two of them peek the same"
+            " where one peeked nothing before, and a shared leading action they already had is a prefix from that"
+            " moment. Two of them; a second factoring is what would take them"
+        },
+    ),
     Step(
         "speculate-folds",
         speculate_folds,
@@ -4905,6 +4959,8 @@ STEPS = [
         "push-indents",
         push_indents,
         lapses={
+            "no-factorable-prefix": "the push goes at the head of the way it belongs to, so ways already peeking alike"
+            " come to lead with the same action — two more, and the same second factoring would take them",
             "proper": "where an indentation comes off, the pop goes in a production of its own — `x-pop-indent` and"
             " the eleven others are a pop and nothing else, so each matches empty by shape while deciding nothing",
         },
