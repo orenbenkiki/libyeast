@@ -4907,6 +4907,55 @@ def _declared_inline_calls(grammar, points):
     return faults
 
 
+def _computed_chomping(grammar):
+    """
+    Calls handing `t` a value worked out rather than written — a chomping the specialization cannot pick a copy for.
+
+    A finite parameter specializes away only where every call names one of its values outright: a copy per value is
+    made, and a call carrying an expression has no copy to go to. Made lexical, `t` is one of the two the context is.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, ir.Ref):
+                callee = grammar.get(node.name)
+                if callee is not None and "t" in callee.params:
+                    held = node.args[callee.params.index("t")]
+                    if not isinstance(held, ir.Lit):
+                        faults.append(f"{owner}: hands `{node.name}` a chomping it works out")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+def _unfactored_class_runs(grammar):
+    """
+    Repetitions over an alternation mixing character classes with complex alternatives, which no bulk scan can take.
+
+    A run of characters is one scan, and one SIMD call later; a run holding an exception is a loop around a decision.
+    Factored to `common* (uncommon common*)*` the characters go in bulk and the exception is the slow path, which is
+    what the escapes of a quoted scalar, a URI and a tag want.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, (ir.Star, ir.TrimStar)):
+                repeated = node.full if isinstance(node, ir.TrimStar) else node.item
+                if isinstance(repeated, ir.Alt):
+                    kinds = {is_one_char(item, grammar) for item in repeated.items}
+                    if kinds == {True, False}:
+                        faults.append(f"{owner}: a run over classes and exceptions, taken one character at a time")
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+CHOMPING_LEXICAL = Invariant("chomping-is-lexical", _computed_chomping)
+RUNS_FACTORED = Invariant("no-unfactored-almost-class-run", _unfactored_class_runs)
 NO_DECLARED_INLINE_CALL = Invariant("no-call-to-a-declared-inline", _declared_inline_calls)
 LITERALS_GATED_WHOLE = Invariant("every-literal-gated-whole", _part_gated_literals)
 NO_EXACT_INDENTS = Invariant("no-exact-indent-call", _exact_indent_calls)
@@ -4935,8 +4984,9 @@ PROPER = Invariant("proper", _is_proper)
 
 # The pipeline, in order.
 STEPS = [
-    Step("lift-chomping", lift_chomping),
-    Step("monomorphize", monomorphize, _absent("no-context-case", ir.Case, ir.Flip)),
+    # Twelve computed chompings come to eight; the specialization takes the rest with the context's own.
+    Step("lift-chomping", lift_chomping, CHOMPING_LEXICAL, reduces=("chomping-is-lexical",)),
+    Step("monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), CHOMPING_LEXICAL)),
     Step("lower-optionals", lower_optionals, _absent("no-optional", ir.Opt)),
     Step("eliminate-empties", eliminate_empties, PROPER),
     Step("declare-bindings", declare_bindings, BINDINGS_DECLARED),
@@ -4944,7 +4994,8 @@ STEPS = [
     Step("lower-plus", lower_plus, NO_PLUS, reduces=("no-plus",)),
     Step("trim-runs", trim_runs),
     Step("hoist-char-runs", hoist_char_runs),
-    Step("hoist-trimmed-runs", hoist_trimmed_runs),
+    # `trim-runs` makes four of these ahead of it, its trimmed run being the same alternation under another name.
+    Step("hoist-trimmed-runs", hoist_trimmed_runs, RUNS_FACTORED),
     # After the run hoists, which read the characters an alternation holds one by one to prove a run factorable.
     Step(
         "lower-char-sets",
