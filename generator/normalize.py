@@ -1513,6 +1513,9 @@ def ungated_alternatives(grammar):
     Nor is a production's only way: a choice of one takes no decision, so there is nothing there for a character to
     settle and a gate would say nothing. What this counts is a way standing among others with nothing to tell it from
     them, which is the shape the determinize phase has to answer for.
+
+    A way that goes somewhere counts however it goes: a continuation alone is the same jump as a call, and a way holding
+    one is entered on a decision like any other. Reading only `first` misses them, and misses a hoist that gates them.
     """
     ungated = []
     for name, production in grammar.items():
@@ -1522,7 +1525,7 @@ def ungated_alternatives(grammar):
             if alternative.gate.peek is not None:
                 continue
             consuming = [action for action in alternative.actions if not is_zero_width(action)]
-            if consuming or alternative.first is not None:
+            if consuming or alternative.first is not None or alternative.second is not None:
                 ungated.append(f"{name}: an alternative with no character to go on")
     return ungated
 
@@ -5147,8 +5150,24 @@ NO_CARRIED_POP = Invariant("nothing-carries-on-over-a-pop", carried_over_pop_fau
 
 
 def _is_proper(grammar):
-    """The productions matching empty that no call site can hold the choice for — `eliminate-empties`' invariant."""
-    return improper_faults(grammar, keeps_empty_ways(grammar))
+    """
+    Productions offering a way that reads and a way that does not — a choice no character can take.
+
+    Not every production matching empty: a single way that matches empty decides nothing. A continuation carrying a
+    `PopMessage`, a guard given a production of its own, a bundle of actions reached after something read — each one
+    matches empty, each is entered and returns, and none of them asks a question. The canonical form mints those
+    deliberately and the parse is none the worse for them.
+
+    What is forbidden is the choice between reading and not, which no character decides because at the point it is taken
+    nothing has been read. That is what the ε-elimination distributes to the call sites, where the characters are, and
+    what a production a parse enters by name is excused for — there being no call site to distribute to.
+    """
+    exempt = keeps_empty_ways(grammar)
+    return [
+        f"{name}: chooses between reading and not, and no call site holds the choice"
+        for name in blind_choices(grammar)
+        if name not in exempt
+    ]
 
 
 PROPER = Invariant("proper", _is_proper)
@@ -5184,11 +5203,6 @@ STEPS = [
         # those stays for `span-consumes`, so the `Star`s themselves are only reduced here.
         (NO_STAR, CHAR_SET_RUNS),
         reduces=("no-star",),
-        lapses={
-            "proper": "`x*` lowers to `_N ::= x _N | <empty>`, which decides between reading and not — the one"
-            " step breaking properness by construction, until it emits the one-or-more helper and leaves the empty"
-            " match at the site for the elimination to distribute"
-        },
     ),
     Step("lower-tokens", lower_tokens, _absent("no-token", ir.Token)),
     Step("lower-wraps", lower_wraps, _absent("no-wrap", ir.Wrap)),
@@ -5205,21 +5219,12 @@ STEPS = [
         "lift-choices",
         lift_choices,
         ALTERNATIONS_ARE_CLASSES,
-        lapses={
-            "proper": "the inline `Alt(reads, empty)` the elimination leaves at a call site becomes a production"
-            " of its own here, and that production matches empty — the ε-elimination not carried through, which is"
-            " this phase's open debt and the reason the count does not stay at none"
-        },
     ),
     Step("single-consumes", single_consumes, ONE_GATED_TERMINAL),
     Step(
         "binarize",
         binarize,
         TWO_CALLS,
-        lapses={
-            "proper": "the tail of an alternative moves into a helper, and a tail of zero-width actions matches"
-            " empty; it preserves properness wherever its input is proper, so this stands with the entry above"
-        },
     ),
     Step(
         "alternative-shape",
@@ -5227,20 +5232,15 @@ STEPS = [
         # Cutting a way at its first call leaves nothing a `Plus` can stand in, so the last of those go here too.
         (SHAPED, NO_PLUS),
         lapses={
-            "proper": "a way is cut at its first call and what follows becomes a continuation of its own, so a"
-            " trailing run of zero-width actions is a production matching empty — a single way that decides nothing,"
-            " which the invariant permits and this count does not yet tell apart"
+            "proper": "the inline `Alt(reads, empty)` the elimination leaves at every call site is given a production"
+            " of its own here, and that production is the blind choice itself. The one step that breaks this, and the"
+            " whole of the ε-elimination debt: 125 of them, holding 272 of the meter's points"
         },
     ),
     Step(
         "lower-recovers",
         lower_recovers,
         _absent("no-recover", ir.Recover),
-        lapses={
-            "proper": "an alternative with two calls behind the guarded one puts them in a minted helper the edge"
-            " resumes at, and a helper holding actions alone matches empty — four of them, each a single way deciding"
-            " nothing, which is the shape the invariant permits"
-        },
     ),
     Step("inline-singles", inline_singles, NO_DECLARED_INLINE_CALL),
     # 26 come to 4: what stands is what the side condition refused, a continuation that may begin with a space or match
@@ -5312,8 +5312,6 @@ STEPS = [
         lapses={
             "no-factorable-prefix": "the push goes at the head of the way it belongs to, so ways already peeking alike"
             " come to lead with the same action — two more, and the same second factoring would take them",
-            "proper": "where an indentation comes off, the pop goes in a production of its own — `x-pop-indent` and"
-            " the eleven others are a pop and nothing else, so each matches empty by shape while deciding nothing",
         },
     ),
     # Dropping the parameter is also what stops a call carrying an indentation at all: the stack is the one place left.
@@ -5341,11 +5339,9 @@ STEPS = [
         "clear-params",
         clear_params,
         lapses={
-            "proper": "a way with nothing of its own after its calls takes the clear in a minted production —"
-            " `x-clear-m` is a `ClearVar` and nothing else, matching empty and deciding nothing",
-            "no-call-deciding-nothing": "the same minted production, reached by a call: a way with nothing of its own"
-            " after its calls has nowhere else to put the clear, so the call is what carries it. `inline-bare-actions`"
-            " takes back the ones whose caller can hold the actions itself",
+            "no-call-deciding-nothing": "a way with nothing of its own after its calls has nowhere to put the clear,"
+            " so it goes in a minted production the call carries — `x-clear-m`, a `ClearVar` and nothing else."
+            " `inline-bare-actions` takes back the ones whose caller can hold the actions itself",
         },
         untestable="what the clears buy is that no read wants a value nothing holds, which is a property of a run and"
         " not of a shape — the count of reads one slot could not have answered, which the corpus prints and which is"
@@ -5425,6 +5421,16 @@ def invariant_faults(stages, points=None):
         for named in step.lapses:
             if named in by_name and (step.name, named) not in taken:
                 faults.append(f"[{step.name}] declares a lapse of `{named}` and does not break it")
+    # And the same the other way about: a step naming an invariant it neither lowers nor leaves at none is claiming work
+    # it does not do. The law reads both directions — no step without an invariant, no invariant without a step doing
+    # something about it.
+    for index, step in enumerate(STEPS):
+        for held in step.invariants:
+            before, after = len(held(stages[index][1], points)), len(held(stages[index + 1][1], points))
+            if after and after >= before:
+                faults.append(
+                    f"[{step.name}] names `{held.name}` and neither lowers it ({before} to {after}) nor leaves none"
+                )
     return faults
 
 
