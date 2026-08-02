@@ -4461,9 +4461,11 @@ class Step:
     An invariant goes by its name, so two steps naming the same one are reducing a single count and the set of them is
     collected by name rather than by how many steps mention it.
 
-    **An empty `invariants` is temporary.** A step with none transforms the grammar and promises something nothing
-    checks, which is the shape every hard day here has started from. `untested_steps` counts them and the gate prints
-    the number; at none the default goes and a step without an invariant stops being expressible.
+    **An empty `invariants` is temporary, and `untestable` says why one is empty for good.** A step with neither
+    transforms the grammar and promises something nothing checks, which is the shape every hard day here has started
+    from, and `untested_steps` counts those. Some steps genuinely have nothing standing to test — what they make true is
+    momentary, or is a property of a run rather than of a shape — and each says so in a sentence rather than sitting in
+    a count that can never reach none. Naming both is a fault: a step either has an invariant or a reason.
     """
 
     name: str
@@ -4471,6 +4473,7 @@ class Step:
     invariants: object = ()
     reduces: tuple = ()
     lapses: dict = dataclasses.field(default_factory=dict)
+    untestable: str = ""
 
     def __post_init__(self):
         held = (self.invariants,) if isinstance(self.invariants, Invariant) else tuple(self.invariants)
@@ -5288,11 +5291,20 @@ STEPS = [
         },
     ),
     Step("gate-literals", gate_literals, LITERALS_GATED_WHOLE),
-    Step("reorder-declared", reorder_declared),
-    # No invariant, and not for want of one: that the site is folded is a fact about what this step did, not a shape the
-    # grammar keeps — `hoist-pushes` and `clear-params` give those productions a continuation again, rightly, and so
-    # could any later step. What stands afterwards is the corpus, the fold being a language identity.
-    Step("extend-returns", extend_returns),
+    Step(
+        "reorder-declared",
+        reorder_declared,
+        untestable="what it makes true is that two ways stand in the other order, and order is not a property a later"
+        " step is obliged to keep — every factoring and every splice reshapes it freely. The swap is a fact about what"
+        " this step did, and what holds it is the corpus, alternative order being semantics under backtracking.",
+    ),
+    Step(
+        "extend-returns",
+        extend_returns,
+        untestable="that the site is folded is likewise a fact about what this step did rather than a shape the grammar"
+        " keeps: `hoist-pushes` and `clear-params` give those productions a continuation again, rightly, and so could"
+        " any later step. What stands afterwards is the corpus, the fold being a language identity.",
+    ),
     Step(
         "push-indents",
         push_indents,
@@ -5335,6 +5347,9 @@ STEPS = [
             " after its calls has nowhere else to put the clear, so the call is what carries it. `inline-bare-actions`"
             " takes back the ones whose caller can hold the actions itself",
         },
+        untestable="what the clears buy is that no read wants a value nothing holds, which is a property of a run and"
+        " not of a shape — the count of reads one slot could not have answered, which the corpus prints and which is"
+        " none. A grammar test for it would be a proxy for that count rather than the thing itself.",
     ),
     Step(
         "read-globals",
@@ -5355,12 +5370,13 @@ STEPS = [
 
 def untested_steps():
     """
-    The steps naming no invariant — each transforming the grammar and promising something nothing checks.
+    The steps naming neither an invariant nor a reason for having none — each promising what nothing checks.
 
-    Driven to none: at none, `Step.invariants` loses its default and a step without one stops being expressible. Until
-    then this is the honest measure of how much of the pipeline rests on nothing but the corpus.
+    Driven to none: at none, `Step.invariants` loses its default and a step must name one or say why it cannot. Until
+    then this is the honest measure of how much of the pipeline rests on nothing but the corpus. A step with a written
+    `untestable` is not one of these; what it claims is on the record and answerable.
     """
-    return [step.name for step in STEPS if not step.invariants]
+    return [step.name for step in STEPS if not step.invariants and not step.untestable]
 
 
 def invariant_faults(stages, points=None):
@@ -5377,6 +5393,8 @@ def invariant_faults(stages, points=None):
     faults, taken = [], set()
     by_name = {held.name: held for step in STEPS for held in step.invariants}
     for step in STEPS:
+        if step.invariants and step.untestable:
+            faults.append(f"[{step.name}] names an invariant and says it has none — one or the other")
         for named in step.lapses:
             if named not in by_name:
                 faults.append(f"[{step.name}] declares a lapse of `{named}`, which no step carries")

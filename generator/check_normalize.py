@@ -150,9 +150,13 @@ def _check():
     # discovered later. The determinize phase is what resolves each of them.
     print(f"    {len(residue)} action(s) the canonical form does not spell: a leftover scope or a nullable repetition")
     print(f"    {len(normalize.ungated_alternatives(stages[-1][1]))} alternative(s) with no character to go on")
-    # A step without a test transforms the grammar and promises something nothing checks. Driven to none, at which point
-    # `Step.test` loses its default and a step without one stops being expressible.
-    print(f"    {len(normalize.untested_steps())} of {len(normalize.STEPS)} step(s) carry no test of their own")
+    # A step naming neither an invariant nor a reason for having none promises what nothing checks. Driven to none, at
+    # which point the default goes and a step must say one or the other.
+    exempt = [step.name for step in normalize.STEPS if step.untestable]
+    print(
+        f"    {len(normalize.untested_steps())} of {len(normalize.STEPS)} step(s) carry no test of their own; "
+        f"{len(exempt)} have none to carry and say why: {', '.join(exempt)}"
+    )
     # An invariant some step reduces and no step claims to finish. Driven to none, naming a settler as one is earned.
     print(f"    {len(normalize.unsettled_invariants())} invariant(s) reduced by a step and settled by none")
     # What the final grammar still breaks, whatever the steps settle between them — each one a step not yet written, and
