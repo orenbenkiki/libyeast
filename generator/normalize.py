@@ -4981,6 +4981,37 @@ def _partial_overlaps(grammar):
     return faults
 
 
+def _unreachable_ways(grammar):
+    """
+    Ways of a callee no character its caller's gate admits can enter — a decision the machine would take and lose.
+
+    A way that peeks a character and then calls, taking nothing on the way, enters the callee at the very position it
+    peeked. So a way of that callee peeking characters the caller's gate admits none of can never fire there, and the
+    state it becomes is one the machine enters to fail. Only a pinned peek says this: an unpinned one excludes nothing.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            if way.gate.peek is None or way.first is None:
+                continue
+            if any(not is_zero_width(action) for action in way.actions):
+                continue  # the callee is entered somewhere other than where the gate looked
+            admitted = _peek_spans(way.gate.peek, grammar)
+            callee = grammar.get(way.first.name)
+            if admitted is None or callee is None or not isinstance(callee.body, ir.Choice):
+                continue
+            for inner_index, inner in enumerate(callee.body.alternatives):
+                if inner.gate.peek is None:
+                    continue  # enterable wherever the caller is
+                spanned = _peek_spans(inner.gate.peek, grammar)
+                if spanned is not None and not _do_spans_overlap(admitted, spanned):
+                    faults.append(f"{name}[{index}] -> {way.first.name}[{inner_index}]: a way the gate cannot reach")
+    return faults
+
+
+NO_UNREACHABLE_WAY = Invariant("no-unreachable-way", _unreachable_ways)
 NO_PARTIAL_OVERLAP = Invariant("no-partial-overlap", _partial_overlaps)
 CHOMPING_LEXICAL = Invariant("chomping-is-lexical", _computed_chomping)
 RUNS_FACTORED = Invariant("no-unfactored-almost-class-run", _unfactored_class_runs)
@@ -5106,7 +5137,7 @@ STEPS = [
     Step("gate-hoist", gate_hoist, GATED, reduces=("every-way-gated",)),
     Step("gate-hoist-wide", gate_hoist_wide, GATED, reduces=("every-way-gated",)),
     Step("split-conflicts", split_conflicts, NO_PARTIAL_OVERLAP),
-    Step("inline-under-gate", inline_under_gate),
+    Step("inline-under-gate", inline_under_gate, NO_UNREACHABLE_WAY),
     # 298 calls come to 9: what stands is what the splice refuses, each a production still load-bearing somewhere.
     Step("inline-single-way", inline_single_way, NO_POINTLESS_CALL, reduces=("no-call-deciding-nothing",)),
     Step(
