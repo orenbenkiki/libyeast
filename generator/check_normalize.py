@@ -128,7 +128,7 @@ def _check():
         errors.append(f"[provisional] {fault}")
     # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
     # stays none after — a step breaking one saying so in its `lapses` and why.
-    for fault in normalize.invariant_faults(stages):
+    for fault in normalize.invariant_faults(stages, points):
         errors.append(f"[invariant] {fault}")
     for fault in normalize.declared_faults(stages[-1][1], committed):
         errors.append(f"[ledger] {fault}")
@@ -159,7 +159,7 @@ def _check():
     print(f"    {len(normalize.unsettled_invariants())} invariant(s) reduced by a step and settled by none")
     # What the final grammar still breaks, whatever the steps settle between them — each one a step not yet written, and
     # the list Phase 03 finishes by emptying.
-    standing = normalize.standing_invariants(final)
+    standing = normalize.standing_invariants(final, points)
     print(
         f"    {len(standing)} invariant(s) the final grammar still breaks: "
         + ", ".join(f"{name} {count}" for name, count in standing)

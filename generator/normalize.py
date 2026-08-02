@@ -12,6 +12,7 @@ one seam every transformation slots into.
 
 import collections
 import dataclasses
+import inspect
 
 import annotated2ir
 import chars
@@ -65,13 +66,18 @@ class Invariant:
     The name is what a fault reads as and what the invariant is known by, so a step naming one already named is reducing
     that same count rather than one of its own. `test` takes a grammar and gives back the places it is broken, as error
     strings — a list, so its length is the count and its contents say where.
+
+    A test wanting the points of interest as well takes `(grammar, points)`, which is what a declared site's property
+    needs: the site is a point, tracked beside the grammar rather than in it, so what a declared step makes true cannot
+    be read off the productions alone.
     """
 
     name: str
     test: object
 
-    def __call__(self, grammar):
-        return self.test(grammar)
+    def __call__(self, grammar, points=None):
+        wants_points = len(inspect.signature(self.test).parameters) > 1
+        return self.test(grammar, points) if wants_points else self.test(grammar)
 
 
 # What else may stand among an alternative's actions and begin a character: the character classes a lowering has not
@@ -4879,6 +4885,29 @@ def _part_gated_literals(grammar):
     return faults
 
 
+def _declared_inline_calls(grammar, points):
+    """
+    Calls to a production `DECLARED_INLINES` says to splice — the site is a point, so the holders are read off it.
+
+    A declared site is named by the point that tracks it through the sweep's renames, not by whatever it is called at
+    the moment, so what stands here is asked of the holders the point resolves to rather than of a name in a table.
+    """
+    if points is None:
+        return []
+    # A point the pipeline has consumed is no longer tracked, and what it named is gone with it.
+    named = {held for point in DECLARED_INLINES if point in points.at for held in points.current(point)}
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for index, way in enumerate(production.body.alternatives):
+            for reference in (way.first, way.second):
+                if reference is not None and reference.name in named:
+                    faults.append(f"{name}[{index}]: calls `{reference.name}`, which is declared spliced")
+    return faults
+
+
+NO_DECLARED_INLINE_CALL = Invariant("no-call-to-a-declared-inline", _declared_inline_calls)
 LITERALS_GATED_WHOLE = Invariant("every-literal-gated-whole", _part_gated_literals)
 NO_EXACT_INDENTS = Invariant("no-exact-indent-call", _exact_indent_calls)
 NO_FACTORABLE_PREFIX = Invariant("no-factorable-prefix", _factorable_prefixes)
@@ -4990,7 +5019,7 @@ STEPS = [
             " nothing, which is the shape the invariant permits"
         },
     ),
-    Step("inline-singles", inline_singles),
+    Step("inline-singles", inline_singles, NO_DECLARED_INLINE_CALL),
     # 26 come to 4: what stands is what the side condition refused, a continuation that may begin with a space or match
     # empty, where the maximal scan would take what an exact count left.
     Step("refine-indents", refine_indents, NO_EXACT_INDENTS, reduces=("no-exact-indent-call",)),
@@ -5036,6 +5065,9 @@ STEPS = [
     ),
     Step("gate-literals", gate_literals, LITERALS_GATED_WHOLE),
     Step("reorder-declared", reorder_declared),
+    # No invariant, and not for want of one: that the site is folded is a fact about what this step did, not a shape the
+    # grammar keeps — `hoist-pushes` and `clear-params` give those productions a continuation again, rightly, and so
+    # could any later step. What stands afterwards is the corpus, the fold being a language identity.
     Step("extend-returns", extend_returns),
     Step(
         "push-indents",
@@ -5088,7 +5120,7 @@ def untested_steps():
     return [step.name for step in STEPS if not step.invariants]
 
 
-def invariant_faults(stages):
+def invariant_faults(stages, points=None):
     """
     Where the pipeline breaks its own law, as error strings — empty where it holds.
 
@@ -5111,7 +5143,7 @@ def invariant_faults(stages):
         settled, standing = False, None
         for index in range(first, len(STEPS)):
             step, (label, grammar) = STEPS[index], stages[index + 1]
-            count = len(test(grammar))
+            count = len(test(grammar, points))
             licensed = named in step.lapses
             broken = (
                 (standing is not None and count > standing) or (settled and count) or (step.does_settle(test) and count)
@@ -5135,7 +5167,7 @@ def invariant_faults(stages):
     return faults
 
 
-def standing_invariants(grammar):
+def standing_invariants(grammar, points=None):
     """
     Every invariant the pipeline names that `grammar` still breaks, as `[(name, count)]` worst first.
 
@@ -5145,7 +5177,7 @@ def standing_invariants(grammar):
     emptying, and it says so mechanically instead of leaving it to be noticed.
     """
     named = {held.name: held for step in STEPS for held in step.invariants}
-    standing = [(name, len(test(grammar))) for name, test in sorted(named.items())]
+    standing = [(name, len(test(grammar, points))) for name, test in sorted(named.items())]
     return sorted(((name, count) for name, count in standing if count), key=lambda held: -held[1])
 
 
