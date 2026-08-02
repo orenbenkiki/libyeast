@@ -117,13 +117,14 @@ def _check():
     exercisers = [(grammar, pinned) for (_label, grammar), pinned in zip(stages, groups) if pinned]
     for error in check_grammar_coverage.gaps(final, exercisers):
         errors.append(f"[final] coverage {error}")
-    # The content-run gate reads the `(token)` scopes lower-tokens dissolves, so it runs on the last grammar that still
-    # holds them; lower-tokens leaves the character runs it checks untouched, so the two grammars agree on the answer.
+    # Not an invariant, and it cannot be one: it reads the `(token)` scopes to know which runs carry content, and past
+    # `lower-tokens` those are gone, so from there it stops being askable rather than stops being true. An invariant is
+    # asked at every stage from the first step naming it; a property with a window is asked where the window is. So this
+    # runs on the last grammar still holding the scopes, and `lower-tokens` leaves the character runs it checks
+    # untouched, so the two grammars agree on the answer.
     before_lower_tokens = dict(stages)["lower-star"]
     for offender in normalize.content_run_offenders(before_lower_tokens):
         errors.append(f"[content-runs] {offender}: a long text token is collected one character at a time")
-    for fault in normalize.non_char_set_runs(final):
-        errors.append(f"[char-set-runs] {fault}")
     # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
     # stays none after — a step breaking one saying so in its `lapses` and why, and a step naming one doing something
     # about it. Every structural property the pipeline claims is judged here, so nothing else below repeats one.
@@ -134,9 +135,8 @@ def _check():
 
     gate.report(
         errors,
-        "normalization fault(s) — a step that changes the grammar's meaning, a content run not matched in bulk, a "
-        "repetition that is not a character-set run, an invariant broken with no reason given, or a declaration the "
-        "grammar has outgrown",
+        "normalization fault(s) — a step that changes the grammar's meaning, a content run not matched in bulk, an "
+        "invariant broken with no reason given, or a declaration the grammar has outgrown",
         f"normalization pipeline: {len(normalize.STEPS)} step(s) preserve {len(fixtures)} fixtures and {len(suite)} "
         f"suite cases — backtracking, and hybrid with {len(deterministic)} production(s) entered committed — every "
         f"long text token matched in bulk by a character-set run",
