@@ -4937,13 +4937,17 @@ def _unfactored_class_runs(grammar):
     A run of characters is one scan, and one SIMD call later; a run holding an exception is a loop around a decision.
     Factored to `common* (uncommon common*)*` the characters go in bulk and the exception is the slow path, which is
     what the escapes of a quoted scalar, a URI and a tag want.
+
+    Read through a reference, the way the factoring itself reads: an alternation with a production of its own is the
+    same alternation, and asking only about one written in place sees none of the four the grammar opens with.
     """
     faults = []
     for name, production in grammar.items():
 
         def walk(node, owner=name):
             if isinstance(node, (ir.Star, ir.TrimStar)):
-                repeated = node.full if isinstance(node, ir.TrimStar) else node.item
+                held = node.full if isinstance(node, ir.TrimStar) else node.item
+                repeated = _resolved_alternation(held, grammar)
                 if isinstance(repeated, ir.Alt):
                     kinds = {is_one_char(item, grammar) for item in repeated.items}
                     if kinds == {True, False}:
@@ -5052,7 +5056,7 @@ STEPS = [
     # A `x+` over a character class stays for `span-consumes` to take, so this reduces the count and settles nothing.
     Step("lower-plus", lower_plus, NO_PLUS, reduces=("no-plus",)),
     Step("trim-runs", trim_runs),
-    Step("hoist-char-runs", hoist_char_runs),
+    Step("hoist-char-runs", hoist_char_runs, RUNS_FACTORED, reduces=("no-unfactored-almost-class-run",)),
     # `trim-runs` makes four of these ahead of it, its trimmed run being the same alternation under another name.
     Step("hoist-trimmed-runs", hoist_trimmed_runs, RUNS_FACTORED),
     # After the run hoists, which read the characters an alternation holds one by one to prove a run factorable.
