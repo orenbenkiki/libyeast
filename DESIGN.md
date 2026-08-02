@@ -164,12 +164,15 @@ hypothesis is a missing normalizing step, not an inherent conflict.
 properties: each step makes the grammar simpler in one stated way, everything after it may lean on that, and it is the
 accumulation that brings the grammar within reach of simple machinery — common-prefix factoring, gate disjointness —
 rather than any one clever transformation. So a step is not a function; it is
-`Step(name, transform, test, settles, lapses)`. `test` counts the places its invariant is broken, since an invariant
-here is a count and not a yes-or-no; `settles` marks the step that takes that count to none; `lapses` is a written
-reason for breaking one, and the only licence to. The pipeline enforces the law itself — a count never rises, a settling
-step leaves none, none stays none — so a property established in the middle cannot lapse silently at the end, which is
-exactly what happened while properness was checked at one site only. A new step is designed in that order: the invariant
-first, then how to measure it, then how to achieve it.
+`Step(name, transform, invariants, reduces, lapses, untestable)`. An invariant counts the places it is broken, being a
+count and not a yes-or-no; a step naming one is taken to finish it, and `reduces` names the ones it only lowers, for a
+count several steps share. `lapses` is a written reason for breaking one and the only licence to, and `untestable` is
+the reason a step has no invariant at all — what it makes true being momentary, or a property of a run rather than of a
+shape. The pipeline enforces the law itself — a count never rises, a settling step leaves none, none stays none, a lapse
+nobody takes is stale — so a property established in the middle cannot lapse silently at the end, which is exactly what
+happened while properness was checked at one site only. The phase's own meter is one of these counts and not a number
+beside them. A new step is designed in that order: the invariant first, then how to measure it, then how to achieve it —
+and the test is written before the transform and watched to fail, a test never seen to fail proving nothing.
 
 **A named site is a code smell, and the target is none.** Every declaration in the pipeline's tables — a site named for
 inlining, a two-way choice named for reordering, a helper named for absorbing, a production named as committed — is a

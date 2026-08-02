@@ -321,27 +321,37 @@ to fail proves nothing, and one that excuses what it cannot decide reports a fal
 `is_one_char(node) and _peek_spans(node) is not None` silently skipped every case that had gone wrong.
 
 Three nets ride on it, and each caught something the day it landed. `untested_steps` counts the steps promising what
-nothing checks — **18 of 50**, scaffolding, and at none the default goes and a step without an invariant stops being
-expressible. `standing_invariants` counts what the **final** grammar still breaks whatever the steps settle between
-them, which is the list this phase finishes by emptying: **`proper` 221, `every-way-gated` 46,
-`every-character-question-is-a-set-or-a-literal` 39, `no-call-deciding-nothing` 8**. And a lapse must be *taken*: one
-naming an invariant no step carries, or one the step does not actually break, is a stale declaration and a fault. That
-net retired four lapses at once — three left behind when `every-way-gated` was narrowed to multi-way choices, and one on
-`read-globals` which turned out to mark a mis-defined invariant rather than a special step, `every-binding-declared`
-having counted a global as an undeclared binding when a global *has* no declaration.
+nothing checks, and it reads **none**: all fifty name an invariant, bar three that name a *reason* instead —
+`reorder-declared` and `extend-returns`, whose properties are momentary, what the step did rather than a shape the
+grammar keeps, and `clear-params`, whose property belongs to a run and not to a shape. Naming both an invariant and a
+reason is itself a fault. `standing_invariants` counts what the **final** grammar still breaks whatever the steps settle
+between them, which is the list this phase finishes by emptying, and the meter is the first line of it:
 
-**What is left, and what is known about it.** Eighteen steps carry no invariant. `refine-indents`, `factor-prefixes` and
-`clear-params` look statable and are the next to try. The indentation family — `push-indents`, `sink-pops`,
-`defer-pops`, `hoist-pushes` — moves pushes and pops about, and what each leaves true wants reading rather than
-guessing, `nothing-carries-on-over-a-pop` already covering part of it. The declared-site steps — `inline-singles`,
-`reorder-declared`, `extend-returns`, `speculate-folds`, `gate-literals` — each already assert their own site's shape,
-and the question is whether that assertion is the invariant or whether they want another. `lift-chomping`, `trim-runs`,
-`hoist-char-runs`, `hoist-trimmed-runs` and `inline-under-gate` are the ones nobody has stated.
+| standing |                                                                                                                 |
+| -------- | --------------------------------------------------------------------------------------------------------------- |
+| **422**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody            |
+| **221**  | `proper` — the ε-elimination debt, of which 127 blind choices hold 272 of the 422                               |
+| **46**   | `every-way-gated` — ways in a multi-way choice with no character to go on                                       |
+| **39**   | `every-character-question-is-a-set-or-a-literal` — a lookahead, an `(exclude)`, a difference                    |
+| 8        | `no-call-deciding-nothing` · 6 `no-standing-pop-holder` · 4 `no-shared-leading-push` · 2 `no-factorable-prefix` |
 
-**One open anomaly.** Counting pairs of ways in a choice whose peeks share a character, the number *rises* at the step
-meant to remove them — 73 to **77 at `split-conflicts`**, 78 at the end. Either the test is too strict, two ways sharing
-a character being decidable by their guards, which that step is entitled to leave; or the step does not do what it says.
-Not attached, because a test whose curve cannot be explained is worse than none.
+And a lapse must be *taken*: one naming an invariant no step carries, or one the step does not actually break, is a
+stale declaration and a fault. That net retired four lapses at once — three left behind when `every-way-gated` was
+narrowed to multi-way choices, and one on `read-globals` which turned out to mark a mis-defined invariant rather than a
+special step, `every-binding-declared` having counted a global as an undeclared binding when a global *has* no
+declaration.
+
+**The meter is an invariant and nothing more.** It was reported beside the system for as long as it existed, which meant
+nothing stopped a step raising it: now it may not rise without a written reason, like every other count. The same went
+for `provisional_faults` and `non_char_set_runs`, both of which were final-grammar checks belonging to a step.
+
+**What writing the tests turned up**, which is the argument for writing them at all: `lower-star` and `lower-plus`
+reduce rather than settle, lowering only the complex repetitions; `span-consumes` and `alternative-shape` finish them.
+`split-conflicts` *deliberately* creates shared peeks — the overlap goes to a helper whose ways all peek alike, ready
+for the factoring — so its property is that an overlap is never **partial**, and the count that looked like a regression
+was the step working. And four tests were blind where they were written, reading zero over ground that was not clean:
+the worst read `is_one_char(node) and _peek_spans(node) is not None`, whose second clause skipped every case that had
+gone wrong.
 
 Two counts are reduced and settled by nobody **on purpose**, and are work owed rather than oversight: `every-way-gated`,
 the 46 ways in a multi-way choice with no character to go on, which the four gate hoists reduce between them; and
