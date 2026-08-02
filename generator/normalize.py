@@ -814,6 +814,24 @@ def flatten(grammar, namer):
 _OPENS = (ir.OpenWindow,)
 _CLOSES = (ir.CloseWindow,)
 
+# Every action that puts something on a stack, beside the one that takes it back. The indentation, the token code, the
+# committed region, the `(max)` window, the provisional run, and a parameter's value — `SetVar` puts a value on the
+# stack beside the slot and `ClearVar` takes it off, which makes the two a pair like the rest.
+_STACK_PAIRS = (
+    (ir.PushIndent, ir.PopIndent),
+    (ir.PushCode, ir.PopCode),
+    (ir.PushMessage, ir.PopMessage),
+    (ir.OpenWindow, ir.CloseWindow),
+    (ir.OpenProvisional, ir.CommitProvisional),
+    (ir.SetVar, ir.ClearVar),
+)
+_LEVEL = tuple(0 for _pair in _STACK_PAIRS)
+
+# What running twice is not running once, whatever the stacks do. A `(cut)` forbids backtracking from where it stands,
+# so a second run is refused rather than repeated; the provisional run's mark and rewrites act on the tokens held, so a
+# second run acts on what the first one left.
+_UNREPEATABLE = (ir.Cut, ir.MarkProvisional, ir.RetypeProvisional, ir.InjectBefore)
+
 
 def _scope_start(items, index):
     """
@@ -850,6 +868,160 @@ def _balanced_end(items, start):
         if depth == 0:
             end = index + 1
     return end
+
+
+def _at(index, depth):
+    """The per-stack levels that are `depth` on the stack `index` names and nothing on the others."""
+    return tuple(depth if position == index else 0 for position in range(len(_STACK_PAIRS)))
+
+
+def _rerun_depths(node, grammar, rerunnable):
+    """
+    Where `node` leaves each stack and how low it takes each on the way — a pair of per-stack levels — or `None` where
+    running it a second time is not running it a first.
+    """
+    if isinstance(node, _UNREPEATABLE):
+        return None
+    for index, (opens, closes) in enumerate(_STACK_PAIRS):
+        if isinstance(node, opens):
+            return _at(index, 1), _LEVEL
+        if isinstance(node, closes):
+            return _at(index, -1), _at(index, -1)
+    if isinstance(node, ir.Ref):
+        return (_LEVEL, _LEVEL) if node.name in rerunnable else None
+    if isinstance(node, ir.Seq):  # the one node whose items are ordered, so a close here answers an open before it
+        nets, lows = _LEVEL, _LEVEL
+        for item in node.items:
+            made = _rerun_depths(item, grammar, rerunnable)
+            if made is None:
+                return None
+            item_nets, item_lows = made
+            lows = tuple(min(low, net + item_low) for low, net, item_low in zip(lows, nets, item_lows))
+            nets = tuple(net + item_net for net, item_net in zip(nets, item_nets))
+        return nets, lows
+    balanced = True  # every other node runs what it holds an unknown number of times, so each part answers for itself
+
+    def visit(child):
+        nonlocal balanced
+        balanced = balanced and _is_balanced(child, grammar, rerunnable)
+        return child
+
+    ir.rebuilt(node, visit)
+    return (_LEVEL, _LEVEL) if balanced else None
+
+
+def _is_balanced(node, grammar, rerunnable):
+    """Whether running `node` leaves every stack as it found it, having taken none of them below where it started."""
+    made = _rerun_depths(node, grammar, rerunnable)
+    return made is not None and not any(made[0]) and all(low == 0 for low in made[1])
+
+
+# What may succeed more than one way at a position, so that a failure after it comes back for its next parse. A choice
+# offers its ways in turn and a repetition its lengths; a scan takes the longest run there is and comes back for no
+# other, which is what makes it the one shape a factoring may reach over.
+_MANY_OUTCOMES = (ir.Alt, ir.Choice, ir.Opt, ir.Star, ir.Plus, ir.Rep, ir.TrimStar)
+
+
+def _is_one_outcome(node, grammar, single):
+    """Whether `node` succeeds at most one way at a position — nothing to come back to when what follows it fails."""
+    if isinstance(node, _MANY_OUTCOMES):
+        return False
+    if isinstance(node, ir.Ref):
+        return node.name in single
+    outcomes = True
+
+    def visit(child):
+        nonlocal outcomes
+        outcomes = outcomes and _is_one_outcome(child, grammar, single)
+        return child
+
+    ir.rebuilt(node, visit)
+    return outcomes
+
+
+def _one_outcome_calls(grammar):
+    """
+    The productions that succeed at most one way at a position — no second parse to come back for.
+
+    A call is taken to be one until something it reaches says otherwise, as `_rerunnable_calls` reads its own property.
+    """
+    single = set(grammar)
+    while True:
+        refused = {name for name in single if not _is_one_outcome(grammar[name].body, grammar, single)}
+        if not refused:
+            return single
+        single -= refused
+
+
+def _rerunnable_calls(grammar):
+    """
+    The productions a second call to is the first: every stack left as it was found, and nothing committed on the way.
+
+    A call is taken to be one until something it reaches says otherwise, so a production that only reaches itself is
+    one — a recursion that never returns is no second run to tell from a first.
+    """
+    rerunnable = set(grammar)
+    while True:
+        refused = {name for name in rerunnable if not _is_balanced(grammar[name].body, grammar, rerunnable)}
+        if not refused:
+            return rerunnable
+        rerunnable -= refused
+
+
+def absorb_empties(grammar, namer):
+    """
+    Take an empty way into the sequence around it, where every way that makes reads.
+
+    `a (X|ε) b` is `a X b | a b` — concatenation over alternation, the ways in the order backtracking tries them, which
+    is a language identity and nothing more. Where `a` or `b` reads, both ways read and the empty match is *gone*: not
+    moved to a call site, not left in a choice for a later step to give a production to.
+
+    Only where every way it makes reads. So it never grows a choice that still holds an empty way, never propagates one
+    outward, and wants no fixpoint — each application removes an empty match and stops.
+
+    And only over a prefix each of whose copies is the one run the undistributed form makes. What follows the choice
+    runs once per way tried in either form — the undistributed one backtracks into the choice and runs it afresh — so
+    copying it changes nothing. What precedes it runs *once* before and once per way after, so a copy is a second run,
+    and two things make a second run the first. It must leave every stack as it found it and commit to nothing: a
+    `PushMessage` copied without its `PopMessage` opens a region twice, and a `(cut)` copied refuses the second way
+    outright. And it must succeed at most one way, or the search visits its parses in a different order — `a (X|Y)`
+    tries every parse of `a` with `X` before any with `Y`, where the distributed `a X | a Y` tries `a`'s first parse
+    with both before asking `a` for its second. So the ways are made from the choice, everything after it, and as much
+    of what precedes it as answers for both.
+    """
+    rerunnable = _rerunnable_calls(grammar)
+    single = _one_outcome_calls(grammar)
+
+    def is_copyable(item):
+        """Whether a copy of `item` in a second way is the one run the undistributed form makes."""
+        return _is_balanced(item, grammar, rerunnable) and _is_one_outcome(item, grammar, single)
+
+    def prefix_start(items, index):
+        """How far back from `items[index]` the ways may reach — the longest run of items each safe to copy."""
+        low = index
+        while low > 0 and is_copyable(items[low - 1]):
+            low -= 1
+        return low
+
+    def absorbed(node):
+        node = ir.rebuilt(node, absorbed)
+        if not isinstance(node, ir.Seq):
+            return node
+        for index, item in enumerate(node.items):
+            if not isinstance(item, ir.Alt) or not any(can_match_empty(m, grammar) for m in item.items):
+                continue
+            low = prefix_start(node.items, index)
+            made = tuple(
+                _flat_seq(node.items[low:index] + (member,) + node.items[index + 1 :]) for member in item.items
+            )
+            if all(not can_match_empty(way, grammar) for way in made):
+                return _flat_seq(node.items[:low] + (ir.Alt(made),))
+        return node
+
+    return {
+        name: dataclasses.replace(production, body=_flatten(absorbed(production.body)))
+        for name, production in grammar.items()
+    }
 
 
 def lift_choices(grammar, namer):
@@ -2011,12 +2183,7 @@ def factor_prefixes(grammar, namer):
 # wrong declaration diverges from backtracking on the spot, and `declared_faults` refuses one the analysis has since
 # proved, so the ledger never quietly outgrows its reasons. The entries name points, so no minted number is declared and
 # the tracked content is what stays committed as the steps renumber the helpers around it.
-DECLARED_COMMITS = {
-    "block-header-keep-chomp": "chomp-first subsumes: on '+' it takes every header indicator-first takes, and '+1'"
-    " besides — the declared reorder is what stood it first",
-    "block-header-strip-chomp": "chomp-first subsumes: on '-' it takes every header indicator-first takes, and"
-    " '-1' besides — the declared reorder is what stood it first",
-}
+DECLARED_COMMITS = {}
 
 
 def hoist_residue_guards(grammar, namer):
@@ -2099,8 +2266,8 @@ def _chomp_choice_picker(monomorphized, literal=None):
         holders = ordering or [name for name in candidates if is_chomp_side(grammar[name].body)]
         # Clip's chomping indicator matches only empty, so `eliminate-empties` dissolves it into a residue that is
         # nothing at all, and there is no chomping side left to hold on to — the point stays with the header copies its
-        # own family carries, which `reorder-declared` holds to the two-way shape it speaks about. A chomping side that
-        # matches a character is there or the point is genuinely lost, so the fallback is clip's alone.
+        # own family carries. A chomping side that matches a character is there or the point is genuinely lost, so the
+        # fallback is clip's alone.
         return holders or (sorted(candidates) if literal is None else [])
 
     return pick
@@ -2171,25 +2338,6 @@ POINTS = {
     "shorter-indent": ("s-indent-lt", _refs_picker("s-space")),
     "block-seq-loop-exit": ("l+block-sequence", _loop_seam_picker),
     "block-map-loop-exit": ("l+block-mapping", _loop_seam_picker),
-}
-
-# The declared reorders: points of interest whose two alternatives the `reorder-declared` step swaps, each with the
-# reason the swap keeps the first-found parse. Alternative order is semantics under backtracking-with-commits — the
-# first match binds — so a reorder is sound only where a per-point argument shows every input finds the same parse
-# either way, and that argument is position-dependent: these hold only AFTER monomorphize, never in the base grammar.
-# The header is the proof. In the base, `c-chomping-indicator` is one data-dependent production whose clip branch
-# matches empty, so a chomp-first ordering enters through that empty match on `|2-`, completes the header's `(any)`, and
-# its `(commit)` turns the valid trailing `-` into an error backtracking cannot undo. Monomorphize distributes the
-# data-dependence away: the strip and keep copies gate their chomping way on the literal `-`/`+` — no empty match left
-# to enter through, so on `|2-` that way fails before anything commits and falls through — and the clip copy's chomping
-# indicator matches only empty, so its two orderings are empty-commutations of one language, either order the same
-# parse. The reasons below are those per-copy arguments; a point that resolves to anything but the two-way choice the
-# swap speaks about faults loudly, so the declarations cannot outlive the shapes they speak about.
-DECLARED_REORDERS = {
-    "block-header-keep-chomp": "chomp-first: its way is gated on the literal '+', which the input has or has not"
-    " — no empty match to enter through — and standing first it also takes '+1', which indicator-first misparses",
-    "block-header-strip-chomp": "chomp-first: its way is gated on the literal '-', which the input has or has not"
-    " — no empty match to enter through — and standing first it also takes '-1', which indicator-first misparses",
 }
 
 # The declared return-extensions: sites `{caller: reason}` whose one way is a call and a continuation, folded so the
@@ -2267,7 +2415,7 @@ def _proved_productions(grammar):
     return deterministic
 
 
-def _is_literal_decided(earlier, grammar):
+def _is_literal_decided(earlier, later, grammar):
     """
     Whether `earlier` — the first of two alternatives sharing a first character — is decided by its own literal gate:
     its peek is a `LiteralPeek` whose text its way in spells exactly, by its own leading consume or down the single-way
@@ -2275,7 +2423,14 @@ def _is_literal_decided(earlier, grammar):
     is where backtracking's failed literal lands; where it holds, the consume is the literal the gate found, committed
     the way the grammar means a literal — whole, and past any follow test the gate carries. The corpus's hybrid run is
     what holds the greedy side of that reading to the reference, the marker fixtures with it.
+
+    It decides nothing where `later` goes in the same way — the same actions and the same call — since then both ways
+    consume the literal the gate found and differ only in what follows it. The gate holding says which characters are
+    there, not which of two ways over them is the parse, and committing to the earlier would take from the later a
+    reading the gate never refused.
     """
+    if earlier.actions == later.actions and earlier.first == later.first:
+        return False
     peek = earlier.gate.peek
     return isinstance(peek, ir.LiteralPeek) and _does_spell_peek(earlier, peek.text, grammar, frozenset())
 
@@ -2445,7 +2600,7 @@ def _does_decide(name, production, grammar, first_of, follow_spans):
     return not any(
         _do_spans_overlap(spans[one], spans[other])
         and not _are_guards_complementary(ways[one], ways[other])
-        and not _is_literal_decided(ways[one], grammar)
+        and not _is_literal_decided(ways[one], ways[other], grammar)
         for one in range(len(spans))
         for other in range(one + 1, len(spans))
     )
@@ -2633,27 +2788,6 @@ def gate_literals(grammar, namer):
             alternatives = tuple(ways)
             if alternatives != body.alternatives:
                 result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=alternatives))
-    return result
-
-
-def reorder_declared(grammar, namer):
-    """
-    The grammar with each `DECLARED_REORDERS` point's two alternatives swapped — one generic move, its targets and their
-    reasons data rather than logic, so no transformation recognizes a production by name in code. Each entry names a
-    point of interest; the swap lands on every production currently holding it, and a point held by anything but the
-    two-way choice the swap speaks about is a loud fault: a step before this one changing the shape must be seen, not
-    absorbed. The corpus holds each swap to the stream as it holds every step.
-    """
-    result = dict(grammar)
-    for point in sorted(DECLARED_REORDERS):
-        for name in namer.points.current(point):
-            production = grammar.get(name)
-            if production is None:
-                raise AssertionError(f"{point}: declared reordered, but the grammar holds no `{name}`")
-            if not isinstance(production.body, ir.Choice) or len(production.body.alternatives) != 2:
-                raise AssertionError(f"{point}: `{name}` is not the two-way choice the swap speaks about")
-            one, other = production.body.alternatives
-            result[name] = dataclasses.replace(production, body=ir.Choice(alternatives=(other, one)))
     return result
 
 
@@ -5261,6 +5395,18 @@ STEPS = [
     Step("flatten", flatten, NO_UNFLATTENED),
     # The repetitions `lower-star` left are runs over a character set, and this is what turns them into scans, so the
     # `Star`s it only reduced are gone here.
+    # Before `lift-choices`, which would give a choice still holding an empty way a production of its own.
+    Step(
+        "absorb-empties",
+        absorb_empties,
+        PROPER,
+        reduces=("proper",),
+        lapses={
+            "every-decision-goes-on-a-character": "a way that read nothing decided nothing; where the empty match goes"
+            " into the sequence around it, the ways it makes are told apart on what they read, and each of those is a"
+            " point until `factor-prefixes` takes the prefix they share back out",
+        },
+    ),
     Step("span-consumes", span_consumes, NO_STAR),
     # A literal run collapses several gated terminals into one `ConsumeLiteral`, so this reduces the count it shares.
     Step("literal-consumes", literal_consumes, ONE_GATED_TERMINAL, reduces=("one-gated-terminal-a-way",)),
@@ -5340,13 +5486,6 @@ STEPS = [
         },
     ),
     Step("gate-literals", gate_literals, LITERALS_GATED_WHOLE),
-    Step(
-        "reorder-declared",
-        reorder_declared,
-        untestable="what it makes true is that two ways stand in the other order, and order is not a property a later"
-        " step is obliged to keep — every factoring and every splice reshapes it freely. The swap is a fact about what"
-        " this step did, and what holds it is the corpus, alternative order being semantics under backtracking.",
-    ),
     Step(
         "extend-returns",
         extend_returns,

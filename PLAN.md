@@ -321,19 +321,19 @@ to fail proves nothing, and one that excuses what it cannot decide reports a fal
 `is_one_char(node) and _peek_spans(node) is not None` silently skipped every case that had gone wrong.
 
 Three nets ride on it, and each caught something the day it landed. `untested_steps` counts the steps promising what
-nothing checks, and it reads **none**: all fifty name an invariant, bar three that name a *reason* instead —
-`reorder-declared` and `extend-returns`, whose properties are momentary, what the step did rather than a shape the
-grammar keeps, and `clear-params`, whose property belongs to a run and not to a shape. Naming both an invariant and a
+nothing checks, and it reads **none**: all fifty name an invariant, bar two that name a *reason* instead —
+`extend-returns`, whose property is momentary, what the step did rather than a shape the grammar keeps, and
+`clear-params`, whose property belongs to a run and not to a shape. Naming both an invariant and a
 reason is itself a fault. `standing_invariants` counts what the **final** grammar still breaks whatever the steps settle
 between them, which is the list this phase finishes by emptying, and the meter is the first line of it:
 
 | standing |                                                                                                                 |
 | -------- | --------------------------------------------------------------------------------------------------------------- |
-| **422**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody            |
-| **221**  | `proper` — the ε-elimination debt, of which 127 blind choices hold 272 of the 422                               |
-| **46**   | `every-way-gated` — ways in a multi-way choice with no character to go on                                       |
-| **39**   | `every-character-question-is-a-set-or-a-literal` — a lookahead, an `(exclude)`, a difference                    |
-| 8        | `no-call-deciding-nothing` · 6 `no-standing-pop-holder` · 4 `no-shared-leading-push` · 2 `no-factorable-prefix` |
+| **750**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody            |
+| **81**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                        |
+| **42**   | `every-way-gated` — ways in a multi-way choice with no character to go on                                       |
+| **41**   | `every-character-question-is-a-set-or-a-literal` — a lookahead, an `(exclude)`, a difference                    |
+| 24       | `no-call-deciding-nothing` · 8 `no-standing-pop-holder` · 6 `no-factorable-prefix` · 4 `no-shared-leading-push` |
 
 And a lapse must be *taken*: one naming an invariant no step carries, or one the step does not actually break, is a
 stale declaration and a fault. That net retired four lapses at once — three left behind when `every-way-gated` was

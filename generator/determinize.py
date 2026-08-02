@@ -152,8 +152,18 @@ def _caller_continuation(grammar, root):
                 callers.append((name, index, 2))
             if alternative.second is not None and alternative.second.name == root:
                 callers.append((name, index, 3))
-    if len(callers) != 1:
-        raise ValueError(f"{root}: called from {len(callers)} places — the follow is not yet unique")
+    if not callers:
+        raise ValueError(f"{root}: called from nowhere, so it has no follow to root beneath")
+    # Several callers are one follow where they agree on it. The seeded stack holds this one continuation and nothing
+    # under it, so the walk accepts the moment it returns — which makes the cursor and the reference standing at it the
+    # whole of what a caller contributes, and callers agreeing on both indistinguishable to it.
+    follows = set()
+    for name, index, cursor in callers:
+        alternative = grammar[name].body.alternatives[index]
+        carried = alternative.second if cursor == 2 else None
+        follows.add((cursor, None if carried is None else carried.name))
+    if len(follows) != 1:
+        raise ValueError(f"{root}: called from {len(callers)} places with {len(follows)} follows — not yet unique")
     return callers[0]
 
 
