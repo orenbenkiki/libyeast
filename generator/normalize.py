@@ -4954,6 +4954,34 @@ def _unfactored_class_runs(grammar):
     return faults
 
 
+def _partial_overlaps(grammar):
+    """
+    Pairs of ways in one choice sharing some characters and not others — an overlap neither disjoint nor whole.
+
+    Two ways a character tells apart are decided where they stand. Two ways it cannot tell apart at all are a decision
+    for the prefix factoring and the certificates, taken together behind one gate. A *partial* overlap is neither: the
+    character decides where it falls outside the shared part and decides nothing where it falls inside, so the choice is
+    two problems wearing one shape. `split-conflicts` cuts them into the two kinds — the characters only one way admits
+    stay its own, the shared ones go to a helper whose ways all peek alike — and what it mints looks like more overlap
+    by the older reading, which is why this asks whether an overlap is partial and not whether there is one.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        ways = production.body.alternatives
+        spanned = [None if way.gate.peek is None else _peek_spans(way.gate.peek, grammar) for way in ways]
+        for first in range(len(ways)):
+            for second in range(first + 1, len(ways)):
+                held, other = spanned[first], spanned[second]
+                if held is None or other is None or held == other:
+                    continue
+                if _do_spans_overlap(held, other):
+                    faults.append(f"{name}: ways {first} and {second} share some characters and not others")
+    return faults
+
+
+NO_PARTIAL_OVERLAP = Invariant("no-partial-overlap", _partial_overlaps)
 CHOMPING_LEXICAL = Invariant("chomping-is-lexical", _computed_chomping)
 RUNS_FACTORED = Invariant("no-unfactored-almost-class-run", _unfactored_class_runs)
 NO_DECLARED_INLINE_CALL = Invariant("no-call-to-a-declared-inline", _declared_inline_calls)
@@ -5077,7 +5105,7 @@ STEPS = [
     # The four hoists reduce one count between them, and none settles it: 141 ways still have no character to go on.
     Step("gate-hoist", gate_hoist, GATED, reduces=("every-way-gated",)),
     Step("gate-hoist-wide", gate_hoist_wide, GATED, reduces=("every-way-gated",)),
-    Step("split-conflicts", split_conflicts),
+    Step("split-conflicts", split_conflicts, NO_PARTIAL_OVERLAP),
     Step("inline-under-gate", inline_under_gate),
     # 298 calls come to 9: what stands is what the splice refuses, each a production still load-bearing somewhere.
     Step("inline-single-way", inline_single_way, NO_POINTLESS_CALL, reduces=("no-call-deciding-nothing",)),
