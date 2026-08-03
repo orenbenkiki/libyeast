@@ -74,6 +74,29 @@ def entry(grammar, name, parameters):
     return name, dict(parameters)
 
 
+def is_one_char(node, grammar, seen=frozenset()):
+    """
+    Whether `node` matches exactly one character — a terminal char class.
+
+    It is what tells a scan from a way, which both the interpreter and the normalizer must agree on: a run over a
+    character class is a value the input decides, taken whole and judged whole, and a run over anything else is a way
+    the parse chooses. A `Char`, `Range` or `Invalid` is one; a `Diff` is one when its base is (the exclusions only
+    narrow it); an `Alt` is one when every branch is (a union of char sets), so a lowered optional `x | <empty>` is not
+    one; a `Ref` is one when its production is.
+    """
+    if isinstance(node, (Char, Range, Invalid, CharSet)):
+        return True
+    if isinstance(node, Diff):
+        return is_one_char(node.base, grammar, seen)
+    if isinstance(node, Alt):
+        return bool(node.items) and all(is_one_char(item, grammar, seen) for item in node.items)  # empty: no match
+    if isinstance(node, Case):
+        return all(is_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
+    if isinstance(node, Ref):
+        return node.name in seen or is_one_char(grammar[node.name].body, grammar, seen | {node.name})
+    return False
+
+
 def _refs(*values):
     """
     The production names held anywhere in `values`, for the `references` methods: a node contributes its own

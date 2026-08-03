@@ -836,7 +836,25 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.ConsumeTrimmedSpan):  # a `TrimStar`, as the canonical form spells it
         return match(ir.TrimStar(node.full, node.trim), emitter, grammar, k)
     if isinstance(node, ir.Star):
-        return _repeat(node.item, emitter, grammar, k)
+        if ir.is_one_char(node.item, grammar):
+            return _repeat(node.item, emitter, grammar, k)  # a scan: the maximal run, taken whole and judged whole
+        # A run over a way is a choice, not a scan: the maximal run, or none at all, and no count between them. Each
+        # turn is taken whole, so a failed one gives back its own attempt and the run stops there; where the
+        # continuation fails the whole run is given back and the empty way tried instead. Which is what `x+ | <empty>`
+        # offers, so writing it that way is the same parse, and what decides between the two is the character the run
+        # begins with.
+        checkpoint = emitter.checkpoint()
+        before = emitter.position
+
+        def after_first():
+            if emitter.position == before:
+                return k()  # a zero-width turn: kept once, since repeating it would never end
+            return _repeat(node.item, emitter, grammar, k)
+
+        if match(node.item, emitter, grammar, after_first):
+            return True
+        emitter.rewind(checkpoint)
+        return k()
     if isinstance(node, ir.Plus):
         checkpoint = emitter.checkpoint()
         before = emitter.position

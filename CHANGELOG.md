@@ -218,10 +218,19 @@ All notable changes to this project are documented here. The format follows
   `Opt` tries its item with the continuation behind it and, where that fails, rewinds and takes the continuation alone,
   which is that alternation tried in that order. So nothing has to be known about what follows.
 
-  A `Star` hides an empty match the same way and is not the same case. The run is possessive — it takes the maximal run
-  and never falls back to fewer, failing outright where its continuation fails — so any lowering that gives it an empty
-  branch hands it a fallback it did not have, and `x* → x+ | <empty>` is not an identity. What licenses it is that the
-  run be single-outcome, which is argued for character-class runs and nowhere else.
+  A run over a character class is a scan and not a way, and the interpreter now draws that line where the grammar does.
+  Such a run is single-outcome by construction — only ever followed by something off its own set — so it is taken whole
+  and judged whole, which is what `s-indent-le`'s "the maximal run, and then its length against `n`" needs: falling back
+  to a shorter run would let an over-indented line pass as if it had none. A run over a *way* is no such thing. It is a
+  choice between the maximal run and none at all, with no count between them, which is exactly what an ordered
+  `x+ | <empty>` offers. That distinction was argued for character classes when repetitions became possessive and never
+  drawn for ways; drawn, it makes the two lowerings below identities rather than arguments.
+
+  `span-consumes` writes a run over a character class as the one scan it is — `x*` a `ConsumeSpan`, `x+` the character
+  and that span behind it, 56 in all — and `lower-stars` writes what is left as `x+ | <empty>`, 62 of them, settling
+  `no-star-nodes`. Distributed, `P x* Q` becomes `P x+ Q | P Q`, and what decides between them is the character the run
+  begins with: in `x`'s set the parse takes the run, outside it the way that does not. Which is the shape the machine
+  wants, and the reason the empty match is worth making a way of.
 
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it

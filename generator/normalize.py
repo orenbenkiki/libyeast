@@ -818,14 +818,14 @@ def _other_character_questions(grammar):
         def walk(node, owner=name):
             if isinstance(node, ir.CharSet):
                 return  # lowered
-            if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind)) and is_one_char(node.item, grammar):
+            if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind)) and ir.is_one_char(node.item, grammar):
                 if not isinstance(node.item, ir.CharSet):
                     kinds = (type(node).__name__, type(node.item).__name__)
                     faults.append(f"{owner}: a {kinds[0]} asks about a character as a {kinds[1]}")
                 return
             if isinstance(node, ir.Ref):
                 return  # a hold on the production where the set is
-            if is_one_char(node, grammar):
+            if ir.is_one_char(node, grammar):
                 faults.append(f"{owner}: a {type(node).__name__} is a character set and is not a `CharSet`")
                 return
             ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
@@ -835,27 +835,6 @@ def _other_character_questions(grammar):
 
 
 ONLY_SETS_AND_LITERALS = Invariant("every-character-question-is-a-set-or-a-literal", _other_character_questions)
-
-
-def is_one_char(node, grammar, seen=frozenset()):
-    """
-    Whether `node` matches exactly one character — a terminal char class. A `+`/`*` over one stays a single repeated
-    char-set match (one SIMD call); over anything else it breaks into a sequence or a recursion. A `Char`, `Range` or
-    `Invalid` is one; a `Diff` is one when its base is (the exclusions only narrow it); an `Alt` is one when every
-    branch is (a union of char sets), so a lowered optional `x | <empty>` is not one; a `Ref` is one when its production
-    is.
-    """
-    if isinstance(node, (ir.Char, ir.Range, ir.Invalid, ir.CharSet)):
-        return True
-    if isinstance(node, ir.Diff):
-        return is_one_char(node.base, grammar, seen)
-    if isinstance(node, ir.Alt):
-        return bool(node.items) and all(is_one_char(item, grammar, seen) for item in node.items)  # empty: no match
-    if isinstance(node, ir.Case):
-        return all(is_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
-    if isinstance(node, ir.Ref):
-        return node.name in seen or is_one_char(grammar[node.name].body, grammar, seen | {node.name})
-    return False
 
 
 def as_char_set(node, grammar):
@@ -868,7 +847,7 @@ def as_char_set(node, grammar):
     """
     if isinstance(node, ir.LiteralPeek):
         return node  # several characters, of which only the first is the dispatch — no set says that
-    if not is_one_char(node, grammar):
+    if not ir.is_one_char(node, grammar):
         return node
     spans = _peek_spans(node, grammar)
     return node if spans is None else _spans_node(spans)
@@ -1139,6 +1118,72 @@ def _pushed_level(grammar, node):
     return None if isinstance(level, ir.Param) and level.name == "n" else level
 
 
+def span_consumes(grammar, namer):
+    """
+    Write a run over a character class as the one scan it is: `x*` becomes a `ConsumeSpan` and `x+` the character and
+    the span behind it.
+
+    What such a run takes is a value the input decides rather than a way the parse chooses, and saying it as a scan is
+    what lets the codegen make one repeated-char-set call of it. Both are the same match said differently: a
+    `ConsumeSpan` is the maximal run a `Star` already takes, and a `Plus` is its item once and then that same run.
+
+    A run over anything else is left standing. It is a way, and what to do about the empty match it hides is a question
+    about the parse rather than about a scan.
+    """
+
+    def lowered(node):
+        node = ir.rebuilt(node, lowered)
+        if isinstance(node, ir.Star) and ir.is_one_char(node.item, grammar):
+            return ir.ConsumeSpan(set=node.item)
+        if isinstance(node, ir.Plus) and ir.is_one_char(node.item, grammar):
+            return ir.Seq(items=(node.item, ir.ConsumeSpan(set=node.item)))
+        return node
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
+
+
+def _repeated_character_classes(grammar):
+    """
+    Runs over a character class still written as a repetition — a value the scan decides, said as a way the parse
+    repeats.
+    """
+    return [
+        f"{name}: repeats a character class instead of scanning it"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, (ir.Star, ir.Plus)) and ir.is_one_char(node.item, grammar)
+    ]
+
+
+CHARACTER_RUNS_SCANNED = Invariant("every-character-run-is-a-span", _repeated_character_classes)
+
+# What the empties phase is finished by for the runs: no `Star` anywhere, an empty match being a way beside the one that
+# reads. The character classes go first, being scans rather than ways, and what is left is the question.
+NO_STAR_NODES = _absent("no-star-nodes", ir.Star)
+
+
+def lower_stars(grammar, namer):
+    """
+    Write each remaining run as the two ways it is: `x*` becomes `x+ | <empty>`. Every run over a character class is a
+    scan by now, so what is left repeats a way — and a run over a way is the maximal run or none at all, which is what
+    an ordered choice of the plus and the empty offers.
+
+    Distributed, `P x* Q` becomes `P x+ Q | P Q`, and what decides between them is the character the run begins with: in
+    `x`'s set the parse takes the run, and outside it the way that does not. Which is the shape the machine wants, and
+    the reason the empty match is worth making a way of.
+    """
+
+    def lowered(node):
+        node = ir.rebuilt(node, lowered)
+        return ir.Alt(items=(ir.Plus(item=node.item), ir.Empty())) if isinstance(node, ir.Star) else node
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
+
+
 def lower_optionals(grammar, namer):
     """
     Write each optional as the alternation it already is: `x?` becomes `x | <empty>`, the empty way standing beside the
@@ -1392,4 +1437,6 @@ STEPS = [
     # Phase 5 is the empties, and what it is finished by is no production matching empty but the ones a parse enters by
     # name. This step is the first of it: an empty match is a way beside the one that reads, not a node hiding one.
     Step("lower-optionals", lower_optionals, NO_OPT_NODES),
+    Step("span-consumes", span_consumes, (CHARACTER_RUNS_SCANNED, NO_STAR_NODES), reduces=("no-star-nodes",)),
+    Step("lower-stars", lower_stars, NO_STAR_NODES),
 ]
