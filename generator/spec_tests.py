@@ -25,6 +25,7 @@ TESTS_DIR = os.path.join(_TREE, "tests", "spec")
 # `n` is an indentation, any integer (-1 is the auto-detect base), so it has none. A fixture whose value falls outside
 # these is malformed, not merely foreign.
 CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
+INDENT_MODES = annotated2ir.INDENT_MODES
 
 # `r` is the resume policy, and the only parameter a caller chooses rather than the grammar threads: a fixture that does
 # not name it runs under the default a zeroed `ys_options` already selects, `YS_RESUME_NONE`. Every other parameter must
@@ -45,7 +46,7 @@ DETECTED = ("m", "f")
 ENTERED = ("n", "o")
 
 # A production name is the leading run of a filename, up to its first `.`; a parameter is a `.<name>=<value>` segment.
-_PARAMETER = re.compile(r"\.([nctro])=([^.]+)")
+_PARAMETER = re.compile(r"\.([nctroi])=([^.]+)")
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,8 @@ def bad_value(fixture):
             return f"t={value!r} is not a chomping mode"
         if name == "r" and value not in RESUMES:
             return f"r={value!r} is not a resume policy"
+        if name == "i" and value not in INDENT_MODES:
+            return f"i={value!r} is not an indentation mode"
     return None
 
 

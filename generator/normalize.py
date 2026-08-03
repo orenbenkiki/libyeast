@@ -6,10 +6,10 @@ The pipeline is a sequence of phases, each owning one invariant: a phase adds st
 its end the invariant is enforced — the law's "none stays none" makes every later step keep it. A phase finished with a
 green corpus is a checkpoint worth landing on its own.
 
-Phase 0 is the chomping. `t` is a parameter the base grammar sets by matching an indicator and reads two productions
-later through the environment, so a read of it means nothing until a caller is known. `lift-chomping` inverts the setter
-into a switch and `monomorphize` specializes that switch into the names, after which nothing declares, passes or reads
-it — `no-t-parameter` at none.
+Phase 0 is the two parameters the grammar sets by matching: the chomping `t` and the block scalar's indentation mode
+`i`. Each is set by an indicator and read productions later through the environment, so a read of either means nothing
+until a caller is known. `lift-setters` inverts both setters into switches and `monomorphize` specializes those into the
+names, after which nothing declares, passes or reads either — `no-i-t-parameters` at none.
 
 Phase 1 is the character questions. A set of characters is written many ways and asked in several — a union, a
 difference, a reference, the item of a lookaround — and the parser tests one key for one bit. `lower-char-sets` says
@@ -203,15 +203,17 @@ def _dispatch(body, param, values):
     return ir.Seq(prefix + (choice,)) if prefix else choice
 
 
-def lift_chomping(grammar, namer):
+def lift_setters(grammar, namer):
     """
-    Make a data-dependent finite parameter lexical, so it monomorphizes like the context. The chomping `t` is the one:
-    `c-chomping-indicator` matches an indicator and sets `t` — strip, keep, or clip — which the block scalar reads two
-    productions later, through the env. That set is not a switch, so `t` cannot be specialized. This inverts the setter
-    into a `(case) t` that matches the indicator for a given `t`, and turns each production that holds `t` as a local
-    out-parameter into an ordered choice over its values — each branch fixing `t` to a literal it hands the setter and
-    the reader alike. The parse tries the values in the setter's order, so exactly the one whose indicator is present
-    matches, and `t` flows as a value rather than stashed state.
+    Make every data-dependent finite parameter lexical, so each monomorphizes like the context.
+
+    Two are: the chomping `t`, which `c-chomping-indicator` sets by matching an indicator and the block scalar reads two
+    productions later through the env, and the indentation mode `i`, which `c-indentation-indicator` sets by whether
+    there was a digit and the scalar's first content line reads. A set is not a switch, so neither can be specialized.
+    This inverts each setter into a `(case)` on its parameter that matches the condition for a given value, and turns
+    each production holding one as a local out-parameter into an ordered choice over its values — every branch fixing
+    the parameter to a literal it hands the setter and the reader alike. The parse tries the values in the setter's
+    order, so exactly the one whose condition holds matches, and the value flows as a value rather than stashed state.
     """
     setters = {name: setter for name in grammar if (setter := _finite_setter(grammar[name].body))}
     values = {param: ordered for param, ordered, _conditions in setters.values()}
@@ -440,12 +442,14 @@ def _absent(name, *kinds):
     return Invariant(name, test)
 
 
-def _computed_chomping(grammar):
+def _computed_finite(grammar):
     """
-    Calls handing `t` a value worked out rather than written — a chomping the specialization cannot pick a copy for.
+    Calls handing a set-by-matching finite parameter a value worked out rather than written — one the specialization
+    cannot pick a copy for.
 
     A finite parameter specializes away only where every call names one of its values outright: a copy per value is
-    made, and a call carrying an expression has no copy to go to. Made lexical, `t` is one of the two the context is.
+    made, and a call carrying an expression has no copy to go to. The chomping and the indentation mode are the two the
+    grammar sets by matching; made lexical, each is what the context already is.
     """
     faults = []
     for name, production in grammar.items():
@@ -453,17 +457,19 @@ def _computed_chomping(grammar):
         def walk(node, owner=name):
             if isinstance(node, ir.Ref):
                 callee = grammar.get(node.name)
-                if callee is not None and "t" in callee.params:
-                    held = node.args[callee.params.index("t")]
-                    if not isinstance(held, ir.Lit):
-                        faults.append(f"{owner}: hands `{node.name}` a chomping it works out")
+                for param in ("t", "i"):
+                    if callee is None or param not in callee.params:
+                        continue
+                    position = callee.params.index(param)
+                    if position < len(node.args) and not isinstance(node.args[position], ir.Lit):
+                        faults.append(f"{owner}: hands `{node.name}` a `{param}` it works out")
             ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
 
         walk(production.body)
     return faults
 
 
-CHOMPING_LEXICAL = Invariant("chomping-is-lexical", _computed_chomping)
+FINITE_LEXICAL = Invariant("every-set-finite-parameter-is-lexical", _computed_finite)
 
 
 def untested_steps():
@@ -989,8 +995,10 @@ def _parameter_uses(grammar, wanted):
     return faults
 
 
-# Phase 0's invariant, and what the phase is finished by: the chomping is nowhere carried.
-NO_T_PARAMETER = Invariant("no-t-parameter", lambda grammar: _parameter_uses(grammar, {"t"}))
+# Phase 0's invariant, and what the phase is finished by: neither parameter the grammar sets by matching is carried —
+# the chomping `t` and the block scalar's indentation mode `i`. Both are read productions away from where they are set,
+# so a read of either means nothing until a caller is known, and both are settled by the same specialization.
+NO_I_T_PARAMETERS = Invariant("no-i-t-parameters", lambda grammar: _parameter_uses(grammar, {"i", "t"}))
 
 # Phase 2's invariant: the block scalar's leading-empty floor is nowhere declared, passed or read as a parameter.
 NO_F_PARAMETER = Invariant("no-f-parameter", lambda grammar: _parameter_uses(grammar, {"f"}))
@@ -1132,11 +1140,12 @@ def _unbounded_reads(param):
 
 
 STEPS = [
-    # Phase 0 establishes `NO_T_PARAMETER`: nothing declares, passes or reads the chomping. The chomping is
-    # data-dependent until this runs, so it cannot be specialized: the setter becomes a switch first.
-    Step("lift-chomping", lift_chomping, CHOMPING_LEXICAL, reduces=("chomping-is-lexical",)),
+    # Phase 0 establishes `NO_I_T_PARAMETERS`: nothing declares, passes or reads the chomping or the block scalar's
+    # indentation mode. Each is data-dependent until this runs, so neither can be specialized: the setters become
+    # switches first.
+    Step("lift-setters", lift_setters, FINITE_LEXICAL, reduces=("every-set-finite-parameter-is-lexical",)),
     Step(
-        "monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), CHOMPING_LEXICAL, NO_T_PARAMETER)
+        "monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), FINITE_LEXICAL, NO_I_T_PARAMETERS)
     ),
     # Phase 1 establishes `ONLY_SETS_AND_LITERALS`: a question about a character is a `CharSet`. A set the context picks
     # denotes nothing until the specialization has bound the context, so this follows Phase 0.

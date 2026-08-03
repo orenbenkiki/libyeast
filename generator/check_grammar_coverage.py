@@ -45,6 +45,7 @@ AMBIENT = {"r": len(annotated2ir.RESUMES)}
 # never returns "no", it raises instead, which is a different thing that `rejected` accounts for separately. Both lists
 # in alphabetical order.
 ALWAYS = (
+    ir.ClearVar,
     ir.CloseWindow,
     ir.CommitProvisional,
     ir.ConsumeChar,  # the gate found the character, so taking it cannot fail

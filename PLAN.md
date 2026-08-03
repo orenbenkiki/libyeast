@@ -220,14 +220,14 @@ tree form the pop is the next item in a sequence.
 
 The phases, each established and then enforced:
 
-| phase | invariant                                        | what it removes                                                     |
-| ----- | ------------------------------------------------ | ------------------------------------------------------------------- |
-| 0     | `no-t-parameter`                                 | the chomping, made lexical and then specialized away                |
-| 1     | `every-character-question-is-a-set-or-a-literal` | every way of asking about a character but the set of its codepoints |
-| 2     | `no-f-parameter`                                 | the block scalar's leading-empty floor, one value for the parse     |
-| 3     | `no-m-parameter`                                 | the auto-detected indent, one value for the parse                   |
-| 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack |
-| later | to be chosen                                     | the empties, the spans, the canonical shape, the decisions          |
+| phase | invariant                                        | what it removes                                                      |
+| ----- | ------------------------------------------------ | -------------------------------------------------------------------- |
+| 0     | `no-i-t-parameters`                              | the chomping and the indentation mode, made lexical then specialized |
+| 1     | `every-character-question-is-a-set-or-a-literal` | every way of asking about a character but the set of its codepoints  |
+| 2     | `no-f-parameter`                                 | the block scalar's leading-empty floor, one value for the parse      |
+| 3     | `no-m-parameter`                                 | the auto-detected indent, one value for the parse                    |
+| 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack  |
+| later | to be chosen                                     | the empties, the spans, the canonical shape, the decisions           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.

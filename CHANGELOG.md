@@ -101,6 +101,22 @@ All notable changes to this project are documented here. The format follows
   production entered at what it measured — has nothing left to find, and a step that finds nothing is a fault by the
   pipeline's own rule. It is gone, and the phase is `clear-m` and `read-global-m`.
 
+  The block scalar is the last of them and the hardest: its indicator decides, and its first content line, which is what
+  the decision is about, is three calls away. So the decision travels as `i` — `given` where the indicator named the
+  indentation, `detected` where it did not — carried by the content rules to `s-indent-floor`, where the two differ by
+  one node: exactly `n` spaces, or one span with the guards on what it measured, which is also where `n` is established.
+  It is a finite parameter, so `monomorphize` specializes it into the names as it does the context and the generated
+  parser tests no mode; `lift-chomping` becomes `lift-setters` and inverts both setters, and Phase 0 settles
+  `no-i-t-parameters`.
+
+  Where the scalar has no content line at all, nothing establishes an indentation and the trailing empty lines are what
+  would have said it — so each is taken whole and the widest of them is the floor the trailing comment is measured
+  against. That matters for `keep`, where those lines are the scalar's own content and the indentation decides which of
+  them belong to it: the YAML Test Suite's `JEF9/01`, `- |+` and a three-space line, is what says so.
+
+  Nothing libyeast runs reads ahead of what it has consumed now. `<auto-detect-indent>` has no site, the interpreter
+  evaluates none, and the IR node stays only because the vendored grammar spells it and one reader loads them both.
+
 - `check_normalize` carries a crash back as a failure. It runs its check in a thread for the stack depth the
   interpreter's recursion wants, and caught only the `SystemExit` the gate reports through — so any other exception was
   printed by the thread's own excepthook while the main thread exited zero. A green `make pc` over a check that never
@@ -127,20 +143,22 @@ All notable changes to this project are documented here. The format follows
   nothing checks, each naming either an invariant or the reason it can have none, and `standing_invariants` counts what
   the final grammar still breaks whatever the steps settle between them.
 
-  Phase 0 is the chomping. `t` is a parameter the base grammar sets by matching an indicator and reads two productions
-  later through the environment, so a read of it means nothing until a caller is known. `lift-chomping` inverts the
-  setter into a `(case) t` matching the indicator for a given `t`, and turns the block scalar into an ordered choice
-  over strip/keep/clip, each branch fixing `t` to the literal it hands the header and the content alike. `monomorphize`
-  then specializes all three finite parameters — the context `c`, the now-lexical chomping `t`, and the resume policy
-  `r` — away: every production it reaches copied once per combination of their values, its `(case)`/`(flip)` on them
-  evaluated to the copy's, and the values fixed into the copy's name (`ns-plain-char_c_flow-in`) rather than passed,
-  following references from the root's copy under each resume policy — the machine's start states — so only combinations
-  that occur are made; a value at its default (the no-resume `r`) is not in the name, so the root stays
-  `l-yeast-stream`, and the recovery re-enters the copy the resume policy names. Only the integers `n`, `m` and `f` stay
-  parameters. It rests on a rule the grammar keeps: a finite parameter is only ever switched on, so where an implicit
-  key's commit softens by context — a key that will not parse being simply not this key — the grammar says so in a
-  `(case) c`, its key branches the bare item and its `else` the commit, and the parser's `(commit)` is the same hard cut
-  everywhere. `(case)` grew that `else` for it. Nothing declares, passes or reads `t` from there on.
+  Phase 0 is the two parameters the grammar sets by matching: the chomping `t` and the block scalar's indentation mode
+  `i`. Each is set by an indicator and read productions later through the environment, so a read of either means nothing
+  until a caller is known. `lift-setters` inverts each setter into a `(case)` on its parameter matching the condition
+  for a given value, and turns each production holding one as a local out-parameter into an ordered choice over its
+  values — the block scalar becoming a choice over strip/keep/clip and over given/detected alike, every branch fixing
+  the parameter to a literal it hands the setter and the reader both. `monomorphize` then specializes all four finite
+  parameters — the context `c`, the now-lexical `t` and `i`, and the resume policy `r` — away: every production it
+  reaches copied once per combination of their values, its `(case)`/`(flip)` on them evaluated to the copy's, and the
+  values fixed into the copy's name (`ns-plain-char_c_flow-in`) rather than passed, following references from the root's
+  copy under each resume policy — the machine's start states — so only combinations that occur are made; a value at its
+  default (the no-resume `r`) is not in the name, so the root stays `l-yeast-stream`, and the recovery re-enters the
+  copy the resume policy names. Only the integers `n`, `m` and `f` stay parameters. It rests on a rule the grammar
+  keeps: a finite parameter is only ever switched on, so where an implicit key's commit softens by context — a key that
+  will not parse being simply not this key — the grammar says so in a `(case) c`, its key branches the bare item and its
+  `else` the commit, and the parser's `(commit)` is the same hard cut everywhere. `(case)` grew that `else` for it.
+  Nothing declares, passes or reads `t` or `i` from there on.
 
   Phase 1 is the character questions. A set of characters is written many ways and asked in several — a character, a
   range, a union of them, a base with exclusions, a reference, the item a lookaround peeks — and all of them come to the

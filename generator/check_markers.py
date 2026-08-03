@@ -20,6 +20,7 @@ import gate
 import ir
 
 CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
+INDENT_MODES = annotated2ir.INDENT_MODES
 
 # The nodes that emit no marker: a character, a guard, a commit point, an error token, and the `(flip)` a value
 # production is made of. Named rather than assumed, because assuming it is how a `(recover)` once hid every marker
@@ -151,16 +152,17 @@ def main():
     for context in CONTEXTS:
         for chomping in CHOMPINGS:
             for resume in RESUMES:
-                values = {"c": context, "t": chomping, "r": resume}
-                where = f"c={context}, t={chomping}, r={resume}"
-                known, errors = settle(grammar, values)
-                for name, reason in errors.items():
-                    complaints.setdefault((name, reason), []).append(where)
-                if known[ir.ROOT] != BALANCED:
-                    left = ", ".join(known[ir.ROOT][1]) or "none"
-                    closed = ", ".join(known[ir.ROOT][0]) or "none"
-                    reason = f"the stream leaves open: {left}; and closes what it never opened: {closed}"
-                    complaints.setdefault((ir.ROOT, reason), []).append(where)
+                for mode in INDENT_MODES:
+                    values = {"c": context, "t": chomping, "r": resume, "i": mode}
+                    where = f"c={context}, t={chomping}, r={resume}, i={mode}"
+                    known, errors = settle(grammar, values)
+                    for name, reason in errors.items():
+                        complaints.setdefault((name, reason), []).append(where)
+                    if known[ir.ROOT] != BALANCED:
+                        left = ", ".join(known[ir.ROOT][1]) or "none"
+                        closed = ", ".join(known[ir.ROOT][0]) or "none"
+                        reason = f"the stream leaves open: {left}; and closes what it never opened: {closed}"
+                        complaints.setdefault((ir.ROOT, reason), []).append(where)
 
     errors = []
     for (name, reason), wheres in sorted(complaints.items()):
@@ -169,7 +171,7 @@ def main():
     gate.report(
         errors,
         "rule(s) whose markers do not balance",
-        f"markers balance: {len(grammar)} rules, for every context, chomping and resume policy",
+        f"markers balance: {len(grammar)} rules, for every context, chomping, resume policy and indentation mode",
     )
 
 

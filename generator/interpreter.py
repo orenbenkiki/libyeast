@@ -394,44 +394,6 @@ class Emitter:
         self.provisional_mark = None
 
 
-def _skip_break(chars, position):
-    """The position after the break at `position` — CR LF together, or a lone CR or LF — or `position` if none."""
-    if position < len(chars) and chars[position] == wire.CARRIAGE_RETURN:
-        return position + (2 if position + 1 < len(chars) and chars[position + 1] == wire.LINE_FEED else 1)
-    if position < len(chars) and chars[position] == wire.LINE_FEED:
-        return position + 1
-    return position
-
-
-def _detect_indent(emitter):
-    """
-    The indentation of the first content line at or after the position, peeked without consuming.
-
-    A block collection is already at the start of that line; a block scalar is mid-line, at the end of its header, so
-    the header line and any empty lines are skipped first. Where no content line follows — a block scalar of empty lines
-    alone — the level is the widest of those empty lines instead, the spec's §8.1.1.1 fallback.
-    """
-    chars = emitter.chars
-    position = emitter.position
-    breaks = (wire.CARRIAGE_RETURN, wire.LINE_FEED)
-    if not emitter.is_sol:
-        while position < len(chars) and chars[position] not in breaks:
-            position += 1
-        position = _skip_break(chars, position)
-    widest_empty = 0
-    while position < len(chars):
-        spaces = 0
-        while position + spaces < len(chars) and chars[position + spaces] == 0x20:
-            spaces += 1
-        after = position + spaces
-        if after >= len(chars) or chars[after] in breaks:
-            widest_empty = max(widest_empty, spaces)
-            position = _skip_break(chars, after)  # an empty line — skip it
-            continue
-        return spaces
-    return widest_empty
-
-
 def evaluate(expression, emitter, grammar):
     """
     Evaluate a value expression — a parameter, a literal, the matched text, or the arithmetic and dispatch over them.
@@ -487,9 +449,6 @@ def evaluate(expression, emitter, grammar):
         raise KeyError(f"Flip on {expression.var}={value!r} has no branch")
     if isinstance(expression, ir.Column):
         return emitter.mark.column + (emitter.offset if emitter.mark.line == 1 else 0)
-    if isinstance(expression, ir.AutoDetectIndent):
-        held = _indent(emitter)
-        return max(1, _detect_indent(emitter) - (0 if held is None else held))
     if isinstance(expression, ir.Ref):
         production = grammar[expression.name]
         arguments = tuple(evaluate(argument, emitter, grammar) for argument in expression.args)

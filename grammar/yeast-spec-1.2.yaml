@@ -146,23 +146,18 @@
 #     consumed: a line's leading run of spaces leaves the parse at the column
 #     that run measures.
 #
-#   * <auto-detect-indent>
-#     The indentation of the next line that holds a character other than a
-#     space, less n, and at least 1. The line the parse stands on counts only if
-#     the parse is at its start.
+#     The grammar this one derives from has an <auto-detect-indent> instead: the
+#     indentation of the next line holding a character other than a space, less
+#     n — read before anything is consumed, past the rest of the current line and
+#     however many empty lines follow, bounded by nothing. Every rule that wanted
+#     it takes its own indentation and reads <column> now, since the parse is
+#     standing on the line that would have answered.
 #
-#     So a block collection (rules 183 and 187) measures the line it is already
-#     at the start of, and nothing is skipped. A block scalar (rule 163) is at
-#     its indicator, in the middle of a line, so the rest of that line is
-#     skipped — the header's own comment — and the break, and however many empty
-#     lines follow, until a line with content is reached, and that line's
-#     indentation is the answer.
-#
-#     Which is why the empty lines of a block scalar are the one place libyeast
-#     must hold tokens back. Whether such a line is content — a line feed the
-#     scalar keeps — or is chomped away, depends on whether a line with content
-#     ever follows it, and until one does the answer is not known. YAML bounds
-#     this nowhere; libyeast bounds it by `max_token_bytes`.
+#     The empty lines of a block scalar are still the one place libyeast must
+#     hold tokens back: whether such a line is content — a line feed the scalar
+#     keeps — or is chomped away depends on whether a line with content ever
+#     follows it, and until one does the answer is not known. YAML bounds this
+#     nowhere; libyeast bounds it by `max_token_bytes`.
 #
 #   == Rule Definitions ==
 #
@@ -3099,16 +3094,16 @@ ns-flow-node:
 #   s-b-comment
 
 c-b-block-header:
-  (...): [ m, t ]
+  (...): [ m, t, i ]
   (all):
   - (any):
     - (all):
-      - c-indentation-indicator: m
+      - c-indentation-indicator: [ m, i ]
       - c-chomping-indicator: t
       - (!==): ns-char
     - (all):
       - c-chomping-indicator: t
-      - c-indentation-indicator: m
+      - c-indentation-indicator: [ m, i ]
   - (commit):
     - BLOCK_HEADER
     - s-b-comment
@@ -3123,14 +3118,17 @@ c-b-block-header:
 # Emits: indicator
 
 c-indentation-indicator:
-  (...): m
-  (token):
-  - indicator
-  - (any):
-    - (if): ns-dec-digit
-      (set): [ m, { (atoi): (match) } ]
-    - (if): <empty>
-      (set): [ m, <auto-detect-indent> ]
+  (...): [ m, i ]
+  (any):
+  - (if):
+      (token):
+      - indicator
+      - (if): ns-dec-digit
+        (set): [ m, { (atoi): (match) } ]
+    (set): [ i, "given" ]
+  - (if):
+      (token): [ indicator, { (set): [ m, 0 ] } ]
+    (set): [ i, "detected" ]
 
 
 
@@ -3193,12 +3191,12 @@ b-chomped-last:
 #   ( t = keep => l-keep-empty(n) )
 
 l-chomped-empty:
-  (...): [ n, t ]
+  (...): [ n, t, i ]
   (case):
     var: t
-    "clip": { l-strip-empty: n }
-    "keep": { l-keep-empty: n }
-    "strip": { l-strip-empty: n }
+    "clip": { l-strip-empty: [ n, i ] }
+    "keep": { l-keep-empty: [ n, i ] }
+    "strip": { l-strip-empty: [ n, i ] }
 
 
 
@@ -3206,15 +3204,33 @@ l-chomped-empty:
 # l-strip-empty(n) ::=
 #   ( s-indent(<=n) b-non-content )*
 #   l-trail-comments(n)?
+#
+# Where the indentation is still owed — an indicator that named none, and no content line to say it — there is no n to
+# bound these lines by, and they are what would have said it. So each is taken whole and the widest of them is the
+# floor, which is what the trailing comment must then be shallower than. Given an n, the official reading stands.
+#
+# Emits: indent
 
 l-strip-empty:
-  (...): n
-  (all):
-  - (***):
+  (...): [ n, i ]
+  (case):
+    var: i
+    "given":
       (all):
-      - s-indent-le: n
-      - b-non-content
-  - (???): { l-trail-comments: n }
+      - (***):
+          (all):
+          - s-indent-le: n
+          - b-non-content
+      - (???): { l-trail-comments: n }
+    "detected":
+      (all):
+      - (set): [ f, 0 ]
+      - (***):
+          (all):
+          - (token): [ indent, { (***): s-space } ]
+          - (increase): f
+          - b-non-content
+      - (???): { l-trail-comments: f }
 
 
 
@@ -3226,14 +3242,30 @@ l-strip-empty:
 # The kept trailing breaks are content, so the scalar ends after them — and before any
 # trailing comments, which are not.
 #
-# Emits: end-scalar
+# l-strip-empty's twin where the indentation is still owed: the lines are taken whole, the widest of them being the
+# floor the trailing comment is measured against, and here they are kept as the content they are.
+#
+# Emits: end-scalar, indent
 
 l-keep-empty:
-  (...): n
-  (all):
-  - (***): { l-empty: [ n, "block-in" ] }
-  - (emit): end-scalar
-  - (???): { l-trail-comments: n }
+  (...): [ n, i ]
+  (case):
+    var: i
+    "given":
+      (all):
+      - (***): { l-empty: [ n, "block-in" ] }
+      - (emit): end-scalar
+      - (???): { l-trail-comments: n }
+    "detected":
+      (all):
+      - (set): [ f, 0 ]
+      - (***):
+          (all):
+          - (token): [ indent, { (***): s-space } ]
+          - (increase): f
+          - b-as-line-feed
+      - (emit): end-scalar
+      - (???): { l-trail-comments: f }
 
 
 
@@ -3271,10 +3303,10 @@ c-l+literal:
   (all):
   - (emit): begin-scalar
   - c-literal
-  - c-b-block-header: [ m, t ]
+  - c-b-block-header: [ m, t, i ]
   - (token):
     - text
-    - l-literal-content: [ { (+): [ n, m ] }, t ]
+    - l-literal-content: [ { (+): [ n, m ] }, t, i ]
 
 
 
@@ -3320,15 +3352,36 @@ l-leading-empties:
 # indentation and as this line being under-indented rather than a past empty line being over-indented, is what a forward
 # parser with no lookahead can say: the empty lines are already emitted, and f is all it has to remember. Taking the
 # indentation before the check is also what tells an empty scalar, whose content line never comes, from an
-# under-indented one — there s-indent fails before the cut, and the scalar ends with no error.
+# under-indented one — there the indentation fails before the cut, and the scalar ends with no error.
+#
+# i says where the indentation comes from. Given, the header's indicator said it and the line must have exactly that
+# many spaces. Detected, the indicator said nothing and this line is what says it: one span over the spaces, deeper
+# than the indentation in force — which is the official grammar's m > 0 — and this is where n is established, from the
+# column that span reached. The floor is the same rule either way, read against what the line turned out to be.
+#
+# Emits: indent
 
 s-indent-floor:
-  (...): [ n, f ]
-  (all):
-  - s-indent: n
-  - (commit):
-    - BLOCK_SCALAR_UNDER_INDENT
-    - (<=): [ f, n ]
+  (...): [ n, f, i ]
+  (case):
+    var: i
+    "given":
+      (all):
+      - s-indent: n
+      - (commit):
+        - BLOCK_SCALAR_UNDER_INDENT
+        - (<=): [ f, n ]
+    "detected":
+      (all):
+      - (token):
+        - indent
+        - (all):
+          - (***): s-space
+          - (<): [ n, { (len): (match) } ]
+      - (commit):
+        - BLOCK_SCALAR_UNDER_INDENT
+        - (<=): [ f, <column> ]
+      - (set): [ n, <column> ]
 
 
 :221: l-nb-literal-first
@@ -3340,11 +3393,11 @@ s-indent-floor:
 # held to it, then the literal content.
 
 l-nb-literal-first:
-  (...): n
+  (...): [ n, i ]
   (all):
   - (set): [ f, 0 ]
   - l-leading-empties: f
-  - s-indent-floor: [ n, f ]
+  - s-indent-floor: [ n, f, i ]
   - (+++): nb-char
 
 
@@ -3361,11 +3414,11 @@ l-nb-literal-first:
 # the folded and spaced texts unchanged.
 
 l-nb-same-first:
-  (...): n
+  (...): [ n, i ]
   (all):
   - (set): [ f, 0 ]
   - l-leading-empties: f
-  - s-indent-floor: [ n, f ]
+  - s-indent-floor: [ n, f, i ]
   - (any):
     - (all):
       - ns-char
@@ -3432,15 +3485,16 @@ end-block-scalar:
 #   l-chomped-empty(n,t)
 
 l-literal-content:
-  (...): [ n, t ]
-  (all):
-  - (any):
-    - (all):
-      - l-nb-literal-first: n
-      - (***): { b-nb-literal-next: n }
-      - b-chomped-last: t
+  (...): [ n, t, i ]
+  (any):
+  - (all):
+    - l-nb-literal-first: [ n, i ]
+    - (***): { b-nb-literal-next: n }
+    - b-chomped-last: t
+    - l-chomped-empty: [ n, t, "given" ]
+  - (all):
     - end-block-scalar: t
-  - l-chomped-empty: [ n, t ]
+    - l-chomped-empty: [ n, t, i ]
 
 
 
@@ -3462,10 +3516,10 @@ c-l+folded:
   (all):
   - (emit): begin-scalar
   - c-folded
-  - c-b-block-header: [ m, t ]
+  - c-b-block-header: [ m, t, i ]
   - (token):
     - text
-    - l-folded-content: [ { (+): [ n, m ] }, t ]
+    - l-folded-content: [ { (+): [ n, m ] }, t, i ]
 
 
 
@@ -3563,9 +3617,9 @@ l-nb-same-lines:
 #   ( b-as-line-feed l-nb-same-lines(n) )*
 
 l-nb-diff-lines:
-  (...): n
+  (...): [ n, i ]
   (all):
-  - l-nb-same-first: n
+  - l-nb-same-first: [ n, i ]
   - (***):
       (all):
       - b-as-line-feed
@@ -3580,14 +3634,15 @@ l-nb-diff-lines:
 #   l-chomped-empty(n,t)
 
 l-folded-content:
-  (...): [ n, t ]
-  (all):
-  - (any):
-    - (all):
-      - l-nb-diff-lines: n
-      - b-chomped-last: t
+  (...): [ n, t, i ]
+  (any):
+  - (all):
+    - l-nb-diff-lines: [ n, i ]
+    - b-chomped-last: t
+    - l-chomped-empty: [ n, t, "given" ]
+  - (all):
     - end-block-scalar: t
-  - l-chomped-empty: [ n, t ]
+    - l-chomped-empty: [ n, t, i ]
 
 
 
@@ -3598,9 +3653,11 @@ l-folded-content:
 
 
 #===============================================================================
-# The <auto-detect-indent> rule is a "special" rule that finds the new level of
-# indentation and returns the number of columns. The level must be greater than
-# 0. It does not consume the indentation.
+# The grammar this one derives from finds the new level of indentation with a
+# special <auto-detect-indent> rule that returns a number of columns without
+# consuming them, and requires it to be greater than 0. Here the level is the
+# indentation itself, consumed where the parse stands and read as <column>, and
+# "greater than 0" is a guard on what that run measured.
 #===============================================================================
 
 :183: l+block-sequence

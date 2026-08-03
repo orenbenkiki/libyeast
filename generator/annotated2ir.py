@@ -21,9 +21,10 @@ import yaml
 TREE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GRAMMAR = os.path.join(TREE, "grammar", "yeast-spec-1.2.yaml")
 
-# The grammar's parameters: `n`/`m` are indentations, `c` a context, `t` a chomping mode, `r` the resume policy. A bare
-# name among these is that parameter; any other bare name is the value it spells.
-PARAMS = frozenset({"c", "f", "m", "n", "r", "t"})  # in alphabetical order
+# The grammar's parameters: `n`/`m`/`f` are indentations, `c` a context, `t` a chomping mode, `r` the resume policy, and
+# `i` whether a block scalar's indentation is given by its indicator or owed to its first content line. A bare name
+# among these is that parameter; any other bare name is the value it spells.
+PARAMS = frozenset({"c", "f", "i", "m", "n", "r", "t"})  # in alphabetical order
 
 # The values of the finite parameters — the ones specialized away at generation time, so that a gate wanting to hold the
 # grammar to every one of them can enumerate them. `n` and `m` are indentations and have no such list. `r` reaching only
@@ -31,6 +32,7 @@ PARAMS = frozenset({"c", "f", "m", "n", "r", "t"})  # in alphabetical order
 CONTEXTS = ("block-in", "block-out", "block-key", "flow-in", "flow-out", "flow-key")
 CHOMPINGS = ("strip", "clip", "keep")
 RESUMES = ("n", "d", "i")
+INDENT_MODES = ("given", "detected")  # whether a block scalar's indicator gave its indentation or its content says it
 HEX = re.compile(r"^x[0-9A-Fa-f]+$")
 REP = re.compile(r"^\(\{(.+)\}\)$")  # ({2}) / ({n})
 INT = re.compile(r"^-?[0-9]+$")
@@ -41,7 +43,7 @@ SPECIALS = {
     "end-of-stream": ir.EndOfStream,
     "invalid": ir.Invalid,
     "column": ir.Column,
-    "auto-detect-indent": ir.AutoDetectIndent,
+    "auto-detect-indent": ir.AutoDetectIndent,  # the vendored grammar's; libyeast's own spells none
 }
 
 

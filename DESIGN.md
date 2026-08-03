@@ -148,10 +148,10 @@ returns a "not implemented" error — so what exists is the project framework an
 The pipeline in `generator/normalize.py` is a sequence of phases, each owning one invariant: a phase adds steps until
 that count is none, and from its end the law's "none stays none" makes every later step keep it. A phase finished with a
 green corpus is a checkpoint that lands on its own. The order is dependency's rather than the meter's — Phase 0 settles
-`no-t-parameter`, the chomping nowhere declared, passed or read; Phase 1 settles
-`every-character-question-is-a-set-or-a-literal`, and follows the specialization because a set the context picks denotes
-nothing until a caller is known; Phase 2 settles `no-f-parameter`, the block scalar's leading-empty floor; Phase 3
-settles `no-m-parameter`, the detected indent. A step written where its goal's other steps already ran is a smaller
+`no-i-t-parameters`, neither the chomping nor a block scalar's indentation mode declared, passed or read; Phase 1
+settles `every-character-question-is-a-set-or-a-literal`, and follows the specialization because a set the context picks
+denotes nothing until a caller is known; Phase 2 settles `no-f-parameter`, the block scalar's leading-empty floor; Phase
+3 settles `no-m-parameter`, the detected indent. A step written where its goal's other steps already ran is a smaller
 step, against a grammar with less in it.
 
 A carried value stops being one parameter at a time, smallest first, because the mechanism is what is being proved and
@@ -252,10 +252,17 @@ means a `(set)` of a declared parameter escapes into every caller that passes it
 itself writes, so a write in one would escape and in the other would not. The collections therefore hand the established
 indentation to `l-block-seq-entries` and `l-block-map-entries` — libyeast's own — as an argument.
 
-**Not yet held.** One site remains: the block scalar's indentation indicator, whose absent branch is still the unbounded
-scan, and whose value is wanted three calls away at the first content line. Until it is written the same way,
-`generator/interpreter.py` still carries `_detect_indent`, and a parse can still read arbitrarily far ahead of what it
-has consumed.
+**The block scalar was the last of them, and the hardest**, because its indicator decides and its first content line is
+three calls away. So the decision travels as `i`, a finite parameter with two values — `given`, the indicator named the
+indentation, and `detected`, it did not and the first content line is what says it — and `monomorphize` specializes it
+into the names exactly as it does the context, so the generated parser tests no mode. The two differ by one node in
+`s-indent-floor`: exactly `n` spaces, or one span with the guards on what it measured. Where the scalar has no content
+line at all, the trailing empty lines are what would have said the indentation, so each is taken whole and the widest of
+them is the floor — which is what `keep` needs, those lines being the scalar's own content, and what the YAML Test
+Suite's `JEF9/01` holds it to.
+
+`generator/interpreter.py` evaluates no `<auto-detect-indent>`, and no production libyeast runs reads ahead of what it
+has consumed. The IR node stays only because the vendored grammar spells it and one reader loads them both.
 
 ## Differences from YamlReference
 

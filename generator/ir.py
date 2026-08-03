@@ -26,11 +26,12 @@ ROOT = "l-yeast-stream"
 RECOVER = "l-recover"
 
 # The parameters `normalize.monomorphize` specializes away into a production's name: the ones with finitely many values,
-# passed lexically so their value is settled where a production is entered. The context `c`, the chomping `t` (once
-# `lift-chomping` has made it lexical rather than a match's stashed state), and the resume policy `r` are the three;
-# `n`, `m` and `f` are integers and stay. A left-out finite parameter takes its default — an omitted resume policy is
-# the no-resume one — which `entry` fills, so the root and a fixture that names none reach the copy that fixes it.
-FINITE_PARAMS = ("c", "t", "r")
+# passed lexically so their value is settled where a production is entered. The context `c`, the chomping `t` and the
+# block scalar's indentation mode `i` (both once `lift-setters` has made them lexical rather than a match's stashed
+# state), and the resume policy `r`; `n`, `m` and `f` are integers and stay. A left-out finite parameter takes its
+# default — an omitted resume policy is the no-resume one — which `entry` fills, so the root and a fixture that names
+# none reach the copy that fixes it.
+FINITE_PARAMS = ("c", "t", "r", "i")
 FINITE_DEFAULTS = {"r": "n"}
 
 # The parameters that are one value for the parse rather than one per call: what `normalize.read_globals` takes off
@@ -151,12 +152,14 @@ class Indent:
 
 
 @dataclass(frozen=True)
-class Column:
+class AutoDetectIndent:
     """
-    `<column>`: the column the parse stands at, counted from zero.
+    `<auto-detect-indent>`: the indentation of the next line holding a character other than a space, less `n`, read
+    without consuming anything and bounded by nothing.
 
-    What a construct is indented by, read where its indentation has just been consumed rather than worked out by looking
-    ahead for it: the run of spaces a line begins with leaves the parse at the column that run measures.
+    The official grammar's, and only ever read from it — libyeast's own grammar takes each such indentation where it
+    stands and reads `Column`, so nothing here evaluates one. It stays because the vendored grammar the erasure gate
+    compares against spells it, and one reader loads them both.
     """
 
     def references(self):
@@ -164,12 +167,12 @@ class Column:
 
 
 @dataclass(frozen=True)
-class AutoDetectIndent:
+class Column:
     """
-    `<auto-detect-indent>`: the indentation of the next line that holds a character other than a space, less `n`.
+    `<column>`: the column the parse stands at, counted from zero.
 
-    The current line counts only if the parse is at its start — so a block collection measures the line it stands on,
-    and a block scalar measures past the rest of its header line, the break, and however many empty lines follow.
+    What a construct is indented by, read where its indentation has just been consumed rather than worked out by looking
+    ahead for it: the run of spaces a line begins with leaves the parse at the column that run measures.
     """
 
     def references(self):

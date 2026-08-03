@@ -32,6 +32,27 @@ DEVIATIONS = {
         "spaces that follow as the indent token and reads <column>, so what the compact collection is indented by is "
         "where its own indentation left the parse rather than a number worked out beside it"
     ),
+    "l-chomped-empty": (
+        "carries i to the two rules below it, which need to know whether an indentation was ever established: reached "
+        "with none, the trailing lines are what would have said it"
+    ),
+    "l-strip-empty": (
+        "the official grammar bounds each trailing line by n. Where the indentation is still owed — an indicator that "
+        "named none and no content line to say it — there is no n to bound them by and they are what would have said "
+        "it, so each is taken whole and the widest is the floor the trailing comment must be shallower than. Given an "
+        "n, the official reading stands"
+    ),
+    "l-keep-empty": ("l-strip-empty's twin, and it keeps the lines it takes, those being the scalar's own content"),
+    "c-l+literal": (
+        "the block scalar carries i, which its header sets: given where the indicator named the indentation, detected "
+        "where it did not and the first content line is what says it. The official grammar has no such thing because "
+        "its m is answered by a special rule that looks ahead for that line before the scalar has consumed anything"
+    ),
+    "c-l+folded": ("the literal scalar's twin: the folded scalar carries the same i, set by the same header"),
+    "l-folded-content": (
+        "the l-literal-content deviation's twin, and it carries i for the same reason: which of the two ways the first "
+        "content line's indentation is established has to reach that line"
+    ),
     "l+block-sequence": (
         "the official grammar's every turn re-measures against an m fixed outside the repetition, by a special rule "
         "that looks ahead for the first content line. libyeast takes that line's own run of spaces as the indent token "

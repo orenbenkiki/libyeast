@@ -45,7 +45,7 @@ def expr_yaml(e):
     if isinstance(e, ir.Column):
         return "<column>"
     if isinstance(e, ir.AutoDetectIndent):
-        return "<auto-detect-indent>"
+        return "<auto-detect-indent>"  # written back only where the vendored grammar is regenerated for comparison
     if isinstance(e, ir.Add):
         return {"(+)": [expr_yaml(e.a), expr_yaml(e.b)]}
     if isinstance(e, ir.Sub):
