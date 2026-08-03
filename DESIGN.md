@@ -143,6 +143,16 @@ returns a "not implemented" error — so what exists is the project framework an
 - **Docs** — `Doxyfile` drives the API docs from the header comments, completeness-gated: an undocumented public symbol
   or a missing `@param`/`@return` fails the build.
 
+## The normalization pipeline, one goal at a time
+
+The pipeline in `generator/normalize.py` is a sequence of phases, each owning one invariant: a phase adds steps until
+that count is none, and from its end the law's "none stays none" makes every later step keep it. A phase finished with a
+green corpus is a checkpoint that lands on its own. The order is dependency's rather than the meter's — Phase 0 settles
+`no-t-parameter`, the chomping nowhere declared, passed or read; Phase 1 settles
+`every-character-question-is-a-set-or-a-literal`, and follows the specialization because a set the context picks denotes
+nothing until a caller is known. A step written where its goal's other steps already ran is a smaller step, against a
+grammar with less in it.
+
 ## The three rules the normalization pipeline is held to
 
 Three rules bind every transformation in `generator/normalize.py`, and they matter more than any one step does, so they
@@ -186,13 +196,14 @@ the standing question at every one of them is *what universal step would retire 
 one?*
 
 **Not yet held — the one thing in this document that is not yet true.** Everything else here describes what the code
-does; this section describes what it must do, and the pipeline does not satisfy it today. Six named points of interest
-carry four declaration tables between them, and the comparisons the second rule asks for are not all written. What the
-first rule asks for is met: no step does two things, and every step must change the grammar — one that does not is a
-fault named where it stands, since a step goes idle when what it looks for has stopped reaching it, which is a
-regression in the step before it. Reaching conformance with all three comes before driving the determinize meter down: a
-meter driven down over steps of the wrong shape buys a number and keeps the debt. The qualification in this paragraph
-comes out when the pipeline conforms, and the three rules then stand as a hard constraint on every step after.
+does; this section describes what it must do, and the pipeline does not satisfy it today. The comparisons the second
+rule asks for are not all written. What the first rule asks for is met: no step does two things, and every step must
+change the grammar — one that does not is a fault named where it stands, since a step goes idle when what it looks for
+has stopped reaching it, which is a regression in the step before it. Nothing is declared, so nothing is singled out: no
+point of interest is tracked and no declaration table stands, each phase re-deriving what it needs. Reaching conformance
+with all three comes before driving the determinize meter down: a meter driven down over steps of the wrong shape buys a
+number and keeps the debt. The qualification in this paragraph comes out when the pipeline conforms, and the three rules
+then stand as a hard constraint on every step after.
 
 ## Differences from YamlReference
 

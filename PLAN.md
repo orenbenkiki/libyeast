@@ -220,11 +220,12 @@ tree form the pop is the next item in a sequence.
 
 The phases, each established and then enforced:
 
-| phase | invariant              | what it removes                                                             |
-| ----- | ---------------------- | --------------------------------------------------------------------------- |
-| 0     | `no-t-parameter`       | the chomping, made lexical and then specialized away                        |
-| 1     | `no-indent-parameters` | `n`, `m`, `f` — the values a call carries, moved to the stack and the slots |
-| later | to be chosen           | the empties, the spans, the canonical shape, the decisions                  |
+| phase | invariant                                        | what it removes                                                             |
+| ----- | ------------------------------------------------ | --------------------------------------------------------------------------- |
+| 0     | `no-t-parameter`                                 | the chomping, made lexical and then specialized away                        |
+| 1     | `every-character-question-is-a-set-or-a-literal` | every way of asking about a character but the set of its codepoints         |
+| 2     | `no-indent-parameters`                           | `n`, `m`, `f` — the values a call carries, moved to the stack and the slots |
+| later | to be chosen                                     | the empties, the spans, the canonical shape, the decisions                  |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
@@ -344,18 +345,18 @@ to fail proves nothing, and one that excuses what it cannot decide reports a fal
 `is_one_char(node) and _peek_spans(node) is not None` silently skipped every case that had gone wrong.
 
 Three nets ride on it, and each caught something the day it landed. `untested_steps` counts the steps promising what
-nothing checks, and it reads **none**: all fifty name an invariant, bar two that name a *reason* instead —
-`extend-returns`, whose property is momentary, what the step did rather than a shape the grammar keeps, and
-`clear-params`, whose property belongs to a run and not to a shape. Naming both an invariant and a reason is itself a
-fault. `standing_invariants` counts what the **final** grammar still breaks whatever the steps settle between them,
-which is the list this phase finishes by emptying, and the meter is the first line of it:
+nothing checks, and it reads **none**: every step names an invariant, and one whose property nothing standing can hold —
+momentary, what the step did rather than a shape the grammar keeps, or belonging to a run rather than to a shape — names
+a *reason* instead. Naming both an invariant and a reason is itself a fault. `standing_invariants` counts what the
+**final** grammar still breaks whatever the steps settle between them, which is the list this phase finishes by
+emptying, and it reads **none** of the invariants the phases so far name. The counts the old order reached are the debt
+each phase inherits when it arrives, the meter the first line of them:
 
 | standing |                                                                                                                  |
 | -------- | ---------------------------------------------------------------------------------------------------------------- |
 | **469**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody             |
 | **92**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                          |
 | **70**   | `every-way-gated` — ways in a multi-way choice with no character to go on                                        |
-| **44**   | `every-character-question-is-a-set-or-a-literal` — a lookahead, an `(exclude)`, a difference                     |
 | 14       | `no-call-deciding-nothing` · 13 `no-standing-pop-holder` · 6 `no-factorable-prefix` · 4 `no-shared-leading-push` |
 | 1        | `nothing-carries-on-over-a-pop`                                                                                  |
 
@@ -384,10 +385,10 @@ was the step working. And four tests were blind where they were written, reading
 the worst read `is_one_char(node) and _peek_spans(node) is not None`, whose second clause skipped every case that had
 gone wrong.
 
-Two counts are reduced and settled by nobody **on purpose**, and are work owed rather than oversight: `every-way-gated`,
-the 46 ways in a multi-way choice with no character to go on, which the four gate hoists reduce between them; and
-`no-call-deciding-nothing`, 298 calls brought to 9 by `inline-single-way` and standing at 8, each one a splice it
-refused because the callee is load-bearing somewhere.
+A count reduced and settled by nobody is work owed rather than oversight, and the old order left two such:
+`every-way-gated`, the 46 ways in a multi-way choice with no character to go on, which the four gate hoists reduced
+between them; and `no-call-deciding-nothing`, 298 calls brought to 9 by `inline-single-way` and standing at 8, each one
+a splice it refused because the callee is load-bearing somewhere.
 
 **Before every commit, every transform is read for correctness against the semantics of the nodes it moves** — by hand,
 whatever the gates say. The gates are a net and not a substitute: a transformation that moves an action into another

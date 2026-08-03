@@ -10,12 +10,19 @@ Phase 0 is the chomping. `t` is a parameter the base grammar sets by matching an
 later through the environment, so a read of it means nothing until a caller is known. `lift-chomping` inverts the setter
 into a switch and `monomorphize` specializes that switch into the names, after which nothing declares, passes or reads
 it — `no-t-parameter` at none.
+
+Phase 1 is the character questions. A set of characters is written many ways and asked in several — a union, a
+difference, a reference, the item of a lookaround — and the parser tests one key for one bit. `lower-char-sets` says
+every one of them as the intervals it denotes, after which each question about a character is a `CharSet` or a literal —
+`every-character-question-is-a-set-or-a-literal` at none. It follows the specialization because a set a context
+parameter picks denotes nothing until a caller is known.
 """
 
 import dataclasses
 import inspect
 
 import annotated2ir
+import chars
 import ir
 
 
@@ -745,6 +752,201 @@ def stages(grammar):
     return result, namer.points
 
 
+def lower_char_sets(grammar, namer):
+    """
+    Rewrite every character set as one `CharSet`, the shape the parser asks its one question in.
+
+    A set of characters is written many ways — a character, a range, a union of them, a base with exclusions — and all
+    of them come to the same thing: the parser tests a key for one bit. Said once here, as the sorted disjoint intervals
+    it denotes, there is one shape to convert and the codegen has no algebra left to walk.
+
+    It also makes the spelling canonical, which is what lets the sweep do its own work: two productions denoting the
+    same characters differently — a union written in either order — are structurally unequal and do not merge, the merge
+    reading shape rather than extension. Said as intervals they are the same node and merge like anything else.
+
+    A maximal one is taken, not every one inside it: the intervals of a union are its own, and nothing asks about them
+    apart. A reference is left standing where a match takes it — a character set with a production of its own keeps it,
+    and the reference is what the callers hold — so nothing is purged and no fixture is stranded. Inside a lookaround it
+    is read through instead: what a peek holds is the question "is the character one of these", and a name is not a
+    question the machine can put to the input.
+    """
+
+    def lowered(node):
+        if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind)):
+            asked = as_char_set(node.item, grammar)
+            if isinstance(asked, ir.CharSet):
+                return dataclasses.replace(node, item=asked)
+        if isinstance(node, ir.Ref):
+            return node  # its production is where the set is said, and this is the caller's hold on it
+        said = as_char_set(node, grammar)
+        return said if isinstance(said, ir.CharSet) else ir.rebuilt(node, lowered)
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
+
+
+def _other_character_questions(grammar):
+    """
+    Every question about a character said as something other than a `CharSet` — the one shape the parser can be given.
+
+    A question is about a character when what it matches is exactly one: a union, a difference, a raw character node,
+    and the item a lookaround peeks. Whether the spans can be worked out is no part of the question — a node matching
+    one character is a character set, and one this cannot reduce is worse than one it can, not excused, the reduction
+    failing being how a set stops being sayable at all.
+
+    A reference is a hold on the production where the set is said, so a match taking one is no fault; inside a
+    lookaround it is a fault, what a peek holds being the question rather than the hold. A guard over several characters
+    — an `(exclude)`, a difference of two multi-character productions, a lookahead for a comment — asks nothing about a
+    character and is no business of this count.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name):
+            if isinstance(node, ir.CharSet):
+                return  # lowered
+            if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind)) and is_one_char(node.item, grammar):
+                if not isinstance(node.item, ir.CharSet):
+                    kinds = (type(node).__name__, type(node.item).__name__)
+                    faults.append(f"{owner}: a {kinds[0]} asks about a character as a {kinds[1]}")
+                return
+            if isinstance(node, ir.Ref):
+                return  # a hold on the production where the set is
+            if is_one_char(node, grammar):
+                faults.append(f"{owner}: a {type(node).__name__} is a character set and is not a `CharSet`")
+                return
+            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
+
+        walk(production.body)
+    return faults
+
+
+ONLY_SETS_AND_LITERALS = Invariant("every-character-question-is-a-set-or-a-literal", _other_character_questions)
+
+
+def is_one_char(node, grammar, seen=frozenset()):
+    """
+    Whether `node` matches exactly one character — a terminal char class. A `+`/`*` over one stays a single repeated
+    char-set match (one SIMD call); over anything else it breaks into a sequence or a recursion. A `Char`, `Range` or
+    `Invalid` is one; a `Diff` is one when its base is (the exclusions only narrow it); an `Alt` is one when every
+    branch is (a union of char sets), so a lowered optional `x | <empty>` is not one; a `Ref` is one when its production
+    is.
+    """
+    if isinstance(node, (ir.Char, ir.Range, ir.Invalid, ir.CharSet)):
+        return True
+    if isinstance(node, ir.Diff):
+        return is_one_char(node.base, grammar, seen)
+    if isinstance(node, ir.Alt):
+        return bool(node.items) and all(is_one_char(item, grammar, seen) for item in node.items)  # empty: no match
+    if isinstance(node, ir.Case):
+        return all(is_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
+    if isinstance(node, ir.Ref):
+        return node.name in seen or is_one_char(grammar[node.name].body, grammar, seen | {node.name})
+    return False
+
+
+def as_char_set(node, grammar):
+    """
+    `node` said as a `CharSet` where it is a character set, and `node` itself where it is not.
+
+    The one place that decides it, so the lowering step and everything that builds a gate afterwards agree. A reference
+    is read through here rather than left standing: in a peek it is the question "is the character one of these", not
+    the hold on a production a match needs, and an alternation of such references is one set like any other.
+    """
+    if isinstance(node, ir.LiteralPeek):
+        return node  # several characters, of which only the first is the dispatch — no set says that
+    if not is_one_char(node, grammar):
+        return node
+    spans = _peek_spans(node, grammar)
+    return node if spans is None else _spans_node(spans)
+
+
+def _spans_node(spans):
+    """
+    `spans` as the character set a gate peeks — the one shape a character question is asked in.
+
+    The invalid byte's `(-1, -1)` is kept apart from the characters: it is a unit no character class also holds, so it
+    overlaps only itself, and coalescing it with a run starting at zero would say the parser accepts a character there.
+    """
+    invalid = [span for span in spans if span[0] < 0]
+    return ir.CharSet(
+        tuple([(-1, -1)] * bool(invalid) + [tuple(span) for span in _merged_spans([s for s in spans if s[0] >= 0])])
+    )
+
+
+def _merged_spans(spans):
+    """`spans` as sorted, coalesced `(lo, hi)` codepoint intervals."""
+    merged = []
+    for lo, hi in sorted(spans):
+        if merged and lo <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
+        else:
+            merged.append((lo, hi))
+    return merged
+
+
+def _subtracted_spans(spans, minus):
+    """`spans` with every interval of `minus` removed."""
+    for exclude_lo, exclude_hi in minus:
+        remaining = []
+        for lo, hi in spans:
+            if exclude_hi < lo or exclude_lo > hi:
+                remaining.append((lo, hi))
+                continue
+            if lo < exclude_lo:
+                remaining.append((lo, exclude_lo - 1))
+            if hi > exclude_hi:
+                remaining.append((exclude_hi + 1, hi))
+        spans = remaining
+    return spans
+
+
+def _denoted_spans(denotation):
+    """A `chars.denote` denotation as sorted, disjoint `(lo, hi)` codepoint intervals."""
+    kind = denotation[0]
+    if kind == "literal":
+        return [(denotation[1], denotation[1])]
+    if kind == "range":
+        return [(denotation[1], denotation[2])]
+    if kind == "union":
+        return _merged_spans([span for part in denotation[1] for span in _denoted_spans(part)])
+    if kind == "difference":
+        return _subtracted_spans(
+            _denoted_spans(denotation[1]),
+            _merged_spans([span for part in denotation[2] for span in _denoted_spans(part)]),
+        )
+    raise ValueError(f"unknown denotation {denotation!r}")
+
+
+def _peek_spans(peek, grammar):
+    """
+    The codepoint intervals `peek` accepts, or `None` where the set is not pinned down. The invalid-byte class is the
+    interval `(-1, -1)` — a unit no character class can also hold, so it overlaps only itself — and an alternation
+    holding it beside character classes, the recovery's any-byte peek, is the classes' intervals with that unit.
+    """
+    if isinstance(peek, ir.CharSet):
+        return [tuple(span) for span in peek.spans]
+    if isinstance(peek, ir.Invalid):
+        return [(-1, -1)]
+    if isinstance(peek, ir.LiteralPeek):
+        return [(peek.text[0], peek.text[0])]  # the first character is the dispatch; the rest is the gate's own test
+    if isinstance(peek, ir.Alt):
+        # Unioned here rather than denoted, since the invalid byte has no denotation: it is a unit no character holds,
+        # and an alternation carrying one — as the `Invalid` node or as the interval a `CharSet` says it with — denotes
+        # nothing while admitting perfectly well.
+        gathered = []
+        for item in peek.items:
+            admitted = _peek_spans(item, grammar)
+            if admitted is None:
+                return None
+            gathered += admitted
+        invalid = [span for span in gathered if span[0] < 0]
+        return [(-1, -1)] * bool(invalid) + _merged_spans([span for span in gathered if span[0] >= 0])
+    denotation = chars.denote(grammar, peek)
+    return None if denotation is None else _denoted_spans(denotation)
+
+
 # No point of interest is tracked yet: a point is a name a later phase's declared step speaks about, and none of those
 # has arrived.
 POINTS = {}
@@ -781,9 +983,13 @@ def _parameter_uses(grammar, wanted):
 NO_T_PARAMETER = Invariant("no-t-parameter", lambda grammar: _parameter_uses(grammar, {"t"}))
 
 STEPS = [
-    # The chomping is data-dependent until this runs, so it cannot be specialized: the setter becomes a switch first.
+    # Phase 0 establishes `NO_T_PARAMETER`: nothing declares, passes or reads the chomping. The chomping is
+    # data-dependent until this runs, so it cannot be specialized: the setter becomes a switch first.
     Step("lift-chomping", lift_chomping, CHOMPING_LEXICAL, reduces=("chomping-is-lexical",)),
     Step(
         "monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), CHOMPING_LEXICAL, NO_T_PARAMETER)
     ),
+    # Phase 1 establishes `ONLY_SETS_AND_LITERALS`: a question about a character is a `CharSet`. A set the context picks
+    # denotes nothing until the specialization has bound the context, so this follows Phase 0.
+    Step("lower-char-sets", lower_char_sets, ONLY_SETS_AND_LITERALS),
 ]
