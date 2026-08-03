@@ -27,8 +27,10 @@ Phase 5 is the empties. A caller choosing whether to enter a production that may
 the choice cannot be put on a character while both answers live under one name. `lower-optionals` and `lower-stars`
 bring the empty matches a node hides out beside the ways that read, `span-consumes` takes the character runs out of that
 question by writing each as the scan it is, `mint-consuming-and-residue` gives every production that may match empty a
-name for each of the two things it is, and `distribute-residues` writes the choice between the two where the caller
-stands rather than behind the one name — `every-empty-match-is-a-way` and `no-call-enters-both-ways` at none.
+name for each of the two things it is, `distribute-residues` writes the choice between the two where the caller stands
+rather than behind the one name, and `dissolve-residues` writes what is left taking no character into the call sites
+that enter it. Nothing a caller chooses to enter can match empty — `only-root-empties` at none, the root and the
+recovery keeping their empty ways, having no call site to hold the choice.
 """
 
 import dataclasses
@@ -1580,6 +1582,69 @@ def _blind_calls(grammar):
 CALLS_DECIDED = Invariant("no-call-enters-both-ways", _blind_calls)
 
 
+def dissolve_residues(grammar, namer):
+    """
+    Write every production that takes no character into the call sites that enter it, so nothing is reached by a name
+    that stands for a match of nothing.
+
+    What is left matching empty once the two ways are told apart is what only ever took none: the residue a split named,
+    and the productions that were actions alone — `e-node`, a pair of markers around an empty scalar, at twenty-six call
+    sites. A name is worth having where it stands for a decision, and there is none in a way that consumes nothing and
+    always ends where it began; written where it is entered, the caller's own way says what it does and no call is made
+    on the chance that it takes nothing.
+
+    Each is written out before it is written in, a residue holding calls of others. One reaching itself would be a match
+    of nothing at all rather than a match of nothing, and the grammar has none.
+    """
+    ways = _split_ways(grammar)
+    entered = entered_by_name(grammar)
+    dissolved = {name: grammar[name].body for name in grammar if name not in entered and ways[name][1]}
+
+    def written(node, into):
+        node = ir.rebuilt(node, lambda child: written(child, into))
+        if isinstance(node, ir.Ref) and node.name in into:
+            return _bound(into[node.name], dict(zip(grammar[node.name].params, node.args)))
+        return node
+
+    for _round in range(len(dissolved) + 1):
+        settled = {name: written(body, dissolved) for name, body in dissolved.items()}
+        if settled == dissolved:
+            break
+        dissolved = settled
+    else:
+        raise AssertionError("a production that takes no character reaches itself, and cannot be written out")
+
+    return {
+        name: (
+            production
+            if name in dissolved
+            else dataclasses.replace(production, body=written(production.body, dissolved))
+        )
+        for name, production in grammar.items()
+    }
+
+
+def _blind_empties(grammar):
+    """
+    Productions that match empty and that a caller chooses whether to enter — each one a decision made with no character
+    to go on, since what is entered may take nothing at all.
+
+    A parse enters the root and the recovery by name rather than by a call, so an empty match there decides nothing and
+    neither is one of these. Everything else that could match empty is now a way of the caller's own, where a gate can
+    be put on it.
+    """
+    ways = _split_ways(grammar)
+    entered = entered_by_name(grammar)
+    return [
+        f"{name}: matches empty, and a caller chooses whether to enter it"
+        for name in grammar
+        if name not in entered and ways[name][1]
+    ]
+
+
+ONLY_ROOT_EMPTIES = Invariant("only-root-empties", _blind_empties)
+
+
 def hold_established_indents(grammar, namer):
     """
     Make an established indentation something the parse stands under rather than something a call hands back.
@@ -1812,4 +1877,5 @@ STEPS = [
     Step("lower-stars", lower_stars, NO_STAR_NODES),
     Step("mint-consuming-and-residue", mint_consuming_and_residue, EMPTIES_NAMED),
     Step("distribute-residues", distribute_residues, CALLS_DECIDED),
+    Step("dissolve-residues", dissolve_residues, ONLY_ROOT_EMPTIES),
 ]

@@ -278,6 +278,19 @@ All notable changes to this project are documented here. The format follows
   in its own right, and what it answers for is a base like `l-recover-entry`, a resume policy that declines and so
   matches nowhere, which no fixture could reach before it was split either.
 
+  `dissolve-residues` writes what is left taking no character into the call sites that enter it — 50 productions at 329
+  call sites, `e-node` at twenty-six of them — and Phase 5 is finished: `only-root-empties` goes from 50 to none, and
+  the six productions still matching empty are the root and the recovery under each resume policy, which a parse enters
+  by name. Once the two ways are told apart, what still matches empty is what only ever took nothing: the residue a
+  split named, and the five that were actions alone. A name is worth having where it stands for a decision, and there is
+  none in a way that consumes nothing and always ends where it began. Each is written out before it is written in, a
+  residue holding calls of others; one reaching itself would be a match of nothing at all rather than a match of
+  nothing, and the grammar has none.
+
+  The phase leaves 328 productions where it found 333, having gone as wide as 433 in between. No caller now chooses
+  whether to enter something that may take nothing — every empty match is a way of the caller's own, where a character
+  can decide it.
+
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
   becomes a reference to that callee. Productions that behave alike are spelled once: same parameters, and the same body
