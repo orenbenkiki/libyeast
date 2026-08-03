@@ -151,8 +151,19 @@ green corpus is a checkpoint that lands on its own. The order is dependency's ra
 `no-i-t-parameters`, neither the chomping nor a block scalar's indentation mode declared, passed or read; Phase 1
 settles `every-character-question-is-a-set-or-a-literal`, and follows the specialization because a set the context picks
 denotes nothing until a caller is known; Phase 2 settles `no-f-parameter`, the block scalar's leading-empty floor; Phase
-3 settles `no-m-parameter`, the detected indent; Phase 4 settles `no-n-parameter`, the indentation itself. A step
-written where its goal's other steps already ran is a smaller step, against a grammar with less in it.
+3 settles `no-m-parameter`, the detected indent; Phase 4 settles `no-n-parameter`, the indentation itself; Phase 5 is
+the empties, and settles `every-empty-match-is-a-way` on the way to `only-root-empties`. A step written where its goal's
+other steps already ran is a smaller step, against a grammar with less in it.
+
+The empties are what a caller cannot decide on. Entering a production that may match nothing is a choice made with no
+character to go on, and it stays one while both answers live under a single name — so each such production is given a
+name for the ways that take a character and a name for the ways that take none, and becomes the choice between the two.
+The split is the same match in the same order: a sequence's ways come out as its parts already offer them, and no
+alternation in the grammar has an empty way ahead of a reading one. Where a shape cannot say the two apart locally it is
+said differently rather than argued about — a possessive scan's empty way is the negative peek that is exactly when it
+takes nothing, a counted repetition's is the count being non-positive, and a commit is lifted over the choice so one
+message scope stands around both ways rather than one around each, which would make the reading way's failure the error
+instead of a step on the way to the empty one.
 
 A carried value stops being one parameter at a time, smallest first, because the mechanism is what is being proved and
 not the value: `f` is read by one production, so a floor that nested would show up over four reads rather than over

@@ -22,6 +22,12 @@ one value for the parse rather than one per call, so each is given an end and th
 indentation `n` is one value per region, so it goes on the parse's own stack — `hold-established-indents` makes the one
 indentation a call hands back into a push, `push-indents` says where every other change is, and `read-indents` takes the
 parameter away, leaving the stack the one place it is. Nothing declares, passes or reads any of the three.
+
+Phase 5 is the empties. A caller choosing whether to enter a production that may match nothing is choosing blind, and
+the choice cannot be put on a character while both answers live under one name. `lower-optionals` and `lower-stars`
+bring the empty matches a node hides out beside the ways that read, `span-consumes` takes the character runs out of that
+question by writing each as the scan it is, and `mint-consuming-and-residue` gives every production that may match empty
+a name for each of the two things it is — `every-empty-match-is-a-way` at none.
 """
 
 import dataclasses
@@ -1209,6 +1215,322 @@ def lower_optionals(grammar, namer):
 NO_OPT_NODES = _absent("no-opt-nodes", ir.Opt)
 
 
+# What a match takes. A kind that always takes at least one character, and the kinds that never take any — the latter
+# told apart by what they do with the position they do not move: an action leaves something behind and matches wherever
+# it is reached, a guard leaves nothing and may decline. `<empty>` is both, doing nothing and always matching, so it is
+# named where each of them needs it. A kind that reads on one way and not on another — a run, a repetition, a choice —
+# is asked about its parts instead, and one named nowhere raises: an empty match answered for by accident is the whole
+# debt this phase is here to remove. Each in alphabetical order.
+_ALWAYS_READS = (
+    ir.Char,
+    ir.CharSet,
+    ir.ConsumeChar,
+    ir.ConsumeLiteral,
+    ir.ConsumePeeked,
+    ir.Diff,
+    ir.Invalid,
+    ir.LiteralPeek,
+    ir.Range,
+)
+_ACTIONS = (
+    ir.ClearVar,
+    ir.CloseWindow,
+    ir.CommitProvisional,
+    ir.Emit,
+    ir.Error,
+    ir.ExcludeAt,
+    ir.Increase,
+    ir.InjectBefore,
+    ir.MarkProvisional,
+    ir.OpenProvisional,
+    ir.OpenWindow,
+    ir.PopCode,
+    ir.PopIndent,
+    ir.PopMessage,
+    ir.PushCode,
+    ir.PushIndent,
+    ir.PushMessage,
+    ir.RetypeProvisional,
+    ir.SetVar,
+)
+_GUARDS = (ir.Cut, ir.EndOfStream, ir.Le, ir.Look, ir.LookBehind, ir.Lt, ir.NegLook, ir.StartOfLine)
+
+
+def _is_actions_alone(node, grammar, seen=frozenset()):
+    """
+    Whether `node` is built of actions alone — a way that takes no character and matches wherever it is reached.
+
+    A structural question, and what the commit's hoist rests on: `A (commit m: X)` is `(commit m: A X)` only where `A`
+    cannot fail, an `A` that could failing under the hoist with the commit's error rather than by not matching. A choice
+    is one where some way is, since that way is the one taken; a recursion reached again is not, having no way of its
+    own to answer with.
+    """
+    if isinstance(node, (*_ACTIONS, ir.Empty)):
+        return True
+    if isinstance(node, ir.Seq):
+        return all(_is_actions_alone(item, grammar, seen) for item in node.items)
+    if isinstance(node, ir.Alt):
+        return any(_is_actions_alone(item, grammar, seen) for item in node.items)
+    if isinstance(node, (ir.Token, ir.Wrap)):
+        return _is_actions_alone(node.item, grammar, seen)
+    if isinstance(node, ir.Ref):
+        return node.name not in seen and _is_actions_alone(grammar[node.name].body, grammar, seen | {node.name})
+    return False
+
+
+def _does_empty_leave_nothing(node, grammar, ways, seen=frozenset()):
+    """
+    Whether every way of `node` that takes no character leaves nothing behind — it reads the input and answers, and a
+    rewind past it undoes all of it.
+
+    What lets a run over an item that may take nothing drop the zero-width turn `_repeat` keeps: the turn is taken
+    either way, and where it leaves nothing the two runs are the same match. Something with no empty way has none to
+    answer for; a `(token)` over one that takes no character cuts a run of no characters, which is no token, and a
+    `(wrap)`'s markers are tokens whether or not anything is between them.
+    """
+    if _split(node, grammar, ways)[1] is None:
+        return True
+    if isinstance(node, (*_GUARDS, ir.ConsumeSpan, ir.Empty)):
+        return True
+    if isinstance(node, (*_ACTIONS, ir.Bind, ir.Wrap)):
+        return False
+    if isinstance(node, (ir.Seq, ir.Alt)):
+        return all(_does_empty_leave_nothing(item, grammar, ways, seen) for item in node.items)
+    if isinstance(node, (ir.Plus, ir.Rep, ir.Token, ir.Max, ir.Commit, ir.Recover)):
+        return node.item is None or _does_empty_leave_nothing(node.item, grammar, ways, seen)
+    if isinstance(node, ir.Ref):
+        return node.name in seen or _does_empty_leave_nothing(
+            grammar[node.name].body, grammar, ways, seen | {node.name}
+        )
+    raise TypeError(f"cannot tell whether {type(node).__name__} leaves anything behind")
+
+
+def _unsplittable_runs(grammar, ways):
+    """
+    Runs this cannot say as two ways: one over an item that may take nothing, whose zero-width turn leaves something
+    behind. The reading way drops that turn, which is the same match only where the turn left nothing.
+    """
+    return [
+        f"{name}: a run takes a turn that takes nothing and leaves something behind"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, ir.Plus) and not _does_empty_leave_nothing(node.item, grammar, ways)
+    ]
+
+
+def _split(node, grammar, ways):
+    """
+    `(reads, empty)` — `node`'s ways that take a character and its ways that take none, either `None` where it has none
+    of them. `ways` says which of the two each production has, so a reference splits by name rather than by walking into
+    what it calls.
+
+    The two are `node` itself, said as an ordered choice of the reading ways and then the empty ones, and that is the
+    order `node` already tries them in: a sequence's ways come out in the order its parts offer them — `a b` reading is
+    `a_reads b` and then `a_empty b_reads`, which enumerates exactly as `a b` does — and an alternation's come out in
+    the order it wrote them, no way of the grammar having an empty way ahead of a reading one.
+    """
+    if isinstance(node, _ALWAYS_READS):
+        return node, None
+    if isinstance(node, (*_ACTIONS, *_GUARDS, ir.Empty)):
+        return None, node
+    if isinstance(node, ir.ConsumeSpan):
+        # The scan is possessive, so it takes none exactly where the set is not there — which is the question the empty
+        # way asks, and the reading way is the character and the run behind it, as a `Plus` over the set is written.
+        return ir.Seq(items=(node.set, node)), ir.NegLook(item=as_char_set(node.set, grammar))
+    if isinstance(node, ir.Ref):
+        reads, empty, apart = ways[node.name]
+        if apart:
+            return ir.Ref(f"{node.name}_reads", node.args), ir.Ref(f"{node.name}_empty", node.args)
+        return (node if reads else None), (node if empty else None)
+    if isinstance(node, ir.Seq):
+        return _split_seq(node, grammar, ways)
+    if isinstance(node, ir.Alt):
+        parts = [_split(item, grammar, ways) for item in node.items]
+        reads = tuple(way for way, _none in parts if way is not None)
+        empty = tuple(none for _way, none in parts if none is not None)
+        return (ir.Alt(items=reads) if reads else None), (ir.Alt(items=empty) if empty else None)
+    if isinstance(node, ir.Plus):
+        reads, empty = _split(node.item, grammar, ways)
+        if empty is None:
+            return node, None  # the item always reads, so the run does
+        # The run ends on a turn that takes nothing, which `_repeat` keeps once — and `_unsplittable_runs` holds that
+        # turn to leaving nothing, so the reading way is the reading turns and the empty way is the one that took none.
+        return (ir.Plus(item=reads) if reads is not None else None), empty
+    if isinstance(node, ir.Rep):
+        return _split_rep(node, grammar, ways)
+    if isinstance(node, ir.Bind):
+        reads, empty = _split(node.cond, grammar, ways)
+        return (
+            (dataclasses.replace(node, cond=reads) if reads is not None else None),
+            (dataclasses.replace(node, cond=empty) if empty is not None else None),
+        )
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Max, ir.Commit, ir.Recover)):
+        if node.item is None:
+            return None, node  # a `(max)` window with nothing in it: a bound, and no match of its own
+        reads, empty = _split(node.item, grammar, ways)
+        if isinstance(node, (ir.Commit, ir.Recover)) and reads is not None and empty is not None:
+            # Both are the error where the item cannot match, so a reading form of one would raise where the parse
+            # should have gone on to the empty form. The body's own commit is lifted off before this; a deeper one has
+            # nowhere to be lifted to.
+            raise ValueError(f"a {type(node).__name__.lower()} hides both an empty match and a reading one")
+        return (
+            (dataclasses.replace(node, item=reads) if reads is not None else None),
+            (dataclasses.replace(node, item=empty) if empty is not None else None),
+        )
+    raise TypeError(f"cannot tell what {type(node).__name__} takes")
+
+
+def _split_seq(node, grammar, ways):
+    """
+    A sequence's `(reads, empty)`. It reads where any one part does, so the reading ways are one per part that can —
+    that part reading and everything before it taking nothing — and the empty way is every part taking none.
+    """
+    reads, taken = [], []
+    for position, item in enumerate(node.items):
+        way, none = _split(item, grammar, ways)
+        if way is not None:
+            reads.append(ir.Seq(items=tuple(taken) + (way,) + node.items[position + 1 :]))
+        if none is None:
+            return (ir.Alt(items=tuple(reads)) if reads else None), None  # this part always reads: no empty way past it
+        taken.append(none)
+    return (ir.Alt(items=tuple(reads)) if reads else None), ir.Seq(items=tuple(taken))
+
+
+def _split_rep(node, grammar, ways):
+    """
+    A counted repetition's `(reads, empty)`. A non-positive count matches nothing at all, so a count the parse works out
+    — the indent scan's, which is the indentation in force — is a repetition that takes none, and the two ways are told
+    apart by the count rather than by the character.
+    """
+    reads, empty = _split(node.item, grammar, ways)
+    if empty is not None:
+        raise ValueError(f"a repetition of `{node.item}` takes a turn that may take nothing, and cannot be split")
+    if isinstance(node.count, ir.Lit):
+        return (node, None) if node.count.value > 0 else (None, ir.Empty())
+    # The reading way says the turn it takes rather than leaning on the count that admitted it, so what it is stands in
+    # the shape: the count is positive, one turn is taken, and the rest of them follow.
+    rest = dataclasses.replace(node, count=ir.Sub(a=node.count, b=ir.Lit(value=1)))
+    reading = ir.Seq(items=(ir.Lt(a=ir.Lit(value=0), b=node.count), node.item, rest))
+    return reading, ir.Le(a=node.count, b=ir.Lit(value=0))
+
+
+def _lifted_commit(body, grammar):
+    """
+    `(message, body)` with a commit over the whole of `body` lifted off it, and `(None, body)` where there is none.
+
+    A commit is the error where its item cannot match, which stops a split: one form of it failing would raise where the
+    parse should have gone on to the other. Where everything before it takes no character and always matches, `A (commit
+    m: X)` and `(commit m: A X)` are the same match — so it comes off, the body splits, and it goes back over the
+    choice, one message scope around both ways rather than one around each.
+    """
+    if isinstance(body, ir.Commit):
+        return body.message, body.item
+    items = body.items if isinstance(body, ir.Seq) else ()
+    if not items or not isinstance(items[-1], ir.Commit):
+        return None, body
+    if not all(_is_actions_alone(item, grammar) for item in items[:-1]):
+        return None, body
+    return items[-1].message, ir.Seq(items=items[:-1] + (items[-1].item,))
+
+
+def _production_split(production, grammar, ways):
+    """`(message, reads, empty)` for a production's body, its own commit lifted off the split and named back."""
+    message, body = _lifted_commit(production.body, grammar)
+    reads, empty = _split(body, grammar, ways)
+    return message, reads, empty
+
+
+def _split_ways(grammar):
+    """
+    `{name: (reads, empty, apart)}` — whether each production has a way that takes a character, whether it has one that
+    takes none, and whether the two are told apart under names of their own.
+
+    A least fixed point, since a reference can reach back to its own production: nothing is taken to match until some
+    way of it says so, so a recursion on its own contributes neither. A production the parse enters by name is left
+    whole — nobody chooses to enter one, so an empty match there decides nothing, and the root and the recovery reach
+    each other, which is a choice on nothing at all once each is two things.
+    """
+    entered = entered_by_name(grammar)
+    ways = {name: (False, False, False) for name in grammar}
+    while True:
+        settled = {}
+        for name, production in grammar.items():
+            _message, reads, empty = _production_split(production, grammar, ways)
+            told = reads is not None and empty is not None and name not in entered
+            settled[name] = (reads is not None, empty is not None, told)
+        if settled == ways:
+            return ways
+        ways = settled
+
+
+def mint_consuming_and_residue(grammar, namer):
+    """
+    Give every production that may match empty a name for each of the two things it is: `<name>_reads`, the ways that
+    take a character, and `<name>_empty`, the ways that take none.
+
+    A caller choosing whether to enter such a production is choosing blind — entering it may take nothing at all — and
+    the choice cannot be put on a character while both answers live under one name. Each form is a local rewrite of the
+    production's own body, and the residue gets a name rather than being spelled inline, so nothing has to be worked out
+    bottom-up: a body's parts are split by what their own names already say.
+
+    The production keeps its name and becomes the choice of the two, which is the same match said in the same order. One
+    whose ways all take nothing is left whole — there is no choice in it to name — and it is what the phase dissolves
+    into its call sites rather than what this step splits.
+    """
+    ways = _split_ways(grammar)
+    unsplittable = _unsplittable_runs(grammar, ways)
+    if unsplittable:
+        raise AssertionError(f"the empties cannot be named: {'; '.join(unsplittable)}")
+    result = {}
+    for name, production in grammar.items():
+        message, reads, empty = _production_split(production, grammar, ways)
+        if not ways[name][2]:
+            result[name] = production
+            continue
+        choice = []
+        for form, body in (("reads", reads), ("empty", empty)):
+            held = f"{name}_{form}"
+            result[held] = ir.Prod(production.number, held, production.params, body)
+            choice.append(ir.Ref(held, tuple(ir.Param(carried) for carried in production.params)))
+        body = ir.Alt(items=tuple(choice))
+        result[name] = dataclasses.replace(
+            production, body=body if message is None else ir.Commit(message=message, item=body)
+        )
+    return result
+
+
+def _unnamed_empties(grammar):
+    """
+    Productions whose empty match is not a way of its own — a caller reaching one is choosing whether to enter something
+    that may take nothing, with nothing to go on.
+
+    A way that takes no character is allowable where that is all it can do: such a production has no choice in it to
+    name, and what becomes of it is the phase's next question rather than this step's. The ways are read through the
+    production's own commit, that being one message scope over the choice rather than a way of it.
+    """
+    ways = _split_ways(grammar)
+    faults = []
+    for name, production in grammar.items():
+        if not ways[name][2]:
+            continue
+        _message, body = _lifted_commit(production.body, grammar)
+        for way in _offered(body):
+            reads, empty = _split(way, grammar, ways)
+            if reads is not None and empty is not None:
+                faults.append(f"{name}: offers a way that takes a character and a way that takes none, as one")
+    return faults
+
+
+def _offered(body):
+    """The ways `body` offers at its top — an alternation's, and its own where it is not one."""
+    if isinstance(body, ir.Alt):
+        return [offered for item in body.items for offered in _offered(item)]
+    return [body]
+
+
+EMPTIES_NAMED = Invariant("every-empty-match-is-a-way", _unnamed_empties)
+
+
 def hold_established_indents(grammar, namer):
     """
     Make an established indentation something the parse stands under rather than something a call hands back.
@@ -1439,4 +1761,5 @@ STEPS = [
     Step("lower-optionals", lower_optionals, NO_OPT_NODES),
     Step("span-consumes", span_consumes, (CHARACTER_RUNS_SCANNED, NO_STAR_NODES), reduces=("no-star-nodes",)),
     Step("lower-stars", lower_stars, NO_STAR_NODES),
+    Step("mint-consuming-and-residue", mint_consuming_and_residue, EMPTIES_NAMED),
 ]

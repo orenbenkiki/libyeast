@@ -232,6 +232,36 @@ All notable changes to this project are documented here. The format follows
   begins with: in `x`'s set the parse takes the run, outside it the way that does not. Which is the shape the machine
   wants, and the reason the empty match is worth making a way of.
 
+  `mint-consuming-and-residue` gives every production that may match empty a name for each of the two things it is —
+  `<name>_reads` for the ways that take a character, `<name>_empty` for the ways that take none — and the production
+  becomes the choice between them, 67 of them split and the grammar 100 productions wider for it. A caller entering one
+  was choosing blind, and the choice cannot be put on a character while both answers live under a single name. The
+  residue gets a name rather than an inlined tree, so nothing has to be worked out bottom-up: a body's parts split by
+  what their own names already say. `every-empty-match-is-a-way` goes from 57 to none.
+
+  It is the same match in the same order. A sequence's ways come out as its parts already offer them — `a b` reading is
+  `a_reads b` and then `a_empty b_reads`, which enumerates exactly as `a b` does — and no alternation in the grammar has
+  an empty way ahead of a reading one, so nothing is reordered. Four shapes cannot say the two apart as they stand and
+  are said differently instead. A possessive scan takes nothing exactly where its set is not there, so its empty way is
+  that negative peek — one character each, which is the question a gate already asks, and eleven more of them standing
+  once the duplicates merge. A counted repetition whose count the parse works out matches nothing where that count is
+  not positive, so its ways are told apart by the count: the reading one says the turn it takes rather than leaning on
+  the count that admitted it, which is what `s-indent`'s indentation of none needed. A run over an item that may take
+  nothing ends on a turn that takes none, which the interpreter keeps once — and every such turn in this grammar leaves
+  nothing behind, checked rather than assumed, so the reading way is the reading turns and the empty way is the turn
+  that took none. And a commit is the error where its item cannot match, so splitting it in place would make the reading
+  way's failure that error instead of a step on the way to the empty way; where everything before it takes no character
+  and always matches, `A (commit m: X)` and `(commit m: A X)` are the same match, so it is lifted over the choice and
+  one message scope stands around both ways.
+
+  Seventeen fixtures were added rather than crediting the new names from the ones they were split off. The coverage gate
+  would have held each covered by its base, as it does a monomorphic copy, but a base's coverage cannot say which of the
+  two ways an input took — so the corpus was made to take both: an empty and a non-empty single-quoted scalar in a block
+  key and in flow, a double-quoted one that is empty and one that is nothing but a space, the chomped last line at end
+  of stream under each chomping, a block header at end of file, a kept block scalar with and without trailing empty
+  lines, a folded line at the leading-empty floor, an error recovered behind an indented line, and one recovered at end
+  of input, where the recovery has nothing to give up.
+
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
   becomes a reference to that callee. Productions that behave alike are spelled once: same parameters, and the same body
@@ -246,7 +276,7 @@ All notable changes to this project are documented here. The format follows
   token for token, and credits coverage from where it stands. The coverage gate holds a minted helper covered by the
   base it came from, as it does a monomorphic copy: a helper is a piece of the base's own body moved, so requiring more
   of it than of the body it came from would ask the corpus for what the untransformed grammar never needed.
-  `check_normalize` holds every step token-and-event identical over the whole corpus — 694 conformance fixtures and 402
+  `check_normalize` holds every step token-and-event identical over the whole corpus — 711 conformance fixtures and 402
   YAML Test Suite cases, seven of them pinning the document-marker boundary the spec's `c-forbidden` spells and the
   Clojure reference agrees on: `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary,
   `... foo` malformed; four pinning the sequence dedent hand-off any committed block structure must reproduce — at a
