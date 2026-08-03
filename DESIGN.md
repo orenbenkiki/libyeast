@@ -100,19 +100,19 @@ returns a "not implemented" error — so what exists is the project framework an
   `grammar2decoder.py` (emit `src/decoder_tables.h`), `wire.py` (the yeast wire format in Python), `spec_tests.py` (the
   conformance fixtures), `interpreter.py` (a backtracking interpreter of the grammar, run against those fixtures),
   `normalize.py` (the ordered pipeline of semantics-preserving transformations toward the canonical form, each step's
-  output swept of the productions that only call something else, the ones that behave alike, and the ones no parse can
-  enter — reachability closed from the productions a parse enters by name, the root's copy under each resume policy and
-  the recovery a failed cut lands on), `determinize.py` (the divergence analysis that derives a conflict's provisional
-  decision), `star.py` (the YAML Test Suite folded to events), and the gate checks `check_annotated_roundtrip.py`,
-  `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`, `check_grammar_docs.py`, `check_messages.py`,
-  `check_decoder.py`, `check_spec_tests.py`, `check_wire.py`, `check_emitter.py`, `check_provisional.py`,
-  `check_interpreter.py`, `check_grammar_coverage.py`, `check_star.py`, `check_normalize.py` and `check_determinize.py`,
-  which report through `gate.py`. A fixture whose production the sweep takes out of a pipeline stage is not dropped:
-  `check_normalize` pins it to the last stage whose grammar can run it, holds it there token for token, and credits
-  coverage from where it stands — so the stranded fixtures (a family a speculation replaced, a nullable production its
-  consuming copy replaced, a bare monomorphic copy only a fixture enters, `c-reserved`, which the spec defines and
-  nothing references) go on guarding the last grammar that reaches them. This is where the grammar-derived parser will
-  be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
+  output swept of the shape it leaves in a body, the productions that only call something else, the ones that behave
+  alike, and the ones no parse can enter — reachability closed from the productions a parse enters by name, the root's
+  copy under each resume policy and the recovery a failed cut lands on), `determinize.py` (the divergence analysis that
+  derives a conflict's provisional decision), `star.py` (the YAML Test Suite folded to events), and the gate checks
+  `check_annotated_roundtrip.py`, `check_vendor_spec.py`, `validate_grammar.py`, `check_markers.py`,
+  `check_grammar_docs.py`, `check_messages.py`, `check_decoder.py`, `check_spec_tests.py`, `check_wire.py`,
+  `check_emitter.py`, `check_provisional.py`, `check_interpreter.py`, `check_grammar_coverage.py`, `check_star.py`,
+  `check_normalize.py` and `check_determinize.py`, which report through `gate.py`. A fixture whose production the sweep
+  takes out of a pipeline stage is not dropped: `check_normalize` pins it to the last stage whose grammar can run it,
+  holds it there token for token, and credits coverage from where it stands — so the stranded fixtures (a family a
+  speculation replaced, a nullable production its consuming copy replaced, a bare monomorphic copy only a fixture
+  enters, `c-reserved`, which the spec defines and nothing references) go on guarding the last grammar that reaches
+  them. This is where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
 - **YamlReference** — `third_party/yamlreference/`: the Haskell YAML 1.2 reference parser, vendored to be read. Its
   grammar carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code`
   comes from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of

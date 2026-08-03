@@ -291,15 +291,19 @@ All notable changes to this project are documented here. The format follows
   whether to enter something that may take nothing — every empty match is a way of the caller's own, where a character
   can decide it.
 
-  Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
-  the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
-  becomes a reference to that callee. Productions that behave alike are spelled once: same parameters, and the same body
-  once every reference in it is read as the group of what it names rather than by the name itself, which is what tells
-  two loops apart from one loop written twice. And last, so it sees what the other two strand, every production no parse
-  can enter is purged. None of the three changes what the grammar matches or emits. Only a merge is a rename, and only a
-  merge is followed by a point of interest — a name a later step speaks of, tracked beside the grammar rather than in
-  it, re-picked among what its holders became, a holder lost without successor being a loud fault rather than an
-  absorbed drift.
+  Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
+  the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
+  one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving
+  nothing — a choice of *nothing* staying, that being the path that never matches. It comes first because the merge
+  reads shape rather than meaning, so two productions saying the same thing with a singleton alternation in different
+  places do not merge until they are said flat. A production whose whole body is one ungated, action-free call is what
+  it calls, so every reference to it becomes a reference to that callee. Productions that behave alike are spelled once:
+  same parameters, and the same body once every reference in it is read as the group of what it names rather than by the
+  name itself, which is what tells two loops apart from one loop written twice. And last, so it sees what the other
+  three strand, every production no parse can enter is purged. None of the four changes what the grammar matches or
+  emits. Only a merge is a rename, and only a merge is followed by a point of interest — a name a later step speaks of,
+  tracked beside the grammar rather than in it, re-picked among what its holders became, a holder lost without successor
+  being a loud fault rather than an absorbed drift.
 
   A fixture the sweep strands is not dropped: it pins to the last stage whose grammar can run it, guards that grammar
   token for token, and credits coverage from where it stands. The coverage gate holds a minted helper covered by the

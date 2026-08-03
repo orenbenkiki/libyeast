@@ -707,15 +707,51 @@ def _merged(grammar, keep):
     return {name: dataclasses.replace(p, body=rewrite(p.body)) for name, p in grammar.items()}, canonical
 
 
+def _flattened(node):
+    """
+    `node` with what a transformation leaves in its shape taken out: a sequence or a choice of one item is that item, a
+    nested one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and
+    moving nothing.
+
+    None of it changes what the grammar matches or emits — `<empty>` is the continuation itself, and concatenation and
+    ordered choice are each associative — which is what makes it the sweep's business rather than a step's. A step is
+    not asked to tidy the shape it built, any more than it is asked not to leave a duplicate production behind.
+
+    A choice of *nothing* is not litter and stays: it is the path that never matches, which is what a specialization
+    leaves where a value has no branch.
+    """
+    node = ir.rebuilt(node, _flattened)
+    if isinstance(node, ir.Seq):
+        items = tuple(
+            held
+            for item in node.items
+            for held in (item.items if isinstance(item, ir.Seq) else (item,))
+            if not isinstance(held, ir.Empty)
+        )
+        if not items:
+            return ir.Empty()
+        return items[0] if len(items) == 1 else ir.Seq(items=items)
+    if isinstance(node, ir.Alt) and node.items:
+        items = tuple(held for item in node.items for held in (item.items if isinstance(item, ir.Alt) else (item,)))
+        return items[0] if len(items) == 1 else ir.Alt(items=items)
+    return node
+
+
 def cleaned(grammar):
     """
     `grammar` with what a transformation leaves behind swept up, and the renames the sweep made — `{gone: standing}`, so
-    what tracks a production by name follows its content to where it went. The productions that only call something else
-    are spliced out, the ones that spell the very same thing are merged into one, and — last, so it sees what the other
-    two strand — every production no parse can enter is purged. Splicing and merging feed each other, a merge making two
-    productions the same call and a splice making two callers identical, so they run to a fixpoint. None of it changes
-    what the grammar matches or emits: a spliced production ran no action and made no decision, and a merged production
-    is the one kept, character for character.
+    what tracks a production by name follows its content to where it went. Every body is flattened to the shape it
+    denotes, the productions that only call something else are spliced out, the ones that spell the very same thing are
+    merged into one, and — last, so it sees what the other two strand — every production no parse can enter is purged.
+    Splicing and merging feed each other, a merge making two productions the same call and a splice making two callers
+    identical, so they run to a fixpoint. None of it changes what the grammar matches or emits: a flattened body denotes
+    what it denoted, a spliced production ran no action and made no decision, and a merged production is the one kept,
+    character for character.
+
+    The flattening comes first because the merge reads shape rather than meaning: two productions that say the same
+    thing with a singleton alternation in different places are structurally unequal and do not merge, where said flat
+    they are the same node. So it is where the sweep's own work is decided, and a merge it makes possible is a duplicate
+    the sweep existed to find rather than one it invented.
 
     Only a merge is a rename. Two productions that behave alike are one thing under two names, so what tracked either
     tracks the one kept; a spliced production is not renamed but *consumed*, its callee one that already stood for
@@ -734,7 +770,8 @@ def cleaned(grammar):
         return name
 
     while True:
-        spliced, _splices = _spliced(grammar, keep)
+        flat = {name: dataclasses.replace(p, body=_flattened(p.body)) for name, p in grammar.items()}
+        spliced, _splices = _spliced(flat, keep)
         swept, merges = _merged(spliced, keep)
         if swept == grammar:
             return purged(grammar), {gone: landed(gone) for gone in renames}
