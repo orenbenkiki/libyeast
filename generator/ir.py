@@ -83,6 +83,9 @@ def is_one_char(node, grammar, seen=frozenset()):
     the parse chooses. A `Char`, `Range` or `Invalid` is one; a `Diff` is one when its base is (the exclusions only
     narrow it); an `Alt` is one when every branch is (a union of char sets), so a lowered optional `x | <empty>` is not
     one; a `Ref` is one when its production is.
+
+    Every other kind is named as not one, and a kind named nowhere raises rather than being answered for: a silent
+    `False` here turns a scan into a way, and the run would gain an empty fallback nobody wrote.
     """
     if isinstance(node, (Char, Range, Invalid, CharSet)):
         return True
@@ -94,7 +97,9 @@ def is_one_char(node, grammar, seen=frozenset()):
         return all(is_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
     if isinstance(node, Ref):
         return node.name in seen or is_one_char(grammar[node.name].body, grammar, seen | {node.name})
-    return False
+    if isinstance(node, NOT_ONE_CHAR):
+        return False
+    raise TypeError(f"cannot tell whether {type(node).__name__} matches exactly one character")
 
 
 def _refs(*values):
@@ -1084,6 +1089,77 @@ class Prod:
 
 # The nodes that match without consuming: a lookahead reads the input and gives it back. In alphabetical order.
 ZERO_WIDTH = (ExcludeAt, Look, LookBehind, NegLook)
+
+# The kinds that never match exactly one character, so that `is_one_char` answers for none it has not heard of and a
+# kind named nowhere raises instead. A repetition or a sequence takes a run rather than a character; a lookaround, a
+# marker, an action and a guard take none; a value expression is no match at all; and the canonical form's own consumes
+# say in their names how much they take. In alphabetical order.
+NOT_ONE_CHAR = (
+    Add,
+    Alternative,
+    Atoi,
+    AutoDetectIndent,
+    Bind,
+    Branch,
+    Choice,
+    ClearVar,
+    CloseWindow,
+    Column,
+    Commit,
+    CommitProvisional,
+    ConsumeChar,
+    ConsumeCountedSpan,
+    ConsumeLiteral,
+    ConsumePeeked,
+    ConsumeSpan,
+    ConsumeTrimmedSpan,
+    Cut,
+    Emit,
+    Empty,
+    EndOfStream,
+    Error,
+    ExcludeAt,
+    Flip,
+    Gate,
+    Global,
+    Increase,
+    Indent,
+    InjectBefore,
+    Le,
+    Len,
+    Lit,
+    LiteralPeek,
+    Look,
+    LookBehind,
+    Lt,
+    MarkProvisional,
+    Match,
+    Max,
+    NegLook,
+    OpenProvisional,
+    OpenWindow,
+    Opt,
+    Param,
+    Plus,
+    PopCode,
+    PopIndent,
+    PopMessage,
+    Prod,
+    PushCode,
+    PushIndent,
+    PushMessage,
+    Recover,
+    Rep,
+    RetypeProvisional,
+    Seq,
+    SetVar,
+    Star,
+    StartOfLine,
+    Sub,
+    Token,
+    TrimStar,
+    Wrap,
+)
 
 
 def rebuilt(node, visit):
