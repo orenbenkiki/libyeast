@@ -995,6 +995,9 @@ NO_T_PARAMETER = Invariant("no-t-parameter", lambda grammar: _parameter_uses(gra
 # Phase 2's invariant: the block scalar's leading-empty floor is nowhere declared, passed or read as a parameter.
 NO_F_PARAMETER = Invariant("no-f-parameter", lambda grammar: _parameter_uses(grammar, {"f"}))
 
+# Phase 3's invariant: the detected indent is nowhere declared, passed or read as a parameter.
+NO_M_PARAMETER = Invariant("no-m-parameter", lambda grammar: _parameter_uses(grammar, {"m"}))
+
 
 def _replaced(node, swap):
     """
@@ -1054,6 +1057,110 @@ def _read_global(param):
         }
 
     return transform
+
+
+# What runs its item more than once, so a read inside one is a read on every turn.
+_REPETITIONS = (ir.Star, ir.Plus, ir.Rep, ir.TrimStar)
+
+
+def pass_detected_indent(grammar, namer):
+    """
+    Give a loop the indentation it measured rather than working it out again on every turn.
+
+    A block collection detects what its entries are indented by, once, and then measures every entry against `n+m` — so
+    the detected value has to stay live for as long as the loop runs, and every collection or block scalar the loop
+    enters detects one of its own in the meantime. The loop moves into a production entered at `n+m` and reads the
+    indentation it was entered at, which leaves the detection read once, in the argument beside the write, with nothing
+    run in between.
+
+    Only where the reading is that simple: every read of the detection inside the moved body stands in one and the same
+    expression, and nothing there reads the indentation any other way, so entering at that expression says exactly what
+    the body said. A body reading it two ways — the compact collections' `m` beside their `n+1+m` — is left alone,
+    having no loop to carry the value across either.
+    """
+    minted = {}
+
+    def measured(production):
+        """The `(set)` of the detection leading the body and what follows it, or `None` where the body is not that."""
+        body = production.body
+        if not isinstance(body, ir.Seq) or len(body.items) < 2:
+            return None
+        setter, rest = body.items[0], body.items[1:]
+        if not isinstance(setter, ir.SetVar) or setter.param != "m":
+            return None
+        return setter, rest[0] if len(rest) == 1 else ir.Seq(items=rest)
+
+    def entered_at(rest):
+        """
+        The one expression `rest` reads the detection in, with `rest` reading it as the indentation it is entered at —
+        and `None` where `rest` reads either of them any other way.
+        """
+        held = {
+            argument
+            for node in _held(rest)
+            if isinstance(node, ir.Ref)
+            for argument in node.args
+            if _is_using(argument, "m")
+        }
+        if len(held) != 1:
+            return None
+        level = next(iter(held))
+
+        def carried(node):
+            """How many reads of the indentation and of the detection `node` holds."""
+            return len([held for held in _held(node) if isinstance(held, ir.Param) and held.name in ("m", "n")])
+
+        standing = len([node for node in _held(rest) if node == level])
+        if carried(rest) != standing * carried(level):  # a read outside the expression the body is entered at
+            return None
+        return level, _replaced(rest, lambda node: ir.Param(name="n") if node == level else node)
+
+    result = {}
+    for name, production in grammar.items():
+        found = measured(production)
+        entered = entered_at(found[1]) if found is not None else None
+        if entered is None:
+            result[name] = production
+            continue
+        level, remains = entered
+        helper = namer.fresh(name)
+        minted[helper] = ir.Prod(number=production.number, name=helper, params=("n",), body=remains)
+        result[name] = dataclasses.replace(
+            production, body=ir.Seq(items=(found[0], ir.Ref(name=helper, args=(level,))))
+        )
+    result.update(minted)
+    return result
+
+
+def _looped_detections(grammar):
+    """
+    Reads of the detected indent standing under a repetition — the value asked for again on every turn of a loop.
+
+    A read under one is what makes the detection live for as long as the loop runs, and everything the loop enters
+    detects its own in the meantime. Read where it is measured it is a value one place can hold; read per turn it is
+    not.
+    """
+    faults = []
+    for name, production in grammar.items():
+
+        def walk(node, owner=name, repeated=False):
+            if isinstance(node, ir.Param):
+                if repeated and node.name == "m":
+                    faults.append(f"{owner}: reads the detected indent on every turn of a loop")
+                return
+            if not dataclasses.is_dataclass(node):
+                return
+            inside = repeated or isinstance(node, _REPETITIONS)
+            for field in dataclasses.fields(node):
+                value = getattr(node, field.name)
+                for item in value if isinstance(value, tuple) else (value,):
+                    walk(item, owner, inside)
+
+        walk(production.body)
+    return faults
+
+
+DETECTION_READ_WHERE_MEASURED = Invariant("no-detected-indent-read-per-turn", _looped_detections)
 
 
 def _is_reading(grammar, production, param):
@@ -1143,4 +1250,9 @@ STEPS = [
     # past the region it was measured in is refused rather than answered from what the last construct left.
     Step("clear-f", _clear_reads("f"), _unbounded_reads("f")),
     Step("read-global-f", _read_global("f"), NO_F_PARAMETER),
+    # Phase 3 establishes `NO_M_PARAMETER`: the detected indent is the parse's one value. A value one place can hold is
+    # one nothing else writes while it is live, so the loop that read it per turn is entered at what it measured first.
+    Step("pass-detected-indent", pass_detected_indent, DETECTION_READ_WHERE_MEASURED),
+    Step("clear-m", _clear_reads("m"), _unbounded_reads("m")),
+    Step("read-global-m", _read_global("m"), NO_M_PARAMETER),
 ]

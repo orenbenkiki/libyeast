@@ -971,7 +971,10 @@ def match(node, emitter, grammar, k):
 
         def bound():  # noqa: N807 — a continuation, not a special method
             checkpoint = emitter.checkpoint()
-            emitter.env[node.param] = evaluate(node.value, emitter, grammar)
+            value = evaluate(node.value, emitter, grammar)
+            emitter.env[node.param] = value
+            if node.param in emitter.globals:  # a write is a write however it is spelled: the stack beside the slot
+                emitter.shadow[node.param] = emitter.shadow.get(node.param, ()) + (value,)
             if k():
                 return True
             emitter.rewind(checkpoint)  # undo the bound value so the condition can go on

@@ -116,6 +116,17 @@ All notable changes to this project are documented here. The format follows
   that global's own, a `(clear)` takes it off, the single slot stands beside it, and the reads where the two differ are
   counted over the whole corpus. The gate holds that at none — and made to nest, the same net reports 21.
 
+  Phase 3 is the detected indent. `pass-detected-indent` gives a loop the indentation it measured: a block collection
+  detects what its entries are indented by and then measures each against `n+m`, so the value stays live for as long as
+  the loop runs and every collection or block scalar the loop enters detects one of its own in between. The loop moves
+  into a production entered at `n+m` and reads the indentation it was entered at, which leaves the detection read once,
+  in the argument beside the write — and only where every read inside the moved body stands in that one expression and
+  nothing there reads either value another way, the compact collections' `m` beside their `n+1+m` left alone. `clear-m`
+  and `read-global-m` then do what `f`'s pair did. The count of reads a single slot could not have answered stood at 843
+  and stands at none, which is the whole argument for the shape: it named the loop, and the loop was what was wrong.
+  `Bind` maintains the stack beside the slot too — a write is a write however it is spelled, and a block header's
+  indicator sets the detected indent through one, so a global written that way had been invisible to the net.
+
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
   becomes a reference to that callee. Productions that behave alike are spelled once: same parameters, and the same body
