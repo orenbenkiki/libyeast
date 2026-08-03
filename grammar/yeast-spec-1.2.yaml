@@ -164,15 +164,6 @@
 #     ever follows it, and until one does the answer is not known. YAML bounds
 #     this nowhere; libyeast bounds it by `max_token_bytes`.
 #
-#   * <auto-detect-in-line-indent>
-#     The number of spaces that follow, on this line, and at least 1. Not a
-#     line's indentation: the parse is in the middle of a line, just past the
-#     '-' or the '?' that introduced a compact collection, and this is what that
-#     collection is indented by.
-#
-#     Rule 185 needs it. The grammar this one derives from reads m there and
-#     sets it nowhere at all.
-#
 #   == Rule Definitions ==
 #
 # The rule definitions here are expressed as YAML data structures where the
@@ -3659,21 +3650,27 @@ c-l-block-seq-entry:
 #   | ns-l-compact-mapping(n+1+m) ) )
 #   | s-l+block-node(n,c)
 #   | ( e-node s-l-comments )
+#
+# The spaces that follow the '-' or the '?' are this compact collection's own
+# indentation, so they are taken as its indent token and <column> is what the
+# collection is indented by — where that run left the parse. The official
+# grammar reads an m here that it sets nowhere, and n+1+m is that same column
+# said as arithmetic: the run begins one past the '-' at column n.
+#
+# Emits: indent
 
 s-l+block-indented:
   (...): [ n, c ]
-  (all):
-  - (set): [ m, <auto-detect-in-line-indent> ]
-  - (any):
-    - (all):
-      - s-indent: m
-      - (any):
-        - ns-l-compact-sequence: { (+): [ n, { (+): [ 1, m ] } ] }
-        - ns-l-compact-mapping: { (+): [ n, { (+): [ 1, m ] } ] }
-    - s-l+block-node: [ n, c ]
-    - (all):
-      - e-node
-      - s-l-comments
+  (any):
+  - (all):
+    - (token): [ indent, { (+++): s-space } ]
+    - (any):
+      - ns-l-compact-sequence: <column>
+      - ns-l-compact-mapping: <column>
+  - s-l+block-node: [ n, c ]
+  - (all):
+    - e-node
+    - s-l-comments
 
 
 

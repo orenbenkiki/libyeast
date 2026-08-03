@@ -36,13 +36,16 @@ DEFAULTS = {"r": "n"}
 # entering a production that declares one enters with it unset, which is what a fresh parse gives it.
 DETECTED = ("m", "f")
 
-# The parameter a run is entered under rather than a production declaring it: past `read-indents` the indentation is the
-# stack's, pushed where it changes, so a fixture naming `n` seeds that stack and no production takes it as an argument.
-# A fixture keeps naming it either way, being what the run is entered under whichever holds it.
-ENTERED = ("n",)
+# The parameters a run is entered under rather than a production declaring it. Past `read-indents` the indentation is
+# the stack's, pushed where it changes, so a fixture naming `n` seeds that stack and no production takes it as an
+# argument; a fixture keeps naming it either way, being what the run is entered under whichever holds it. `o` is where
+# the first character stands: a rule entered in the middle of a line — a compact collection just past its `-` — is
+# measured against the column it is at, and a run starting at column zero cannot say that. No production declares
+# either.
+ENTERED = ("n", "o")
 
 # A production name is the leading run of a filename, up to its first `.`; a parameter is a `.<name>=<value>` segment.
-_PARAMETER = re.compile(r"\.([nctr])=([^.]+)")
+_PARAMETER = re.compile(r"\.([nctro])=([^.]+)")
 
 
 @dataclass(frozen=True)
@@ -121,12 +124,14 @@ def bad_value(fixture):
     """
     Return a one-line reason a parameter value is malformed, or None if every value is well-formed.
 
-    Independent of the grammar: `n` is an integer (the root's is -1, the auto-detect base), `c` a context, `t` a
-    chomping mode, `r` a resume policy, whatever production carries them.
+    Independent of the grammar: `n` is an integer (the root's is -1, the auto-detect base), `o` a column and so never
+    negative, `c` a context, `t` a chomping mode, `r` a resume policy, whatever production carries them.
     """
     for name, value in fixture.parameters.items():
         if name == "n" and not re.fullmatch(r"-?[0-9]+", value):
             return f"n={value!r} is not an integer"
+        if name == "o" and not re.fullmatch(r"[0-9]+", value):
+            return f"o={value!r} is not a column"
         if name == "c" and value not in CONTEXTS:
             return f"c={value!r} is not a context"
         if name == "t" and value not in CHOMPINGS:

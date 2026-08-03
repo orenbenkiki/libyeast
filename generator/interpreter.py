@@ -152,6 +152,9 @@ class Emitter:
         # opened
         self.env = {}  # the current production's parameters (n/m/c/t/r) and their values
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
+        self.offset = 0  # what the first line's marks are short by where a run begins mid-line, which only a rule run
+        # on its own does: the input is a slice of a line and its marks count from its own start, where the grammar
+        # measures against the column that slice would stand at. Later lines begin where they say they do
         self.forbidden = ()  # patterns that must not match at a start of line — the ongoing `(exclude)` guards in scope
         self.pending = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
         self.ceiling = None  # the position a `(max)` window ends at, past which committed input may not be consumed
@@ -391,14 +394,6 @@ class Emitter:
         self.provisional_mark = None
 
 
-def _leading_spaces(emitter):
-    """Count the spaces at the position, without consuming them — what the in-line indentation auto-detection reads."""
-    count = 0
-    while emitter.position + count < len(emitter.chars) and emitter.chars[emitter.position + count] == 0x20:
-        count += 1
-    return count
-
-
 def _skip_break(chars, position):
     """The position after the break at `position` — CR LF together, or a lone CR or LF — or `position` if none."""
     if position < len(chars) and chars[position] == wire.CARRIAGE_RETURN:
@@ -491,9 +486,7 @@ def evaluate(expression, emitter, grammar):
                 return evaluate(branch.item, emitter, grammar)
         raise KeyError(f"Flip on {expression.var}={value!r} has no branch")
     if isinstance(expression, ir.Column):
-        return emitter.mark.column
-    if isinstance(expression, ir.AutoDetectInLineIndent):
-        return max(1, _leading_spaces(emitter))
+        return emitter.mark.column + (emitter.offset if emitter.mark.line == 1 else 0)
     if isinstance(expression, ir.AutoDetectIndent):
         held = _indent(emitter)
         return max(1, _detect_indent(emitter) - (0 if held is None else held))
@@ -1291,10 +1284,16 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset()):
     # A caller names the production polymorphically — the fixture's, the root's — and a monomorphized grammar holds only
     # its specialized copies; resolve to the copy, its finite parameters moved into the name. The resume policy is read
     # first, before that move takes it from the arguments, since recovery needs it whether it stays a parameter or not.
-    parameters = parameters or {}
+    parameters = dict(parameters or {})
+    # Where the first character stands. A rule entered in the middle of a line — a compact collection just past its `-`
+    # — is measured against the column it is at, which a run starting at zero cannot say. It is no parameter of any
+    # production: it says where the run begins, the way the input itself does.
+    column = int(parameters.pop("o", 0))
     resume = parameters.get("r", "n")
     production, parameters = ir.entry(grammar, production, parameters)
     emitter = Emitter(data)
+    emitter.offset = column
+    emitter.is_sol = column == 0  # column zero is the start of a line, and any other column is not
     emitter.deterministic = deterministic
     emitter.holds_indent = any(
         isinstance(node, ir.PushIndent) for name in grammar for node in _nodes(grammar[name].body)

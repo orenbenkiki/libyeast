@@ -177,18 +177,6 @@ class AutoDetectIndent:
 
 
 @dataclass(frozen=True)
-class AutoDetectInLineIndent:
-    """
-    `<auto-detect-in-line-indent>`: the spaces that follow, here, on this line — not a line's indentation.
-
-    What a compact collection is indented by, measured from just after the `-` or the `?` that introduced it.
-    """
-
-    def references(self):
-        return []
-
-
-@dataclass(frozen=True)
 class Add:
     """`(+)`: integer addition of two expressions."""
 

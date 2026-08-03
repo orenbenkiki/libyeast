@@ -28,9 +28,9 @@ DEVIATIONS = {
     ),
     "s-l+block-indented": (
         "the official grammar reads m here and sets it nowhere — its own notes concede that it 'assumes that m is "
-        "stored as a state/stack variable and has been set somewhere else'. libyeast sets it, from "
-        "<auto-detect-in-line-indent>: the spaces that follow on this line, which is what a compact collection is "
-        "indented by"
+        "stored as a state/stack variable and has been set somewhere else'. libyeast has no m to read: it takes the "
+        "spaces that follow as the indent token and reads <column>, so what the compact collection is indented by is "
+        "where its own indentation left the parse rather than a number worked out beside it"
     ),
     "c-b-block-header": (
         "the official grammar's header is two orderings, indent-then-chomp or chomp-then-indent, that begin the same "

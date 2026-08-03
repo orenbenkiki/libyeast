@@ -74,6 +74,24 @@ All notable changes to this project are documented here. The format follows
   What a construct is indented by, read where that indentation has just been consumed rather than worked out by looking
   ahead for it.
 
+  A compact collection is the first to be written that way. `s-l+block-indented` took the spaces after its `-` or `?` as
+  a peek — `<auto-detect-in-line-indent>`, at least one — and then consumed exactly that many and entered the collection
+  at `n+1+m`. It takes the run as its own indent token now and enters at `<column>`, which is that same value: the run
+  begins one past an indicator at column `n`, so where it leaves the parse is what the collection is indented by. A run
+  over a character class is possessive and gives nothing back, so peeking a length and then consuming it is the parse
+  consuming it. The value needs no name — both compact alternatives are tried at the same position — and naming it `n`
+  would have been wrong: a parameter passed as itself is passed by reference, so the write would have escaped into
+  `c-l-block-seq-entry` and from there into the enclosing sequence's own loop, which
+  `l-yeast-stream.seq-dedent-multilevel` catches.
+
+  `<auto-detect-in-line-indent>` is retired with the peek it served, that rule having been its only site.
+
+- A fixture may say where its input starts: `o=N` in the name, beside `n`, `c`, `t` and `r`. A rule entered in the
+  middle of a line — a compact collection just past its `-` — is measured against the column it stands at, which a run
+  starting at column zero cannot say, so `s-l+block-indented`'s fixtures name `o=3` beside their `n=2`. It feeds what
+  the grammar measures against and leaves the emitted marks alone: a fixture's input is a slice of a line, and its
+  bytes, characters and lines already count from its own start.
+
 - Grammar normalization: an ordered pipeline of semantics-preserving grammar-to-grammar transformations that carry the
   hand-authored grammar toward the canonical form a state machine falls out of — each terminal a character set, each run
   a repetition of one. It is built one goal at a time: the pipeline is a sequence of phases, each owning one invariant,
