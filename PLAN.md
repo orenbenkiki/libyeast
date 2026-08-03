@@ -327,13 +327,21 @@ nothing checks, and it reads **none**: all fifty name an invariant, bar two that
 fault. `standing_invariants` counts what the **final** grammar still breaks whatever the steps settle between them,
 which is the list this phase finishes by emptying, and the meter is the first line of it:
 
-| standing |                                                                                                                 |
-| -------- | --------------------------------------------------------------------------------------------------------------- |
-| **750**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody            |
-| **81**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                         |
-| **42**   | `every-way-gated` — ways in a multi-way choice with no character to go on                                       |
-| **41**   | `every-character-question-is-a-set-or-a-literal` — a lookahead, an `(exclude)`, a difference                    |
-| 24       | `no-call-deciding-nothing` · 8 `no-standing-pop-holder` · 6 `no-factorable-prefix` · 4 `no-shared-leading-push` |
+| standing |                                                                                                                  |
+| -------- | ---------------------------------------------------------------------------------------------------------------- |
+| **469**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody             |
+| **92**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                          |
+| **70**   | `every-way-gated` — ways in a multi-way choice with no character to go on                                        |
+| **44**   | `every-character-question-is-a-set-or-a-literal` — a lookahead, an `(exclude)`, a difference                     |
+| 14       | `no-call-deciding-nothing` · 13 `no-standing-pop-holder` · 6 `no-factorable-prefix` · 4 `no-shared-leading-push` |
+| 1        | `nothing-carries-on-over-a-pop`                                                                                  |
+
+`proper` is a shape the C parser needs — a way that reads against a way that does not compiles to no switch — but it is
+the minority share of the meter, and treating it as the road there is a mistake: **21 of the 92 cost no undecided point
+at all**, a character already deciding them, the 71 that do cost hold **202 of the 469**, and the other **267 sit
+outside blind choices entirely**. Eliminating every one of them removes at most two fifths of the meter, and only where
+the elimination creates nothing new — which it does: `distribute-empties` bought 16 of `proper` and cost 37 of the
+meter.
 
 And a lapse must be *taken*: one naming an invariant no step carries, or one the step does not actually break, is a
 stale declaration and a fault. That net retired four lapses at once — three left behind when `every-way-gated` was
@@ -718,17 +726,49 @@ of it. So the invariant covers state, and the pending run is accounted for separ
    cycle is cut — an empty match reachable only through itself is an infinite parse, not a way — and it **converges**
    rather than treadmilling because two absorbs before three re-creates.
 
-   **What the pipeline does today, measured.** `eliminate-empties` is step three without step two: it lifts to the call
-   sites and never pushes, so it *makes* inline empties rather than removing them — 60 after `lower-optionals`, **111
-   after the elimination**, 146 by `lower-star`. Then `lift-choices` gives every inline choice a production of its own,
-   which is step three's input again. Two steps that are inverses, with the absorbing one missing between them: that is
-   the treadmill, where the nullable population sits at a fixed point near 145 and each turn costs 131 productions.
-   `l-comment ::= s-separate-in-line (c-nb-comment-text)? b-comment` is the whole story in one line — the `?` became
-   `( … | ε )` at `lower-optionals`, nothing ever looked at it again, and `lift-choices` handed it the name
-   `l-comment_2`, a production that reads or does not.
+   **An ε moves up only where the call leads its way, and that is the wall.** `A ::= X C` with `X ::= D | ε` distributes
+   to `A ::= X C | C`: nothing stood before `X`, so nothing is run twice. `A ::= F X` does not. Taking ε out gives
+   `A ::= F X | F`, and where the first way's `D` fails the second runs **`F` a second time** — a different parse where
+   `F` has more than one, a second push where it pushes. Nor can it be written any other way: the choice between `D` and
+   nothing is made where `F` returns, the only thing running there is what `second` names, and a production minted to
+   hold it *is* `X`. Measured, the wall is most of what is left: of the blind choices the step cannot take, **65 are
+   this shape**, against 14 whose empty way calls something and 6 whose empty way carries a gate.
 
-   **The ordering constraint falls out**: `lift-choices` may not run until the empties are gone. It stands at 19 today
-   and the elimination at 4.
+   **So pull the continuation down instead of pushing the ε up.** `X ::= A Y` with `A ::= B C` and `C ::= D | ε` becomes
+   `X ::= B Z` with `Z ::= D Y | Y` — the trailing `Y` folded into the callee's family, where it stands beside the ε and
+   both ways read. The move is already in the pipeline: `extend-returns` folds a continuation into a callee, minting
+   copies along the tail and continuation chains so every other caller stands untouched. It is driven by
+   `DECLARED_EXTENSIONS`, a written table; this drives it from a rule.
+
+   1. **The invariant first, and failing.** `no-blind-tail-a-continuation-would-fix`: a production reached by a way with
+      a trailing continuation, whose tail chain ends in a choice holding an empty way. It reads **67** — the distinct
+      (callee, trailing continuation) pairs, one copy each, the widest spread 11 continuations on
+      `c-flow-mapping_c_block-key_1`.
+   1. **Drive `extend-returns` from it**, `DECLARED_EXTENSIONS` staying as the fallback for what the rule does not reach
+      and shrinking as it grows.
+   1. **The ε then dies to the rule above**, its way now followed by something that reads. No new elimination logic.
+   1. **Outward for the rest.** A site with nothing trailing makes its *caller's* tail end in the blind choice, so the
+      caller is the next candidate; **98** sites are that shape. It stops at a root, where an empty way is entitled.
+
+   **What it buys beyond `proper`.** A copy carrying its continuation has **one follow**, which is the precondition the
+   general prefix-extraction step needs and does not have: `_caller_continuation` refuses a conflict reached with
+   several, and a conflict silently gaining a second caller is what stopped `speculate-folds` resolving
+   `b-l-folded_c_flow-in`. This is the only move found so far that serves both.
+
+   **Unknown, and to be read before it is built**: whether `extend_returns` generalizes past the two-way shape it was
+   written for; how far each fold walks the tail chain, the 67 being pairs and not copies; and which way the meter
+   moves, a copy being a production with decision points of its own.
+
+   **What the pipeline does, measured.** `eliminate-empties` lifts to the call sites and never pushes, so on its own it
+   *makes* inline empties rather than removing them, and `lift-choices` gives each one a production again — two steps
+   that are inverses, the nullable population sitting at a fixed point. `absorb-empties` stands between them and breaks
+   that circle: it takes an empty way into the sequence around it wherever every way it makes reads, so the ε dies
+   rather than being renamed. `l-comment ::= s-separate-in-line (c-nb-comment-text)? b-comment` is the case it was
+   written for. `distribute-empties` then hands what survives to the call sites. Together they take `proper` from 125 to
+   **92**, and the wall above is what stops them there.
+
+   **The ordering constraint falls out**: `lift-choices` may not run until the absorption has had its turn, and it does
+   not — `absorb-empties` stands at 18 and `lift-choices` at 21.
 
    **The cost is bounded, and measured**: no sequence holds more than **3** parts that split — 119 hold one, 56 two, 3
    three — so the product tops out at 8 before absorption, and absorption takes most of them at once. A residue is an
@@ -745,12 +785,12 @@ of it. So the invariant covers state, and the pending run is accounted for separ
      own production — matches empty and decides nothing, and the canonical form mints those deliberately, so the
      stronger rule would forbid the target. What is forbidden is the blind choice between reading and not.
    - *Properness is read after every step from the elimination on* — `proper` is the invariant `eliminate-empties`
-     settles, read at every stage after it and not at the one step that makes it. It reads **125** at the end, and
+     settles, read at every stage after it and not at the one step that makes it. It reads **92** at the end, and
      because it counts the blind choice and not everything matching empty, **one** step breaks it: `alternative-shape`,
      which gives the inline `Alt(reads, empty)` a production of its own. That is the whole of the debt in one declared
-     lapse. The broad reading counted 221 and named four steps, three of which only mint the single-way bundle the
-     invariant permits — a number measuring the wrong thing, and four lapses written for it that went stale the moment
-     it was narrowed.
+     lapse, and `absorb-empties` and `distribute-empties` are what pay it down. The broad reading counted 221 and named
+     four steps, three of which only mint the single-way bundle the invariant permits — a number measuring the wrong
+     thing, and four lapses written for it that went stale the moment it was narrowed.
      - What it took to read at all: `_is_nullable` knew only the pre-canonical vocabulary and refused a `Choice`, so the
        check could not run past `alternative-shape`; the gate and its guards take nothing and a recovery is no way an
        alternative offers, which leaves the actions and the two calls. It answers a different question from
