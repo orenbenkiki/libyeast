@@ -220,6 +220,43 @@ with all three comes before driving the determinize meter down: a meter driven d
 number and keeps the debt. The qualification in this paragraph comes out when the pipeline conforms, and the three rules
 then stand as a hard constraint on every step after.
 
+## An indentation is measured where it is consumed
+
+The official grammar establishes an indentation by looking ahead for it. `<auto-detect-indent>` skips the rest of the
+current line where the parse stands mid-line, skips however many empty lines follow, and answers with the indentation of
+the first line holding a character other than a space — a read of unbounded length before a single character is
+consumed. A block collection then measures every entry against that answer, and a block scalar its every content line.
+libyeast cannot run that: the parser reads forward, decides on the character in hand, and holds tokens only where a
+decision genuinely spans them. So the grammar says it another way, and the reasons are worth having in one place because
+they explain a class of departures rather than a single rule.
+
+**Every indentation is a column.** The arithmetic the official grammar writes around a detection is one value said three
+ways: a compact collection's `n+1+m` is the column its run of spaces ends at, since the run begins one past an indicator
+at column `n`; a block collection's `n+m` is its first entry line's column; a block scalar's `n+m` is its first content
+line's column. `<column>` says that directly, and the `max(1, …)` clamp the official grammar carries becomes what it
+always meant — the run must leave the parse deeper than the indentation in force, or this way does not apply.
+
+**One span, then a gate on what it measured.** A line's indentation is taken as a single run and the checks are made on
+the result: `s-indent-le` has always been `(***) s-space` followed by a test on `(len) (match)`, and the delayed
+detections are written the same way. The indentation is never split into two consumes, and never consumed twice.
+
+This is sound because **a run over a character class is possessive** and gives nothing back, so peeking a length and
+then consuming exactly that many characters is the same parse as consuming the run — the peek was buying nothing. Each
+rewrite is therefore an identity, and the conformance corpus and the YAML Test Suite hold every one of them to it, token
+for token.
+
+**The value is passed, not written**, unless the write is meant to travel. A parameter passed as itself is passed by
+reference in this grammar, which is how a block header hands its detected indent up to the scalar that asked. It also
+means a `(set)` of a declared parameter escapes into every caller that passes it bare: `s-l+block-collection` calls
+`l+block-mapping` with a plain `n` where the sequence goes through `seq-spaces`, an asymmetry the official grammar
+itself writes, so a write in one would escape and in the other would not. The collections therefore hand the established
+indentation to `l-block-seq-entries` and `l-block-map-entries` — libyeast's own — as an argument.
+
+**Not yet held.** One site remains: the block scalar's indentation indicator, whose absent branch is still the unbounded
+scan, and whose value is wanted three calls away at the first content line. Until it is written the same way,
+`generator/interpreter.py` still carries `_detect_indent`, and a parse can still read arbitrarily far ahead of what it
+has consumed.
+
 ## Differences from YamlReference
 
 libyeast's goal is a fast, correct YAML 1.2 parser for YAMLStar and its kin — not a byte-for-byte replica of
