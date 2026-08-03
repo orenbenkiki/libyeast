@@ -3609,21 +3609,50 @@ l-folded-content:
 #   c-l-block-seq-entry(n+m) )+
 #   <for_some_fixed_auto-detected_m_>_0>
 #
-# Emits: begin-sequence, end-sequence
+# The "fixed auto-detected m" is the first entry's own indentation, and the parse is standing at the start of that
+# entry's line. So it is taken rather than looked for: the run of spaces the line begins with is the indent token, and
+# <column> is where it left the parse, which is the n+m every entry is measured against. It must be deeper than the
+# indentation in force, which is what the official grammar's m > 0 says.
+#
+# The entries run at that indentation, so they are entered at it — l-block-seq-entries takes it as its own n. The first
+# entry has had its indentation consumed here already; every later one begins with s-indent(n), which is what ends the
+# collection when a line is indented less.
+#
+# Emits: begin-sequence, indent, end-sequence
 
 l+block-sequence:
   (...): n
+  (wrap):
+  - begin-sequence
+  - end-sequence
+  - (all):
+    - (token): [ indent, { (***): s-space } ]
+    - (<): [ n, <column> ]
+    - l-block-seq-entries: <column>
+
+
+
+:223: l-block-seq-entries
+# l-block-seq-entries(n) ::=
+#   c-l-block-seq-entry(n)
+#   ( s-indent(n) c-l-block-seq-entry(n) )*
+#
+# The entries of a block sequence, run at the indentation the first of them established. libyeast's own: the official
+# grammar writes one repetition whose every turn re-measures against an m fixed outside it, where here the first turn is
+# what fixes it and the rest are measured against what it says.
+
+l-block-seq-entries:
+  (...): n
   (all):
-  - (set): [ m, <auto-detect-indent> ]
-  - (wrap):
-    - begin-sequence
-    - end-sequence
-    - (+++):
-        (all):
-        - s-indent: { (+): [ n, m ] }
-        - (recover):
-          - { l-recover-entry: [ { (+): [ n, m ] }, r ] }
-          - { c-l-block-seq-entry: { (+): [ n, m ] } }
+  - (recover):
+    - { l-recover-entry: [ n, r ] }
+    - { c-l-block-seq-entry: n }
+  - (***):
+      (all):
+      - s-indent: n
+      - (recover):
+        - { l-recover-entry: [ n, r ] }
+        - { c-l-block-seq-entry: n }
 
 
 
@@ -3710,21 +3739,42 @@ ns-l-compact-sequence:
 #   ns-l-block-map-entry(n+m) )+
 #   <for_some_fixed_auto-detected_m_>_0>
 #
-# Emits: begin-mapping, end-mapping
+# The sequence's twin, and read there: the first entry's own indentation is taken as the indent token and <column> is
+# the n+m every entry is measured against, deeper than the indentation in force.
+#
+# Emits: begin-mapping, indent, end-mapping
 
 l+block-mapping:
   (...): n
+  (wrap):
+  - begin-mapping
+  - end-mapping
+  - (all):
+    - (token): [ indent, { (***): s-space } ]
+    - (<): [ n, <column> ]
+    - l-block-map-entries: <column>
+
+
+
+:224: l-block-map-entries
+# l-block-map-entries(n) ::=
+#   ns-l-block-map-entry(n)
+#   ( s-indent(n) ns-l-block-map-entry(n) )*
+#
+# The entries of a block mapping, run at the indentation the first of them established — l-block-seq-entries' twin.
+
+l-block-map-entries:
+  (...): n
   (all):
-  - (set): [ m, <auto-detect-indent> ]
-  - (wrap):
-    - begin-mapping
-    - end-mapping
-    - (+++):
-        (all):
-        - s-indent: { (+): [ n, m ] }
-        - (recover):
-          - { l-recover-entry: [ { (+): [ n, m ] }, r ] }
-          - { ns-l-block-map-entry: { (+): [ n, m ] } }
+  - (recover):
+    - { l-recover-entry: [ n, r ] }
+    - { ns-l-block-map-entry: n }
+  - (***):
+      (all):
+      - s-indent: n
+      - (recover):
+        - { l-recover-entry: [ n, r ] }
+        - { ns-l-block-map-entry: n }
 
 
 

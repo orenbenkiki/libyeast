@@ -32,6 +32,7 @@ import argparse
 import os
 import sys
 import threading
+import traceback
 
 import annotated2ir
 import check_grammar_coverage
@@ -243,6 +244,11 @@ def main():
             _check(bisect=arguments.bisect is not None, hint=hint)
         except SystemExit as exit:  # gate.report exits on failure; carry its code back to the main thread
             status["code"] = exit.code
+        except BaseException:  # noqa: BLE001 — a thread's exception reaches no exit code of its own
+            # A crash is a failure, and one raised here would otherwise be printed by the thread's excepthook while the
+            # main thread exits zero — a green gate over a check that never finished.
+            traceback.print_exc()
+            status["code"] = 1
 
     thread = threading.Thread(target=worker)
     thread.start()

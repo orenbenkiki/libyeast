@@ -32,6 +32,16 @@ DEVIATIONS = {
         "spaces that follow as the indent token and reads <column>, so what the compact collection is indented by is "
         "where its own indentation left the parse rather than a number worked out beside it"
     ),
+    "l+block-sequence": (
+        "the official grammar's every turn re-measures against an m fixed outside the repetition, by a special rule "
+        "that looks ahead for the first content line. libyeast takes that line's own run of spaces as the indent token "
+        "where the parse already stands, and enters l-block-seq-entries at <column> — the same n+m, established by the "
+        "first entry rather than looked for before it, with m > 0 kept as a guard on the column"
+    ),
+    "l+block-mapping": (
+        "the sequence's twin: the first entry's own run of spaces is the indent token and <column> is the n+m the "
+        "entries are measured against, l-block-map-entries running them at it"
+    ),
     "c-b-block-header": (
         "the official grammar's header is two orderings, indent-then-chomp or chomp-then-indent, that begin the same "
         "way, so it can only tell them apart by backtracking and can never call a header malformed. libyeast guards "

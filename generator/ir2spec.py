@@ -27,6 +27,8 @@ MARKER_ONLY = frozenset({"end-block-scalar"})
 # compare them against, so recovering it just leaves them out.
 OWN = frozenset(  # in alphabetical order
     {
+        "l-block-map-entries",
+        "l-block-seq-entries",
         "l-leading-empties",
         "l-nb-literal-first",
         "l-nb-same-first",

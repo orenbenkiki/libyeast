@@ -86,6 +86,26 @@ All notable changes to this project are documented here. The format follows
 
   `<auto-detect-in-line-indent>` is retired with the peek it served, that rule having been its only site.
 
+  The block collections follow. `l+block-sequence` and `l+block-mapping` looked ahead for the first line holding
+  something other than a space — past the current line where the parse stood mid-line, past however many empty lines
+  followed, unbounded — and measured every entry against what they found. The parse is already standing at the start of
+  the line the first entry is on, so that line's own run of spaces is taken as the indent token and `<column>` is the
+  `n+m` the entries are measured against, which must be deeper than the indentation in force. The entries then run at
+  it: `l-block-seq-entries` and `l-block-map-entries` are libyeast's own, taking that indentation as their `n`, the
+  first entry having had its consumed already and every later one beginning with `s-indent(n)` — which is what ends the
+  collection where a line is indented less. Passed as an argument rather than written: a parameter passed as itself is
+  passed by reference, and `s-l+block-collection` calls the mapping with a bare `n` where the sequence goes through
+  `seq-spaces`, so a write would have escaped one of the two.
+
+  With the collections answering for themselves, the pipeline step that had been doing it — hoisting each loop into a
+  production entered at what it measured — has nothing left to find, and a step that finds nothing is a fault by the
+  pipeline's own rule. It is gone, and the phase is `clear-m` and `read-global-m`.
+
+- `check_normalize` carries a crash back as a failure. It runs its check in a thread for the stack depth the
+  interpreter's recursion wants, and caught only the `SystemExit` the gate reports through — so any other exception was
+  printed by the thread's own excepthook while the main thread exited zero. A green `make pc` over a check that never
+  finished, and it took a step going idle to notice.
+
 - A fixture may say where its input starts: `o=N` in the name, beside `n`, `c`, `t` and `r`. A rule entered in the
   middle of a line — a compact collection just past its `-` — is measured against the column it stands at, which a run
   starting at column zero cannot say, so `s-l+block-indented`'s fixtures name `o=3` beside their `n=2`. It feeds what
@@ -143,16 +163,15 @@ All notable changes to this project are documented here. The format follows
   that global's own, a `(clear)` takes it off, the single slot stands beside it, and the reads where the two differ are
   counted over the whole corpus. The gate holds that at none — and made to nest, the same net reports 21.
 
-  Phase 3 is the detected indent. `pass-detected-indent` gives a loop the indentation it measured: a block collection
-  detects what its entries are indented by and then measures each against `n+m`, so the value stays live for as long as
-  the loop runs and every collection or block scalar the loop enters detects one of its own in between. The loop moves
-  into a production entered at `n+m` and reads the indentation it was entered at, which leaves the detection read once,
-  in the argument beside the write — and only where every read inside the moved body stands in that one expression and
-  nothing there reads either value another way, the compact collections' `m` beside their `n+1+m` left alone. `clear-m`
-  and `read-global-m` then do what `f`'s pair did. The count of reads a single slot could not have answered stood at 843
-  and stands at none, which is the whole argument for the shape: it named the loop, and the loop was what was wrong.
-  `Bind` maintains the stack beside the slot too — a write is a write however it is spelled, and a block header's
-  indicator sets the detected indent through one, so a global written that way had been invisible to the net.
+  Phase 3 is the detected indent, and `clear-m` and `read-global-m` do what `f`'s pair did. What made it possible is
+  that nothing reads the value twice over a region something else can write in: the block header measures it and the
+  scalar that asked reads it, one construct at a time. A block collection did read it on every turn of its loop, which
+  is a value no single slot can hold — every collection or block scalar the loop entered detected one of its own in
+  between — and the count of reads a slot could not have answered stood at 843 for exactly that reason. It is the
+  grammar that answers for it now, each collection entering its entries at the indentation the first of them
+  established, so the count stands at none. `Bind` maintains the stack beside the slot too — a write is a write however
+  it is spelled, and a block header's indicator sets the detected indent through one, so a global written that way had
+  been invisible to the net.
 
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
