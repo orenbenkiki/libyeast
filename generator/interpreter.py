@@ -259,10 +259,16 @@ class Emitter:
             self.mark = wire.Mark(self.mark.byte + byte_length, self.mark.char + 1, self.mark.line + 1, 0)
             self.is_sol = True
         else:
+            # A byte-order mark is no character of the line: it neither ends the start of the line nor takes a column,
+            # so what follows it stands where it would have stood without it.
+            is_byte_order_mark = codepoint == BYTE_ORDER_MARK
             self.mark = wire.Mark(
-                self.mark.byte + byte_length, self.mark.char + 1, self.mark.line, self.mark.column + 1
+                self.mark.byte + byte_length,
+                self.mark.char + 1,
+                self.mark.line,
+                self.mark.column + (not is_byte_order_mark),
             )
-            if codepoint != BYTE_ORDER_MARK:
+            if not is_byte_order_mark:
                 self.is_sol = False
         self.position += 1
 
@@ -484,6 +490,8 @@ def evaluate(expression, emitter, grammar):
             if branch.value == value:
                 return evaluate(branch.item, emitter, grammar)
         raise KeyError(f"Flip on {expression.var}={value!r} has no branch")
+    if isinstance(expression, ir.Column):
+        return emitter.mark.column
     if isinstance(expression, ir.AutoDetectInLineIndent):
         return max(1, _leading_spaces(emitter))
     if isinstance(expression, ir.AutoDetectIndent):

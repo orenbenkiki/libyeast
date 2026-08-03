@@ -123,9 +123,10 @@
 #
 # A handful of rule names are words inside angle brackets. These are called
 # "special rules". They are not written as rules; each is an assertion, or a
-# measurement, that consumes no text. The grammar this one derives from leaves
-# the last two of them undefined, and says so. Here they are defined, because a
-# parser cannot be generated from a rule whose meaning is left to the reader.
+# measurement, that consumes no text. The grammar this one derives from has no
+# <column> at all, and leaves the last two undefined, saying so. Here they are
+# defined, because a parser cannot be generated from a rule whose meaning is
+# left to the reader.
 #
 #   * <empty>
 #     Always matches.
@@ -135,6 +136,15 @@
 #
 #   * <end-of-stream>
 #     Current parse position is at the end of the input stream.
+#
+#   * <column>
+#     The column the parse stands at, counted from zero. A byte order mark
+#     takes no column: it is no character of the line, so what follows it stands
+#     where it would have stood without it.
+#
+#     What a construct is indented by, read where that indentation has just been
+#     consumed: a line's leading run of spaces leaves the parse at the column
+#     that run measures.
 #
 #   * <auto-detect-indent>
 #     The indentation of the next line that holds a character other than a

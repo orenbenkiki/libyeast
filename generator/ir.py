@@ -151,6 +151,19 @@ class Indent:
 
 
 @dataclass(frozen=True)
+class Column:
+    """
+    `<column>`: the column the parse stands at, counted from zero.
+
+    What a construct is indented by, read where its indentation has just been consumed rather than worked out by looking
+    ahead for it: the run of spaces a line begins with leaves the parse at the column that run measures.
+    """
+
+    def references(self):
+        return []
+
+
+@dataclass(frozen=True)
 class AutoDetectIndent:
     """
     `<auto-detect-indent>`: the indentation of the next line that holds a character other than a space, less `n`.

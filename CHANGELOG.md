@@ -65,6 +65,15 @@ All notable changes to this project are documented here. The format follows
   chomping and resume policy. And every rule that emits tokens must say which, checked against the grammar itself, so a
   note that is wrong fails as surely as one that is missing.
 
+- A byte order mark takes no column. It is no character of the line — it does not end the line's start, and now it does
+  not advance the column either — so a token that follows one on the same line reports the column it would have had
+  without it, and `l-document-prefix.bom-comment`'s `#` is at column 0 rather than 1. What reads a column is what a
+  construct is indented by, and a mark standing before the indentation is not part of it.
+
+- `<column>`, a special rule beside `<empty>` and `<start-of-line>`: the column the parse stands at, counted from zero.
+  What a construct is indented by, read where that indentation has just been consumed rather than worked out by looking
+  ahead for it.
+
 - Grammar normalization: an ordered pipeline of semantics-preserving grammar-to-grammar transformations that carry the
   hand-authored grammar toward the canonical form a state machine falls out of — each terminal a character set, each run
   a repetition of one. It is built one goal at a time: the pipeline is a sequence of phases, each owning one invariant,

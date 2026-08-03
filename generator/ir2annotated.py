@@ -42,6 +42,8 @@ def expr_yaml(e):
         return e.value
     if isinstance(e, ir.Match):
         return "(match)"
+    if isinstance(e, ir.Column):
+        return "<column>"
     if isinstance(e, ir.AutoDetectIndent):
         return "<auto-detect-indent>"
     if isinstance(e, ir.AutoDetectInLineIndent):
