@@ -38,7 +38,6 @@ import check_grammar_coverage
 import check_interpreter
 import check_star
 import gate
-import interpreter
 import normalize
 import spec_tests
 
@@ -146,7 +145,6 @@ def _check(bisect=False, hint=None):
     fixtures = spec_tests.load()
     suite = check_star.cases()
     stages, points = normalize.stages(annotated2ir.load())
-    committed = normalize.committed_productions(points)
     final_label, final = stages[-1]
     groups, errors = _pinned(stages, fixtures)
 
@@ -169,52 +167,27 @@ def _check(bisect=False, hint=None):
         else:
             print("    re-run with `--bisect [step]` to name the step behind it", flush=True)
     errors += corpus
-    deterministic = normalize.deterministic_productions(final, committed)
-    if not errors:  # the hybrid run is judged only where the backtracking one stands, so a fault names its mode
-        errors += [
-            f"[deterministic] fixture {error}"
-            for error in check_interpreter.reproduced(final, groups[-1], deterministic=deterministic)
-        ]
-        errors += [
-            f"[deterministic] star {error}"
-            for error in check_star.disagreements(final, suite, deterministic=deterministic)
-        ]
     exercisers = [(grammar, pinned) for (_label, grammar), pinned in zip(stages, groups) if pinned]
     for error in check_grammar_coverage.gaps(final, exercisers):
         errors.append(f"[final] coverage {error}")
-    # Not an invariant, and it cannot be one: it reads the `(token)` scopes to know which runs carry content, and past
-    # `lower-tokens` those are gone, so from there it stops being askable rather than stops being true. An invariant is
-    # asked at every stage from the first step naming it; a property with a window is asked where the window is. So this
-    # runs on the last grammar still holding the scopes, and `lower-tokens` leaves the character runs it checks
-    # untouched, so the two grammars agree on the answer.
-    before_lower_tokens = dict(stages)["lower-star"]
-    for offender in normalize.content_run_offenders(before_lower_tokens):
-        errors.append(f"[content-runs] {offender}: a long text token is collected one character at a time")
     # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
     # stays none after — a step breaking one saying so in its `lapses` and why, and a step naming one doing something
     # about it. Every structural property the pipeline claims is judged here, so nothing else below repeats one.
     for fault in normalize.invariant_faults(stages, points):
         errors.append(f"[invariant] {fault}")
-    for fault in normalize.declared_faults(final, committed):
-        errors.append(f"[ledger] {fault}")
 
     gate.report(
         errors,
-        "normalization fault(s) — a step that changes the grammar's meaning, a content run not matched in bulk, an "
-        "invariant broken with no reason given, or a declaration the grammar has outgrown",
+        "normalization fault(s) — a step that changes the grammar's meaning, or an invariant broken with no reason "
+        "given",
         f"normalization pipeline: {len(normalize.STEPS)} step(s) preserve {len(fixtures)} fixtures and {len(suite)} "
-        f"suite cases — backtracking, and hybrid with {len(deterministic)} production(s) entered committed — every "
-        f"long text token matched in bulk by a character-set run",
+        f"suite cases",
     )
     print("    " + " -> ".join(step.name for step in normalize.STEPS))
     # The stranded fixtures: each guards the last stage whose grammar can still run it, the purge having taken its
     # production out of every later one.
     stranded = len(fixtures) - len(groups[-1])
     print(f"    {stranded} fixture(s) pinned to an earlier stage's grammar, the last to run them")
-    # Not a fault: what the canonical form does not spell yet, printed so the number is watched down to none rather than
-    # discovered later. The determinize phase is what resolves each of them.
-    residue = normalize.unshaped_actions(final)
-    print(f"    {len(residue)} action(s) the canonical form does not spell: a leftover scope or a nullable repetition")
     # A step naming neither an invariant nor a reason for having none promises what nothing checks. Driven to none, at
     # which point the default goes and a step must say one or the other.
     exempt = [step.name for step in normalize.STEPS if step.untestable]
@@ -232,23 +205,7 @@ def _check(bisect=False, hint=None):
         f"    {len(standing)} invariant(s) the final grammar still breaks: "
         + ", ".join(f"{name} {count}" for name, count in standing)
     )
-    failing = normalize.context_conflicts(final, committed)
-    blind = set(normalize.blind_choices(final))
-    held = sum(count for name, count in failing.items() if name in blind)
-    print(
-        f"    the undecided points fall in {len(failing)} production(s), {held} of them held by a production "
-        f"choosing blind between reading and not"
-    )
-    # The isolation count, beside the meter as the diagnostic it is: a production undecidable on its own is no conflict
-    # where every context a root parse reaches it under decides it, which is why the meter is the number driven down.
-    print(f"    {len(final) - len(deterministic)} production(s) not yet deterministic in isolation")
-    # The assurance ledger: committed on a declared reason rather than a proof, each entry held to backtracking by the
-    # hybrid run above and to freshness by its own net — watched here so the declared few never grow quietly.
-    print(f"    {len(committed)} production(s) committed by declaration — the assurance ledger")
-    # What the corpus asked of a global that one value for the parse could not have answered. Every run above has been
-    # answered from a stack beside the slot, so this is what stands between the two and not a count of anything that
-    # went wrong: at none, the machine can hold the slot alone.
-    print(f"    {interpreter.ASKED['flattened']} read(s) one value for a global could not answer")
+    print(f"    {len(final)} production(s) in the grammar the phase hands on")
 
 
 def main():

@@ -416,8 +416,11 @@ verify-grammar: verify-grammar-base verify-grammar-base-coverage
 # In dependency order: the grammar as itself, then its compatibility with the official spec, then the interpreter
 # machinery, then the fixtures (intact, then reproduced), then the independent star suite folded through the
 # interpreter, and last the generator-to-C consistency the eventual C parser rests on.
+# `verify-provisional` and `verify-determinize` stand aside while the pipeline is rebuilt a phase at a time: both judge
+# machinery a later phase reinstates — the provisional run's balance and the fold's derived decision — and neither has
+# anything to read in a pipeline whose steps are the chomping's.
 verify: verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
-        verify-emitter verify-provisional verify-determinize verify-fixtures verify-grammar verify-star \
+        verify-emitter verify-fixtures verify-grammar verify-star \
         verify-normalize verify-wire verify-decoder
 
 # Static code quality.

@@ -206,6 +206,29 @@ introduce. Binding-time, `c`/`t` specialization, determinization, and the loweri
 separate mechanical phases — are all steps of this one pipeline. Performance of the generator is a non-issue; every step
 is written to be simple enough to prove by eye, and checked two ways after it runs.
 
+**One goal at a time.** The pipeline is built as a sequence of **phases**, each owning one invariant: the phase adds
+steps until that invariant is settled, and from its end the invariant is *enforced* — the law's "none stays none" makes
+every later step keep it. A phase is finished when its count is none and the corpus is green, and that is a checkpoint
+worth landing on its own.
+
+This replaces a pipeline whose steps were ordered by what each needed next, which put the steps sharing a goal far
+apart: the parameters were removed at steps 40–49 while every step from 2 onward minted helpers that threaded them, so
+the count of carried parameters rose from 697 at the base to **2464** before collapsing to none. The rearrangement is
+not a tidy-up. A step written where its goal's other steps already ran is a smaller step, against a grammar with less in
+it — `push-indents` mints a production per pop only because the canonical form has no "after the call", where in the
+tree form the pop is the next item in a sequence.
+
+The phases, each established and then enforced:
+
+| phase | invariant              | what it removes                                                             |
+| ----- | ---------------------- | --------------------------------------------------------------------------- |
+| 0     | `no-t-parameter`       | the chomping, made lexical and then specialized away                        |
+| 1     | `no-indent-parameters` | `n`, `m`, `f` — the values a call carries, moved to the stack and the slots |
+| later | to be chosen           | the empties, the spans, the canonical shape, the decisions                  |
+
+Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
+its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
+
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:
 
