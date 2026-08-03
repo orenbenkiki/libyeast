@@ -952,6 +952,20 @@ def _peek_spans(peek, grammar):
 POINTS = {}
 
 
+def _held(node):
+    """
+    `node` and everything it holds, however it holds it — the fields walked themselves rather than through the generic
+    walker, which carries a `Param` a field holds directly as a value and never visits it. A comparison's operands are
+    where that hides: `s-indent-floor`'s `Le(f, n)` reads two parameters the walker sees neither of.
+    """
+    yield node
+    if dataclasses.is_dataclass(node):
+        for field in dataclasses.fields(node):
+            value = getattr(node, field.name)
+            for item in value if isinstance(value, tuple) else (value,):
+                yield from _held(item)
+
+
 def _parameter_uses(grammar, wanted):
     """
     Every place a parameter in `wanted` is still carried: a production declaring one, a call passing one at the position
@@ -961,21 +975,17 @@ def _parameter_uses(grammar, wanted):
     step past it may lean on is that nothing has to be resolved before the grammar can be read.
     """
     faults = []
-
-    def walk(owner, node):
-        if isinstance(node, ir.Ref):
-            callee = grammar.get(node.name)
-            declared = () if callee is None else callee.params
-            for position in range(min(len(node.args), len(declared))):
-                if declared[position] in wanted:
-                    faults.append(f"{owner}: passes `{declared[position]}` to `{node.name}`")
-        elif isinstance(node, ir.Param) and node.name in wanted:
-            faults.append(f"{owner}: reads `{node.name}`")
-        ir.rebuilt(node, lambda child: (walk(owner, child), child)[1])
-
     for name, production in grammar.items():
         faults += [f"{name}: declares `{param}`" for param in production.params if param in wanted]
-        walk(name, production.body)
+        for node in _held(production.body):
+            if isinstance(node, ir.Ref):
+                callee = grammar.get(node.name)
+                declared = () if callee is None else callee.params
+                for position in range(min(len(node.args), len(declared))):
+                    if declared[position] in wanted:
+                        faults.append(f"{name}: passes `{declared[position]}` to `{node.name}`")
+            elif isinstance(node, ir.Param) and node.name in wanted:
+                faults.append(f"{name}: reads `{node.name}`")
     return faults
 
 
