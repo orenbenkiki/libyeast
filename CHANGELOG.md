@@ -191,6 +191,28 @@ All notable changes to this project are documented here. The format follows
   it is spelled, and a block header's indicator sets the detected indent through one, so a global written that way had
   been invisible to the net.
 
+  Phase 4 is the indentation, and it is not one of the parse's own values: a nested collection's entries are measured
+  against their own, so it goes on the parse's stack rather than into a slot. `push-indents` puts a push before every
+  call measured against an indentation other than the one in force and a pop behind it — both halves in one way of one
+  production, the level being known nowhere else — and `read-indents` then takes the parameter off every declaration,
+  every call and every read, leaving the stack the one place it is. What says the pushes stand where they should is the
+  parameter staying beside them while they go in: the interpreter compares the two at every read of `n` over the whole
+  corpus, and only then does the parameter go. Skew every push by one and it refuses ten fixtures, so the agreement is a
+  check rather than a coincidence.
+
+  `hold-established-indents` goes first, for the one indentation a call hands back rather than is entered under. A block
+  scalar cannot know what its content is indented by until its first content line is read, so that line measures it and
+  the value travels out through the calls that passed the parameter itself — a write whose readers are a production
+  away, which the parameter's removal would silently take apart, and which nothing local can check. The chain is inlined
+  until the write and what reads it are one way, and the write is then the push that way ends by taking back. With it in
+  front, `push-indents` has one rule instead of two.
+
+  Two of the pushes' levels were wrong in a way only the corpus could say. A pop that names the level it takes off
+  re-evaluates that expression when it runs, and `<column>` or `n+1` means something else by then — so a pop takes what
+  is on top and the pairing is what the stack's own kinds refuse. And working out what to push is not a read of the
+  indentation in force: where the level is the parameter itself the two differ there and nowhere else, which is the same
+  exemption the arguments of a call already had.
+
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
   becomes a reference to that callee. Productions that behave alike are spelled once: same parameters, and the same body

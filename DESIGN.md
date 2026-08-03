@@ -151,8 +151,8 @@ green corpus is a checkpoint that lands on its own. The order is dependency's ra
 `no-i-t-parameters`, neither the chomping nor a block scalar's indentation mode declared, passed or read; Phase 1
 settles `every-character-question-is-a-set-or-a-literal`, and follows the specialization because a set the context picks
 denotes nothing until a caller is known; Phase 2 settles `no-f-parameter`, the block scalar's leading-empty floor; Phase
-3 settles `no-m-parameter`, the detected indent. A step written where its goal's other steps already ran is a smaller
-step, against a grammar with less in it.
+3 settles `no-m-parameter`, the detected indent; Phase 4 settles `no-n-parameter`, the indentation itself. A step
+written where its goal's other steps already ran is a smaller step, against a grammar with less in it.
 
 A carried value stops being one parameter at a time, smallest first, because the mechanism is what is being proved and
 not the value: `f` is read by one production, so a floor that nested would show up over four reads rather than over
@@ -161,6 +161,14 @@ a `(set)` puts the value on a stack of that global's own and a `(clear)` takes i
 and every read where the two differ is one a slot could not have answered. `check_normalize` gates that count at none.
 The clear is what makes the count mean anything: without one nothing pops, the stack is the slot by construction, and
 the net cannot fail.
+
+The indentation is not one of those. It is one value per region rather than one for the parse — a nested collection's
+entries are measured against their own — so it goes on the parse's own stack, pushed where it changes and taken back
+where that region ends. Both halves of a pair sit in one way of one production, the level being known nowhere else, and
+what says a push stands where it should is that the parameter stays beside the stack while they go in: every read
+compares the two over the whole corpus, and only then does the parameter go. The one indentation a call establishes
+rather than is entered under — a block scalar's, which its first content line measures — is made a push of its own
+first, since a write whose readers are a production away is exactly what the parameter's removal would take apart.
 
 What the count is for is naming the shapes that have to change before a value can be one. A detected indent read once,
 beside the write, is a value one place holds; the same value read on every turn of a loop is not, everything the loop

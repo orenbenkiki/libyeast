@@ -1049,7 +1049,13 @@ def match(node, emitter, grammar, k):
         return False
     if isinstance(node, ir.PushIndent):
         checkpoint = emitter.checkpoint()
-        emitter.stack += (("indent", evaluate(node.level, emitter, grammar)),)
+        # Working out what to push is not a read of the indentation in force: the level is what replaces it, and where
+        # it is the parameter itself — an indentation a call established and handed back — the two differ here and
+        # nowhere else, until the parameter goes.
+        emitter.passing_arguments = True
+        level = evaluate(node.level, emitter, grammar)
+        emitter.passing_arguments = False
+        emitter.stack += (("indent", level),)
         if k():
             return True
         emitter.rewind(checkpoint)

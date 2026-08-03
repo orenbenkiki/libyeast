@@ -16,6 +16,12 @@ difference, a reference, the item of a lookaround — and the parser tests one k
 every one of them as the intervals it denotes, after which each question about a character is a `CharSet` or a literal —
 `every-character-question-is-a-set-or-a-literal` at none. It follows the specialization because a set a context
 parameter picks denotes nothing until a caller is known.
+
+Phases 2 to 4 are the values a call carries. The block scalar's leading-empty floor `f` and the detected indent `m` are
+one value for the parse rather than one per call, so each is given an end and then read off a single slot; the
+indentation `n` is one value per region, so it goes on the parse's own stack — `hold-established-indents` makes the one
+indentation a call hands back into a push, `push-indents` says where every other change is, and `read-indents` takes the
+parameter away, leaving the stack the one place it is. Nothing declares, passes or reads any of the three.
 """
 
 import dataclasses
@@ -1006,6 +1012,52 @@ NO_F_PARAMETER = Invariant("no-f-parameter", lambda grammar: _parameter_uses(gra
 # Phase 3's invariant: the detected indent is nowhere declared, passed or read as a parameter.
 NO_M_PARAMETER = Invariant("no-m-parameter", lambda grammar: _parameter_uses(grammar, {"m"}))
 
+# Phase 4's invariant: the indentation is nowhere declared, passed or read as a parameter, the parse's stack holding it.
+NO_N_PARAMETER = Invariant("no-n-parameter", lambda grammar: _parameter_uses(grammar, {"n"}))
+
+
+def _unpushed_indents(grammar):
+    """
+    Indentations a parse changes without saying so: a call measured against one the parse does not stand under, and a
+    call that establishes one whose region nothing bounds.
+
+    A push and its pop are what put a level where every read reaches it without a call carrying it, and they are looked
+    for immediately around the call — the one place the level is known and nothing of the caller's runs between.
+    """
+    faults = []
+    establishing = _establishing(grammar)
+    for name, production in grammar.items():
+        guarded = set()
+        for node in _held(production.body):
+            if not isinstance(node, ir.Seq):
+                continue
+            for position, item in enumerate(node.items):
+                before = node.items[position - 1] if position else None
+                after = node.items[position + 1] if position + 1 < len(node.items) else None
+                if isinstance(before, ir.PushIndent) and isinstance(after, ir.PopIndent):
+                    guarded.add(id(item))  # entered under a level this way pushes and takes back
+                if isinstance(after, ir.PushIndent) and isinstance(node.items[-1], ir.PopIndent):
+                    guarded.add(id(item))  # establishes a level, pushed where it returns and held to the way's end
+        for node in _held(production.body):
+            if id(node) in guarded or not isinstance(node, ir.Ref):
+                continue
+            if _pushed_level(grammar, node) is not None:
+                faults.append(f"{name}: calls `{node.name}` against an indentation nothing pushes")
+        for node in _held(production.body):
+            if not isinstance(node, ir.Seq):
+                continue
+            for position, item in enumerate(node.items):
+                if id(item) in guarded or not isinstance(item, ir.Ref):
+                    continue
+                if item.name not in establishing or not _is_by_reference(grammar, item):
+                    continue
+                if any(_is_using(later, "n") for later in node.items[position + 1 :]):
+                    faults.append(f"{name}: reads the indentation `{item.name}` establishes, and nothing holds it")
+    return faults
+
+
+INDENTS_PUSHED = Invariant("every-indentation-change-is-pushed", _unpushed_indents)
+
 
 def _replaced(node, swap):
     """
@@ -1031,15 +1083,16 @@ def _replaced(node, swap):
     return dataclasses.replace(node, **changed) if changed else node
 
 
-def _read_global(param):
+def _read_off(param, held):
     """
-    A transform making `param` the parse's one value: the declaration off every production, the argument off every call,
-    and every read of it a `Global`.
+    A transform taking `param` off the calls: the declaration off every production, the argument off every call, and
+    every read of it `held` — the one place the value is now, a global's single slot or the parse's own stack.
 
-    What licenses it is that the value does not nest — the floor is measured by the leading empty lines of one block
-    scalar and read by its first content line, one construct at a time — and the clear is what holds it to that, a read
-    past the region refused rather than answered. The writes are left as they stand: a `(set)` and a `(clear)` name the
-    parameter as a string, and reach the single slot once no production declares it.
+    What licenses a global is that its value does not nest — the floor is measured by the leading empty lines of one
+    block scalar and read by its first content line, one construct at a time — and the clear is what holds it to that, a
+    read past the region refused rather than answered. What licenses the stack is that every read of the parameter has
+    been compared against it, over the whole corpus, while the two stood side by side. The writes are left as they
+    stand: a `(set)` and a `(clear)` name the parameter as a string, and reach the slot once no production declares it.
     """
 
     def transform(grammar, namer):
@@ -1049,7 +1102,7 @@ def _read_global(param):
 
         def swap(node):
             if isinstance(node, ir.Param) and node.name == param:
-                return ir.Global(name=param)
+                return held
             if isinstance(node, ir.Ref) and positions.get(node.name, len(node.args)) < len(node.args):
                 position = positions[node.name]
                 return dataclasses.replace(node, args=node.args[:position] + node.args[position + 1 :])
@@ -1058,13 +1111,158 @@ def _read_global(param):
         return {
             name: dataclasses.replace(
                 production,
-                params=tuple(held for held in production.params if held != param),
+                params=tuple(carried for carried in production.params if carried != param),
                 body=_replaced(production.body, swap),
             )
             for name, production in grammar.items()
         }
 
     return transform
+
+
+def _pushed_level(grammar, node):
+    """
+    The indentation `node` is measured against where that is not the one in force, and `None` where it is.
+
+    A call handing the parameter itself passes the indentation already standing, so nothing changes and nothing is
+    pushed; a call handing anything else — a sum, a column, a literal — is entered under one of its own.
+    """
+    if not isinstance(node, ir.Ref):
+        return None
+    callee = grammar.get(node.name)
+    if callee is None or "n" not in callee.params:
+        return None
+    position = callee.params.index("n")
+    if position >= len(node.args):
+        return None
+    level = node.args[position]
+    return None if isinstance(level, ir.Param) and level.name == "n" else level
+
+
+def hold_established_indents(grammar, namer):
+    """
+    Make an established indentation something the parse stands under rather than something a call hands back.
+
+    A block scalar cannot know what its content is indented by until its first content line is read, so that line
+    measures it and the value travels back out through every call that passed the parameter itself. That is a write
+    whose readers are a production away, which nothing local can check and the parameter's removal would silently take
+    apart. So the chain is inlined until the write and what reads it are one way, and the write is then the push that
+    way ends by taking back.
+
+    Inlining is what makes the pair local: the callee is entered under the caller's own indentation — the argument is
+    the parameter — so its body says the same thing spliced in as it did called, and the value it left in `n` is left in
+    the same `n`.
+    """
+
+    def establishes(node):
+        """Whether `node` is a call whose production hands an indentation back to this one."""
+        return isinstance(node, ir.Ref) and node.name in _establishing(grammar) and _is_by_reference(grammar, node)
+
+    def spliced(items):
+        """
+        `items` with each call that hands an indentation back replaced by what that production does — and again on what
+        that brings in, since the one that establishes may be a call further down the chain.
+        """
+        while any(establishes(item) for item in items):
+            held = []
+            for item in items:
+                if not establishes(item):
+                    held.append(item)
+                    continue
+                body = grammar[item.name].body
+                held += list(body.items) if isinstance(body, ir.Seq) else [body]
+            items = tuple(held)
+        return items
+
+    def bounded(items):
+        """`items` with a write of the indentation made the push its way takes back."""
+        for position, item in enumerate(items):
+            if isinstance(item, ir.SetVar) and item.param == "n":
+                rest = bounded(items[position + 1 :])
+                return items[:position] + (ir.PushIndent(level=item.value),) + rest + (ir.PopIndent(level=None),)
+        return items
+
+    def held(node):
+        node = ir.rebuilt(node, held)
+        return ir.Seq(items=bounded(spliced(node.items))) if isinstance(node, ir.Seq) else node
+
+    return {name: dataclasses.replace(production, body=held(production.body)) for name, production in grammar.items()}
+
+
+def _written_indents(grammar):
+    """
+    Writes of the indentation — a value a call hands back to whatever asked, rather than one the parse stands under.
+
+    What reads such a write is a production away from where it happens, so nothing local says where the value's region
+    is, and the parameter carrying it out is the only thing holding it together.
+    """
+    return [
+        f"{name}: writes the indentation, which its caller must read back"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, ir.SetVar) and node.param == "n"
+    ]
+
+
+INDENTS_HELD = Invariant("no-indentation-write", _written_indents)
+
+
+def push_indents(grammar, namer):
+    """
+    Say where the indentation changes, so the parse stands under it rather than a call carrying it.
+
+    A call measured against an indentation other than the one in force is entered under it and gives it back where it
+    returns, so the push goes before the call and the pop behind it — the pair inside one way of one production, the
+    level being known nowhere else. A call handing the parameter itself is entered under what already stands and pushes
+    nothing; an indentation a call would have established is already a push, `hold-established-indents` having made it
+    one.
+
+    The parameter stays beside the stack: the run holds the two to each other, every read of `n` comparing the stack
+    against it, so what says the pushes stand where they should is the corpus rather than an argument.
+    """
+
+    def pushed(node):
+        node = ir.rebuilt(node, pushed)
+        level = _pushed_level(grammar, node)
+        return node if level is None else ir.Seq(items=(ir.PushIndent(level=level), node, ir.PopIndent(level=None)))
+
+    return {name: dataclasses.replace(production, body=pushed(production.body)) for name, production in grammar.items()}
+
+
+def _establishing(grammar):
+    """
+    The productions that hand an indentation back to their caller: the ones writing it, and the ones calling those with
+    the parameter itself, which is what carries the write out. A least fixpoint, a call chain establishing through it.
+
+    A block scalar's first content line is where this begins — its indentation is what the whole scalar is measured
+    against, and the scalar cannot know it before that line is read. So the value arrives by the call returning rather
+    than by the call being made, and the region it holds for is what follows the call.
+    """
+    names = {
+        name
+        for name, production in grammar.items()
+        if any(isinstance(node, ir.SetVar) and node.param == "n" for node in _held(production.body))
+    }
+    while True:
+        carried = {
+            name
+            for name, production in grammar.items()
+            for node in _held(production.body)
+            if isinstance(node, ir.Ref) and node.name in names and _is_by_reference(grammar, node)
+        }
+        if carried <= names:
+            return names
+        names |= carried
+
+
+def _is_by_reference(grammar, node):
+    """Whether the call `node` hands the indentation itself, which is what lets a callee's write reach the caller."""
+    callee = grammar.get(node.name)
+    if callee is None or "n" not in callee.params:
+        return False
+    position = callee.params.index("n")
+    argument = node.args[position] if position < len(node.args) else None
+    return isinstance(argument, ir.Param) and argument.name == "n"
 
 
 def _is_reading(grammar, production, param):
@@ -1154,10 +1352,16 @@ STEPS = [
     # one a call carries. The value is given an end first, a single slot answering for a parameter only where a read
     # past the region it was measured in is refused rather than answered from what the last construct left.
     Step("clear-f", _clear_reads("f"), _unbounded_reads("f")),
-    Step("read-global-f", _read_global("f"), NO_F_PARAMETER),
+    Step("read-global-f", _read_off("f", ir.Global(name="f")), NO_F_PARAMETER),
     # Phase 3 establishes `NO_M_PARAMETER`: the detected indent is the parse's one value. Nothing reads it twice over a
     # region something else can write in — the block header measures it and the scalar that asked reads it, one
     # construct at a time — so a clear and a drop are the whole of it.
     Step("clear-m", _clear_reads("m"), _unbounded_reads("m")),
-    Step("read-global-m", _read_global("m"), NO_M_PARAMETER),
+    Step("read-global-m", _read_off("m", ir.Global(name="m")), NO_M_PARAMETER),
+    # Phase 4 establishes `NO_N_PARAMETER`: the indentation is on the parse's own stack rather than carried by a call.
+    # The pushes go in first and the parameter stays beside them, so what says they stand where they should is every
+    # read comparing the two over the corpus; dropping the parameter is what leaves the stack the one place it is.
+    Step("hold-established-indents", hold_established_indents, INDENTS_HELD),
+    Step("push-indents", push_indents, INDENTS_PUSHED),
+    Step("read-indents", _read_off("n", ir.Indent()), NO_N_PARAMETER),
 ]
