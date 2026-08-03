@@ -1139,6 +1139,31 @@ def _pushed_level(grammar, node):
     return None if isinstance(level, ir.Param) and level.name == "n" else level
 
 
+def lower_optionals(grammar, namer):
+    """
+    Write each optional as the alternation it already is: `x?` becomes `x | <empty>`, the empty way standing beside the
+    one that reads rather than hidden inside a node.
+
+    The interpreter says it is the same match: an `Opt` tries its item with the continuation behind it and, where that
+    fails, rewinds and takes the continuation alone — which is an alternation of the item and `<empty>`, tried in that
+    order. Nothing about how much the item takes changes, so nothing has to be known about what follows.
+    """
+
+    def lowered(node):
+        node = ir.rebuilt(node, lowered)
+        return ir.Alt(items=(node.item, ir.Empty())) if isinstance(node, ir.Opt) else node
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
+
+
+# What this step is for, on the way to the empties phase's own count: no optional hides an empty match. A `Star` hides
+# the same thing and is not this — its lowering is no identity, the run being possessive where an alternation's empty
+# way is a fallback the continuation can reach.
+NO_OPT_NODES = _absent("no-opt-nodes", ir.Opt)
+
+
 def hold_established_indents(grammar, namer):
     """
     Make an established indentation something the parse stands under rather than something a call hands back.
@@ -1364,4 +1389,7 @@ STEPS = [
     Step("hold-established-indents", hold_established_indents, INDENTS_HELD),
     Step("push-indents", push_indents, INDENTS_PUSHED),
     Step("read-indents", _read_off("n", ir.Indent()), NO_N_PARAMETER),
+    # Phase 5 is the empties, and what it is finished by is no production matching empty but the ones a parse enters by
+    # name. This step is the first of it: an empty match is a way beside the one that reads, not a node hiding one.
+    Step("lower-optionals", lower_optionals, NO_OPT_NODES),
 ]

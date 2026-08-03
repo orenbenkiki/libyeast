@@ -213,6 +213,16 @@ All notable changes to this project are documented here. The format follows
   indentation in force: where the level is the parameter itself the two differ there and nowhere else, which is the same
   exemption the arguments of a call already had.
 
+  Phase 5 is the empties, and `lower-optionals` is its first step: `x?` becomes `x | <empty>`, the empty way standing
+  beside the one that reads rather than hidden inside a node. It is the same match and the interpreter says so — an
+  `Opt` tries its item with the continuation behind it and, where that fails, rewinds and takes the continuation alone,
+  which is that alternation tried in that order. So nothing has to be known about what follows.
+
+  A `Star` hides an empty match the same way and is not the same case. The run is possessive — it takes the maximal run
+  and never falls back to fewer, failing outright where its continuation fails — so any lowering that gives it an empty
+  branch hands it a fallback it did not have, and `x* → x+ | <empty>` is not an identity. What licenses it is that the
+  run be single-outcome, which is argued for character-class runs and nowhere else.
+
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
   becomes a reference to that callee. Productions that behave alike are spelled once: same parameters, and the same body

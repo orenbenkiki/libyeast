@@ -227,7 +227,8 @@ The phases, each established and then enforced:
 | 2     | `no-f-parameter`                                 | the block scalar's leading-empty floor, one value for the parse      |
 | 3     | `no-m-parameter`                                 | the auto-detected indent, one value for the parse                    |
 | 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack  |
-| later | to be chosen                                     | the empties, the spans, the canonical shape, the decisions           |
+| 5     | `only-root-empties`                              | every empty match but the ones a parse enters by name                |
+| later | to be chosen                                     | the spans, the canonical shape, the decisions                        |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
