@@ -106,6 +106,16 @@ All notable changes to this project are documented here. The format follows
   denoting the same characters differently are structurally unequal and do not merge, the merge reading shape rather
   than extension.
 
+  Phase 2 is the block scalar's leading-empty floor. `clear-f` gives the value an end — the production that reads it,
+  `s-indent-floor`, clears it where it returns, the reader and not the writer, since the floor is measured deep inside
+  the leading empties and handed up to the one thing that asks about it — and `read-global-f` takes the declaration off
+  every production and the argument off every call, each read becoming a `Global`. The reads hide where the generic
+  walker does not go: it carries a `Param` as a value and never visits one a field holds directly, so `s-indent-floor`'s
+  `Le(f, n)` is a read both the count and the rewrite had to walk the fields themselves to see. What licenses the drop
+  is that the value does not nest, and the interpreter says so rather than the argument: a `(set)` puts it on a stack of
+  that global's own, a `(clear)` takes it off, the single slot stands beside it, and the reads where the two differ are
+  counted over the whole corpus. The gate holds that at none — and made to nest, the same net reports 21.
+
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
   becomes a reference to that callee. Productions that behave alike are spelled once: same parameters, and the same body

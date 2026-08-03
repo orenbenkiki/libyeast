@@ -150,8 +150,16 @@ that count is none, and from its end the law's "none stays none" makes every lat
 green corpus is a checkpoint that lands on its own. The order is dependency's rather than the meter's — Phase 0 settles
 `no-t-parameter`, the chomping nowhere declared, passed or read; Phase 1 settles
 `every-character-question-is-a-set-or-a-literal`, and follows the specialization because a set the context picks denotes
-nothing until a caller is known. A step written where its goal's other steps already ran is a smaller step, against a
-grammar with less in it.
+nothing until a caller is known; Phase 2 settles `no-f-parameter`, the block scalar's leading-empty floor. A step
+written where its goal's other steps already ran is a smaller step, against a grammar with less in it.
+
+A carried value stops being one parameter at a time, smallest first, because the mechanism is what is being proved and
+not the value: `f` is read by one production, so a floor that nested would show up over four reads rather than over
+hundreds. What licenses a global is that its value does not nest, and the interpreter says so rather than the argument —
+a `(set)` puts the value on a stack of that global's own and a `(clear)` takes it off, the single slot stands beside it,
+and every read where the two differ is one a slot could not have answered. `check_normalize` gates that count at none.
+The clear is what makes the count mean anything: without one nothing pops, the stack is the slot by construction, and
+the net cannot fail.
 
 ## The three rules the normalization pipeline is held to
 

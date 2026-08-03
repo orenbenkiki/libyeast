@@ -992,6 +992,142 @@ def _parameter_uses(grammar, wanted):
 # Phase 0's invariant, and what the phase is finished by: the chomping is nowhere carried.
 NO_T_PARAMETER = Invariant("no-t-parameter", lambda grammar: _parameter_uses(grammar, {"t"}))
 
+# Phase 2's invariant: the block scalar's leading-empty floor is nowhere declared, passed or read as a parameter.
+NO_F_PARAMETER = Invariant("no-f-parameter", lambda grammar: _parameter_uses(grammar, {"f"}))
+
+
+def _replaced(node, swap):
+    """
+    `node` with `swap` applied to it and to everything it holds, the fields walked themselves.
+
+    The generic walker carries a `Param` as a value and never visits one a field holds directly, which is where a read
+    hides — so a rewrite of the reads is written against this rather than against it.
+    """
+    node = swap(node)
+    if not dataclasses.is_dataclass(node):
+        return node
+    changed = {}
+    for field in dataclasses.fields(node):
+        value = getattr(node, field.name)
+        if isinstance(value, tuple):
+            items = tuple(_replaced(item, swap) for item in value)
+            if items != value:
+                changed[field.name] = items
+        elif dataclasses.is_dataclass(value):
+            held = _replaced(value, swap)
+            if held is not value:
+                changed[field.name] = held
+    return dataclasses.replace(node, **changed) if changed else node
+
+
+def _read_global(param):
+    """
+    A transform making `param` the parse's one value: the declaration off every production, the argument off every call,
+    and every read of it a `Global`.
+
+    What licenses it is that the value does not nest — the floor is measured by the leading empty lines of one block
+    scalar and read by its first content line, one construct at a time — and the clear is what holds it to that, a read
+    past the region refused rather than answered. The writes are left as they stand: a `(set)` and a `(clear)` name the
+    parameter as a string, and reach the single slot once no production declares it.
+    """
+
+    def transform(grammar, namer):
+        positions = {
+            name: production.params.index(param) for name, production in grammar.items() if param in production.params
+        }
+
+        def swap(node):
+            if isinstance(node, ir.Param) and node.name == param:
+                return ir.Global(name=param)
+            if isinstance(node, ir.Ref) and positions.get(node.name, len(node.args)) < len(node.args):
+                position = positions[node.name]
+                return dataclasses.replace(node, args=node.args[:position] + node.args[position + 1 :])
+            return node
+
+        return {
+            name: dataclasses.replace(
+                production,
+                params=tuple(held for held in production.params if held != param),
+                body=_replaced(production.body, swap),
+            )
+            for name, production in grammar.items()
+        }
+
+    return transform
+
+
+def _is_reading(grammar, production, param):
+    """
+    Whether `production` reads `param`: a write says where a value begins and a pass carries it, and neither is a read.
+
+    A parameter passed as itself is by reference — the value on its way to the construct that measures it, or to the one
+    that asks about it — so the `Param` standing in that argument is the pass and not a use of the value here. One
+    inside an argument that works something out is a read like any other, the caller being where it is evaluated.
+    """
+    passed = set()
+    for node in _held(production.body):
+        if not isinstance(node, ir.Ref):
+            continue
+        callee = grammar.get(node.name)
+        declared = () if callee is None else callee.params
+        for position in range(min(len(node.args), len(declared))):
+            argument = node.args[position]
+            if declared[position] == param and isinstance(argument, ir.Param) and argument.name == param:
+                passed.add(id(argument))
+    return any(
+        isinstance(node, ir.Param) and node.name == param and id(node) not in passed for node in _held(production.body)
+    )
+
+
+def _is_bounded(production, param):
+    """Whether `production` says where `param` stops applying: its way ends on the clear."""
+    body = production.body
+    items = body.items if isinstance(body, ir.Seq) else (body,)
+    return bool(items) and isinstance(items[-1], ir.ClearVar) and items[-1].param == param
+
+
+def _clear_reads(param):
+    """
+    A transform giving `param` an end: the production that reads it clears it where it returns, behind its calls.
+
+    The reader and not the writer. A value is measured by the construct that opens — a block scalar's floor deep inside
+    its leading empties — and handed up to the one that asked for it, so clearing where it was written takes it from the
+    only thing that wanted it. The way holding the read takes the value, uses it, and by the time it comes back nothing
+    else wants it, which is what makes the value one region long and lets a single slot answer for it.
+    """
+
+    def transform(grammar, namer):
+        def bounded(production):
+            if not _is_reading(grammar, production, param) or _is_bounded(production, param):
+                return production
+            body = production.body
+            items = body.items if isinstance(body, ir.Seq) else (body,)
+            return dataclasses.replace(production, body=ir.Seq(items=items + (ir.ClearVar(param=param),)))
+
+        return {name: bounded(production) for name, production in grammar.items()}
+
+    return transform
+
+
+def _unbounded_reads(param):
+    """
+    The invariant that `param` has an end: a production reading it and not saying where the value stops.
+
+    Past its end a read is refused rather than answered from what the last construct left, which is what holds a value
+    to one region — and what a single slot standing for the parameter needs, a stale answer being indistinguishable from
+    a live one.
+    """
+
+    def test(grammar):
+        return [
+            f"{name}: reads `{param}` and does not say where the value stops"
+            for name, production in grammar.items()
+            if _is_reading(grammar, production, param) and not _is_bounded(production, param)
+        ]
+
+    return Invariant(f"every-read-of-{param}-is-bounded", test)
+
+
 STEPS = [
     # Phase 0 establishes `NO_T_PARAMETER`: nothing declares, passes or reads the chomping. The chomping is
     # data-dependent until this runs, so it cannot be specialized: the setter becomes a switch first.
@@ -1002,4 +1138,9 @@ STEPS = [
     # Phase 1 establishes `ONLY_SETS_AND_LITERALS`: a question about a character is a `CharSet`. A set the context picks
     # denotes nothing until the specialization has bound the context, so this follows Phase 0.
     Step("lower-char-sets", lower_char_sets, ONLY_SETS_AND_LITERALS),
+    # Phase 2 establishes `NO_F_PARAMETER`: the block scalar's leading-empty floor is the parse's one value rather than
+    # one a call carries. The value is given an end first, a single slot answering for a parameter only where a read
+    # past the region it was measured in is refused rather than answered from what the last construct left.
+    Step("clear-f", _clear_reads("f"), _unbounded_reads("f")),
+    Step("read-global-f", _read_global("f"), NO_F_PARAMETER),
 ]

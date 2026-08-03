@@ -38,6 +38,8 @@ import check_grammar_coverage
 import check_interpreter
 import check_star
 import gate
+import interpreter
+import ir
 import normalize
 import spec_tests
 
@@ -175,6 +177,12 @@ def _check(bisect=False, hint=None):
     # about it. Every structural property the pipeline claims is judged here, so nothing else below repeats one.
     for fault in normalize.invariant_faults(stages, points):
         errors.append(f"[invariant] {fault}")
+    # What the runs asked of a global that one value for the parse could not have answered: the reads where the stack
+    # beside it held something the slot did not. A global is what does not nest, and this is what says so of the grammar
+    # that has just run rather than of the argument that made it one.
+    asked = interpreter.ASKED["flattened"]
+    if asked:
+        errors.append(f"[global] {asked} read(s) answered from a stack a single slot could not have stood for")
 
     gate.report(
         errors,
@@ -206,6 +214,10 @@ def _check(bisect=False, hint=None):
         + ", ".join(f"{name} {count}" for name, count in standing)
     )
     print(f"    {len(final)} production(s) in the grammar the phase hands on")
+    # The globals the grammar has come to hold, and what the runs asked of them that one slot could not have answered.
+    # At none the slot is the stack, which is what says the value does not nest.
+    held = [name for name in ir.GLOBAL_PARAMS if not any(name in final[production].params for production in final)]
+    print(f"    {len(held)} global(s) — {', '.join(held) or 'none'} — asked {asked} read(s) a single slot could not")
 
 
 def main():
