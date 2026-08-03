@@ -262,6 +262,22 @@ All notable changes to this project are documented here. The format follows
   lines, a folded line at the leading-empty floor, an error recovered behind an indented line, and one recovered at end
   of input, where the recovery has nothing to give up.
 
+  `distribute-residues` writes that choice where the caller stands rather than behind the production's own name:
+  `A ::= F (X_reads | X_empty)`, at 205 call sites, taking `no-call-enters-both-ways` from 205 to none and the grammar
+  55 productions narrower for the names it no longer needs. Naming the two ways was half of it — while the choice sits
+  behind one name a caller still enters without knowing whether anything will be taken, and there is nowhere to put a
+  gate. The way around it is not split to do that: `A ::= F X_reads | F` would run `F` twice, where one alternation
+  inside the sequence duplicates nothing. One pass and no iteration, since what such a production's body holds is the
+  two calls and nothing else. The root and the recovery are left whole and the five calls between them are no part of
+  the count: a parse enters both by name, so nobody chooses to enter one, and each being two things would make the other
+  a choice on nothing at all.
+
+  The coverage gate reads `_reads` and `_empty` as the minted-helper suffixes they are, so a form credits the base it
+  was split off as a monomorphic copy already does — which its own note had anticipated as "the base held to the matches
+  that consume". The credit is the floor rather than the ceiling: the corpus reaches both ways of every split production
+  in its own right, and what it answers for is a base like `l-recover-entry`, a resume policy that declines and so
+  matches nowhere, which no fixture could reach before it was split either.
+
   Every step's grammar is swept of what the step leaves behind, the three passes running to a fixpoint since each feeds
   the others. A production whose whole body is one ungated, action-free call is what it calls, so every reference to it
   becomes a reference to that callee. Productions that behave alike are spelled once: same parameters, and the same body

@@ -224,7 +224,7 @@ def fired():
 _MONOMORPHIC_SUFFIX = (
     re.compile(r"_(?:" + "|".join(ir.FINITE_PARAMS) + r")_[a-z]+(?:-[a-z]+)*") if ir.FINITE_PARAMS else None
 )
-_HELPER_SUFFIX = re.compile(r"(?:_\d+)+$")  # what a transformation's minted helper carries
+_HELPER_SUFFIX = re.compile(r"(?:_\d+|_reads|_empty)+$")  # what a transformation's minted helper carries
 
 
 def _base(name):
@@ -233,11 +233,16 @@ def _base(name):
     helper is covered when its base is: the fixtures test a base production, and each is a token-faithful split of it,
     proved to change no token and reachable, that adds no logic of its own to leave untested. A monomorphic copy differs
     only by a static parameter substitution; a helper is a piece of the base's own body, moved — the tail of a sequence
-    too long to hold two calls, the element of a repetition, the base held to the matches that consume — all of which
-    the base is seen to do, so requiring more of one than of the body it came from would ask the corpus for what the
-    untransformed grammar never needed. Covering every one directly would take a fixture per production and context it
-    appears in — combinatorial, where `[ 'x' ]` reaching a copy `key: 'x'` does not is a hole in the corpus, not dead
-    code.
+    too long to hold two calls, the element of a repetition, and the `_reads` and `_empty` the base's two ways are told
+    apart under — all of which the base is seen to do, so requiring more of one than of the body it came from would ask
+    the corpus for what the untransformed grammar never needed. Covering every one directly would take a fixture per
+    production and context it appears in — combinatorial, where `[ 'x' ]` reaching a copy `key: 'x'` does not is a hole
+    in the corpus, not dead code.
+
+    The credit is the floor and not the ceiling: the corpus reaches both ways of every production this splits in its own
+    right, which is what a base's coverage cannot say — it records that an input was taken, not which of the two took
+    it. What the credit answers for is a base like `l-recover-entry`, a resume policy that declines and so matches
+    nowhere, which no fixture could reach even before it was split.
     """
     return _HELPER_SUFFIX.sub("", _MONOMORPHIC_SUFFIX.sub("", name) if _MONOMORPHIC_SUFFIX else name)
 

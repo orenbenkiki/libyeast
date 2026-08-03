@@ -26,8 +26,9 @@ parameter away, leaving the stack the one place it is. Nothing declares, passes 
 Phase 5 is the empties. A caller choosing whether to enter a production that may match nothing is choosing blind, and
 the choice cannot be put on a character while both answers live under one name. `lower-optionals` and `lower-stars`
 bring the empty matches a node hides out beside the ways that read, `span-consumes` takes the character runs out of that
-question by writing each as the scan it is, and `mint-consuming-and-residue` gives every production that may match empty
-a name for each of the two things it is — `every-empty-match-is-a-way` at none.
+question by writing each as the scan it is, `mint-consuming-and-residue` gives every production that may match empty a
+name for each of the two things it is, and `distribute-residues` writes the choice between the two where the caller
+stands rather than behind the one name — `every-empty-match-is-a-way` and `no-call-enters-both-ways` at none.
 """
 
 import dataclasses
@@ -1531,6 +1532,54 @@ def _offered(body):
 EMPTIES_NAMED = Invariant("every-empty-match-is-a-way", _unnamed_empties)
 
 
+def distribute_residues(grammar, namer):
+    """
+    Put the choice between a production's two ways where its caller stands, so a character can decide it.
+
+    A production that says its ways under names of their own still holds the choice behind one name, and a caller
+    reaching it enters without knowing whether anything will be taken. Written at the call site — `A ::= F (X_reads |
+    X_empty)` — the choice stands where the parse is, which is where a gate can go on it. The way around it is not split
+    to do that: `A ::= F X_reads | F` would run `F` twice, where one alternation inside the sequence duplicates nothing.
+
+    One pass and no iteration. What such a production's body holds is the two calls and nothing else, so a choice
+    written into a caller carries no further call of one in with it.
+    """
+    ways = _split_ways(grammar)
+    held = {name: production for name, production in grammar.items() if ways[name][2]}
+
+    def distributed(node):
+        node = ir.rebuilt(node, distributed)
+        if isinstance(node, ir.Ref) and node.name in held:
+            return _bound(held[node.name].body, dict(zip(held[node.name].params, node.args)))
+        return node
+
+    return {
+        name: production if name in held else dataclasses.replace(production, body=distributed(production.body))
+        for name, production in grammar.items()
+    }
+
+
+def _blind_calls(grammar):
+    """
+    Calls that enter a production which may take a character and may take none — a choice made with nothing to go on,
+    what is entered deciding for itself whether anything is consumed.
+
+    The root and the recovery reach each other and a parse enters both by name, so neither is told apart and the calls
+    between them are no part of this count: nobody chooses to enter one, and each being two things would make the other
+    a choice on nothing at all.
+    """
+    ways = _split_ways(grammar)
+    return [
+        f"{name}: calls `{node.name}`, which may take a character and may take none"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, ir.Ref) and ways[node.name][2]
+    ]
+
+
+CALLS_DECIDED = Invariant("no-call-enters-both-ways", _blind_calls)
+
+
 def hold_established_indents(grammar, namer):
     """
     Make an established indentation something the parse stands under rather than something a call hands back.
@@ -1762,4 +1811,5 @@ STEPS = [
     Step("span-consumes", span_consumes, (CHARACTER_RUNS_SCANNED, NO_STAR_NODES), reduces=("no-star-nodes",)),
     Step("lower-stars", lower_stars, NO_STAR_NODES),
     Step("mint-consuming-and-residue", mint_consuming_and_residue, EMPTIES_NAMED),
+    Step("distribute-residues", distribute_residues, CALLS_DECIDED),
 ]
