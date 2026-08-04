@@ -220,16 +220,16 @@ tree form the pop is the next item in a sequence.
 
 The phases, each established and then enforced:
 
-| phase | invariant                                        | what it removes                                                      |
-| ----- | ------------------------------------------------ | -------------------------------------------------------------------- |
-| 0     | `no-i-t-parameters`                              | the chomping and the indentation mode, made lexical then specialized |
-| 1     | `every-character-question-is-a-set-or-a-literal` | every way of asking about a character but the set of its codepoints  |
-| 2     | `no-f-parameter`                                 | the block scalar's leading-empty floor, one value for the parse      |
-| 3     | `no-m-parameter`                                 | the auto-detected indent, one value for the parse                    |
-| 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack  |
-| 5     | `only-root-empties`                              | every empty match but the ones a parse enters by name                |
-| 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`     | every scope that holds what it covers, for the pair that brackets it |
-| later | to be chosen                                     | the calls, the decisions                                             |
+| phase | invariant                                        | what it removes                                                                                 |
+| ----- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| 0     | `no-i-t-parameters`                              | the chomping and the indentation mode, made lexical then specialized                            |
+| 1     | `every-character-question-is-a-set-or-a-literal` | every way of asking about a character but the set of its codepoints, the subtraction among them |
+| 2     | `no-f-parameter`                                 | the block scalar's leading-empty floor, one value for the parse                                 |
+| 3     | `no-m-parameter`                                 | the auto-detected indent, one value for the parse                                               |
+| 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack                             |
+| 5     | `only-root-empties`                              | every empty match but the ones a parse enters by name                                           |
+| 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`     | every scope that holds what it covers, for the pair that brackets it                            |
+| later | to be chosen                                     | the calls, the decisions                                                                        |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.

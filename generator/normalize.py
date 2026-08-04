@@ -832,6 +832,154 @@ def stages(grammar):
     return result, namer.points
 
 
+def _wide_differences(grammar):
+    """
+    Differences taking characters from something that is not a character set — the shape a set subtraction cannot say.
+
+    A `(---)` denotes a set only where both sides are sets. Where its base is a choice holding a match of several
+    characters — an escape, which is what the double-quoted, single-quoted and tag characters subtract from — the
+    subtraction is a filter over a language instead, and nothing downstream can intersect it with a gate or hand it to
+    the parser as one bit.
+
+    The two sides are asked different questions, each the one its half of the lowering answers: a base is a set where it
+    matches one character, that being what the reduction folds, and a subtracted side is one where its characters are
+    pinned, that being what the reduction reads. An annotation around a subtracted character changes neither — the
+    difference reads the text a match takes and not the code it carries — which is `nb-char` taking the byte-order mark
+    out of the printable characters.
+    """
+    return [
+        f"{name}: a `(---)` takes characters from something that is not a character set"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, ir.Diff)
+        and not (
+            ir.is_one_char(node.base, grammar) and all(_peek_spans(taken, grammar) is not None for taken in node.minus)
+        )
+    ]
+
+
+DIFFERENCES_BETWEEN_SETS = Invariant("every-difference-is-between-character-sets", _wide_differences)
+
+# What a shortest match is counted up to. A difference takes a set of single characters, so it can remove only a match
+# of one character: past one, how much more a way takes makes no difference to what the subtraction reaches.
+_SHORTEST_CAP = 2
+
+
+def _shortest_match(node, grammar, seen=frozenset()):
+    """
+    The fewest characters `node` can match, counted no further than `_SHORTEST_CAP`.
+
+    A lower bound is what the count is for, so a difference contributes its base's — the exclusions only remove matches
+    — and a production reached again contributes the cap, a match that bottoms out never being the recursive way. Every
+    kind is named and one named nowhere raises: a kind answered for by accident would say a way takes two characters
+    where it can take one, and the subtraction would come off a way it reaches.
+    """
+    if isinstance(node, (ir.Char, ir.CharSet, ir.Invalid, ir.Range)):
+        return 1
+    if isinstance(node, ir.Diff):
+        return _shortest_match(node.base, grammar, seen)
+    if isinstance(node, (*_ACTIONS, *_GUARDS, ir.Empty, ir.Star, ir.Opt)):
+        return 0  # an action or a guard takes nothing, and a repetition of none or more takes no turn
+    if isinstance(node, ir.Seq):
+        return min(_SHORTEST_CAP, sum(_shortest_match(item, grammar, seen) for item in node.items))
+    if isinstance(node, (ir.Alt, ir.Case)):
+        ways = (
+            node.items
+            if isinstance(node, ir.Alt)
+            else tuple(branch.item for branch in node.branches) + ((node.default,) if node.default is not None else ())
+        )
+        return min((_shortest_match(way, grammar, seen) for way in ways), default=_SHORTEST_CAP)
+    if isinstance(node, ir.Plus):
+        return _shortest_match(node.item, grammar, seen)
+    if isinstance(node, ir.LongestRun):
+        return _shortest_match(node.item, grammar, seen) if node.least else 0
+    if isinstance(node, (ir.Rep, ir.ConsumeCountedSpan)):
+        # A count the parse works out may be none at all, and then the repetition takes nothing.
+        taken = node.item if isinstance(node, ir.Rep) else node.set
+        if not isinstance(node.count, ir.Lit) or node.count.value <= 0:
+            return 0
+        return min(_SHORTEST_CAP, node.count.value * _shortest_match(taken, grammar, seen))
+    if isinstance(node, ir.Bind):
+        return _shortest_match(node.cond, grammar, seen)
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Max, ir.Commit, ir.Recover)):
+        return 0 if node.item is None else _shortest_match(node.item, grammar, seen)
+    if isinstance(node, ir.ConsumeSpan):
+        return 0  # a span of none or more, its least turn taking nothing
+    if isinstance(node, ir.Ref):
+        if node.name in seen:
+            return _SHORTEST_CAP
+        return _shortest_match(grammar[node.name].body, grammar, seen | {node.name})
+    raise TypeError(f"cannot tell how few characters {type(node).__name__} can match")
+
+
+def _difference_ways(base, grammar):
+    """
+    The ways `base` offers, in order — the items of a choice, read through the reference that names it.
+
+    A difference's base is a name at every site, so the ways are the callee's; the production it names stays for its own
+    callers. A call passing arguments is refused rather than spliced without them.
+    """
+    if isinstance(base, ir.Ref):
+        if base.args:
+            raise ValueError(f"a `(---)` takes characters from `{base.name}`, which is passed arguments")
+        return _difference_ways(grammar[base.name].body, grammar)
+    return base.items if isinstance(base, ir.Alt) else (base,)
+
+
+def _taken(ways, minus):
+    """
+    `ways` — a run of one-character ways — as the one difference their union stands in, and nothing where it is empty.
+    """
+    if not ways:
+        return ()
+    return (ir.Diff(base=ways[0] if len(ways) == 1 else ir.Alt(items=tuple(ways)), minus=minus),)
+
+
+def distribute_differences(grammar, namer):
+    """
+    Take a difference into the ways of what it subtracts from, so that what is left of it stands between two sets.
+
+    A difference over a choice is the choice of the differences, and the ways keep their order: `(A | B) - m` is `(A -
+    m) | (B - m)`, and a run of ways that are each one character takes the subtraction once, as the union they already
+    are. What that leaves is a difference of two character sets wherever the subtraction reaches anything.
+
+    A way that takes two characters or more keeps its whole language, since a subtracted set takes one character and can
+    remove only a match of one. That is the whole of the step: `nb-double-char` is an escape or a character, and
+    `ns-double-char` subtracts the whitespace only the second of them can be.
+
+    A way that may take one character without being a set is refused rather than guessed at — the subtraction reaches it
+    and no set says how — as is a subtraction of anything but single characters.
+    """
+
+    def distributed(node):
+        node = ir.rebuilt(node, distributed)
+        if not isinstance(node, ir.Diff) or ir.is_one_char(node.base, grammar):
+            return node
+        if any(_peek_spans(taken, grammar) is None for taken in node.minus):
+            raise ValueError("a `(---)` subtracts something that is not a character set")
+        ways, run = [], []
+        for way in _difference_ways(node.base, grammar):
+            if ir.is_one_char(way, grammar):
+                run.append(way)
+                continue
+            if _shortest_match(way, grammar) < _SHORTEST_CAP:
+                raise ValueError("a `(---)` reaches a way that may take one character and is not a set")
+            ways.extend(_taken(run, node.minus))
+            ways.append(way)
+            run = []
+        ways.extend(_taken(run, node.minus))
+        return ir.Alt(items=tuple(ways)) if len(ways) != 1 else ways[0]
+
+    return {
+        name: dataclasses.replace(production, body=distributed(production.body)) for name, production in grammar.items()
+    }
+
+
+# A subtraction between two sets is a set, so once every difference stands between two the lowering says them all as one
+# `CharSet` and the notation is gone: what the parser is given is a bit to test, never an algebra to walk.
+NO_DIFF_NODES = _absent("no-diff-nodes", ir.Diff)
+
+
 def lower_char_sets(grammar, namer):
     """
     Rewrite every character set as one `CharSet`, the shape the parser asks its one question in.
@@ -2300,8 +2448,10 @@ STEPS = [
         "monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), FINITE_LEXICAL, NO_I_T_PARAMETERS)
     ),
     # Phase 1 establishes `ONLY_SETS_AND_LITERALS`: a question about a character is a `CharSet`. A set the context picks
-    # denotes nothing until the specialization has bound the context, so this follows Phase 0.
-    Step("lower-char-sets", lower_char_sets, ONLY_SETS_AND_LITERALS),
+    # denotes nothing until the specialization has bound the context, so this follows Phase 0. The difference is taken
+    # into the ways it subtracts from first, since a subtraction says a set only where both of its sides do.
+    Step("distribute-differences", distribute_differences, DIFFERENCES_BETWEEN_SETS),
+    Step("lower-char-sets", lower_char_sets, (ONLY_SETS_AND_LITERALS, NO_DIFF_NODES)),
     # Phase 2 establishes `NO_F_PARAMETER`: the block scalar's leading-empty floor is the parse's one value rather than
     # one a call carries. The value is given an end first, a single slot answering for a parameter only where a read
     # past the region it was measured in is refused rather than answered from what the last construct left.

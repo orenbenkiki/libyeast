@@ -162,14 +162,22 @@ All notable changes to this project are documented here. The format follows
 
   Phase 1 is the character questions. A set of characters is written many ways and asked in several — a character, a
   range, a union of them, a base with exclusions, a reference, the item a lookaround peeks — and all of them come to the
-  one bit the parser tests. `lower-char-sets` says each as the sorted disjoint codepoint intervals it denotes, so from
-  its end every question about a character is a `CharSet` or a literal. A maximal one is taken, not every one inside it,
-  the intervals of a union being its own; a reference a match takes is left standing, being the caller's hold on the
-  production where the set is said, and inside a lookaround it is read through, what a peek holds being the question
-  rather than the hold. The phase follows the specialization, a set the context picks denoting nothing until a caller is
-  known. Saying it once also makes the spelling canonical, which is what lets the sweep do its own work: two productions
-  denoting the same characters differently are structurally unequal and do not merge, the merge reading shape rather
-  than extension.
+  one bit the parser tests. A difference is one of them only where both its sides are sets, and at four sites it was
+  not: `ns-double-char`, `ns-single-char` and the two `ns-tag-char` copies each take whitespace or an indicator out of
+  something that is an escape *or* a character — `\` and one more, `''`, `%` and two hex digits — so the subtraction
+  stood over a language rather than a set and no bit could say it. `distribute-differences` takes each into the ways it
+  subtracts from: the ways keep their order, a run of them that are each one character takes the subtraction once as the
+  union they already are, and a way that takes two characters or more keeps its whole language, a subtracted set taking
+  one character and so reaching only a match of one. Every difference stands between two sets from there —
+  `every-difference-is-between-character-sets` — and `lower-char-sets` folds them all away, `no-diff-nodes` at none and
+  the notation gone from the grammar the phase hands on. `lower-char-sets` says each as the sorted disjoint codepoint
+  intervals it denotes, so from its end every question about a character is a `CharSet` or a literal. A maximal one is
+  taken, not every one inside it, the intervals of a union being its own; a reference a match takes is left standing,
+  being the caller's hold on the production where the set is said, and inside a lookaround it is read through, what a
+  peek holds being the question rather than the hold. The phase follows the specialization, a set the context picks
+  denoting nothing until a caller is known. Saying it once also makes the spelling canonical, which is what lets the
+  sweep do its own work: two productions denoting the same characters differently are structurally unequal and do not
+  merge, the merge reading shape rather than extension.
 
   Phase 2 is the block scalar's leading-empty floor. `clear-f` gives the value an end — the production that reads it,
   `s-indent-floor`, clears it where it returns, the reader and not the writer, since the floor is measured deep inside
