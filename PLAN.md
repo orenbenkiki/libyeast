@@ -266,6 +266,16 @@ the indent pair among them, which nothing checks this way today — and each of 
 `check_markers` proves the `begin`/`end` balance of the grammar as authored and does not follow the pipeline, so it
 answers for none of this.
 
+That check is per-way, which is the right rule for the four stack pairs and the wrong one for the markers: a marker pair
+crosses productions by design — `b-chomped-last` emits `end-scalar` for a `begin-scalar` opened elsewhere — so holding
+one to a single way would report dozens of faults that are not. `lower-wraps` loses nothing on its own account: the two
+markers come out adjacent in one sequence of one production, and nothing in the sweep separates them, flattening
+preserving order and a splice replacing a call. What it gives up is the guarantee for whatever comes later, and the
+first thing that can put a `begin` in one production and its `end` in another is **binarization** — splitting a way into
+a call and a continuation. So a marker net that follows the pipeline, which is what `check_markers` is on the grammar as
+authored, is owed by that phase and not by this one. Reordering the four buys nothing: the other three do not move an
+`Emit`, and the grammar they hand on is the same whichever way round they go.
+
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:
 

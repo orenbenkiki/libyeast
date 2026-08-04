@@ -32,6 +32,12 @@ each as the scan it is, `lower-runs` says the two repetitions as the one `Longes
 `dissolve-residues` writes what is left taking no character into the call sites that enter it. Nothing a caller chooses
 to enter can match empty — `only-root-empties` at none, the root and the recovery keeping their empty ways, having no
 call site to hold the choice.
+
+Phase 6 is the wrappers. A scope that holds what it covers has nowhere to stand in an alternative, which has a place for
+an action and none for a node enclosing a call, so each becomes the pair that brackets it instead — `lower-wraps`
+writing a `(wrap)` as its two markers. What a wrapper guaranteed by construction the pairs are held to instead:
+`every-scope-closes-on-its-own-way` says a scope opened on a way is closed on it, the ways of a choice agree on what
+they leave open, and a run's turn leaves none.
 """
 
 import dataclasses
@@ -1098,6 +1104,120 @@ def _unpushed_indents(grammar):
 INDENTS_PUSHED = Invariant("every-indentation-change-is-pushed", _unpushed_indents)
 
 
+# The scopes a way opens and closes: an action, and the one that takes it back. Both halves belong to one way of one
+# production — what a push displaces is on the parse's own stack and a pop takes back whatever is on top, so a pair cut
+# across a call would take back what another way had put there. In alphabetical order by the opening action. What a
+# production may hold instead of a matcher: a value the caller reads, `seq-spaces`' choice of indentation among them. It
+# matches nothing, so it opens and closes nothing. In alphabetical order.
+_VALUE_KINDS = (
+    ir.Add,
+    ir.Atoi,
+    ir.AutoDetectIndent,
+    ir.Column,
+    ir.Global,
+    ir.Indent,
+    ir.Len,
+    ir.Lit,
+    ir.Match,
+    ir.Param,
+    ir.Sub,
+)
+
+_SCOPES = (
+    (ir.OpenWindow, ir.CloseWindow),
+    (ir.PushCode, ir.PopCode),
+    (ir.PushIndent, ir.PopIndent),
+    (ir.PushMessage, ir.PopMessage),
+)
+
+
+def _scope_effect(node, grammar, faults, owner):
+    """
+    What `node` leaves of the scopes it touches, as `(closed, opened)` — the ones it closes without having opened them,
+    and the ones it opens and does not close. `(), ()` is a way that leaves the stack as it found it.
+
+    A choice's ways must agree, since what a caller sees cannot depend on which way was taken; a run's item must leave
+    nothing, an open taken twice round stacking up; and a lookaround is probed and given back, so what is inside one
+    touches nothing. A call is nothing here either — every production's body is held to leaving nothing, so a reference
+    is a scope-neutral thing and the caller need not know which.
+    """
+    if isinstance(node, ir.Recover):
+        # A recovery closes what the abandoned item left open, down to this point, so the two ways come out level.
+        return _scope_effect(node.item, grammar, faults, owner)
+    for opening, closing in _SCOPES:
+        if isinstance(node, opening):
+            return (), (opening,)
+        if isinstance(node, closing):
+            return (opening,), ()
+    if isinstance(node, ir.Seq):
+        closed, opened = (), ()
+        for item in node.items:
+            shut, left = _scope_effect(item, grammar, faults, owner)
+            for kind in shut:
+                if opened and opened[-1] is kind:
+                    opened = opened[:-1]
+                elif opened:
+                    faults.append(f"{owner}: closes {kind.__name__} where {opened[-1].__name__} is what stands open")
+                    opened = opened[:-1]
+                else:
+                    closed += (kind,)
+            opened += left
+        return closed, opened
+    if isinstance(node, (ir.Alt, ir.Case, ir.Opt)):
+        ways = (
+            node.items
+            if isinstance(node, ir.Alt)
+            else (
+                (node.item, ir.Empty())
+                if isinstance(node, ir.Opt)
+                else tuple(branch.item for branch in node.branches)
+                + ((node.default,) if node.default is not None else ())
+            )
+        )
+        effects = {_scope_effect(way, grammar, faults, owner) for way in ways}
+        if len(effects) > 1:
+            faults.append(f"{owner}: a choice whose ways leave different scopes open, and a caller cannot tell which")
+        return next(iter(effects)) if effects else ((), ())
+    if isinstance(node, (ir.Star, ir.Plus, ir.LongestRun, ir.Rep)):
+        if _scope_effect(node.item, grammar, faults, owner) != ((), ()):
+            faults.append(f"{owner}: a run whose turn leaves a scope open, which another turn would open again")
+        return (), ()
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Max, ir.Commit)):
+        return ((), ()) if node.item is None else _scope_effect(node.item, grammar, faults, owner)
+    if isinstance(node, ir.Bind):
+        return _scope_effect(node.cond, grammar, faults, owner)
+    if isinstance(node, (ir.TrimStar, ir.ConsumeTrimmedSpan)):
+        return (), ()  # a scan of character classes, which holds no action to open anything with
+    if isinstance(node, (*_VALUE_KINDS, ir.Flip)):
+        return (), ()  # a value the parse works out, which matches nothing and so opens nothing
+    if isinstance(node, (*_ALWAYS_READS, *_GUARDS, ir.ConsumeSpan, ir.ConsumeCountedSpan, ir.Empty, ir.Ref)):
+        return (), ()  # a character question, a guard probed and given back, or a call held to leaving nothing
+    if isinstance(node, _ACTIONS):
+        return (), ()  # an action that opens no scope of its own
+    raise TypeError(f"cannot tell what scopes {type(node).__name__} opens or closes")
+
+
+def _unclosed_scopes(grammar):
+    """
+    Ways that leave a scope open, close one they never opened, or disagree with the way beside them about which.
+
+    What a wrapper guarantees by holding what it covers, a pair has to be held to instead: `ir.Wrap` is a node rather
+    than the two markers it stands for precisely so a `begin` cannot lose its `end`. Read before a wrapper comes off,
+    this says none — and every step that takes one off is held to keeping it there.
+    """
+    faults = []
+    for name, production in grammar.items():
+        closed, opened = _scope_effect(production.body, grammar, faults, name)
+        for kind in opened:
+            faults.append(f"{name}: opens {kind.__name__} and does not close it")
+        for kind in closed:
+            faults.append(f"{name}: closes {kind.__name__} where nothing opened one")
+    return faults
+
+
+SCOPES_CLOSED = Invariant("every-scope-closes-on-its-own-way", _unclosed_scopes)
+
+
 def _replaced(node, swap):
     """
     `node` with `swap` applied to it and to everything it holds, the fields walked themselves.
@@ -1233,6 +1353,35 @@ CHARACTER_RUNS_SCANNED = Invariant("every-character-run-is-a-span", _repeated_ch
 # is one operation for repeating a way, which is what every reading past here is written against. The counted `Rep` is
 # not one of these: it takes the number of turns it names rather than as many as it can, and is a later step's.
 NO_STAR_OR_PLUS_NODES = _absent("no-star-or-plus-nodes", ir.Star, ir.Plus)
+
+
+# Phase 6's first: a scope that holds what it covers is the pair that brackets it instead. A `(wrap)` is the one that
+# says so outright — a node rather than the two markers so that a `begin` cannot lose its `end`, which is a guarantee
+# `every-scope-closes-on-its-own-way` takes over for the pairs and `check_markers` still owes for the markers.
+NO_WRAP_NODES = _absent("no-wrap-nodes", ir.Wrap)
+
+
+def lower_wraps(grammar, namer):
+    """
+    Write each `(wrap)` as the two markers it stands for: `Wrap(begin, end, x)` becomes `Emit(begin) x Emit(end)`.
+
+    A scope that holds what it covers has nowhere to stand in an alternative, which has a place for an action and none
+    for a node enclosing a call. The node is sugar and says so: it exists so the two markers are paired by construction,
+    and what it stands for is exactly the sequence written here — the interpreter emits the one, matches the item, and
+    emits the other.
+
+    The two come out adjacent in one way of one production and nothing until the calls are split can separate them.
+    """
+
+    def lowered(node):
+        node = ir.rebuilt(node, lowered)
+        if isinstance(node, ir.Wrap):
+            return ir.Seq(items=(ir.Emit(code=node.begin), node.item, ir.Emit(code=node.end)))
+        return node
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
 
 
 def lower_runs(grammar, namer):
@@ -2089,4 +2238,7 @@ STEPS = [
     Step("mint-consuming-and-residue", mint_consuming_and_residue, EMPTIES_NAMED),
     Step("distribute-residues", distribute_residues, CALLS_DECIDED),
     Step("dissolve-residues", dissolve_residues, ONLY_ROOT_EMPTIES),
+    # Phase 6 takes the scopes off what they cover, each step one kind, and every one of them is held to the pairs it
+    # leaves closing where they open — the guarantee a wrapper gave by construction, now a count.
+    Step("lower-wraps", lower_wraps, (NO_WRAP_NODES, SCOPES_CLOSED)),
 ]

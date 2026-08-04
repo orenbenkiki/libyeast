@@ -317,6 +317,30 @@ All notable changes to this project are documented here. The format follows
   whether to enter something that may take nothing — every empty match is a way of the caller's own, where a character
   can decide it.
 
+  A scope that holds what it covers is becoming the pair that brackets it, one kind at a time. An alternative —
+  `gate actions… [P1 actions…] [P2]` — has a place for an action and none for a node enclosing a call, and a `(token)`
+  around a call is an action that must run where the call returns, which is the continuation; so the wrappers come off
+  before a way is split into a call and a continuation, or they come off twice. `lower-wraps` is the first:
+  `Wrap(begin, end, x)` becomes `Emit(begin) x Emit(end)`, 150 of them, `no-wrap-nodes` at none.
+
+  A wrapper is paired by construction — `ir.Wrap` is a node rather than the two markers precisely so a `begin` cannot
+  lose its `end` — and unwrapping trades that for a property that has to be checked. `every-scope-closes-on-its-own-way`
+  is what takes it over, read at none over all seventeen stages before a wrapper came off and named by every step that
+  takes one: a scope opened on a way is closed on that way, the ways of a choice agree on what they leave open, a run's
+  turn leaves none since a second turn would open it again, and a lookaround is probed and given back so what is inside
+  one touches nothing. It covers the four pairs a normalized grammar can carry — `PushIndent`/`PopIndent`,
+  `PushCode`/`PopCode`, `PushMessage`/`PopMessage`, `OpenWindow`/`CloseWindow` — and the indent pair had never been held
+  to it. It is not vacuous: dropping the pops from a production reports both the scope left open and the ways that no
+  longer agree.
+
+  The markers are not that. A pair of them crosses productions by design — `b-chomped-last` emits `end-scalar` for a
+  `begin-scalar` opened elsewhere — so a per-way rule is the wrong one for them, and `check_markers`, which does prove
+  their balance with a fixpoint over the callers, reads the grammar as authored rather than following the pipeline.
+  `lower-wraps` loses nothing on its own account, the two markers coming out adjacent in one way of one production with
+  nothing in the sweep to separate them. What it gives up is the guarantee for later, and the first thing that can put a
+  `begin` in one production and its `end` in another is the split into a call and a continuation, so that is the phase
+  the marker net is owed by.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving

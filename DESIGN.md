@@ -152,8 +152,19 @@ green corpus is a checkpoint that lands on its own. The order is dependency's ra
 settles `every-character-question-is-a-set-or-a-literal`, and follows the specialization because a set the context picks
 denotes nothing until a caller is known; Phase 2 settles `no-f-parameter`, the block scalar's leading-empty floor; Phase
 3 settles `no-m-parameter`, the detected indent; Phase 4 settles `no-n-parameter`, the indentation itself; Phase 5 is
-the empties, and settles `every-empty-match-is-a-way`, then `no-call-enters-both-ways`, then `only-root-empties`. A step
-written where its goal's other steps already ran is a smaller step, against a grammar with less in it.
+the empties, and settles `every-empty-match-is-a-way`, then `no-call-enters-both-ways`, then `only-root-empties`; Phase
+6 is the wrappers, one invariant per kind of scope. A step written where its goal's other steps already ran is a smaller
+step, against a grammar with less in it.
+
+A scope that holds what it covers has nowhere to stand in an alternative — `gate  actions…  [P1  actions…]  [P2]` has a
+place for an action and none for a node enclosing a call, and a `(token)` around a call is an action that must run where
+the call returns. So each becomes the pair that brackets it, which the interpreter already implements independently of
+the wrapper it stands for. What the wrapper gave by construction — `ir.Wrap` is a node rather than its two markers
+precisely so a `begin` cannot lose its `end` — the pairs are held to instead: a scope opened on a way is closed on that
+way, the ways of a choice agree on what they leave open, and a run's turn leaves none, since a second turn would open it
+again. The markers are not that: a pair of them crosses productions by design, and what follows them through the
+pipeline is owed by the phase that splits a way into a call and a continuation, which is the first thing that can put a
+`begin` in one production and its `end` in another.
 
 The empties are what a caller cannot decide on. Entering a production that may match nothing is a choice made with no
 character to go on, and it stays one while both answers live under a single name — so each such production is given a
