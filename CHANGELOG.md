@@ -174,10 +174,15 @@ All notable changes to this project are documented here. The format follows
   intervals it denotes, so from its end every question about a character is a `CharSet` or a literal. A maximal one is
   taken, not every one inside it, the intervals of a union being its own; a reference a match takes is left standing,
   being the caller's hold on the production where the set is said, and inside a lookaround it is read through, what a
-  peek holds being the question rather than the hold. The phase follows the specialization, a set the context picks
-  denoting nothing until a caller is known. Saying it once also makes the spelling canonical, which is what lets the
-  sweep do its own work: two productions denoting the same characters differently are structurally unequal and do not
-  merge, the merge reading shape rather than extension.
+  peek holds being the question rather than the hold. An annotation on what a peek names is read through with it, and a
+  peek is counted on the question it asks rather than on the shape naming it — a probe emits nothing and gives back what
+  it read, so the code around `c-comment`'s `#` is dead inside one. That peek was the last character question the phase
+  left standing, and the six beside it in the grammar the phase hands on are copies the later steps make of the way it
+  sits in: all 64 peeks there are a `CharSet`, and what is left looking around is the ten `(exclude)` guards, which ask
+  about a line rather than about a character. The phase follows the specialization, a set the context picks denoting
+  nothing until a caller is known. Saying it once also makes the spelling canonical, which is what lets the sweep do its
+  own work: two productions denoting the same characters differently are structurally unequal and do not merge, the
+  merge reading shape rather than extension.
 
   Phase 2 is the block scalar's leading-empty floor. `clear-f` gives the value an end — the production that reads it,
   `s-indent-floor`, clears it where it returns, the reader and not the writer, since the floor is measured deep inside

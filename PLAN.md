@@ -229,7 +229,8 @@ The phases, each established and then enforced:
 | 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack                             |
 | 5     | `only-root-empties`                              | every empty match but the ones a parse enters by name                                           |
 | 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`     | every scope that holds what it covers, for the pair that brackets it                            |
-| later | to be chosen                                     | the calls, the decisions                                                                        |
+| 7     | `every-body-is-a-choice-of-alternatives`         | every shape a state machine has no state for — the tree, and what a way holds under it          |
+| later | `every-decision-goes-on-a-character`             | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
@@ -245,6 +246,53 @@ way into a call and a continuation. So a marker net that follows the pipeline is
 cut the recovery at wherever the abandoned parse stopped — so it has no close whose position means anything. Its home is
 the alternative's edge, which `Alternative.recover` already carries, so it belongs to the phase that makes the
 alternatives.
+
+**Phase 7, the shape — and it runs before the determinizing, not after.** Two things stand between the grammar and one a
+C table can be emitted from: the operations a state machine has a state for, and every decision going on a character.
+The shape comes first, on a grammar that still backtracks, and the reasons are structural rather than a preference.
+
+- A decision point in the tree has no identity. `Seq(a, (x | y), b)` decides in the middle of a sequence, and its follow
+  is `b` and whatever the caller's is, so a commit-safety certificate is a statement about a context that minting a
+  continuation then changes. Determinizing first means proving each one, reshaping, and proving it again.
+- The determinizer walks configurations of `(production, alternative, cursor)` — subset construction over gated ways. On
+  a tree there is nothing for it to park at, so determinizing first means a second determinizer for a shape that is on
+  its way out.
+- The reshaping breaks what determinism rests on, by design and measured: `alternative-shape` breaks properness,
+  `binarize` and `lift-choices` hand nullability back, `distribute-empties` bought 16 of `proper` and cost 37 points of
+  the meter. Determinism first pays that cost once per shape step, for ever.
+- A speculation's mark and injections stand where the shared prefix ends, which is a cursor into an alternative. In the
+  tree that boundary is a path through nested nodes, and it moves whenever the nesting does.
+
+What is kept from the other order: only the *universal* shape lands blind. The reshaping a conflict alone justifies —
+`extend-returns` copies, prefix factoring, opening a run per turn — waits and is pulled at named sites by the meter. And
+the meter arrives with the gates rather than before them: a count over the tree measures a shape about to be discarded,
+and its number would not be comparable to the one that matters.
+
+The steps, smallest first, sized against the 326 productions and 465 ways the phase inherits:
+
+| step                  | invariant                                    | at  | what it does                                                               |
+| --------------------- | -------------------------------------------- | --- | -------------------------------------------------------------------------- |
+| `lift-choices`        | `every-choice-is-a-body`                     | 469 | a choice below the top of a body gets a production, being where a state is |
+| `lift-runs`           | `every-run-is-a-body`                        | 106 | a run gets a name and stays possessive, the machine's loop state           |
+| `mint-continuations`  | `a-way-is-actions-a-call-and-a-continuation` | 151 | everything past a way's first call becomes what it carries on at           |
+| `recover-to-the-edge` | `no-recover-nodes`                           | 8   | the handler onto the alternative's own edge                                |
+| `lower-bind`          | `no-bind-nodes`                              | 1   | the one binding node as an action                                          |
+| `bound-forbidden`     | `every-exclusion-is-bounded`                 | 4   | `c-forbidden` as the bounded literal peek it is                            |
+| `build-alternatives`  | `every-body-is-a-choice-of-alternatives`     | 326 | the re-encode into `Choice`/`Alternative`/`Gate`                           |
+| `gate-hoist`          | `every-way-gated`                            | —   | a way's leading character question rises into its gate                     |
+
+Binarization is not among them: one way in the grammar has three calls, and `mint-continuations` takes it with the rest.
+The re-encode is last rather than first so that every step above it stays in the vocabulary the sweep, the interpreter
+and the corpus already speak — by the time it runs, a body already *is* a choice of ways that are actions, a call and a
+continuation, and the step changes spelling rather than meaning.
+
+**What the lookarounds leave owed.** They are not one of the two buckets: 64 of the 74 are a question about one
+character, held to a `CharSet` by `every-peek-is-a-character-set`, and a peek of a set *is* the zero-width guard the
+canonical gate carries — one bit tested against the key the decoder already made, and for the two look-behinds one
+register holding the last one, which is what `is_sol` already is. What is left is the ten `(exclude)` guards: four are
+`c-forbidden` and `bound-forbidden` takes them, and six carry `s-indent-le-line` — "a line at this indentation with
+content" — which is a condition on a line start rather than a lookahead, and lands where the block-structure work makes
+a line start a decision the grammar spells.
 
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:

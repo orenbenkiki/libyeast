@@ -979,6 +979,53 @@ def distribute_differences(grammar, namer):
 # `CharSet` and the notation is gone: what the parser is given is a bit to test, never an algebra to walk.
 NO_DIFF_NODES = _absent("no-diff-nodes", ir.Diff)
 
+# What a peek holds that shapes the output rather than the question: the run's code and the markers. A lookaround is
+# probed and given back, so none of it reaches the stream and none of it is part of what the peek asks.
+_PEEK_OUTPUT = (ir.Emit, ir.PopCode, ir.PushCode, ir.Token, ir.Wrap)
+
+
+def _wide_peeks(grammar):
+    """
+    Lookarounds holding something other than a character set — a question the machine cannot put to one character.
+
+    The twin of `no-diff-nodes` for the peeks, and it answers for what the character count cannot: that one judges a
+    peek whose question is a character and says nothing about one whose question is wider, where this refuses every
+    shape but the set. It is what holds the steps that mint peeks — a possessive scan's empty way is the negative peek
+    of its own set — to minting them as sets, 39 of the 64 in the final grammar being theirs rather than the grammar's.
+
+    An `(exclude)` is no peek of this kind and is no business of this count: it asks about a line rather than about a
+    character, and where it goes is the phase that makes a line start a decision.
+    """
+    return [
+        f"{name}: a {type(node).__name__} holds a {type(node.item).__name__} rather than a character set"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind)) and not isinstance(node.item, ir.CharSet)
+    ]
+
+
+PEEKS_ARE_SETS = Invariant("every-peek-is-a-character-set", _wide_peeks)
+
+
+def _peeked_question(node, grammar):
+    """
+    What a peek of `node` asks, with what only shapes the output read off it — the question the machine puts to the
+    input.
+
+    A probe emits nothing and gives back what it read, so an annotation inside one is dead: `c-comment` is a `#` under
+    the code its character carries, and peeking it asks whether the character is a `#`. A name is read through for the
+    same reason a match's is not — the caller's hold on a production is what a match wants and a peek has no use for.
+    """
+    if isinstance(node, ir.Ref) and not node.args:
+        return _peeked_question(grammar[node.name].body, grammar)
+    if isinstance(node, (ir.Token, ir.Wrap)):
+        return _peeked_question(node.item, grammar)
+    if isinstance(node, ir.Seq):
+        asked = [item for item in node.items if not isinstance(item, _PEEK_OUTPUT)]
+        if len(asked) == 1:
+            return _peeked_question(asked[0], grammar)
+    return node
+
 
 def lower_char_sets(grammar, namer):
     """
@@ -995,13 +1042,13 @@ def lower_char_sets(grammar, namer):
     A maximal one is taken, not every one inside it: the intervals of a union are its own, and nothing asks about them
     apart. A reference is left standing where a match takes it — a character set with a production of its own keeps it,
     and the reference is what the callers hold — so nothing is purged and no fixture is stranded. Inside a lookaround it
-    is read through instead: what a peek holds is the question "is the character one of these", and a name is not a
-    question the machine can put to the input.
+    is read through instead, along with any annotation on what it names: what a peek holds is the question "is the
+    character one of these", and neither a name nor a code is a question the machine can put to the input.
     """
 
     def lowered(node):
         if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind)):
-            asked = as_char_set(node.item, grammar)
+            asked = as_char_set(_peeked_question(node.item, grammar), grammar)
             if isinstance(asked, ir.CharSet):
                 return dataclasses.replace(node, item=asked)
         if isinstance(node, ir.Ref):
@@ -1024,8 +1071,10 @@ def _other_character_questions(grammar):
     failing being how a set stops being sayable at all.
 
     A reference is a hold on the production where the set is said, so a match taking one is no fault; inside a
-    lookaround it is a fault, what a peek holds being the question rather than the hold. A guard over several characters
-    — an `(exclude)`, a difference of two multi-character productions, a lookahead for a comment — asks nothing about a
+    lookaround it is a fault, what a peek holds being the question rather than the hold. A peek is judged on the
+    question it asks rather than on the shape it names it with — an annotation inside one is dead, a probe emitting
+    nothing — so peeking a `#` under the code its character carries is a character question like any other. A guard over
+    several characters — an `(exclude)`, a difference of two multi-character productions — asks nothing about a
     character and is no business of this count.
     """
     faults = []
@@ -1034,7 +1083,9 @@ def _other_character_questions(grammar):
         def walk(node, owner=name):
             if isinstance(node, ir.CharSet):
                 return  # lowered
-            if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind)) and ir.is_one_char(node.item, grammar):
+            if isinstance(node, (ir.Look, ir.NegLook, ir.LookBehind)) and ir.is_one_char(
+                _peeked_question(node.item, grammar), grammar
+            ):
                 if not isinstance(node.item, ir.CharSet):
                     kinds = (type(node).__name__, type(node.item).__name__)
                     faults.append(f"{owner}: a {kinds[0]} asks about a character as a {kinds[1]}")
@@ -2451,7 +2502,7 @@ STEPS = [
     # denotes nothing until the specialization has bound the context, so this follows Phase 0. The difference is taken
     # into the ways it subtracts from first, since a subtraction says a set only where both of its sides do.
     Step("distribute-differences", distribute_differences, DIFFERENCES_BETWEEN_SETS),
-    Step("lower-char-sets", lower_char_sets, (ONLY_SETS_AND_LITERALS, NO_DIFF_NODES)),
+    Step("lower-char-sets", lower_char_sets, (ONLY_SETS_AND_LITERALS, NO_DIFF_NODES, PEEKS_ARE_SETS)),
     # Phase 2 establishes `NO_F_PARAMETER`: the block scalar's leading-empty floor is the parse's one value rather than
     # one a call carries. The value is given an end first, a single slot answering for a parameter only where a read
     # past the region it was measured in is refused rather than answered from what the last construct left.
