@@ -159,12 +159,20 @@ step, against a grammar with less in it.
 A scope that holds what it covers has nowhere to stand in an alternative — `gate  actions…  [P1  actions…]  [P2]` has a
 place for an action and none for a node enclosing a call, and a `(token)` around a call is an action that must run where
 the call returns. So each becomes the pair that brackets it, which the interpreter already implements independently of
-the wrapper it stands for. What the wrapper gave by construction — `ir.Wrap` is a node rather than its two markers
-precisely so a `begin` cannot lose its `end` — the pairs are held to instead: a scope opened on a way is closed on that
-way, the ways of a choice agree on what they leave open, and a run's turn leaves none, since a second turn would open it
-again. The markers are not that: a pair of them crosses productions by design, and what follows them through the
-pipeline is owed by the phase that splits a way into a call and a continuation, which is the first thing that can put a
-`begin` in one production and its `end` in another.
+the wrapper it stands for: a `(wrap)` its two markers, a `(max)` the window pair, a `(commit)` the message pair, and a
+`(token)` the code pair. A `(recover)` is not among them — a handler rather than a scope, with no close whose position
+means anything — and rides the alternative's edge instead. What the wrapper gave by construction — `ir.Wrap` is a node
+rather than its two markers precisely so a `begin` cannot lose its `end` — the pairs are held to instead: a scope opened
+on a way is closed on that way, the ways of a choice agree on what they leave open, and a run's turn leaves none, since
+a second turn would open it again. The markers are not that: a pair of them crosses productions by design, and what
+follows them through the pipeline is owed by the phase that splits a way into a call and a continuation, which is the
+first thing that can put a `begin` in one production and its `end` in another.
+
+What a wrapper displaced waited in the frame of the match that was running, where a pair's waits on the parse's own
+state — which is the point, a frame being gone once a way is split into a call and a continuation — so what a frame
+unwound for free is now something to clear. An abandoned parse's scopes are taken off where it is abandoned, at the
+in-grammar `(recover)` that answers for the cut and at the stream's own level where nothing does, and a parse that
+matches is refused if it ends with a window or a committed region still open.
 
 The empties are what a caller cannot decide on. Entering a production that may match nothing is a choice made with no
 character to go on, and it stays one while both answers live under a single name — so each such production is given a

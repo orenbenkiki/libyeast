@@ -616,8 +616,9 @@ def _fail(emitter, message):
 
     What the parser does about the input from there is not decided here: that is the grammar's `l-recover`, which the
     caller matches. The guard is cleared because an `(exclude)` the abandoned parse had in scope never got to unwind,
-    and the recovery is entitled to the guards its own rules declare and no others; the `(max)` window goes for the same
-    reason, so the recovery reads on past the edge the abandoned parse had failed against.
+    and the recovery is entitled to the guards its own rules declare and no others; the `(max)` window and the committed
+    regions go for the same reason, so the recovery reads on past the edge the abandoned parse had failed against and
+    answers for none of what it had committed to.
     """
     emitter.code = "unparsed-text"  # a raise skips the tokens' cleanup; from here on the input is unparsed
     emitter.stack = ()  # and skips their pops, so what they left on the stack goes with the codes it would restore
@@ -625,6 +626,7 @@ def _fail(emitter, message):
     emitter.ceiling = None
     emitter.ceiling_message = None
     emitter.window_depth = 0  # a raise skips the closes, so the count goes back with the window it bounds
+    emitter.commitments.clear()  # and the regions it left open, whose `PopMessage`s the raise skipped along with them
     emitter.error(message)
     while emitter.pending:
         emitter.marker(emitter.pending[-1])
@@ -1218,7 +1220,7 @@ def match(node, emitter, grammar, k):
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Recover):
-        depth, code, stack, forbidden, env, ceiling, ceiling_message, commitments = (
+        depth, code, stack, forbidden, env, ceiling, ceiling_message, window_depth, commitments = (
             len(emitter.pending),
             emitter.code,
             emitter.stack,
@@ -1226,6 +1228,7 @@ def match(node, emitter, grammar, k):
             dict(emitter.env),
             emitter.ceiling,
             emitter.ceiling_message,
+            emitter.window_depth,
             len(emitter.commitments),
         )
         try:
@@ -1242,6 +1245,7 @@ def match(node, emitter, grammar, k):
             emitter.env = env
             emitter.ceiling = ceiling
             emitter.ceiling_message = ceiling_message
+            emitter.window_depth = window_depth  # the opens it left standing, which no close of its own will take back
             del emitter.commitments[commitments:]  # the regions the abandoned parse left open
             emitter.error(MESSAGES[failure.code])
             while len(emitter.pending) > depth:
@@ -1306,6 +1310,15 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset()):
         else:
             if matched:
                 emitter.cut()
+                # A parse that has matched has closed what it opened: the scopes the grammar writes as pairs balance,
+                # and an abandoned parse's are cleared where it was abandoned. What a wrapper held in a Python frame
+                # went with the frame, where these live on the emitter until something takes them off, so a pair whose
+                # close is never reached leaves a window bounding nothing or a region answering for nothing.
+                if emitter.window_depth or emitter.commitments:
+                    raise AssertionError(
+                        f"the parse ends with {emitter.window_depth} window(s) and "
+                        f"{len(emitter.commitments)} committed region(s) still open"
+                    )
                 return emitter.tokens
             # A root parse is total — it recovers rather than fails — so its failing without committing is a grammar
             # bug, not an input we accept; an isolated non-root production may fail, and reports what matched and where

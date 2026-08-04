@@ -317,11 +317,22 @@ All notable changes to this project are documented here. The format follows
   whether to enter something that may take nothing — every empty match is a way of the caller's own, where a character
   can decide it.
 
-  A scope that holds what it covers is becoming the pair that brackets it, one kind at a time. An alternative —
+  A scope that holds what it covers is the pair that brackets it, one step per kind. An alternative —
   `gate actions… [P1 actions…] [P2]` — has a place for an action and none for a node enclosing a call, and a `(token)`
   around a call is an action that must run where the call returns, which is the continuation; so the wrappers come off
-  before a way is split into a call and a continuation, or they come off twice. `lower-wraps` is the first:
-  `Wrap(begin, end, x)` becomes `Emit(begin) x Emit(end)`, 150 of them, `no-wrap-nodes` at none.
+  before a way is split into a call and a continuation, or they come off twice. In order, smallest and least stateful
+  first so that what the last one moves is the only thing left to look at: `lower-wraps` writes `Wrap(begin, end, x)` as
+  `Emit(begin) x Emit(end)`, 150 of them; `lower-windows` a `(max)` as `OpenWindow … CloseWindow`, 3 — windows do not
+  nest, only the outermost applying, and the pair counts the opens standing where the wrapper asked whether a ceiling
+  was already set; `lower-commits` a `(commit)` as `PushMessage … PopMessage`, 47 — a commit being the error where its
+  item never reaches its own end and nothing more, which is what the push records and the pop marks reached; and
+  `lower-tokens` a `(token)` as `PushCode … PopCode`, 343, both halves cutting the run, the push setting the code the
+  characters between them carry and the pop taking back what it displaced.
+
+  What the last three change is where the displaced thing waits. A Python local — which is to say the frame of the match
+  that is running — becomes the parse's own state, and that is the whole point: a frame is gone once the way is split
+  into a call and a continuation, and a stack is not. It is also why the balance has to hold while it happens, a pop
+  taking back whatever is on top rather than what its own push put there.
 
   A wrapper is paired by construction — `ir.Wrap` is a node rather than the two markers precisely so a `begin` cannot
   lose its `end` — and unwrapping trades that for a property that has to be checked. `every-scope-closes-on-its-own-way`
@@ -341,6 +352,20 @@ All notable changes to this project are documented here. The format follows
   `begin` in one production and its `end` in another is the split into a call and a continuation, so that is the phase
   the marker net is owed by.
 
+  Moving the state out of the frames is what the two faults were about, both of them a scope an abandoned parse left
+  standing where the wrapper's frame had taken it with it. An in-grammar `(recover)` put back the `(max)` ceiling of the
+  rule it belongs to and not the count of opens beside it, so a key past 1024 characters bounded no later key at all —
+  the recovery answering for a window that was still counted open — and a cut that unwound to the stream's own level
+  left its committed regions on the emitter where a raise had skipped their closes. A parse that matches now refuses to
+  return with a window or a region open, which is the standing net for both: it reads none on the grammar as authored,
+  named the regions the moment `lower-commits` landed, and the fixture behind it is a stream whose first implicit key
+  overruns and whose second must overrun again.
+
+  The grammar hands on 328 productions with no `(wrap)`, `(max)`, `(commit)` or `(token)` left in it — 343 code pairs,
+  47 message pairs, 3 window pairs, 69 indent pairs and 368 markers, every one closing on the way it opens. The eight
+  `(recover)` stay: a recovery is a handler and not a scope, with no close whose position means anything, and its home
+  is the edge an alternative rides.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving
@@ -359,7 +384,7 @@ All notable changes to this project are documented here. The format follows
   token for token, and credits coverage from where it stands. The coverage gate holds a minted helper covered by the
   base it came from, as it does a monomorphic copy: a helper is a piece of the base's own body moved, so requiring more
   of it than of the body it came from would ask the corpus for what the untransformed grammar never needed.
-  `check_normalize` holds every step token-and-event identical over the whole corpus — 711 conformance fixtures and 402
+  `check_normalize` holds every step token-and-event identical over the whole corpus — 712 conformance fixtures and 402
   YAML Test Suite cases, seven of them pinning the document-marker boundary the spec's `c-forbidden` spells and the
   Clojure reference agrees on: `---foo`, `---#foo`, `----` and their `...` kin are content, `--- foo` a boundary,
   `... foo` malformed; four pinning the sequence dedent hand-off any committed block structure must reproduce — at a

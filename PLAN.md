@@ -234,47 +234,17 @@ The phases, each established and then enforced:
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
 
-**Phase 6, the wrappers.** A scope that holds what it covers has no place in an alternative:
-`gate  actions…  [P1 actions…]  [P2]` has somewhere for an action to stand and nowhere for a node to enclose a call. A
-`(token)` around a call is an action that must run where the call returns, which is the continuation — so the wrappers
-come off before a sequence is split into a call and a continuation, or they come off twice.
+**What the wrappers leave owed.** `every-scope-closes-on-its-own-way` holds the four pairs per way, which is the right
+rule for them and the wrong one for the markers: a marker pair crosses productions by design — `b-chomped-last` emits
+`end-scalar` for a `begin-scalar` opened elsewhere — so holding one to a single way would report dozens of faults that
+are not. `check_markers` proves the `begin`/`end` balance of the grammar as authored and does not follow the pipeline,
+and the first thing that can put a `begin` in one production and its `end` in another is **binarization** — splitting a
+way into a call and a continuation. So a marker net that follows the pipeline is owed by that phase.
 
-The phase is four invariants, one per kind, each settled by the step that takes that kind off — there is no fifth naming
-their sum, a phase being what its steps establish between them. Every pair is already implemented in the interpreter
-independently of the wrapper it stands for, so each rewrite is an identity the interpreter states rather than one the
-step argues:
-
-| step            | invariant         | at  | rewrite                                              | what changes                                           |
-| --------------- | ----------------- | --- | ---------------------------------------------------- | ------------------------------------------------------ |
-| `lower-wraps`   | `no-wrap-nodes`   | 150 | `Wrap(b, e, x)` to `Emit(b) x Emit(e)`               | nothing; the node is sugar for the two markers         |
-| `lower-windows` | `no-max-nodes`    | 3   | `Max(l, m, x)` to `OpenWindow(l, m) x CloseWindow()` | the outermost-only rule becomes a depth count          |
-| `lower-commits` | `no-commit-nodes` | 47  | `Commit(m, x)` to `PushMessage(m) x PopMessage()`    | the region a failed cut answers for moves to the stack |
-| `lower-tokens`  | `no-token-nodes`  | 343 | `Token(c, x)` to `PushCode(c) x PopCode()`           | the displaced code moves off the frame onto the stack  |
-
-In that order: smallest and least stateful first, so what the last one moves is the only thing left to look at.
-
-`Recover` is not one of these and stays. It is a handler rather than a scope — the item, and on a cut the recovery at
-wherever the abandoned parse stopped — so it has no close whose position means anything. Its home is the alternative's
-edge, which `Alternative.recover` already carries, so it belongs to the phase that makes the alternatives.
-
-**What the phase gives up, and what has to replace it.** A wrapper is paired *by construction* — `ir.Wrap` says that is
-why it is a node at all, so that a `begin` cannot lose its `end`. Unwrapping trades that for a property that has to be
-checked, and unchecked it is traded for nothing. So the phase opens by writing that check and reading it, before any
-wrapper comes off: **every scope opened on a way is closed on that way**, over the pairs the grammar already carries —
-the indent pair among them, which nothing checks this way today — and each of the four steps holds it at none, as
-`lower-runs` holds the recursion guard. It settles nothing, being already true; it is what the four are held to.
-`check_markers` proves the `begin`/`end` balance of the grammar as authored and does not follow the pipeline, so it
-answers for none of this.
-
-That check is per-way, which is the right rule for the four stack pairs and the wrong one for the markers: a marker pair
-crosses productions by design — `b-chomped-last` emits `end-scalar` for a `begin-scalar` opened elsewhere — so holding
-one to a single way would report dozens of faults that are not. `lower-wraps` loses nothing on its own account: the two
-markers come out adjacent in one sequence of one production, and nothing in the sweep separates them, flattening
-preserving order and a splice replacing a call. What it gives up is the guarantee for whatever comes later, and the
-first thing that can put a `begin` in one production and its `end` in another is **binarization** — splitting a way into
-a call and a continuation. So a marker net that follows the pipeline, which is what `check_markers` is on the grammar as
-authored, is owed by that phase and not by this one. Reordering the four buys nothing: the other three do not move an
-`Emit`, and the grammar they hand on is the same whichever way round they go.
+`Recover` is the other thing left standing, and deliberately: it is a handler rather than a scope — the item, and on a
+cut the recovery at wherever the abandoned parse stopped — so it has no close whose position means anything. Its home is
+the alternative's edge, which `Alternative.recover` already carries, so it belongs to the phase that makes the
+alternatives.
 
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:

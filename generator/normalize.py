@@ -34,10 +34,12 @@ to enter can match empty — `only-root-empties` at none, the root and the recov
 call site to hold the choice.
 
 Phase 6 is the wrappers. A scope that holds what it covers has nowhere to stand in an alternative, which has a place for
-an action and none for a node enclosing a call, so each becomes the pair that brackets it instead — `lower-wraps`
-writing a `(wrap)` as its two markers. What a wrapper guaranteed by construction the pairs are held to instead:
-`every-scope-closes-on-its-own-way` says a scope opened on a way is closed on it, the ways of a choice agree on what
-they leave open, and a run's turn leaves none.
+an action and none for a node enclosing a call, so each becomes the pair that brackets it: `lower-wraps` writes a
+`(wrap)` as its two markers, `lower-windows` a `(max)` as the window pair, `lower-commits` a `(commit)` as the message
+pair, and `lower-tokens` a `(token)` as the code pair. What a wrapper guaranteed by construction the pairs are held to
+instead: `every-scope-closes-on-its-own-way` says a scope opened on a way is closed on it, the ways of a choice agree on
+what they leave open, and a run's turn leaves none. A `(recover)` is a handler rather than a scope and stays, its home
+being the edge an alternative rides.
 """
 
 import dataclasses
@@ -1384,6 +1386,97 @@ def lower_wraps(grammar, namer):
     }
 
 
+# Phase 6's second: the `(max)` window is the pair that opens and closes it.
+NO_MAX_NODES = _absent("no-max-nodes", ir.Max)
+
+
+def lower_windows(grammar, namer):
+    """
+    Write each `(max)` as the window pair: `Max(limit, message, x)` becomes `OpenWindow(limit, message) x
+    CloseWindow()`.
+
+    Windows do not nest — only the outermost applies, an inner one being inside the budget the outer already bounds —
+    and the pair counts the opens standing where the wrapper asked whether a ceiling was already set. The two agree only
+    where every window is spelled one way, an open counting nothing having no ceiling to answer for, so the step leaves
+    no `Max` at all rather than lowering the sites that want it.
+
+    A `(max)` with nothing in it is the vendored grammar's bare length note, which libyeast writes around a production
+    rather than before one; nothing in the pipeline places one, so meeting one here is an error rather than a window to
+    open.
+    """
+
+    def lowered(node):
+        node = ir.rebuilt(node, lowered)
+        if isinstance(node, ir.Max):
+            if node.item is None:
+                raise ValueError("a `(max)` with nothing in it is a length note, and the pipeline places none")
+            return ir.Seq(items=(ir.OpenWindow(limit=node.limit, message=node.message), node.item, ir.CloseWindow()))
+        return node
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
+
+
+# Phase 6's third: the region a failed cut answers for is the pair that opens and closes it.
+NO_COMMIT_NODES = _absent("no-commit-nodes", ir.Commit)
+
+
+def lower_commits(grammar, namer):
+    """
+    Write each `(commit)` as the message pair: `Commit(message, x)` becomes `PushMessage(message) x PopMessage()`.
+
+    A commit is the error where its item never reaches its own end, and nothing more: a continuation that fails past a
+    matched item backtracks like any other match, the commitment not reaching past it. The pair says exactly that — the
+    push records a region, the pop marks it reached, and an unwind that gets back to a push through a region never
+    closed is the error. The interpreter says so where it implements the push: a `(commit)` scope's terms, the close
+    standing where the scope's end stood.
+
+    What changes is where the record lives: the wrapper keeps it in a Python local, the pair on the emitter's own list
+    of open commitments, which is what survives the pair being split across a call.
+    """
+
+    def lowered(node):
+        node = ir.rebuilt(node, lowered)
+        if isinstance(node, ir.Commit):
+            return ir.Seq(items=(ir.PushMessage(message=node.message), node.item, ir.PopMessage()))
+        return node
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
+
+
+# Phase 6's last: the code the characters of a run carry is the pair that sets it and takes it back.
+NO_TOKEN_NODES = _absent("no-token-nodes", ir.Token)
+
+
+def lower_tokens(grammar, namer):
+    """
+    Write each `(token)` as the code pair: `Token(code, x)` becomes `PushCode(code) x PopCode()`.
+
+    An annotation does not make a token: it says what code the characters consumed within it carry, and cuts the run at
+    each edge so what came before and after falls into tokens of its own. Both halves do that — each cuts, the push sets
+    the code and the pop takes back what it displaced — so the characters between them carry the same code either way.
+
+    What changes is where the displaced code waits. The wrapper keeps it in a Python local, which is to say in the frame
+    of the match that is running; the pair puts it on the parse's own stack, which is what lets the two halves end up in
+    different productions once a way is split into a call and a continuation. That is the whole reason for the step, and
+    the reason `every-scope-closes-on-its-own-way` has to hold while it happens: a pop takes back whatever is on top, so
+    a pair cut apart carelessly would take back what another way had put there.
+    """
+
+    def lowered(node):
+        node = ir.rebuilt(node, lowered)
+        if isinstance(node, ir.Token):
+            return ir.Seq(items=(ir.PushCode(code=node.code), node.item, ir.PopCode()))
+        return node
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    }
+
+
 def lower_runs(grammar, namer):
     """
     Say the two repetitions as the one operation they are: `x*` becomes `LongestRun(x, 0)` and `x+` `LongestRun(x, 1)`.
@@ -2241,4 +2334,7 @@ STEPS = [
     # Phase 6 takes the scopes off what they cover, each step one kind, and every one of them is held to the pairs it
     # leaves closing where they open — the guarantee a wrapper gave by construction, now a count.
     Step("lower-wraps", lower_wraps, (NO_WRAP_NODES, SCOPES_CLOSED)),
+    Step("lower-windows", lower_windows, (NO_MAX_NODES, SCOPES_CLOSED)),
+    Step("lower-commits", lower_commits, (NO_COMMIT_NODES, SCOPES_CLOSED)),
+    Step("lower-tokens", lower_tokens, (NO_TOKEN_NODES, SCOPES_CLOSED)),
 ]
