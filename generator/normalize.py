@@ -412,7 +412,10 @@ class Step:
     to break it.
 
     An invariant goes by its name, so two steps naming the same one are reducing a single count and the set of them is
-    collected by name rather than by how many steps mention it.
+    collected by name rather than by how many steps mention it. `invariants` and `reduces` are both given the invariant
+    itself for that reason: the name is what they are compared by, and a name written out here instead would be a second
+    spelling of it that nothing resolves — a misspelt one would read as a step that reduces nothing, which is to say as
+    one that settles what it does not.
 
     **An empty `invariants` is temporary, and `untestable` says why one is empty for good.** A step with neither
     transforms the grammar and promises something nothing checks, which is the shape every hard day here has started
@@ -429,12 +432,19 @@ class Step:
     untestable: str = ""
 
     def __post_init__(self):
-        held = (self.invariants,) if isinstance(self.invariants, Invariant) else tuple(self.invariants)
-        object.__setattr__(self, "invariants", held)
+        for field in ("invariants", "reduces"):
+            named = getattr(self, field)
+            held = (named,) if isinstance(named, Invariant) else tuple(named)
+            object.__setattr__(self, field, held)
 
     def does_settle(self, invariant):
         """Whether this step is the one that takes `invariant`'s count to none."""
-        return invariant.name in {held.name for held in self.invariants} and invariant.name not in self.reduces
+        return invariant.name in self.carries and invariant.name not in {held.name for held in self.reduces}
+
+    @property
+    def carries(self):
+        """The names of the invariants this step is about — what it settles and what it only lowers alike."""
+        return {held.name for held in self.invariants}
 
 
 def _absent(name, *kinds):
@@ -518,9 +528,12 @@ def invariant_faults(stages, points=None):
         for named in step.lapses:
             if named not in by_name:
                 faults.append(f"[{step.name}] declares a lapse of `{named}`, which no step carries")
+        for held in step.reduces:
+            if held.name not in step.carries:
+                faults.append(f"[{step.name}] says it only lowers `{held.name}`, which it does not carry at all")
     for named in sorted(by_name):
         test = by_name[named]
-        first = min(index for index, step in enumerate(STEPS) if named in {h.name for h in step.invariants})
+        first = min(index for index, step in enumerate(STEPS) if named in step.carries)
         settled, standing = False, None
         for index in range(first, len(STEPS)):
             step, (label, grammar) = STEPS[index], stages[index + 1]
@@ -2040,7 +2053,7 @@ STEPS = [
     # Phase 0 establishes `NO_I_T_PARAMETERS`: nothing declares, passes or reads the chomping or the block scalar's
     # indentation mode. Each is data-dependent until this runs, so neither can be specialized: the setters become
     # switches first.
-    Step("lift-setters", lift_setters, FINITE_LEXICAL, reduces=("every-set-finite-parameter-is-lexical",)),
+    Step("lift-setters", lift_setters, FINITE_LEXICAL, reduces=FINITE_LEXICAL),
     Step(
         "monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), FINITE_LEXICAL, NO_I_T_PARAMETERS)
     ),
@@ -2070,7 +2083,7 @@ STEPS = [
         "span-consumes",
         span_consumes,
         (CHARACTER_RUNS_SCANNED, NO_STAR_OR_PLUS_NODES),
-        reduces=("no-star-or-plus-nodes",),
+        reduces=NO_STAR_OR_PLUS_NODES,
     ),
     Step("lower-runs", lower_runs, (NO_STAR_OR_PLUS_NODES, NO_UNCONSUMED_CYCLE)),
     Step("mint-consuming-and-residue", mint_consuming_and_residue, EMPTIES_NAMED),
