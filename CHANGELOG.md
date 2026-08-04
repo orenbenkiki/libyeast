@@ -221,16 +221,42 @@ All notable changes to this project are documented here. The format follows
   A run over a character class is a scan and not a way, and the interpreter now draws that line where the grammar does.
   Such a run is single-outcome by construction — only ever followed by something off its own set — so it is taken whole
   and judged whole, which is what `s-indent-le`'s "the maximal run, and then its length against `n`" needs: falling back
-  to a shorter run would let an over-indented line pass as if it had none. A run over a *way* is no such thing. It is a
-  choice between the maximal run and none at all, with no count between them, which is exactly what an ordered
-  `x+ | <empty>` offers. That distinction was argued for character classes when repetitions became possessive and never
-  drawn for ways; drawn, it makes the two lowerings below identities rather than arguments.
+  to a shorter run would let an over-indented line pass as if it had none. `span-consumes` writes each as the one scan
+  it is — `x*` a `ConsumeSpan`, `x+` the character and that span behind it, 56 in all — and a counted one the same way:
+  `x{n}` over a character class is the `n` characters of the set, all of them or none, which is a `ConsumeCountedSpan`,
+  a count the parse works out included, since a non-positive one matches nothing there as it does here. Seven of those,
+  and `Rep` is gone from the grammar with them.
 
-  `span-consumes` writes a run over a character class as the one scan it is — `x*` a `ConsumeSpan`, `x+` the character
-  and that span behind it, 56 in all — and `lower-stars` writes what is left as `x+ | <empty>`, 62 of them, settling
-  `no-star-nodes`. Distributed, `P x* Q` becomes `P x+ Q | P Q`, and what decides between them is the character the run
-  begins with: in `x`'s set the parse takes the run, outside it the way that does not. Which is the shape the machine
-  wants, and the reason the empty match is worth making a way of.
+  There is one repetition of a way, `LongestRun(item, least)`, and `lower-runs` says both spellings as it: take `item`
+  again and again while it matches, stop where it does not, and match where the run took at least `least` turns. What it
+  took is the longest run and there is no shorter one — a continuation that fails fails the run rather than sending it
+  back for fewer turns. `least` is the whole of the difference between `(***)` and `(+++)`: a run of none or more falls
+  through where nothing matched, one that must take a turn refuses there. Neither is the other with something around it,
+  and the interpreter had been saying so all along — its two arms were the same code but for that last line, and are one
+  arm now. `no-star-or-plus-nodes` settles at none over 72 runs.
+
+  That replaces writing `x*` as `x+ | <empty>`, which mapped one repetition onto the other and made a primitive look
+  like an ordered choice it is not: an ordered choice can be backed out of for a shorter run, and a longest run cannot.
+  Lowering the run to a production of its own waits for the gates, a gate being the only thing that makes a turn commit
+  without inventing a second mechanism for it. What the grammar repeats a way with is one kind now, and what it scans a
+  character class with is two — the maximal run and the counted one.
+
+  Every function that dispatches on node kind raises on one it has not heard of, not only the ones that answer yes or
+  no. The rule had been read as being about the booleans, where a wrong `False` turns a scan into a way; it is about any
+  answer given by default. `validate_grammar.consumed` walked into the children of a kind it did not name, so a new way
+  of taking a character would have yielded nothing of its own and every character it took would have passed "every
+  character lies within a token annotation" unannotated; `check_grammar_docs.emitted` did the same for a new way of
+  emitting, which would have read as documented while saying nothing. `chars.denote` answered "no characters" where it
+  meant "no answer"; `grammar2decoder.defined` answered "defines no character", which would have left that character out
+  of the decoder tables, and the drift gate can only see a table that changed rather than one that never had the entry.
+  `check_decoder` and the character-run invariant each kept their own list of what repeats, which goes stale the moment
+  a run is spelled a new way and then reads none because the kinds it names are gone.
+
+  `ir.KINDS` is the net they share: `NOT_ONE_CHAR` and the eight `is_one_char` answers for on their own terms are every
+  kind between them, so a kind in neither raises at the first question anyone asks of it. `ir.repeated` says what a node
+  takes again and again and `ir.CONSUMING` which kinds take characters themselves, each named once rather than re-listed
+  at every site. Sharpening the run reading found seven counted repetitions over a character class that were not spans,
+  which is the whole argument for it.
 
   `mint-consuming-and-residue` gives every production that may match empty a name for each of the two things it is —
   `<name>_reads` for the ways that take a character, `<name>_empty` for the ways that take none — and the production

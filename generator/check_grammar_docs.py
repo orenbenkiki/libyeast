@@ -22,7 +22,12 @@ EMITS = re.compile(r"^#\s*Emits:\s*(.*)$", re.M)
 
 
 def emitted(node):
-    """The codes a node emits, in the order it emits them, without repeats."""
+    """
+    The codes a node emits, in the order it emits them, without repeats.
+
+    A kind named nowhere raises rather than being walked into for its children: a new way of emitting would otherwise
+    contribute no code of its own, and a rule that emits it would read as documented while saying nothing about it.
+    """
     codes = []
     if isinstance(node, ir.Token):
         codes.append(node.code)
@@ -33,9 +38,11 @@ def emitted(node):
         codes.append(node.end)
     elif isinstance(node, ir.Emit):
         codes.append(node.code)
-    else:
+    elif isinstance(node, ir.KINDS):
         for child in chars.children(node):
             codes.extend(emitted(child))
+    else:
+        raise TypeError(f"cannot tell what {type(node).__name__} emits")
     return list(dict.fromkeys(codes))
 
 

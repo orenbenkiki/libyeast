@@ -36,18 +36,23 @@ def consumed(node, is_annotated, references):
 
     A lookahead consumes nothing and emits nothing, so what is inside one is neither counted nor followed. A `(---)`
     matches one character, so it counts as one; the characters it subtracts are operands, not matches.
+
+    A kind named nowhere raises rather than being walked into for its children: a new way of taking a character would
+    otherwise yield nothing of its own, and every character it takes would pass this check without an annotation.
     """
     if isinstance(node, ir.Token):
         yield from consumed(node.item, True, references)
-    elif isinstance(node, ir.ZERO_WIDTH):
-        return
-    elif isinstance(node, (ir.Char, ir.Range, ir.Diff)):
+    elif isinstance(node, (*ir.ZERO_WIDTH, ir.LiteralPeek)):
+        return  # reads the input and gives it back; what is inside is a question, not a match
+    elif isinstance(node, ir.CONSUMING):
         yield is_annotated
     elif isinstance(node, ir.Ref):
         references.append((node.name, is_annotated))
-    else:
+    elif isinstance(node, ir.KINDS):
         for child in chars.children(node):
             yield from consumed(child, is_annotated, references)
+    else:
+        raise TypeError(f"cannot tell what {type(node).__name__} consumes")
 
 
 def check_annotated(grammar):

@@ -7,6 +7,7 @@ Verifies that every bit of every key agrees with a direct evaluation of the set 
 any.
 """
 
+import dataclasses
 import io
 
 import chars
@@ -58,8 +59,11 @@ def check_scanned_sets(model, grammar):
     by_denotation = {denotation: name for name, denotation in model.sets}
 
     def visit(node, owner):
-        if isinstance(node, (ir.Star, ir.Plus, ir.Rep)):
-            denotation = chars.denote(grammar, node.item)
+        # What repeats is asked of `ir.repeated` rather than of a list of kinds kept here, which would go stale the
+        # moment a run is spelled a new way and leave that run unchecked.
+        repeated = ir.repeated(node) if dataclasses.is_dataclass(node) else None
+        if repeated is not None:
+            denotation = chars.denote(grammar, repeated)
             if denotation is not None and denotation[0] != "literal":
                 for codepoint in (0x0A, 0x0D):
                     if chars.does_contain(denotation, codepoint):

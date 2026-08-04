@@ -125,10 +125,19 @@ def spelling(codepoint):
 
 
 def defined(body):
-    """The character a production defines outright, or None — looking through any token annotation that wraps it."""
+    """
+    The character a production defines outright, or None — looking through any token annotation that wraps it.
+
+    A kind named nowhere raises rather than answering None: a new way of writing one character would otherwise leave
+    that character out of the tables, and the drift gate can only see a table that changed, not one that never had it.
+    """
     while isinstance(body, (ir.Token, ir.Wrap)):
         body = body.item
-    return body.cp if isinstance(body, ir.Char) else None
+    if isinstance(body, ir.Char):
+        return body.cp
+    if isinstance(body, ir.KINDS):
+        return None
+    raise TypeError(f"cannot tell whether {type(body).__name__} defines a character")
 
 
 def sites(grammar):

@@ -24,13 +24,14 @@ indentation a call hands back into a push, `push-indents` says where every other
 parameter away, leaving the stack the one place it is. Nothing declares, passes or reads any of the three.
 
 Phase 5 is the empties. A caller choosing whether to enter a production that may match nothing is choosing blind, and
-the choice cannot be put on a character while both answers live under one name. `lower-optionals` and `lower-stars`
-bring the empty matches a node hides out beside the ways that read, `span-consumes` takes the character runs out of that
-question by writing each as the scan it is, `mint-consuming-and-residue` gives every production that may match empty a
-name for each of the two things it is, `distribute-residues` writes the choice between the two where the caller stands
-rather than behind the one name, and `dissolve-residues` writes what is left taking no character into the call sites
-that enter it. Nothing a caller chooses to enter can match empty — `only-root-empties` at none, the root and the
-recovery keeping their empty ways, having no call site to hold the choice.
+the choice cannot be put on a character while both answers live under one name. `lower-optionals` brings the empty match
+an optional hides out beside the way that reads, `span-consumes` takes the character runs out of the question by writing
+each as the scan it is, `lower-runs` says the two repetitions as the one `LongestRun` they are,
+`mint-consuming-and-residue` gives every production that may match empty a name for each of the two things it is,
+`distribute-residues` writes the choice between the two where the caller stands rather than behind the one name, and
+`dissolve-residues` writes what is left taking no character into the call sites that enter it. Nothing a caller chooses
+to enter can match empty — `only-root-empties` at none, the root and the recovery keeping their empty ways, having no
+call site to hold the choice.
 """
 
 import dataclasses
@@ -1173,12 +1174,18 @@ def span_consumes(grammar, namer):
     what lets the codegen make one repeated-char-set call of it. Both are the same match said differently: a
     `ConsumeSpan` is the maximal run a `Star` already takes, and a `Plus` is its item once and then that same run.
 
+    A counted repetition of one is the same value said with a count rather than an end: `x{n}` is the `n` characters of
+    the set, all of them or none, which is what a `ConsumeCountedSpan` takes — a count the parse works out included,
+    since a non-positive one matches nothing there as it does here.
+
     A run over anything else is left standing. It is a way, and what to do about the empty match it hides is a question
     about the parse rather than about a scan.
     """
 
     def lowered(node):
         node = ir.rebuilt(node, lowered)
+        if isinstance(node, ir.Rep) and ir.is_one_char(node.item, grammar):
+            return ir.ConsumeCountedSpan(count=node.count, set=node.item)
         if isinstance(node, ir.Star) and ir.is_one_char(node.item, grammar):
             return ir.ConsumeSpan(set=node.item)
         if isinstance(node, ir.Plus) and ir.is_one_char(node.item, grammar):
@@ -1194,36 +1201,48 @@ def _repeated_character_classes(grammar):
     """
     Runs over a character class still written as a repetition — a value the scan decides, said as a way the parse
     repeats.
+
+    What repeats is asked of `ir.repeated` rather than of a list of kinds kept here: a list goes stale the moment a
+    repetition is spelled a new way, and this count would then read none because the kinds it named are gone rather than
+    because no character run is left.
     """
     return [
         f"{name}: repeats a character class instead of scanning it"
         for name, production in grammar.items()
         for node in _held(production.body)
-        if isinstance(node, (ir.Star, ir.Plus)) and ir.is_one_char(node.item, grammar)
+        if dataclasses.is_dataclass(node) and (item := ir.repeated(node)) is not None and ir.is_one_char(item, grammar)
     ]
 
 
 CHARACTER_RUNS_SCANNED = Invariant("every-character-run-is-a-span", _repeated_character_classes)
 
-# What the empties phase is finished by for the runs: no `Star` anywhere, an empty match being a way beside the one that
-# reads. The character classes go first, being scans rather than ways, and what is left is the question.
-NO_STAR_NODES = _absent("no-star-nodes", ir.Star)
+# The two repetitions the vendored notation writes are gone, one `LongestRun` standing for both. What is left after this
+# is one operation for repeating a way, which is what every reading past here is written against. The counted `Rep` is
+# not one of these: it takes the number of turns it names rather than as many as it can, and is a later step's.
+NO_STAR_OR_PLUS_NODES = _absent("no-star-or-plus-nodes", ir.Star, ir.Plus)
 
 
-def lower_stars(grammar, namer):
+def lower_runs(grammar, namer):
     """
-    Write each remaining run as the two ways it is: `x*` becomes `x+ | <empty>`. Every run over a character class is a
-    scan by now, so what is left repeats a way — and a run over a way is the maximal run or none at all, which is what
-    an ordered choice of the plus and the empty offers.
+    Say the two repetitions as the one operation they are: `x*` becomes `LongestRun(x, 0)` and `x+` `LongestRun(x, 1)`.
 
-    Distributed, `P x* Q` becomes `P x+ Q | P Q`, and what decides between them is the character the run begins with: in
-    `x`'s set the parse takes the run, and outside it the way that does not. Which is the shape the machine wants, and
-    the reason the empty match is worth making a way of.
+    A run takes `x` again and again while it matches and stops where it does not, and what it took is the longest run —
+    there is no shorter one, a continuation that fails failing the run rather than sending it back for fewer turns.
+    `least` is the whole of the difference between the two spellings: a run of none or more falls through where nothing
+    matched, one that must take a turn refuses there. Neither is the other with something around it, and the interpreter
+    says so — its two arms were the same code but for that last line, and are one arm now.
+
+    A run over a character class is the same operation said as the scan a parser makes of it, which `span-consumes` has
+    already written as a `ConsumeSpan`; what is left here repeats a way.
     """
 
     def lowered(node):
         node = ir.rebuilt(node, lowered)
-        return ir.Alt(items=(ir.Plus(item=node.item), ir.Empty())) if isinstance(node, ir.Star) else node
+        if isinstance(node, ir.Star):
+            return ir.LongestRun(item=node.item, least=0)
+        if isinstance(node, ir.Plus):
+            return ir.LongestRun(item=node.item, least=1)
+        return node
 
     return {
         name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
@@ -1315,7 +1334,9 @@ def _is_actions_alone(node, grammar, seen=frozenset()):
         return _is_actions_alone(node.item, grammar, seen)
     if isinstance(node, ir.Ref):
         return node.name not in seen and _is_actions_alone(grammar[node.name].body, grammar, seen | {node.name})
-    return False
+    if isinstance(node, ir.KINDS):
+        return False
+    raise TypeError(f"cannot tell whether {type(node).__name__} is built of actions alone")
 
 
 def _does_empty_leave_nothing(node, grammar, ways, seen=frozenset()):
@@ -1330,19 +1351,54 @@ def _does_empty_leave_nothing(node, grammar, ways, seen=frozenset()):
     """
     if _split(node, grammar, ways)[1] is None:
         return True
-    if isinstance(node, (*_GUARDS, ir.ConsumeSpan, ir.Empty)):
+    if isinstance(node, (*_GUARDS, ir.ConsumeSpan, ir.ConsumeCountedSpan, ir.Empty)):
         return True
     if isinstance(node, (*_ACTIONS, ir.Bind, ir.Wrap)):
         return False
     if isinstance(node, (ir.Seq, ir.Alt)):
         return all(_does_empty_leave_nothing(item, grammar, ways, seen) for item in node.items)
-    if isinstance(node, (ir.Plus, ir.Rep, ir.Token, ir.Max, ir.Commit, ir.Recover)):
+    if isinstance(node, (ir.Star, ir.Plus, ir.LongestRun, ir.Rep, ir.Token, ir.Max, ir.Commit, ir.Recover)):
         return node.item is None or _does_empty_leave_nothing(node.item, grammar, ways, seen)
     if isinstance(node, ir.Ref):
         return node.name in seen or _does_empty_leave_nothing(
             grammar[node.name].body, grammar, ways, seen | {node.name}
         )
     raise TypeError(f"cannot tell whether {type(node).__name__} leaves anything behind")
+
+
+def _is_nullable(node, grammar, ways):
+    """
+    Whether `node` has a way that takes no character — what `ways` says of a production, said of any node.
+
+    A reading rather than a rewrite: it answers where `_split` refuses to, a commit holding both an empty match and a
+    reading one being a shape no split can say as two ways but a perfectly ordinary thing to ask about. Every kind is
+    named and one named nowhere raises, an empty match answered for by accident being the whole debt this phase removes.
+    """
+    if isinstance(node, _ALWAYS_READS):
+        return False
+    if isinstance(node, (*_ACTIONS, *_GUARDS, ir.ConsumeSpan, ir.Empty)):
+        return True
+    if isinstance(node, ir.Ref):
+        return ways[node.name][1]
+    if isinstance(node, ir.Seq):
+        return all(_is_nullable(item, grammar, ways) for item in node.items)
+    if isinstance(node, ir.Alt):
+        return any(_is_nullable(item, grammar, ways) for item in node.items)
+    if isinstance(node, ir.Star):
+        return True
+    if isinstance(node, ir.LongestRun):
+        return node.least == 0 or _is_nullable(node.item, grammar, ways)
+    if isinstance(node, ir.Plus):
+        return _is_nullable(node.item, grammar, ways)
+    if isinstance(node, (ir.Rep, ir.ConsumeCountedSpan)):
+        # A count the parse works out may be none at all, and then the repetition takes nothing.
+        taken = node.item if isinstance(node, ir.Rep) else node.set
+        return not isinstance(node.count, ir.Lit) or node.count.value <= 0 or _is_nullable(taken, grammar, ways)
+    if isinstance(node, ir.Bind):
+        return _is_nullable(node.cond, grammar, ways)
+    if isinstance(node, (ir.Token, ir.Wrap, ir.Max, ir.Commit, ir.Recover)):
+        return node.item is None or _is_nullable(node.item, grammar, ways)
+    raise TypeError(f"cannot tell whether {type(node).__name__} can take nothing")
 
 
 def _unsplittable_runs(grammar, ways):
@@ -1354,7 +1410,8 @@ def _unsplittable_runs(grammar, ways):
         f"{name}: a run takes a turn that takes nothing and leaves something behind"
         for name, production in grammar.items()
         for node in _held(production.body)
-        if isinstance(node, ir.Plus) and not _does_empty_leave_nothing(node.item, grammar, ways)
+        if isinstance(node, (ir.Star, ir.Plus, ir.LongestRun))
+        and not _does_empty_leave_nothing(node.item, grammar, ways)
     ]
 
 
@@ -1389,15 +1446,21 @@ def _split(node, grammar, ways):
         reads = tuple(way for way, _none in parts if way is not None)
         empty = tuple(none for _way, none in parts if none is not None)
         return (ir.Alt(items=reads) if reads else None), (ir.Alt(items=empty) if empty else None)
-    if isinstance(node, ir.Plus):
+    if isinstance(node, (ir.Star, ir.Plus, ir.LongestRun)):
+        least = 0 if isinstance(node, ir.Star) else 1 if isinstance(node, ir.Plus) else node.least
         reads, empty = _split(node.item, grammar, ways)
+        taking = ir.LongestRun(item=reads, least=1) if reads is not None else None
+        if least == 0:
+            return taking, ir.Empty()  # a run of none or more takes nothing where the first turn cannot match
         if empty is None:
-            return node, None  # the item always reads, so the run does
-        # The run ends on a turn that takes nothing, which `_repeat` keeps once — and `_unsplittable_runs` holds that
-        # turn to leaving nothing, so the reading way is the reading turns and the empty way is the one that took none.
-        return (ir.Plus(item=reads) if reads is not None else None), empty
+            return node, None  # the item always reads, so a run that must take a turn does
+        # The run ends on a turn that takes nothing, which is kept once — and `_unsplittable_runs` holds that turn to
+        # leaving nothing, so the reading way is the reading turns and the empty way is the one that took none.
+        return taking, empty
     if isinstance(node, ir.Rep):
-        return _split_rep(node, grammar, ways)
+        return _split_counted(node, node.item, grammar, ways)
+    if isinstance(node, ir.ConsumeCountedSpan):
+        return _split_counted(node, node.set, grammar, ways)
     if isinstance(node, ir.Bind):
         reads, empty = _split(node.cond, grammar, ways)
         return (
@@ -1436,21 +1499,24 @@ def _split_seq(node, grammar, ways):
     return (ir.Alt(items=tuple(reads)) if reads else None), ir.Seq(items=tuple(taken))
 
 
-def _split_rep(node, grammar, ways):
+def _split_counted(node, taken, grammar, ways):
     """
-    A counted repetition's `(reads, empty)`. A non-positive count matches nothing at all, so a count the parse works out
-    — the indent scan's, which is the indentation in force — is a repetition that takes none, and the two ways are told
-    apart by the count rather than by the character.
+    A counted repetition's `(reads, empty)` — `taken` being the one turn it takes, a repetition's item or a counted
+    scan's set.
+
+    A non-positive count matches nothing at all, so a count the parse works out — the indent scan's, which is the
+    indentation in force — is a repetition that takes none, and the two ways are told apart by the count rather than by
+    the character.
     """
-    reads, empty = _split(node.item, grammar, ways)
+    _reads, empty = _split(taken, grammar, ways)
     if empty is not None:
-        raise ValueError(f"a repetition of `{node.item}` takes a turn that may take nothing, and cannot be split")
+        raise ValueError(f"a repetition of `{taken}` takes a turn that may take nothing, and cannot be split")
     if isinstance(node.count, ir.Lit):
         return (node, None) if node.count.value > 0 else (None, ir.Empty())
     # The reading way says the turn it takes rather than leaning on the count that admitted it, so what it is stands in
     # the shape: the count is positive, one turn is taken, and the rest of them follow.
     rest = dataclasses.replace(node, count=ir.Sub(a=node.count, b=ir.Lit(value=1)))
-    reading = ir.Seq(items=(ir.Lt(a=ir.Lit(value=0), b=node.count), node.item, rest))
+    reading = ir.Seq(items=(ir.Lt(a=ir.Lit(value=0), b=node.count), taken, rest))
     return reading, ir.Le(a=node.count, b=ir.Lit(value=0))
 
 
@@ -1562,10 +1628,19 @@ def _unnamed_empties(grammar):
 
 
 def _offered(body):
-    """The ways `body` offers at its top — an alternation's, and its own where it is not one."""
+    """
+    The ways `body` offers at its top — an alternation's, and its own where it is not one.
+
+    A `Choice` is the canonical form's alternation and has no business here, so it raises rather than reading as one
+    way; so does a kind named nowhere, a new way of offering ways being exactly what would go unread.
+    """
     if isinstance(body, ir.Alt):
         return [offered for item in body.items for offered in _offered(item)]
-    return [body]
+    if isinstance(body, (ir.Choice, ir.Case, ir.Flip)):
+        raise TypeError(f"a {type(body).__name__} offers ways, and this reads only an alternation's")
+    if isinstance(body, ir.KINDS):
+        return [body]
+    raise TypeError(f"cannot tell what ways {type(body).__name__} offers")
 
 
 EMPTIES_NAMED = Invariant("every-empty-match-is-a-way", _unnamed_empties)
@@ -1680,6 +1755,87 @@ def _blind_empties(grammar):
 
 
 ONLY_ROOT_EMPTIES = Invariant("only-root-empties", _blind_empties)
+
+
+# What the runs become, and what they must not become. A repetition is the last thing in the grammar that is neither a
+# production nor a choice, and every reading past this one — the calls a way holds, the characters it can begin with,
+# the gate over them — is written against those two; a run said as a production of its own is what makes them uniform.
+def _entered_unconsumed(node, grammar, ways):
+    """
+    The productions `node` can enter with nothing taken — its left corner, as names.
+
+    A guard is followed like anything else: it is tested where the parse stands, so what it reaches is reached at that
+    same position. A recovery is not: it is entered where an abandoned parse stopped rather than where its rule began,
+    so a `(recover)` contributes what its item does and nothing more.
+    """
+    if isinstance(node, ir.Ref):
+        return {node.name}
+    if isinstance(node, ir.Alt):
+        return {name for item in node.items for name in _entered_unconsumed(item, grammar, ways)}
+    if isinstance(node, ir.Seq):
+        reached = set()
+        for item in node.items:
+            reached |= _entered_unconsumed(item, grammar, ways)
+            if not _is_nullable(item, grammar, ways):
+                break  # this part always reads, so nothing past it is entered where the parse still stands
+        return reached
+    if isinstance(node, ir.Bind):
+        return _entered_unconsumed(node.cond, grammar, ways)
+    if isinstance(node, _WALKED_UNCONSUMED):
+        return set() if node.item is None else _entered_unconsumed(node.item, grammar, ways)
+    if isinstance(node, (*_ALWAYS_READS, *_ACTIONS, *_GUARDS, ir.ConsumeSpan, ir.ConsumeCountedSpan, ir.Empty)):
+        return set()  # a character question or a zero-width action reaches no production where it stands
+    raise TypeError(f"cannot tell what {type(node).__name__} enters where it stands")
+
+
+# The kinds whose item is entered where they are: a run and a repetition take their first turn there, a scope and a
+# commit their content, and a lookaround tests at the position it stands at. In alphabetical order.
+_WALKED_UNCONSUMED = (
+    ir.Commit,
+    ir.ExcludeAt,
+    ir.LongestRun,
+    ir.Look,
+    ir.LookBehind,
+    ir.Max,
+    ir.NegLook,
+    ir.Plus,
+    ir.Recover,
+    ir.Rep,
+    ir.Star,
+    ir.Token,
+    ir.Wrap,
+)
+
+
+def _unconsumed_cycles(grammar):
+    """
+    Productions that reach themselves with nothing taken — a parse that arrives there cannot go on.
+
+    The machine being built is a pushdown that commits to the first gate that fires and never backtracks, so it has no
+    way to notice it is where it already was: a production reaching itself at the same position runs for ever. Nothing
+    absorbs it the way an LR construction would, which is why this is a fault and not a shape to handle.
+
+    The root and the recovery reach each other this way and are exempt, being what a parse enters by name. The recovery
+    is a landing the driver picks after a cut rather than a call the grammar makes, and it is entered only where the
+    parse has moved on — which `interpreter.run` refuses to go round on, saying so where a recovery consumed nothing.
+    """
+    ways = _split_ways(grammar)
+    entered = entered_by_name(grammar)
+    edges = {name: _entered_unconsumed(production.body, grammar, ways) for name, production in grammar.items()}
+    reach = dict(edges)
+    while True:
+        grown = {name: held | {far for near in held for far in edges.get(near, ())} for name, held in reach.items()}
+        if grown == reach:
+            break
+        reach = grown
+    return [
+        f"{name}: reaches itself with nothing taken, and a parse that arrives there cannot go on"
+        for name in grammar
+        if name not in entered and name in reach[name]
+    ]
+
+
+NO_UNCONSUMED_CYCLE = Invariant("no-production-reaches-itself-unconsumed", _unconsumed_cycles)
 
 
 def hold_established_indents(grammar, namer):
@@ -1910,8 +2066,13 @@ STEPS = [
     # Phase 5 is the empties, and what it is finished by is no production matching empty but the ones a parse enters by
     # name. This step is the first of it: an empty match is a way beside the one that reads, not a node hiding one.
     Step("lower-optionals", lower_optionals, NO_OPT_NODES),
-    Step("span-consumes", span_consumes, (CHARACTER_RUNS_SCANNED, NO_STAR_NODES), reduces=("no-star-nodes",)),
-    Step("lower-stars", lower_stars, NO_STAR_NODES),
+    Step(
+        "span-consumes",
+        span_consumes,
+        (CHARACTER_RUNS_SCANNED, NO_STAR_OR_PLUS_NODES),
+        reduces=("no-star-or-plus-nodes",),
+    ),
+    Step("lower-runs", lower_runs, (NO_STAR_OR_PLUS_NODES, NO_UNCONSUMED_CYCLE)),
     Step("mint-consuming-and-residue", mint_consuming_and_residue, EMPTIES_NAMED),
     Step("distribute-residues", distribute_residues, CALLS_DECIDED),
     Step("dissolve-residues", dissolve_residues, ONLY_ROOT_EMPTIES),

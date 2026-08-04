@@ -111,6 +111,10 @@ def is_total(node, grammar, seen=frozenset()):
         return False
     if isinstance(node, (ir.Star, ir.Opt, ir.TrimStar, ir.ConsumeSpan, ir.ConsumeTrimmedSpan)):
         return True
+    if isinstance(node, ir.LongestRun):
+        # A run of none or more matches wherever it is asked to, taking nothing; one that must take a turn says no
+        # exactly where that turn does.
+        return node.least == 0 or is_total(node.item, grammar, seen)
     if isinstance(node, ir.Max):
         # A wrapping `(max)` says no where its production does; the vendored grammar's bare `(max)` is a length note.
         return is_total(node.item, grammar, seen) if node.item is not None else False

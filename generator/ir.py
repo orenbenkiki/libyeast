@@ -402,6 +402,27 @@ class Plus:
 
 
 @dataclass(frozen=True)
+class LongestRun:
+    """
+    The longest run of `item`, matching where it took at least `least` turns.
+
+    One operation, and the only one the grammar has for repeating a way: take `item` again and again while it matches,
+    and stop where it does not. What it took is the longest run and there is no shorter one — a continuation that fails
+    fails the run, rather than sending it back for fewer turns. `least` is the whole of the difference between the two
+    repetitions the vendored notation writes: `(***)` is a run of none or more and `(+++)` a run that must take one, and
+    neither is the other with something around it.
+
+    A run over a character class is a `ConsumeSpan` instead — the same operation, said as the scan a parser makes of it.
+    """
+
+    item: object
+    least: int
+
+    def references(self):
+        return _refs(self.item)
+
+
+@dataclass(frozen=True)
 class Opt:
     """`(???)`: optional (zero or one)."""
 
@@ -1129,6 +1150,7 @@ NOT_ONE_CHAR = (
     Len,
     Lit,
     LiteralPeek,
+    LongestRun,
     Look,
     LookBehind,
     Lt,
@@ -1160,6 +1182,48 @@ NOT_ONE_CHAR = (
     TrimStar,
     Wrap,
 )
+
+# Every kind there is. `NOT_ONE_CHAR` names all but the eight `is_one_char` answers for on their own terms, so the two
+# between them are the whole of it — and a kind added to neither raises there before it can reach anything here. What
+# reads it is every net that has to tell "a kind I know, which is not this" from "a kind nobody has named".
+KINDS = NOT_ONE_CHAR + (Alt, Case, Char, CharSet, Diff, Invalid, Range, Ref)
+
+# The kinds that take characters themselves, rather than through whatever they hold. What a walk of a node's children
+# must not descend into, on pain of counting the same characters twice or of counting a peek's set as a match. In
+# alphabetical order.
+CONSUMING = (
+    Char,
+    CharSet,
+    ConsumeChar,
+    ConsumeCountedSpan,
+    ConsumeLiteral,
+    ConsumePeeked,
+    ConsumeSpan,
+    ConsumeTrimmedSpan,
+    Diff,
+    Invalid,
+    Range,
+)
+
+
+def repeated(node):
+    """
+    What `node` takes again and again, and `None` where it takes nothing more than once.
+
+    A run said as the scan a parser makes of it repeats nothing here: the scan is what a repetition of a character class
+    is *for*, so counting it as one would make the shape it is lowered to the fault it was lowered to fix. Every other
+    kind is named and one named nowhere raises, rather than being read as something that does not repeat — a repetition
+    this had not heard of would go unseen, which is what `is_one_char` answering `False` by default did.
+    """
+    if isinstance(node, TrimStar):
+        return node.full
+    if isinstance(node, (LongestRun, Plus, Rep, Star)):
+        return node.item
+    if isinstance(node, (ConsumeSpan, ConsumeCountedSpan, ConsumeTrimmedSpan)):
+        return None  # a run already said as its scan
+    if isinstance(node, KINDS):
+        return None
+    raise TypeError(f"cannot tell whether {type(node).__name__} repeats anything")
 
 
 def rebuilt(node, visit):

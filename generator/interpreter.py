@@ -553,6 +553,35 @@ def _repeat(item, emitter, grammar, k):
     return False
 
 
+def _longest_run(item, least, emitter, grammar, k):
+    """
+    Match the longest run of `item`, then the continuation — matching where the run took at least `least` turns.
+
+    The one repetition the grammar has, and `least` is the whole of the difference between its two spellings: a run of
+    none or more falls through to the continuation where nothing matched, and one that must take a turn refuses there.
+    What it took is the longest run and there is no shorter one to fall back to — a continuation that fails fails the
+    run, the way a failed match anywhere leaves the position untouched.
+
+    A run of none or more over a character class is the same thing said as a scan — single-outcome by construction, so
+    it is taken whole and judged whole with no turn of its own to give back. A zero-width turn cannot repeat without
+    looping, so it is taken once and no more.
+    """
+    if least == 0 and ir.is_one_char(item, grammar):
+        return _repeat(item, emitter, grammar, k)
+    checkpoint = emitter.checkpoint()
+    before = emitter.position
+
+    def after_first():
+        if emitter.position == before:
+            return k()  # a zero-width turn: kept once, since repeating it would never end
+        return _repeat(item, emitter, grammar, k)
+
+    if match(item, emitter, grammar, after_first):
+        return True
+    emitter.rewind(checkpoint)
+    return k() if least == 0 else False
+
+
 def _is_forbidden_here(emitter, grammar):
     """
     Whether an in-scope `(exclude)` guard matches at a start of line here — where content must not begin.
@@ -835,39 +864,12 @@ def match(node, emitter, grammar, k):
         return _repeat(node.set, emitter, grammar, k)
     if isinstance(node, ir.ConsumeTrimmedSpan):  # a `TrimStar`, as the canonical form spells it
         return match(ir.TrimStar(node.full, node.trim), emitter, grammar, k)
+    if isinstance(node, ir.LongestRun):
+        return _longest_run(node.item, node.least, emitter, grammar, k)
     if isinstance(node, ir.Star):
-        if ir.is_one_char(node.item, grammar):
-            return _repeat(node.item, emitter, grammar, k)  # a scan: the maximal run, taken whole and judged whole
-        # A run over a way is a choice, not a scan: the maximal run, or none at all, and no count between them. Each
-        # turn is taken whole, so a failed one gives back its own attempt and the run stops there; where the
-        # continuation fails the whole run is given back and the empty way tried instead. Which is what `x+ | <empty>`
-        # offers, so writing it that way is the same parse, and what decides between the two is the character the run
-        # begins with.
-        checkpoint = emitter.checkpoint()
-        before = emitter.position
-
-        def after_first():
-            if emitter.position == before:
-                return k()  # a zero-width turn: kept once, since repeating it would never end
-            return _repeat(node.item, emitter, grammar, k)
-
-        if match(node.item, emitter, grammar, after_first):
-            return True
-        emitter.rewind(checkpoint)
-        return k()
+        return _longest_run(node.item, 0, emitter, grammar, k)
     if isinstance(node, ir.Plus):
-        checkpoint = emitter.checkpoint()
-        before = emitter.position
-
-        def after_first():
-            if emitter.position == before:
-                return k()
-            return _repeat(node.item, emitter, grammar, k)
-
-        if match(node.item, emitter, grammar, after_first):
-            return True
-        emitter.rewind(checkpoint)
-        return False
+        return _longest_run(node.item, 1, emitter, grammar, k)
     if isinstance(node, ir.TrimStar):
         # A maximal run of `full`, its trailing `trim` characters given back: consume greedily, remembering where the
         # last character that was not `trim` ended, then rewind to it. Possessive, as its char-class guards make it —

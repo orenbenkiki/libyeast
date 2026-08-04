@@ -27,7 +27,9 @@ def denote(grammar, node, seen=()):
     """
     The set of codepoints `node` denotes, or None if `node` is not a pure character node.
 
-    A token annotation says what the characters are called, not which they are, so it is looked straight through.
+    A token annotation says what the characters are called, not which they are, so it is looked straight through. A kind
+    named nowhere raises rather than denoting nothing: "no set" and "no answer" are different, and read as the first the
+    second would leave a character class unlowered and unseen.
     """
     if isinstance(node, (ir.Token, ir.Wrap)):
         return denote(grammar, node.item, seen)
@@ -76,7 +78,9 @@ def denote(grammar, node, seen=()):
                 return None
             parts.append(part)
         return None if not parts else parts[0] if len(parts) == 1 else ("union", tuple(parts))
-    return None
+    if isinstance(node, ir.KINDS):
+        return None  # a kind that is no character node: `None` is the answer, not the absence of one
+    raise TypeError(f"cannot tell what characters {type(node).__name__} denotes")
 
 
 def does_contain(denotation, codepoint):
