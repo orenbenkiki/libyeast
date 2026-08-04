@@ -228,10 +228,43 @@ The phases, each established and then enforced:
 | 3     | `no-m-parameter`                                 | the auto-detected indent, one value for the parse                    |
 | 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack  |
 | 5     | `only-root-empties`                              | every empty match but the ones a parse enters by name                |
-| later | to be chosen                                     | the spans, the canonical shape, the decisions                        |
+| 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`     | every scope that holds what it covers, for the pair that brackets it |
+| later | to be chosen                                     | the calls, the decisions                                             |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
+
+**Phase 6, the wrappers.** A scope that holds what it covers has no place in an alternative:
+`gate  actions…  [P1 actions…]  [P2]` has somewhere for an action to stand and nowhere for a node to enclose a call. A
+`(token)` around a call is an action that must run where the call returns, which is the continuation — so the wrappers
+come off before a sequence is split into a call and a continuation, or they come off twice.
+
+The phase is four invariants, one per kind, each settled by the step that takes that kind off — there is no fifth naming
+their sum, a phase being what its steps establish between them. Every pair is already implemented in the interpreter
+independently of the wrapper it stands for, so each rewrite is an identity the interpreter states rather than one the
+step argues:
+
+| step            | invariant         | at  | rewrite                                              | what changes                                           |
+| --------------- | ----------------- | --- | ---------------------------------------------------- | ------------------------------------------------------ |
+| `lower-wraps`   | `no-wrap-nodes`   | 150 | `Wrap(b, e, x)` to `Emit(b) x Emit(e)`               | nothing; the node is sugar for the two markers         |
+| `lower-windows` | `no-max-nodes`    | 3   | `Max(l, m, x)` to `OpenWindow(l, m) x CloseWindow()` | the outermost-only rule becomes a depth count          |
+| `lower-commits` | `no-commit-nodes` | 47  | `Commit(m, x)` to `PushMessage(m) x PopMessage()`    | the region a failed cut answers for moves to the stack |
+| `lower-tokens`  | `no-token-nodes`  | 343 | `Token(c, x)` to `PushCode(c) x PopCode()`           | the displaced code moves off the frame onto the stack  |
+
+In that order: smallest and least stateful first, so what the last one moves is the only thing left to look at.
+
+`Recover` is not one of these and stays. It is a handler rather than a scope — the item, and on a cut the recovery at
+wherever the abandoned parse stopped — so it has no close whose position means anything. Its home is the alternative's
+edge, which `Alternative.recover` already carries, so it belongs to the phase that makes the alternatives.
+
+**What the phase gives up, and what has to replace it.** A wrapper is paired *by construction* — `ir.Wrap` says that is
+why it is a node at all, so that a `begin` cannot lose its `end`. Unwrapping trades that for a property that has to be
+checked, and unchecked it is traded for nothing. So the phase opens by writing that check and reading it, before any
+wrapper comes off: **every scope opened on a way is closed on that way**, over the pairs the grammar already carries —
+the indent pair among them, which nothing checks this way today — and each of the four steps holds it at none, as
+`lower-runs` holds the recursion guard. It settles nothing, being already true; it is what the four are held to.
+`check_markers` proves the `begin`/`end` balance of the grammar as authored and does not follow the pipeline, so it
+answers for none of this.
 
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:
