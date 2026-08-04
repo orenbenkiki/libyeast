@@ -132,7 +132,10 @@ build-debug/.build: build-debug/.cfg $(BUILD_DEPS)
 	@touch $@
 # On Linux, ASAN_TEST_ENV turns on LeakSanitizer: it runs at each forked test's exit, so a leak fails the exact test
 # that caused it. Apple clang has no LeakSanitizer (ASAN_TEST_ENV is empty there); the Release run leak-checks instead.
-build-debug/.test: build-debug/.build
+# The fixtures are an input to the tests, not only to the generator gates: `emitter_reconstructs_fixtures` replays each
+# one's tokens and requires the bytes back. Without them here a new fixture never re-runs these, and one whose tokens do
+# not span its input stays green until something else rebuilds.
+build-debug/.test: build-debug/.build $(FIXTURES)
 	$(ASAN_TEST_ENV) ctest --test-dir build-debug --output-on-failure
 	@touch $@
 
@@ -146,7 +149,7 @@ build-release/.build: build-release/.cfg $(BUILD_DEPS)
 # ctest runs the tests for correctness; the LEAK_CHECK line then leak-checks. On macOS that runs the (non-ASan) Release
 # binary through the `leaks` tool single-process (`--no-exec`), since `leaks` cannot inspect the ASan Debug binary. On
 # Linux LEAK_CHECK is a no-op — LeakSanitizer already covered leaks in the Debug run.
-build-release/.test: build-release/.build
+build-release/.test: build-release/.build $(FIXTURES)
 	ctest --test-dir build-release --output-on-failure
 	$(LEAK_CHECK) build-release/test_c --no-exec
 	@touch $@
