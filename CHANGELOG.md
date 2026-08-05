@@ -436,6 +436,27 @@ All notable changes to this project are documented here. The format follows
   line start rather than a question about what follows one. It lands where the block-structure work makes a line start a
   decision the grammar spells.
 
+  Phase 8 is the call. An edge of the machine is one push and one jump — the push says where to come back to, the jump
+  goes — so a way is what it does before it hands control on, the call it hands it to, and the one production that
+  carries on: `a P1 b P2 c` is `a`, the call `P1`, and a production holding `b P2 c`, which splits the same way until
+  nothing stands past a call. `a-way-is-actions-a-call-and-a-continuation` reads 227, being 189 ways that go on doing
+  things past their call and 38 that hand control on more than twice, and `mint-continuations` settles it, 528
+  productions becoming 740. Binarization is no step of its own: the one way with three calls falls out with the rest.
+
+  What that breaks is the scope net's reading, not the pairs it proves. `every-scope-closes-on-its-own-way` was a
+  per-way rule, and a way that hands control on is half of a path: `s-indent-le_reads` keeps its `PushCode` while its
+  `PopCode` rides into the continuation, which is exactly the cut phase 6 moved the pairs onto the parse's own stack
+  for. So the invariant is re-derived rather than lapsed — `every-scope-closes-on-the-path-that-opens-it` — and reads
+  none at every stage, before the split and after it.
+
+  Working it out took one thing, and it is what the machine runs on: a way's calls are not alike. The call it carries on
+  at is the rest of the same path, so what that production takes off is what this way left open, and what it leaves is
+  left for the caller. A call the way comes back from must come back **level**, the continuation waiting behind it
+  belonging to the caller and not to the callee — and that is the net's sharpest refusal. Read through both alike the
+  answer never settles: a pair of productions calling each other has no least one, and the rounds swap two of them for
+  ever, which is what a first cut did over 128 productions. Followed along the carrying-on calls alone it settles in
+  eight.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving

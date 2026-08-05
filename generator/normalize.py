@@ -1398,25 +1398,111 @@ def _scope_effect(node, grammar, faults, owner):
     raise TypeError(f"cannot tell what scopes {type(node).__name__} opens or closes")
 
 
+def _scope_walk(items, owner, signature, faults):
+    """
+    What one way does to the stack, as `(taken, left)` — the scopes it takes off that it did not open, and the ones it
+    opens and leaves standing for whatever the parse does next.
+
+    A way's calls are not alike. The one it carries on at — the last, a way returning exactly where it does — is the
+    rest of the same path, so what it takes off is what this way left open and what it leaves is left for the caller.
+    Any call before it is one the way comes back from, so it must come back level: what it opened it closed, since the
+    continuation waiting behind it is this way's and not the callee's.
+    """
+    taken, left = [], []
+    calls = [item for item in items if isinstance(item, ir.Ref)]
+    carries_on = calls[-1] if calls else None
+
+    def close(kind):
+        if not left:
+            taken.append(kind)  # what the parse that reached here left open, which this takes off
+        elif left[-1] is kind:
+            left.pop()
+        else:
+            faults.append(f"{owner}: closes {kind.__name__} where {left[-1].__name__} is what stands open")
+            left.pop()
+
+    for item in items:
+        for opening, closing in _SCOPES:
+            if isinstance(item, opening):
+                left.append(opening)
+            elif isinstance(item, closing):
+                close(opening)
+        if isinstance(item, ir.Ref):
+            called_taken, called_left = signature[item.name]
+            if item is not carries_on:
+                if (called_taken, called_left) != ((), ()):
+                    faults.append(f"{owner}: comes back from {item.name}, which does not come back level")
+                continue
+            for kind in called_taken:
+                close(kind)
+            left.extend(called_left)
+    return tuple(taken), tuple(left)
+
+
+def _scope_signature(grammar):
+    """
+    What each production does to the stack, as `{name: (taken, left)}`.
+
+    A least fixpoint, since what a way leaves includes what it carries on at: every production starts at "nothing either
+    way" and the walk runs until the answers stop moving, so a continuation that reaches itself settles at nothing. It
+    moves along the carrying-on calls alone — a call a way comes back from is held to level rather than followed — which
+    is what makes it settle at all: read through both, a pair of productions calling each other has no least answer and
+    the rounds swap two of them for ever.
+    """
+    signature = {name: ((), ()) for name in grammar}
+    for _round in range(len(grammar) + 1):
+        moved = False
+        for name, production in grammar.items():
+            answers = _scope_answers(grammar, name, production, signature, [])
+            answer = answers[0] if answers else ((), ())
+            if signature[name] != answer:
+                signature[name], moved = answer, True
+        if not moved:
+            return signature
+    raise AssertionError("what the productions leave on the stack never settled")
+
+
+def _scope_answers(grammar, name, production, signature, faults):
+    """
+    What each way of `production` does to the stack. A recovery answers for none of it: it runs where the abandoned
+    parse stopped, with what that parse left open already put back.
+    """
+    body = production.body
+    opened = _way_items(body.item if isinstance(body, ir.Recover) else body)
+    return [_scope_walk(items, name, signature, faults) for items in opened]
+
+
 def _unclosed_scopes(grammar):
     """
-    Ways that leave a scope open, close one they never opened, or disagree with the way beside them about which.
+    Scopes no path closes, and closes with nothing standing open to take.
 
     What a wrapper guarantees by holding what it covers, a pair has to be held to instead: `ir.Wrap` is a node rather
-    than the two markers it stands for precisely so a `begin` cannot lose its `end`. Read before a wrapper comes off,
-    this says none — and every step that takes one off is held to keeping it there.
+    than the two markers it stands for precisely so a `begin` cannot lose its `end`. The pair is held to closing on the
+    *path* rather than on the way, a way that hands control on being half of one — a `PushCode` before the call and its
+    `PopCode` in the continuation are the same pair, meeting on the parse's own stack, which is what phase 6 moved them
+    there for.
+
+    What is refused: a call a way comes back from that does not come back level, a run whose turn leaves a scope open
+    that another turn would open again, ways of one choice that leave different scopes open where a caller cannot tell
+    which was taken, a close of a scope other than the one standing open, and a production a parse enters by name that
+    leaves one open or takes one off that nothing opened.
     """
+    signature = _scope_signature(grammar)
     faults = []
     for name, production in grammar.items():
-        closed, opened = _scope_effect(production.body, grammar, faults, name)
-        for kind in opened:
-            faults.append(f"{name}: opens {kind.__name__} and does not close it")
-        for kind in closed:
-            faults.append(f"{name}: closes {kind.__name__} where nothing opened one")
+        answers = _scope_answers(grammar, name, production, signature, faults)
+        if len(set(answers)) > 1:
+            faults.append(f"{name}: ways that leave different scopes open, and a caller cannot tell which")
+        if isinstance(production.body, ir.LongestRun) and answers and answers[0] != ((), ()):
+            faults.append(f"{name}: a run whose turn leaves a scope open, which another turn would open again")
+    for name in entered_by_name(grammar):
+        taken, left = signature[name]
+        faults += [f"{name}: opens {kind.__name__} and no path closes it" for kind in left]
+        faults += [f"{name}: closes {kind.__name__} where nothing opened one" for kind in taken]
     return faults
 
 
-SCOPES_CLOSED = Invariant("every-scope-closes-on-its-own-way", _unclosed_scopes)
+SCOPES_CLOSED = Invariant("every-scope-closes-on-the-path-that-opens-it", _unclosed_scopes)
 
 
 def _replaced(node, swap):
@@ -1903,6 +1989,46 @@ def _wide_exclusions(grammar):
 EXCLUSIONS_ARE_BOUNDED = Invariant("every-exclusion-is-bounded", _wide_exclusions)
 
 
+def _way_items(body):
+    """The ways `body` opens, each as the run of items it is — what phase 7 leaves every body made of."""
+    return tuple(
+        way.items if isinstance(way, ir.Seq) else (way,)
+        for way in (_inner_ways(body) if isinstance(body, _BODY_KINDS) else (body,))
+    )
+
+
+def _crowded_ways(grammar):
+    """
+    Ways holding more than the machine performs in one: actions, a call, and where to carry on when it returns.
+
+    An edge of the machine is one push — the continuation it will come back to — and a jump. So a way is what it does
+    before it hands control on, the call it hands it to, and the one production that carries on: what stands past the
+    first call is that continuation's, and a second call is where to carry on rather than a third thing to do.
+
+    Counted by the way rather than by the item standing in the wrong place, since a way is what the minting rewrites and
+    what is left of one after the split is a way of its own with the same question asked of it.
+    """
+    faults = []
+    for name, production in grammar.items():
+        for items in _way_items(production.body):
+            calls = 0
+            for item in items:
+                if isinstance(item, ir.Ref):
+                    calls += 1
+                elif calls:
+                    faults.append(f"{name}: a way goes on doing things past the call it hands control to")
+                    break
+            else:
+                if calls > 2:
+                    faults.append(
+                        f"{name}: a way hands control on more than twice, where an edge is one push and a jump"
+                    )
+    return faults
+
+
+WAYS_ARE_CALL_AND_CONTINUATION = Invariant("a-way-is-actions-a-call-and-a-continuation", _crowded_ways)
+
+
 def _asked_parts(node, grammar):
     """
     What a question asks, in order — names read through, annotations read off, sequences flattened into one run.
@@ -1971,6 +2097,52 @@ def _as_literal_question(node, grammar):
         return None
     peeks = tuple(ir.LiteralPeek(text=text, then=then, barrier=None) for text in texts)
     return ir.Seq(items=(*guards, peeks[0] if len(peeks) == 1 else ir.Alt(items=peeks)))
+
+
+def mint_continuations(grammar, namer):
+    """
+    Give what a way does past its call a production of its own, so that a way is actions, a call, and where to carry on.
+
+    An edge of the machine is one push and one jump: the push says where to come back to and the jump goes. So what
+    stands past the call belongs to that continuation rather than to the way — spelled out, `a P1 b P2 c` is `a`, the
+    call `P1`, and a production holding `b P2 c`, which splits the same way until nothing is left standing past a call.
+    A way that ends in two calls is already that shape, the second being where to carry on rather than a third thing to
+    do, so nothing is minted for it.
+
+    A scope opened before the call and closed after it comes apart here, and that is what phase 6 was for: the pairs
+    hold on the parse's own stack rather than in the frame of the match that is running, so a `PushCode` left in the way
+    and its `PopCode` carried into the continuation still meet.
+    """
+    minted = {}
+
+    def split(items, owner):
+        for index, item in enumerate(items):
+            if not isinstance(item, ir.Ref):
+                continue
+            rest = items[index + 1 :]
+            if not rest or (len(rest) == 1 and isinstance(rest[0], ir.Ref)):
+                return items
+            name = namer.fresh(owner)
+            carried = split(rest, owner)
+            minted[name] = ir.Prod(
+                grammar[owner].number, name, (), carried[0] if len(carried) == 1 else ir.Seq(items=carried)
+            )
+            return (*items[: index + 1], ir.Ref(name=name, args=()))
+        return items
+
+    def way(node, owner):
+        items = split(node.items if isinstance(node, ir.Seq) else (node,), owner)
+        return items[0] if len(items) == 1 else ir.Seq(items=items)
+
+    def body(node, owner):
+        if isinstance(node, _BODY_KINDS) and not isinstance(node, ir.Seq):
+            return _with_inner_ways(node, lambda opened: way(opened, owner))
+        return way(node, owner)
+
+    split_ways = {
+        name: dataclasses.replace(production, body=body(production.body, name)) for name, production in grammar.items()
+    }
+    return {**split_ways, **minted}
 
 
 def bound_exclusions(grammar, namer):
@@ -2901,4 +3073,17 @@ STEPS = [
     ),
     Step("lower-bind", lower_bind, (ITEMS_ARE_LEAVES, NO_BIND_NODES)),
     Step("bound-exclusions", bound_exclusions, EXCLUSIONS_ARE_BOUNDED, reduces=EXCLUSIONS_ARE_BOUNDED),
+    # Phase 8 is the call: a way does its actions, hands control to one production, and says where to carry on when it
+    # comes back. What stood past the call is what carries on.
+    Step(
+        "mint-continuations",
+        mint_continuations,
+        WAYS_ARE_CALL_AND_CONTINUATION,
+        lapses=dict.fromkeys(
+            ("every-empty-match-is-a-way", "no-call-enters-both-ways", "only-root-empties"),
+            "what a way does past its call is a production of its own, and one carrying actions alone takes no "
+            "character: the canonical form mints those deliberately, a continuation being where the parse carries on "
+            "rather than a choice anything makes",
+        ),
+    ),
 ]

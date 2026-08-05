@@ -162,11 +162,15 @@ the call returns. So each becomes the pair that brackets it, which the interpret
 the wrapper it stands for: a `(wrap)` its two markers, a `(max)` the window pair, a `(commit)` the message pair, and a
 `(token)` the code pair. A `(recover)` is not among them — a handler rather than a scope, with no close whose position
 means anything — and rides the alternative's edge instead. What the wrapper gave by construction — `ir.Wrap` is a node
-rather than its two markers precisely so a `begin` cannot lose its `end` — the pairs are held to instead: a scope opened
-on a way is closed on that way, the ways of a choice agree on what they leave open, and a run's turn leaves none, since
-a second turn would open it again. The markers are not that: a pair of them crosses productions by design, and what
-follows them through the pipeline is owed by the phase that splits a way into a call and a continuation, which is the
-first thing that can put a `begin` in one production and its `end` in another.
+rather than its two markers precisely so a `begin` cannot lose its `end` — the pairs are held to instead: a scope is
+closed on the path that opens it, the ways of a choice agree on what they leave open, and a run's turn leaves none,
+since a second turn would open it again. The path and not the way, once a way hands control on: what stands past a call
+is a production of its own, so a `PushCode` before the call and its `PopCode` in the continuation are one pair meeting
+on the parse's own stack. A way's calls are not alike there — the one it carries on at is the rest of the same path, and
+one it comes back from must come back level, the continuation waiting behind it being the caller's and not the callee's.
+The markers are not that: a pair of them crosses productions by design, and what follows them through the pipeline is
+owed by the phase that splits a way into a call and a continuation, which is the first thing that can put a `begin` in
+one production and its `end` in another.
 
 What a wrapper displaced waited in the frame of the match that was running, where a pair's waits on the parse's own
 state — which is the point, a frame being gone once a way is split into a call and a continuation — so what a frame
