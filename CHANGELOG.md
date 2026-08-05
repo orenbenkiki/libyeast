@@ -326,7 +326,7 @@ All notable changes to this project are documented here. The format follows
   residue holding calls of others; one reaching itself would be a match of nothing at all rather than a match of
   nothing, and the grammar has none.
 
-  The phase leaves 328 productions where it found 333, having gone as wide as 433 in between. No caller now chooses
+  The phase leaves 326 productions where it found 331, having gone as wide as 423 in between. No caller now chooses
   whether to enter something that may take nothing — every empty match is a way of the caller's own, where a character
   can decide it.
 
@@ -374,10 +374,35 @@ All notable changes to this project are documented here. The format follows
   named the regions the moment `lower-commits` landed, and the fixture behind it is a stream whose first implicit key
   overruns and whose second must overrun again.
 
-  The grammar hands on 328 productions with no `(wrap)`, `(max)`, `(commit)` or `(token)` left in it — 343 code pairs,
-  47 message pairs, 3 window pairs, 69 indent pairs and 368 markers, every one closing on the way it opens. The eight
+  The grammar hands on 326 productions with no `(wrap)`, `(max)`, `(commit)` or `(token)` left in it — 343 code pairs,
+  48 message pairs, 3 window pairs, 69 indent pairs and 368 markers, every one closing on the way it opens. The eight
   `(recover)` stay: a recovery is a handler and not a scope, with no close whose position means anything, and its home
   is the edge an alternative rides.
+
+  A choice is where the parse decides, and a machine decides in a state — so phase 7 takes the tree apart, an item
+  standing in a way being what the machine does where it stands. `no-item-holds-a-match` counts what is left of the tree
+  at 578 to begin with: 463 choices, 106 runs, 8 recoveries and one binding, each holding a match inside it where the
+  machine has no state to be in. `lift-choices` settles the first of those, `every-choice-is-a-body` at none: a choice
+  standing inside a way gets a production of its own and the way holds the call. Minting rather than distributing, which
+  is the other way out of a sequence — `a (x | y) b` as `a x b | a y b` runs `a` twice wherever it takes a character or
+  pushes anything, and copies whatever `b` calls; the call costs a push and duplicates nothing. 326 productions become
+  492, the sweep merging what the 463 mintings duplicate, and the phase's own count falls to 91.
+
+  What it costs is phase 5's shape, and the three counts that say so are one fact: a choice between reading and taking
+  nothing, written at the call site because nothing could gate it there, becomes a production a call reaches —
+  `no-call-enters-both-ways` at 269, `only-root-empties` at 114 and `every-empty-match-is-a-way` at 13, each a declared
+  lapse with that reason, and each what the gates answer for when they arrive. The canonical form has nowhere else to
+  put it: `F (X_reads | X_empty)` is a call and then a decision, and a decision after a call is a production.
+
+  And it turned up a cycle nobody had looked at. `no-production-reaches-itself-unconsumed` exempted the stream and the
+  recovery by name, on the reading that a recovery is a landing the driver picks rather than a call the grammar makes —
+  which is false under a resuming policy: `l-recover` is `l-unparsed` and then the stream again, mutually recursive by
+  design so that a resumed document can fail again without a second mechanism. A production minted out of the stream's
+  own body lands on that cycle and inherited no exemption. What holds the pair is `l-unparsed`: it takes nothing only
+  where the next line is a document boundary or the input has ended, and there the stream consumes the `---` or `...`
+  itself, or `<end-of-stream>` answers — so a second recovery costs a character. The exemption is the cycle's now rather
+  than a name's, a path through what a parse enters by name being cut before reachability is asked, and what still
+  reaches itself is the grammar's own doing and a fault.
 
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested

@@ -1769,6 +1769,144 @@ _ACTIONS = (
 _GUARDS = (ir.Cut, ir.EndOfStream, ir.Le, ir.Look, ir.LookBehind, ir.Lt, ir.NegLook, ir.StartOfLine)
 
 
+# What an item may be: something the machine does where it stands — a call, an action, a guard, a character taken, or
+# nothing at all. A guard's question is the guard's own business and no item of the way, which is what lets a peek hold
+# a set and an exclusion a bounded literal; `every-peek-is-a-character-set` and `every-exclusion-is-bounded` are what
+# answer for those. In alphabetical order after the families.
+_LEAF_ITEMS = (
+    *_ACTIONS,
+    *_GUARDS,
+    ir.Char,
+    ir.CharSet,
+    ir.ConsumeCountedSpan,
+    ir.ConsumeSpan,
+    ir.Empty,
+    ir.Invalid,
+    ir.Range,
+    ir.Ref,
+)
+
+# What holds a match, and so cannot stand where an item does: the tree the phase takes apart. A choice and a run become
+# productions of their own, a recovery moves to the edge an alternative rides, and a binding becomes an action.
+_HOLDS_A_MATCH = (ir.Alt, ir.Bind, ir.LongestRun, ir.Recover, ir.Seq)
+
+
+def _inner_ways(node):
+    """The matches `node` holds, each a way in its own right — what the walk goes on into once it has counted one."""
+    if isinstance(node, ir.Alt):
+        return node.items
+    if isinstance(node, ir.Seq):
+        return (node,)
+    if isinstance(node, ir.LongestRun):
+        return (node.item,)
+    if isinstance(node, ir.Recover):
+        return (node.item, node.recovery)
+    return (node.cond,)  # a binding, whose condition is the match it puts a value in scope for
+
+
+def _nested_matches(grammar, reported):
+    """
+    Items standing in a way that hold a match — every shape the machine has no single step for.
+
+    The phase's own count, which its steps reduce between them: a body is a choice of ways or a run of one, a way is a
+    run of items, and an item is a call, an action, a guard, a character taken or nothing. Anything else holds a match
+    inside it and has to become a production of its own before a state machine can be read off it. `reported` narrows
+    what is counted to one kind, which is how a step's own invariant reads its share of the phase's through the same
+    walk — the walk goes into every holder either way, so a nested one is found wherever it stands.
+
+    A nested one is counted where it stands rather than only at the outermost, so lifting one takes exactly one off the
+    count and never uncovers a fault that was not already read. A kind named nowhere raises: an item answered for by
+    accident is a shape the machine would meet with no state to be in.
+    """
+    faults = []
+
+    def item(node, owner):
+        if isinstance(node, _LEAF_ITEMS):
+            return
+        if isinstance(node, _HOLDS_A_MATCH):
+            if isinstance(node, reported):
+                faults.append(f"{owner}: a {type(node).__name__} stands where an item does and holds a match")
+            for inner in _inner_ways(node):
+                way(inner, owner)
+            return
+        raise TypeError(f"cannot tell whether {type(node).__name__} is an item the machine runs where it stands")
+
+    def way(node, owner):
+        for part in node.items if isinstance(node, ir.Seq) else (node,):
+            item(part, owner)
+
+    for name, production in grammar.items():
+        body = production.body
+        for opened in (
+            body.items if isinstance(body, ir.Alt) else (body.item if isinstance(body, ir.LongestRun) else body,)
+        ):
+            way(opened, name)
+    return faults
+
+
+ITEMS_ARE_LEAVES = Invariant("no-item-holds-a-match", lambda grammar: _nested_matches(grammar, _HOLDS_A_MATCH))
+
+# The phase's first share: a choice is where the machine has a state, and standing inside a way it has nowhere to be
+# one. Its own production is that state, and the way holds the call.
+CHOICES_ARE_BODIES = Invariant("every-choice-is-a-body", lambda grammar: _nested_matches(grammar, ir.Alt))
+
+
+def _with_inner_ways(node, rebuilt):
+    """`node` with each match it holds replaced by `rebuilt` of it — the transform's mirror of `_inner_ways`."""
+    if isinstance(node, ir.Alt):
+        return dataclasses.replace(node, items=tuple(rebuilt(way) for way in node.items))
+    if isinstance(node, ir.Seq):
+        return rebuilt(node)
+    if isinstance(node, ir.LongestRun):
+        return dataclasses.replace(node, item=rebuilt(node.item))
+    if isinstance(node, ir.Recover):
+        return dataclasses.replace(node, item=rebuilt(node.item), recovery=rebuilt(node.recovery))
+    if isinstance(node, ir.Bind):
+        return dataclasses.replace(node, cond=rebuilt(node.cond))  # the condition is the match it binds a value for
+    raise TypeError(f"cannot tell which matches {type(node).__name__} holds")
+
+
+def lift_choices(grammar, namer):
+    """
+    Give every choice standing inside a way a production of its own, and leave the call where it stood.
+
+    A choice is where the parse decides, and a machine decides in a state: standing in the middle of a way it has
+    nowhere to be one, since the state is the production and what a way holds is what runs inside it. Minted out, the
+    choice is a state a call reaches and comes back from, and the way holds an item like any other.
+
+    Minting rather than distributing, which is the other way to take a choice out of a sequence: `a (x | y) b` as `a x b
+    | a y b` runs `a` twice wherever it takes a character or pushes anything, and a copy of `b` per way is a copy of
+    whatever `b` calls. The call costs a push and duplicates nothing.
+    """
+    minted = {}
+
+    def item(node, owner):
+        if isinstance(node, _LEAF_ITEMS):
+            return node
+        if isinstance(node, ir.Alt):
+            name = namer.fresh(owner)
+            minted[name] = ir.Prod(
+                grammar[owner].number, name, (), _with_inner_ways(node, lambda way: rebuilt(way, owner))
+            )
+            return ir.Ref(name=name, args=())
+        return _with_inner_ways(node, lambda way: rebuilt(way, owner))
+
+    def rebuilt(node, owner):
+        if isinstance(node, ir.Seq):
+            return dataclasses.replace(node, items=tuple(item(part, owner) for part in node.items))
+        return item(node, owner)
+
+    def body(node, owner):
+        if isinstance(node, (ir.Alt, ir.LongestRun)):
+            return _with_inner_ways(node, lambda way: rebuilt(way, owner))
+        return rebuilt(node, owner)
+
+    lifted = {
+        name: dataclasses.replace(production, body=body(production.body, name)) for name, production in grammar.items()
+    }
+    return {**lifted, **minted}
+
+
 def _is_actions_alone(node, grammar, seen=frozenset()):
     """
     Whether `node` is built of actions alone — a way that takes no character and matches wherever it is reached.
@@ -2269,13 +2407,24 @@ def _unconsumed_cycles(grammar):
     way to notice it is where it already was: a production reaching itself at the same position runs for ever. Nothing
     absorbs it the way an LR construction would, which is why this is a fault and not a shape to handle.
 
-    The root and the recovery reach each other this way and are exempt, being what a parse enters by name. The recovery
-    is a landing the driver picks after a cut rather than a call the grammar makes, and it is entered only where the
-    parse has moved on — which `interpreter.run` refuses to go round on, saying so where a recovery consumed nothing.
+    One cycle is the grammar's own and is exempt: the stream and the recovery are mutually recursive by design under a
+    resuming policy — `l-recover` is `l-unparsed` and then the stream again, which is what lets a resumed document fail
+    again without a second mechanism for it. It terminates because the only way round it is through an `l-unparsed` that
+    takes nothing, and that happens where the next line is a document boundary or the input has ended: at a boundary the
+    stream consumes the `---` or `...` itself, and at the end `<end-of-stream>` answers. So a second recovery costs a
+    character, and the pair cannot go round without one.
+
+    The exemption is the cycle's rather than a name's, since anything minted out of a body on it stands on it too: a
+    path through what a parse enters by name is cut, and what still reaches itself is a cycle of the grammar's own
+    making and a fault. Under `r=n` there is no such cycle at all, the recovery bringing back the unparsed text and
+    stopping.
     """
     ways = _split_ways(grammar)
     entered = entered_by_name(grammar)
-    edges = {name: _entered_unconsumed(production.body, grammar, ways) for name, production in grammar.items()}
+    edges = {
+        name: {reached for reached in _entered_unconsumed(production.body, grammar, ways) if reached not in entered}
+        for name, production in grammar.items()
+    }
     reach = dict(edges)
     while True:
         grown = {name: held | {far for near in held for far in edges.get(near, ())} for name, held in reach.items()}
@@ -2285,7 +2434,7 @@ def _unconsumed_cycles(grammar):
     return [
         f"{name}: reaches itself with nothing taken, and a parse that arrives there cannot go on"
         for name in grammar
-        if name not in entered and name in reach[name]
+        if name in reach[name]
     ]
 
 
@@ -2538,4 +2687,19 @@ STEPS = [
     Step("lower-windows", lower_windows, (NO_MAX_NODES, SCOPES_CLOSED)),
     Step("lower-commits", lower_commits, (NO_COMMIT_NODES, SCOPES_CLOSED)),
     Step("lower-tokens", lower_tokens, (NO_TOKEN_NODES, SCOPES_CLOSED)),
+    # Phase 7 takes the tree apart: an item standing in a way is something the machine does where it stands, and every
+    # shape holding a match inside it becomes a production of its own. The steps reduce `no-item-holds-a-match` between
+    # them, each settling its own share of it.
+    Step(
+        "lift-choices",
+        lift_choices,
+        (ITEMS_ARE_LEAVES, CHOICES_ARE_BODIES),
+        reduces=ITEMS_ARE_LEAVES,
+        lapses=dict.fromkeys(
+            ("every-empty-match-is-a-way", "no-call-enters-both-ways", "only-root-empties"),
+            "a choice between reading and taking nothing becomes a production where it is a state, and a call reaches "
+            "it: what phase 5 wrote at the call site because nothing could gate it there, the gates answer for where "
+            "it now stands",
+        ),
+    ),
 ]
