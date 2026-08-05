@@ -231,7 +231,7 @@ The phases, each established and then enforced:
 | 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`     | every scope that holds what it covers, for the pair that brackets it                            |
 | 7     | `no-item-holds-a-match`                          | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
 | 8     | `a-way-is-actions-a-call-and-a-continuation`     | everything a way holds past its first call                                                      |
-| 9     | `every-body-is-a-choice-of-alternatives`         | the tree's own spelling, for the machine's                                                      |
+| 9     | `every-body-is-a-choice-a-run-or-a-set`          | the tree's own spelling, for the machine's                                                      |
 | 10    | `every-way-gated`                                | every way entered on no character, and the meter arrives to say how many                        |
 | later | `every-decision-goes-on-a-character`             | the backtracking, and the calls written out behind it                                           |
 
@@ -273,12 +273,12 @@ and its number would not be comparable to the one that matters.
 
 It is four phases rather than one, each a goal its steps establish between them:
 
-| phase | goal                                                                        | what is left of it                                        |
-| ----- | --------------------------------------------------------------------------- | --------------------------------------------------------- |
-| 7     | an item standing in a way is what the machine does where it stands          | 3 exclusions, owed to the block structure                 |
-| 8     | a way is actions, a call and a continuation, and nothing follows the second | `mint-continuations`, 151 ways with something past a call |
-| 9     | a body is a choice of alternatives, in the canonical form's own spelling    | `build-alternatives`, the re-encode                       |
-| 10    | every way is entered on a character, and the meter says how many are not    | `gate-hoist`, and the meter with it                       |
+| phase | goal                                                                        | what is left of it                        |
+| ----- | --------------------------------------------------------------------------- | ----------------------------------------- |
+| 7     | an item standing in a way is what the machine does where it stands          | 3 exclusions, owed to the block structure |
+| 8     | a way is actions, a call and a continuation, and nothing follows the second | landed                                    |
+| 9     | a body is a set, a run of a call, or a choice of alternatives               | landed                                    |
+| 10    | every way is entered on a character, and the meter says how many are not    | `gate-hoist`, and the meter with it       |
 
 Binarization is no step of its own: one way in the grammar has three calls, and `mint-continuations` takes it with the
 rest. The re-encode is late rather than first so that every step above it stays in the vocabulary the sweep, the

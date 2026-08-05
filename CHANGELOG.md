@@ -457,6 +457,27 @@ All notable changes to this project are documented here. The format follows
   ever, which is what a first cut did over 128 productions. Followed along the carrying-on calls alone it settles in
   eight.
 
+  Phase 9 says every body in the machine's own words, and `every-body-is-a-choice-a-run-or-a-set` reads 697. A terminal
+  is a set of characters. A loop is a run over a call — the state it jumps back to the top of, which says nothing about
+  when it stops, that being a character's to decide — so `call-run-turns` gives the twelve turns spelt out in place a
+  production to be, `every-run-turns-on-a-call` at none. Everything else is an ordered list of alternatives, each a gate
+  to enter on, the actions it performs, the call it hands control to, where it carries on when that returns, and the
+  recovery riding the push: `build-alternatives` writes the remaining 685 bodies that way, over 752 productions.
+
+  It is a change of spelling and not of meaning, and two things say so. The interpreter already ran the canonical form —
+  an alternative as the sequence the tree spelt, the gate's peek as a lookahead, the recovery as the `(recover)` scope
+  over the call it protects — so nothing had to be taught how to execute one. And the gates are left empty: what a way
+  is entered on is a question about the character in front of it, which is the hoist's to answer, and until then the
+  alternatives are tried in order, which is what the tree said too.
+
+  What did have to be taught is every reading that walks a body, and each refused rather than guessing: the flatness
+  count, the nullability, the split saying which ways a production has, the left corner the cycle check walks. A choice
+  says its ways as `alternatives` where it is the machine's and as `items` where it is the tree's, and an alternative
+  says its parts by name where a sequence says them in a row — so one reading of each says both and the walks ask it.
+  The one that bit was an `Alt` reaching the helper written for the machine's spelling and getting itself back as its
+  own only way, which is a walk that never ends rather than an answer that is wrong. The per-way scope walk went with
+  the rewrite, 85 lines of it, the path check having replaced what it read.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving

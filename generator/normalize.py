@@ -1305,97 +1305,14 @@ def _unpushed_indents(grammar):
 INDENTS_PUSHED = Invariant("every-indentation-change-is-pushed", _unpushed_indents)
 
 
-# The scopes a way opens and closes: an action, and the one that takes it back. Both halves belong to one way of one
-# production — what a push displaces is on the parse's own stack and a pop takes back whatever is on top, so a pair cut
-# across a call would take back what another way had put there. In alphabetical order by the opening action. What a
-# production may hold instead of a matcher: a value the caller reads, `seq-spaces`' choice of indentation among them. It
-# matches nothing, so it opens and closes nothing. In alphabetical order.
-_VALUE_KINDS = (
-    ir.Add,
-    ir.Atoi,
-    ir.AutoDetectIndent,
-    ir.Column,
-    ir.Global,
-    ir.Indent,
-    ir.Len,
-    ir.Lit,
-    ir.Match,
-    ir.Param,
-    ir.Sub,
-)
-
+# The scopes a pair opens and closes: an action, and the one that takes it back. In alphabetical order by the opening
+# action.
 _SCOPES = (
     (ir.OpenWindow, ir.CloseWindow),
     (ir.PushCode, ir.PopCode),
     (ir.PushIndent, ir.PopIndent),
     (ir.PushMessage, ir.PopMessage),
 )
-
-
-def _scope_effect(node, grammar, faults, owner):
-    """
-    What `node` leaves of the scopes it touches, as `(closed, opened)` — the ones it closes without having opened them,
-    and the ones it opens and does not close. `(), ()` is a way that leaves the stack as it found it.
-
-    A choice's ways must agree, since what a caller sees cannot depend on which way was taken; a run's item must leave
-    nothing, an open taken twice round stacking up; and a lookaround is probed and given back, so what is inside one
-    touches nothing. A call is nothing here either — every production's body is held to leaving nothing, so a reference
-    is a scope-neutral thing and the caller need not know which.
-    """
-    if isinstance(node, ir.Recover):
-        # A recovery closes what the abandoned item left open, down to this point, so the two ways come out level.
-        return _scope_effect(node.item, grammar, faults, owner)
-    for opening, closing in _SCOPES:
-        if isinstance(node, opening):
-            return (), (opening,)
-        if isinstance(node, closing):
-            return (opening,), ()
-    if isinstance(node, ir.Seq):
-        closed, opened = (), ()
-        for item in node.items:
-            shut, left = _scope_effect(item, grammar, faults, owner)
-            for kind in shut:
-                if opened and opened[-1] is kind:
-                    opened = opened[:-1]
-                elif opened:
-                    faults.append(f"{owner}: closes {kind.__name__} where {opened[-1].__name__} is what stands open")
-                    opened = opened[:-1]
-                else:
-                    closed += (kind,)
-            opened += left
-        return closed, opened
-    if isinstance(node, (ir.Alt, ir.Case, ir.Opt)):
-        ways = (
-            node.items
-            if isinstance(node, ir.Alt)
-            else (
-                (node.item, ir.Empty())
-                if isinstance(node, ir.Opt)
-                else tuple(branch.item for branch in node.branches)
-                + ((node.default,) if node.default is not None else ())
-            )
-        )
-        effects = {_scope_effect(way, grammar, faults, owner) for way in ways}
-        if len(effects) > 1:
-            faults.append(f"{owner}: a choice whose ways leave different scopes open, and a caller cannot tell which")
-        return next(iter(effects)) if effects else ((), ())
-    if isinstance(node, (ir.Star, ir.Plus, ir.LongestRun, ir.Rep)):
-        if _scope_effect(node.item, grammar, faults, owner) != ((), ()):
-            faults.append(f"{owner}: a run whose turn leaves a scope open, which another turn would open again")
-        return (), ()
-    if isinstance(node, (ir.Token, ir.Wrap, ir.Max, ir.Commit)):
-        return ((), ()) if node.item is None else _scope_effect(node.item, grammar, faults, owner)
-    if isinstance(node, ir.Bind):
-        return _scope_effect(node.cond, grammar, faults, owner)
-    if isinstance(node, (ir.TrimStar, ir.ConsumeTrimmedSpan)):
-        return (), ()  # a scan of character classes, which holds no action to open anything with
-    if isinstance(node, (*_VALUE_KINDS, ir.Flip)):
-        return (), ()  # a value the parse works out, which matches nothing and so opens nothing
-    if isinstance(node, (*_ALWAYS_READS, *_GUARDS, ir.ConsumeSpan, ir.ConsumeCountedSpan, ir.Empty, ir.Ref)):
-        return (), ()  # a character question, a guard probed and given back, or a call held to leaving nothing
-    if isinstance(node, _ACTIONS):
-        return (), ()  # an action that opens no scope of its own
-    raise TypeError(f"cannot tell what scopes {type(node).__name__} opens or closes")
 
 
 def _scope_walk(items, owner, signature, faults):
@@ -1879,11 +1796,13 @@ _HOLDS_A_MATCH = (ir.Alt, ir.Bind, ir.LongestRun, ir.Recover, ir.Seq)
 # What a production's body may be, each a state the machine has: a choice of ways, a run of one, a way under a handler,
 # or a way. A binding is not among them — a body that is one hides a write behind a match, which `no-bind-nodes` counts
 # wherever it stands.
-_BODY_KINDS = (ir.Alt, ir.LongestRun, ir.Recover, ir.Seq)
+_BODY_KINDS = (ir.Alt, ir.Choice, ir.LongestRun, ir.Recover, ir.Seq)
 
 
 def _inner_ways(node):
     """The matches `node` holds, each a way in its own right — what the walk goes on into once it has counted one."""
+    if isinstance(node, ir.Choice):
+        return node.alternatives
     if isinstance(node, ir.Alt):
         return node.items
     if isinstance(node, ir.Seq):
@@ -1923,7 +1842,7 @@ def _nested_matches(grammar, reported):
         raise TypeError(f"cannot tell whether {type(node).__name__} is an item the machine runs where it stands")
 
     def way(node, owner):
-        for part in node.items if isinstance(node, ir.Seq) else (node,):
+        for part in _items_of_way(node):
             item(part, owner)
 
     for name, production in grammar.items():
@@ -1989,12 +1908,34 @@ def _wide_exclusions(grammar):
 EXCLUSIONS_ARE_BOUNDED = Invariant("every-exclusion-is-bounded", _wide_exclusions)
 
 
+def _items_of_way(way):
+    """
+    The items a way is made of, whichever way it is spelt.
+
+    An alternative says its parts by name — what it does, what it calls, where it carries on — where a sequence says
+    them in a row; a reading that walks a way wants them in the order the parse performs them either way. What a
+    recovery rides is not among them: it answers for a cut rather than standing in the way's own run.
+    """
+    if isinstance(way, ir.Alternative):
+        return (*way.actions, *(held for held in (way.first, way.second) if held is not None))
+    return way.items if isinstance(way, ir.Seq) else (way,)
+
+
+def _ways_or_items(node):
+    """
+    The ways a choice offers or the items an alternative performs — what a walk goes into, in either spelling.
+
+    A choice says its ways as `alternatives` where it is the machine's and as `items` where it is the tree's, and an
+    alternative says its parts by name where a sequence says them in a row.
+    """
+    if isinstance(node, ir.Choice):
+        return node.alternatives
+    return node.items if isinstance(node, ir.Alt) else _items_of_way(node)
+
+
 def _way_items(body):
     """The ways `body` opens, each as the run of items it is — what phase 7 leaves every body made of."""
-    return tuple(
-        way.items if isinstance(way, ir.Seq) else (way,)
-        for way in (_inner_ways(body) if isinstance(body, _BODY_KINDS) else (body,))
-    )
+    return tuple(_items_of_way(way) for way in (_inner_ways(body) if isinstance(body, _BODY_KINDS) else (body,)))
 
 
 def _crowded_ways(grammar):
@@ -2027,6 +1968,57 @@ def _crowded_ways(grammar):
 
 
 WAYS_ARE_CALL_AND_CONTINUATION = Invariant("a-way-is-actions-a-call-and-a-continuation", _crowded_ways)
+
+
+def _untold_bodies(grammar):
+    """
+    Bodies that are not one of the three things the machine has a state for.
+
+    A terminal is a set of characters and nothing else. A loop is a run over a call — the state it jumps back to the top
+    of, which says nothing about when it stops, that being a character's to decide. Everything else is an ordered list
+    of alternatives, each what one way of the machine does: a gate to enter on, the actions it performs, the call it
+    hands control to, where to carry on when that returns, and the recovery riding the push.
+
+    The shape is checked through rather than at the top, since what makes a body canonical is that nothing inside it is
+    the tree again: an alternative's actions hold no call, and what it calls is a name.
+    """
+    faults = []
+    for name, production in grammar.items():
+        body = production.body
+        if isinstance(body, ir.CharSet):
+            continue
+        if isinstance(body, ir.LongestRun):
+            if not isinstance(body.item, ir.Ref):
+                faults.append(f"{name}: a run whose turn is not a call, where the loop has no state to jump to")
+            continue
+        if not isinstance(body, ir.Choice):
+            faults.append(f"{name}: a body that is neither a set, a run of a call, nor a choice of alternatives")
+            continue
+        for alternative in body.alternatives:
+            if not isinstance(alternative, ir.Alternative):
+                faults.append(f"{name}: a choice holding what is not an alternative")
+            elif any(isinstance(action, ir.Ref) for action in alternative.actions):
+                faults.append(f"{name}: an alternative doing a call among its actions")
+            elif any(
+                held is not None and not isinstance(held, ir.Ref) for held in (alternative.first, alternative.second)
+            ):
+                faults.append(f"{name}: an alternative handing control to what is not a name")
+    return faults
+
+
+BODIES_ARE_STATES = Invariant("every-body-is-a-choice-a-run-or-a-set", _untold_bodies)
+
+# What a loop repeats is a state it jumps to, so a run's turn is a call. Its own count rather than a share of the
+# phase's: naming the turn mints a production for it, which is a body of the tree's own shape until the re-encode
+# reaches it, so what the phase counts does not move.
+RUN_TURNS_ARE_CALLS = Invariant(
+    "every-run-turns-on-a-call",
+    lambda grammar: [
+        f"{name}: a run whose turn is not a call, where the loop has no state to jump to"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.LongestRun) and not isinstance(production.body.item, ir.Ref)
+    ],
+)
 
 
 def _asked_parts(node, grammar):
@@ -2143,6 +2135,77 @@ def mint_continuations(grammar, namer):
         name: dataclasses.replace(production, body=body(production.body, name)) for name, production in grammar.items()
     }
     return {**split_ways, **minted}
+
+
+def call_run_turns(grammar, namer):
+    """
+    Give a run's turn a production of its own where it is not already a call, so that a loop is a state it jumps to.
+
+    A run repeats one thing, and what the machine repeats is a state: `LongestRun(Ref(P))` says go to `P`, come back, go
+    again. A turn spelled out in place is the same match with nowhere to jump to.
+    """
+    minted = {}
+
+    def turned(name, production):
+        body = production.body
+        if not isinstance(body, ir.LongestRun) or isinstance(body.item, ir.Ref):
+            return production
+        held = namer.fresh(name)
+        minted[held] = ir.Prod(production.number, held, (), body.item)
+        return dataclasses.replace(production, body=dataclasses.replace(body, item=ir.Ref(name=held, args=())))
+
+    turns = {name: turned(name, production) for name, production in grammar.items()}
+    return {**turns, **minted}
+
+
+def _as_alternative(way, recovery=None):
+    """
+    One way of a body as the alternative it is: the actions it performs, the call it hands control to, and where it
+    carries on.
+
+    A way with one call is a tail-goto and that call is where it carries on; with two, the first is the call it comes
+    back from and the second where it goes then. A recovery rides the push, so the call it protects is the one the way
+    comes back from — which is what the interpreter reads it as, the handler standing over that call and its
+    continuation being the caller's.
+
+    The gate is empty here. What a way is entered on is a question about the character in front of it, which is the
+    hoist's to answer; until then the alternatives are tried in order, which is what the tree said too.
+    """
+    items = way.items if isinstance(way, ir.Seq) else (way,)
+    calls = tuple(item for item in items if isinstance(item, ir.Ref))
+    actions = tuple(item for item in items if not isinstance(item, ir.Ref))
+    if recovery is not None:
+        first, second = calls[0], calls[1] if len(calls) > 1 else None
+    else:
+        first, second = (calls[0], calls[1]) if len(calls) > 1 else (None, calls[0] if calls else None)
+    return ir.Alternative(gate=ir.Gate(), actions=actions, first=first, second=second, recover=recovery)
+
+
+def build_alternatives(grammar, namer):
+    """
+    Say every body in the machine's own words: a set of characters, a run over the state it repeats, or the ordered list
+    of alternatives one of which the parse takes.
+
+    A change of spelling and not of meaning — by the time it runs a body already *is* a choice of ways that are actions,
+    a call and a continuation, and the interpreter reads an alternative as exactly the sequence the tree spelt: the
+    gate's peek as a lookahead, then its guards, then the actions, then the call and where it carries on. What is gained
+    is that the shape says what the machine does rather than leaving it to be worked out, which is what every reading
+    from here on stands on.
+    """
+
+    def told(production):
+        body = production.body
+        if isinstance(body, (ir.CharSet, ir.LongestRun)):
+            return production
+        if isinstance(body, ir.Recover):
+            alternatives = (_as_alternative(body.item, recovery=body.recovery),)
+        elif isinstance(body, ir.Alt):
+            alternatives = tuple(_as_alternative(way) for way in body.items)
+        else:
+            alternatives = (_as_alternative(body),)
+        return dataclasses.replace(production, body=ir.Choice(alternatives=alternatives))
+
+    return {name: told(production) for name, production in grammar.items()}
 
 
 def bound_exclusions(grammar, namer):
@@ -2273,6 +2336,10 @@ def _is_actions_alone(node, grammar, seen=frozenset()):
         return all(_is_actions_alone(item, grammar, seen) for item in node.items)
     if isinstance(node, ir.Alt):
         return any(_is_actions_alone(item, grammar, seen) for item in node.items)
+    if isinstance(node, ir.Choice):
+        return any(_is_actions_alone(way, grammar, seen) for way in node.alternatives)
+    if isinstance(node, ir.Alternative):
+        return all(_is_actions_alone(item, grammar, seen) for item in _items_of_way(node))
     if isinstance(node, (ir.Token, ir.Wrap)):
         return _is_actions_alone(node.item, grammar, seen)
     if isinstance(node, ir.Ref):
@@ -2300,6 +2367,8 @@ def _does_empty_leave_nothing(node, grammar, ways, seen=frozenset()):
         return False
     if isinstance(node, (ir.Seq, ir.Alt)):
         return all(_does_empty_leave_nothing(item, grammar, ways, seen) for item in node.items)
+    if isinstance(node, (ir.Choice, ir.Alternative)):
+        return all(_does_empty_leave_nothing(item, grammar, ways, seen) for item in _ways_or_items(node))
     if isinstance(node, (ir.Star, ir.Plus, ir.LongestRun, ir.Rep, ir.Token, ir.Max, ir.Commit, ir.Recover)):
         return node.item is None or _does_empty_leave_nothing(node.item, grammar, ways, seen)
     if isinstance(node, ir.Ref):
@@ -2327,6 +2396,10 @@ def _is_nullable(node, grammar, ways):
         return all(_is_nullable(item, grammar, ways) for item in node.items)
     if isinstance(node, ir.Alt):
         return any(_is_nullable(item, grammar, ways) for item in node.items)
+    if isinstance(node, ir.Choice):
+        return any(_is_nullable(way, grammar, ways) for way in node.alternatives)
+    if isinstance(node, ir.Alternative):
+        return all(_is_nullable(item, grammar, ways) for item in _items_of_way(node))
     if isinstance(node, ir.Star):
         return True
     if isinstance(node, ir.LongestRun):
@@ -2423,6 +2496,19 @@ def _split(node, grammar, ways):
             (dataclasses.replace(node, item=reads) if reads is not None else None),
             (dataclasses.replace(node, item=empty) if empty is not None else None),
         )
+    if isinstance(node, (ir.Choice, ir.Alternative)):
+        # The canonical form is not split into a reading copy and an empty one — the steps that rewrote by such copies
+        # ran before it existed. What is asked of it here is only which of the two it can do, which is what
+        # `_split_ways` keeps, so the node stands for whichever it can and nothing rewrites by the answer.
+        parts = _ways_or_items(node)
+        answers = [_split(part, grammar, ways) for part in parts]
+        reads = any(part is not None for part, _empty in answers)
+        empty = (
+            any(part is not None for _reads, part in answers)
+            if isinstance(node, ir.Choice)
+            else all(part is not None for _reads, part in answers)
+        )
+        return (node if reads else None, node if empty else None)
     raise TypeError(f"cannot tell what {type(node).__name__} takes")
 
 
@@ -2579,7 +2665,9 @@ def _offered(body):
     """
     if isinstance(body, ir.Alt):
         return [offered for item in body.items for offered in _offered(item)]
-    if isinstance(body, (ir.Choice, ir.Case, ir.Flip)):
+    if isinstance(body, ir.Choice):
+        return [offered for way in body.alternatives for offered in _offered(way)]
+    if isinstance(body, (ir.Case, ir.Flip)):
         raise TypeError(f"a {type(body).__name__} offers ways, and this reads only an alternation's")
     if isinstance(body, ir.KINDS):
         return [body]
@@ -2713,8 +2801,15 @@ def _entered_unconsumed(node, grammar, ways):
     """
     if isinstance(node, ir.Ref):
         return {node.name}
-    if isinstance(node, ir.Alt):
-        return {name for item in node.items for name in _entered_unconsumed(item, grammar, ways)}
+    if isinstance(node, (ir.Alt, ir.Choice)):
+        return {name for item in _ways_or_items(node) for name in _entered_unconsumed(item, grammar, ways)}
+    if isinstance(node, ir.Alternative):
+        reached = set()
+        for item in _items_of_way(node):
+            reached |= _entered_unconsumed(item, grammar, ways)
+            if not _is_nullable(item, grammar, ways):
+                break
+        return reached
     if isinstance(node, ir.Seq):
         reached = set()
         for item in node.items:
@@ -3086,4 +3181,8 @@ STEPS = [
             "rather than a choice anything makes",
         ),
     ),
+    # Phase 9 says every body in the machine's own words: a set of characters, a run over the state it repeats, or the
+    # ordered list of alternatives one of which the parse takes.
+    Step("call-run-turns", call_run_turns, RUN_TURNS_ARE_CALLS),
+    Step("build-alternatives", build_alternatives, BODIES_ARE_STATES),
 ]
