@@ -2059,7 +2059,14 @@ def _undecided_choices(grammar):
     Counted per choice rather than per way: the choice is what the machine decides at, and one way of it left ungated
     leaves the whole decision undecided.
     """
-    faults = []
+    return [f"{name}: {reason}" for name, reason in _undecided_reasons(grammar).items()]
+
+
+def _undecided_reasons(grammar):
+    """
+    `{name: reason}` per choice no character tells apart — the meter's own reading, said once for both its readers.
+    """
+    reasons = {}
     for name, production in grammar.items():
         body = production.body
         if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
@@ -2068,7 +2075,7 @@ def _undecided_choices(grammar):
             _peek_spans(way.gate.peek, grammar) if way.gate.peek is not None else None for way in body.alternatives
         ]
         if any(spans is None for spans in peeks[:-1]):
-            faults.append(f"{name}: a choice offering a way entered on no character")
+            reasons[name] = "a choice offering a way entered on no character"
             continue
         admitted = [spans for spans in peeks if spans is not None]
         if any(
@@ -2076,11 +2083,76 @@ def _undecided_choices(grammar):
             for before in range(len(admitted))
             for after in range(before + 1, len(admitted))
         ):
-            faults.append(f"{name}: a choice whose ways admit the same character, and order is what tells them apart")
-    return faults
+            reasons[name] = "a choice whose ways admit the same character, and order is what tells them apart"
+    return reasons
 
 
 DECISIONS_GO_ON_A_CHARACTER = Invariant("every-decision-goes-on-a-character", _undecided_choices)
+
+
+def _follows_of(grammar):
+    """
+    `{name: {follow}}` — what each production is reached with, a follow being where the parse goes when it returns.
+
+    A follow is the position *and* what stands at it: called and come back from, with something to carry on at or with
+    nothing, is not the same place as called as the tail of a way. The walk that roots a conflict reads it that way, so
+    this does too — read without the position, a production called both ways looks reached with one follow, and the
+    count then says a conflict can be asked about where the walk refuses it.
+    """
+    follows = {}
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for way in production.body.alternatives:
+            if way.first is not None:
+                carried = None if way.second is None else way.second.name
+                follows.setdefault(way.first.name, set()).add(("comes back", carried))
+            if way.second is not None:
+                follows.setdefault(way.second.name, set()).add(("carries on", None))
+    return follows
+
+
+def _conflicts_with_several_follows(grammar):
+    """
+    Choices no character decides that are reached with more than one follow.
+
+    A conflict resolves on what comes *after* it as often as on what it holds — the way that stops where a content line
+    follows is told from the one that goes on by the line, which is the caller's and not the conflict's. So a walk over
+    the live ways has to stand somewhere, and where the production is called from places that carry on differently there
+    is no single somewhere to stand: the question "which way does the input take" has as many answers as callers.
+
+    Not a fault of the conflict's own — it is what makes the conflict unaskable, and every such site is a verdict the
+    meter is claiming without having one. So this is the count that says how much of the meter can even be worked on:
+    the walk refuses exactly these, and what it says of the rest is a verdict to act on.
+    """
+    follows = _follows_of(grammar)
+    return [
+        f"{name}: a choice no character decides, reached from {len(follows[name])} places and so with nowhere to ask it"
+        for name in _undecided_reasons(grammar)
+        if len(follows.get(name, ())) > 1
+    ]
+
+
+CONFLICTS_CAN_BE_ASKED = Invariant("every-conflict-can-be-asked", _conflicts_with_several_follows)
+
+
+def deterministic_productions(grammar):
+    """
+    The productions a parse may enter committed: the ones whose ways a character tells apart.
+
+    What the interpreter's committed mode takes. Entering one, the first way whose gate holds is the parse and no other
+    is tried, which is the machine's own behaviour — so running the corpus with these committed and everything else
+    backtracking asks the question no static count can. The meter says whether a character *picks* a way; this says
+    whether the way it picks goes on to match, and a gate can be perfectly disjoint and still be wrong, the way it
+    admits failing three characters later where a backtracking parse would have taken the next one.
+
+    A body with one way is in it: there is nothing to choose, so committing to it is what backtracking does anyway.
+    """
+    undecided = _undecided_reasons(grammar)
+    return frozenset(
+        name for name, production in grammar.items() if isinstance(production.body, ir.Choice) and name not in undecided
+    )
+
 
 # What a loop repeats is a state it jumps to, so a run's turn is a call. Its own count rather than a share of the
 # phase's: naming the turn mints a production for it, which is a body of the tree's own shape until the re-encode
@@ -2515,6 +2587,122 @@ def hoist_past_actions(grammar, namer):
         )
 
     return {name: told(production) for name, production in grammar.items()}
+
+
+def _spans_meeting(one, other):
+    """The codepoints both span lists admit — what a way entered on both is entered on."""
+    return [
+        (max(left[0], right[0]), min(left[1], right[1]))
+        for left in one
+        for right in other
+        if not (left[1] < right[0] or right[1] < left[0])
+    ]
+
+
+def splice_conflicts(grammar, namer):
+    """
+    A call to a choice no character decides, made where the way has taken nothing and handed control to no one else, is
+    spliced: the callee's ways stand where the call did, each carrying on where the way would have.
+
+    What a conflict is asked is which way the input takes, and the answer is often behind the return — so the walk has
+    to stand where the caller stands. Called from several places that carry on differently there is no such place, and
+    spliced there is one per site: each copy is the conflict in the context that reaches it, whose follow is the rest of
+    the way it now sits in. The copies differ by where they are rather than by what they hold, which is what keeps the
+    sweep from folding them back into one.
+
+    Sound where the way has taken no character and called nobody before the splice: the callee is then entered exactly
+    where the way is, so what the callee is entered on is what the way is entered on, and the two gates meet at one
+    position. Where the way is gated too, the gates are met — a spliced way is entered on what both admit, and one
+    admitting nothing is a way the parse could never have taken and is dropped.
+
+    A spliced way holding three calls has nowhere to put the third, an alternative having two: what the callee carried
+    on at and what the way carried on at become a state of their own, which is the same minting `mint-continuations`
+    does and for the same reason.
+
+    Run until it stops taking sites, because splicing makes sites: a conflict spliced into its callers puts copies where
+    those callers are called from, and those are asked the same question. One pass moves the count up as often as down —
+    what is left where it started is a caller that has become the conflict — so the pass is not the step; the fixpoint
+    is.
+    """
+    while True:
+        spliced = _spliced_once(grammar, namer)
+        if spliced == grammar:
+            return grammar
+        grammar = cleaned(spliced)[0]
+
+
+def _spliced_once(grammar, namer):
+    """One pass of `splice_conflicts`, which runs it to a fixpoint."""
+    follows = _follows_of(grammar)
+    conflicts = {name for name in _undecided_reasons(grammar) if len(follows.get(name, ())) > 1}
+    signature = _scope_signature(grammar)
+    minted = {}
+
+    def spliced(owner, way):
+        target = way.first if way.first is not None and way.first.name in conflicts else None
+        if target is None and way.first is None and way.second is not None and way.second.name in conflicts:
+            target, carried = way.second, None
+        elif target is not None:
+            carried = way.second
+        else:
+            return [way]
+        if any(isinstance(action, ir.CONSUMING) for action in way.actions):
+            return [way]  # the way has taken a character, so the callee is not entered where the way is
+        if any(isinstance(action, (ir.Cut, ir.Error, ir.PushMessage)) for action in way.actions):
+            # The way has committed before the call, and the callee's ways backtrack *inside* that region: spliced out,
+            # each would open a region of its own, and the first one's failure would be the error rather than the next
+            # way's turn. The flow collections' unterminated-bracket commits are every one of these.
+            return [way]
+        if carried is not None and any(
+            inner.second is not None and signature[inner.second.name] != ((), ())
+            for inner in grammar[target.name].body.alternatives
+        ):
+            # What the callee carries on at would become a call the way comes back from, with the caller's own
+            # continuation pushed behind it — so a scope that call leaves open would meet the push rather than its own
+            # pop. Level, it meets nothing; otherwise only folding the follow into the callee can say it, which is not
+            # this step.
+            return [way]
+        ways = []
+        for inner in grammar[target.name].body.alternatives:
+            peek = inner.gate.peek if way.gate.peek is None else way.gate.peek if inner.gate.peek is None else None
+            if peek is None and way.gate.peek is not None and inner.gate.peek is not None:
+                met = _spans_meeting(
+                    _peek_spans(way.gate.peek, grammar) or [], _peek_spans(inner.gate.peek, grammar) or []
+                )
+                if not met:
+                    continue  # entered on nothing: a way the parse could never have taken
+                peek = _spans_node(_merged_spans([span for span in met if span[0] >= 0]) + [s for s in met if s[0] < 0])
+            second = inner.second
+            if second is not None and carried is not None:
+                held = namer.fresh(owner)
+                minted[held] = ir.Prod(
+                    grammar[owner].number,
+                    held,
+                    (),
+                    ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), actions=(), first=second, second=carried),)),
+                )
+                second = ir.Ref(name=held, args=())
+            elif second is None:
+                second = carried
+            ways.append(
+                ir.Alternative(
+                    gate=ir.Gate(peek=peek, guards=(*way.gate.guards, *inner.gate.guards)),
+                    actions=(*way.actions, *inner.actions),
+                    first=inner.first,
+                    second=second,
+                    recover=inner.recover,
+                )
+            )
+        return ways
+
+    def told(name, production):
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            return production
+        ways = tuple(one for way in body.alternatives for one in spliced(name, way))
+        return dataclasses.replace(production, body=ir.Choice(alternatives=ways))
+
+    return {**{name: told(name, production) for name, production in grammar.items()}, **minted}
 
 
 def hoist_guards(grammar, namer):
@@ -3550,4 +3738,28 @@ STEPS = [
         reduces=(WAYS_ARE_GATED, DECISIONS_GO_ON_A_CHARACTER),
     ),
     Step("hoist-guards", hoist_guards, WAYS_ARE_GATED, reduces=WAYS_ARE_GATED),
+    Step(
+        "splice-conflicts",
+        splice_conflicts,
+        CONFLICTS_CAN_BE_ASKED,
+        reduces=CONFLICTS_CAN_BE_ASKED,
+        lapses=dict.fromkeys(
+            (
+                "every-decision-goes-on-a-character",
+                "every-empty-match-is-a-way",
+                "every-way-gated",
+                "no-call-enters-both-ways",
+                "only-root-empties",
+            ),
+            "a conflict spliced where it was called is that conflict once per site, each in the context that reaches "
+            "it: the copies are what the walk can finally be asked about, and what it says of them is that a character "
+            "decides all but a handful, so the counts follow the copies rather than the work",
+        ),
+    ),
+    Step(
+        "hoist-past-actions-3",
+        hoist_past_actions,
+        WAYS_ARE_GATED,
+        reduces=WAYS_ARE_GATED,
+    ),
 ]

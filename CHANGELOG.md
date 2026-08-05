@@ -534,6 +534,51 @@ All notable changes to this project are documented here. The format follows
   to be in front of them at all. Every one is a question about *when a failure is an error*, which is determinizing's to
   answer and not a hoist's.
 
+  **And the meter is only half of what determinizing owes.** A character picking a way is not the same as committing to
+  it being safe: a gate can be perfectly disjoint and still be wrong, the way it admits failing three characters later
+  where a backtracking parse would have taken the next one. Nothing measured that —
+  `normalize.deterministic_productions` went with the old order, and the interpreter's committed mode has taken an empty
+  set ever since. It is back: the productions a character decides are handed to it, the corpus runs **hybrid** —
+  committed where a character decides, backtracking everywhere else — and a case the two modes read differently is a
+  gate that is disjoint and not safe.
+
+  It read **603 of 697 choices entered committed, and 236 cases the two modes read differently**, which is the honest
+  first number rather than a failure: the entry sets a gate is hoisted from err wide on purpose, and a wide gate is
+  exactly one that admits a character its way cannot go on to match. Harmless while the parse backtracks, fatal once it
+  does not. It is printed every run and is what the transforms ahead are judged by beside the meter; it becomes a gate
+  where it reads none, at which point the two modes agreeing is law the way the corpus already is.
+
+  **What the meter counts is not all one thing, and the walk says which.** `determinize.py` walks a conflict's live ways
+  in lockstep to their first divergence, and what differs there classifies the site: the characters, and a character
+  decides it; the codes over the same spans, and only holding the tokens and retyping them can; the configuration
+  repeating, and it is unbounded. Run as a measurement over the 94 the meter flagged, it read **44 a character decides,
+  36 the codes differ, 11 it cannot even root, 3 a guard already separates** — the last of which is the meter reading
+  peeks only, as it says it does.
+
+  The 11 are the ones worth a step, because they are not verdicts: `_caller_continuation` refuses a conflict reached
+  from several places, the follow being several, so the walk has nowhere to stand and the meter is claiming a fault it
+  cannot describe. `splice-conflicts` answers it from the other end — a call to such a conflict is spliced where it
+  stands, so each copy is the conflict in the context that reaches it and its follow is the rest of the way it now sits
+  in. The copies differ by where they are rather than by what they hold, which is what keeps the sweep from folding them
+  back into one.
+
+  Three side conditions, and the corpus or a count found each: a way that has taken a character does not splice, the
+  callee being entered elsewhere than the way; a way that has **committed** does not, since the callee's ways backtrack
+  *inside* that region and spliced out each would open its own, making the first way's failure the error rather than the
+  next way's turn — the flow collections' unterminated-bracket commits, which broke 39 fixtures before the condition
+  existed; and a callee that carries on at something not level does not, since that call would become one the way comes
+  back from with the caller's continuation pushed behind it, which the scope net caught at 25.
+
+  It runs to a fixpoint because splicing makes sites: one pass moves the count up as often as down, and what it leaves
+  is a caller that has become the conflict. `every-conflict-can-be-asked` — the walk's own question, and the count that
+  says how much of the meter can be worked on at all — goes **11 to 5**, and the two modes now read **129** cases
+  differently where they read 236. The meter itself rises, 94 to 165, and the rise is bookkeeping rather than work: the
+  walk says a character decides 116 of the 167 where it decided 44 of 94, and the pile that is genuinely hard barely
+  moved, 36 to 39.
+
+  The 5 left are each named: four are blocked by a commit standing before the call and want the commit lifted, which is
+  the step the 24 ungated ways want too; one wants the tail call it carries on at made level.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving
