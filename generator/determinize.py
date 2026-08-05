@@ -132,6 +132,47 @@ def _step(grammar, parked, codepoint):
     return _closure(grammar, advanced)
 
 
+WALK_LIMIT = 40  # characters of shared prefix the walk follows before saying it has found no divergence at all
+
+# What the walk found and how far in: `kind` is `"character"` where a character tells the ways apart, `"codes"` where
+# they take the same characters and disagree about what the tokens are called, and `None` where there is no verdict to
+# act on. `depth` is the characters of shared prefix walked to reach it, which is what a factoring still owes.
+Divergence = collections.namedtuple("Divergence", ("kind", "depth"))
+
+
+def verdict(grammar, root):
+    """
+    What tells `root`'s live ways apart and how far in, walked to their first divergence.
+
+    The question every conflict is asked, and the classification a step acts on. The walk advances the live ways through
+    the characters they agree on, and *what* they stop agreeing about is the answer. The characters, and a character
+    decides it — factoring the shared prefix down to it puts the decision where the input makes it. The codes over the
+    same span, and no depth of factoring separates them, so the run is held and retyped instead. Neither, and there is
+    no verdict: the walk cannot be rooted, cannot converge, or runs out.
+
+    The depth matters as much as the kind. A round of factoring takes exactly one character off it, so the sum of the
+    depths is what a loop of them owes and the measure by which it makes progress — where the meter itself only says
+    whether a decision has arrived, not how much nearer it came.
+    """
+    try:
+        parked = _rooted(grammar, root)
+    except (ValueError, RuntimeError):
+        return Divergence(None, 0)
+    for depth in range(WALK_LIMIT):
+        codepoint = _shared_codepoint(parked)
+        if codepoint is None:
+            return Divergence("character", depth)
+        if len({entry.config.code for entry in parked if _does_admit(entry.spans, codepoint)}) > 1:
+            return Divergence("codes", depth)
+        try:
+            parked = _step(grammar, parked, codepoint)
+        except RuntimeError:
+            return Divergence(None, 0)
+        if not parked:
+            return Divergence(None, 0)
+    return Divergence(None, 0)
+
+
 def _caller_continuation(grammar, root):
     """
     The caller's continuation to root a conflict beneath, so a path that returns reaches its follow rather than

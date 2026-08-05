@@ -238,6 +238,11 @@ The phases, each established and then enforced:
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
 
+Beside the phases stands `only-the-last-way-always-matches`, which belongs to none of them: a way that matches wherever
+it is reached stands last among the ways of its choice, settled by `order-fallthroughs` as soon as the contexts are
+monomorphized and held by every step after. Settled at the door, a step that would mint a way in front of a fallthrough
+is caught where it does it.
+
 **What the wrappers leave owed.** `every-scope-closes-on-its-own-way` holds the four pairs per way, which is the right
 rule for them and the wrong one for the markers: a marker pair crosses productions by design — `b-chomped-last` emits
 `end-scalar` for a `begin-scalar` opened elsewhere — so holding one to a single way would report dozens of faults that

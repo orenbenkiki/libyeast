@@ -606,6 +606,33 @@ All notable changes to this project are documented here. The format follows
   The meter does not move for it, and should not: an overlap made whole is still an overlap. What it is for is the
   factoring behind it, which reads exactly the gates that are now equal.
 
+  **A way that matches wherever it is reached stands last.** `only-the-last-way-always-matches` counts one with another
+  way behind it: the parse can always get through such a way, so what stands behind it is what a machine that never
+  returns will never reach — reachable today only because backtracking takes the empty match, fails the continuation,
+  returns and tries the next. The grammar carries **two** in, `l-empty`'s line prefix in each of its two contexts,
+  matching empty in front of `s-indent(<n)`. `order-fallthroughs` moves them last, settling the count as soon as the
+  contexts are monomorphized, and all 38 steps hold it with no lapse — so the shape is caught where a step would
+  introduce it rather than measured at the end.
+
+  The way is asked whether it *always* matches, not whether it *can* match empty, and asked of the whole of it rather
+  than of its head: a guard makes a way conditional wherever it sits — wrapped in a token, behind the emits of a copy
+  the splice made, or in a gate the re-encode has not filled yet — and a way that holds only where a guard does leaves
+  what is behind it reachable. Read of the head alone, the same way is exempt before a step moves an emit in front of it
+  and a fault after, which is a count moving where nothing about the grammar did. The question is asked by standing a
+  character in for each guard and taking the nullability of what is left, so there is one reading of an empty match and
+  not two.
+
+  **What tells a conflict's ways apart, and how far in.** `determinize.verdict` walks the live ways to their first
+  divergence: the characters, and factoring the shared prefix down to it puts the decision where the input makes it; the
+  codes over the same span, which no depth of factoring separates, so the run is held and retyped instead; or no verdict
+  at all, where the walk cannot be rooted, does not converge, or runs past its limit. Of the meter's **164**, **120**
+  are decided by a character, **35** by the codes, and **9** have no verdict. `no-lookahead-left-to-factor` sums the
+  depths of the first kind — **181** characters over 58 productions — and is the measure a loop of factoring runs on
+  rather than the meter: factoring trades an undecided choice at one depth for an undecided choice one character
+  shallower, so the meter can sit flat while every round makes real progress, where this cannot. A round takes exactly
+  one character off each conflict it targets and no rewrite pushes a discriminator deeper, so it falls by the number of
+  targets and never rises. No step names it yet; the round that does is what it was written for.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving

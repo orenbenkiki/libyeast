@@ -1773,6 +1773,26 @@ _ACTIONS = (
 )
 _GUARDS = (ir.Cut, ir.EndOfStream, ir.Le, ir.Look, ir.LookBehind, ir.Lt, ir.NegLook, ir.StartOfLine)
 
+# The guards that can refuse — every one but `Cut`, which commits the parse rather than asking it anything.
+_ASKING_GUARDS = tuple(guard for guard in _GUARDS if guard is not ir.Cut)
+
+# What a production may hold instead of a matcher: a value the parse works out — an indentation, a measured length, a
+# parameter, a switch over one. It matches nothing, so it takes no character and reads nowhere. In alphabetical order.
+_VALUE_KINDS = (
+    ir.Add,
+    ir.Atoi,
+    ir.AutoDetectIndent,
+    ir.Column,
+    ir.Flip,
+    ir.Global,
+    ir.Indent,
+    ir.Len,
+    ir.Lit,
+    ir.Match,
+    ir.Param,
+    ir.Sub,
+)
+
 
 # What an item may be: something the machine does where it stands — a call, an action, a guard, a character taken, or
 # nothing at all. A guard's question is the guard's own business and no item of the way, which is what lets a peek hold
@@ -2196,6 +2216,151 @@ def _partial_overlaps(grammar):
 
 
 GATES_MEET_WHOLLY = Invariant("no-partial-overlap", _partial_overlaps)
+
+
+def _early_fallthroughs(grammar):
+    """
+    Ways that match wherever they are reached, with another way standing behind them.
+
+    Such a way is one the parse can always get through, so every way after it is one a committed machine will never
+    reach. Backtracking hides that: the way matches, the continuation fails, the parse returns and tries the next. A
+    machine that never returns simply loses them.
+
+    So a choice may hold one such way and it must stand last, where it is the fallthrough every gated choice ends in.
+    Two of them is worse than undecidable: the second is unreachable, and nothing about the grammar says which of the
+    two was meant. That is not a decision a character can be asked to make, and no factoring reaches it.
+
+    Read of both spellings, a choice being an `Alt` before the re-encode and a `Choice` after, so the count says where
+    the shape is introduced rather than only that it is there.
+    """
+    guardless, ways = _unconditional_ways(grammar)
+    faults = []
+    for name, production in grammar.items():
+        for node in _held(production.body):
+            offered = (
+                node.alternatives if isinstance(node, ir.Choice) else node.items if isinstance(node, ir.Alt) else ()
+            )
+            for way in offered[:-1]:
+                if _does_always_match(way, guardless, ways):
+                    faults.append(f"{name}: a way that always matches, with another way behind it")
+    return faults
+
+
+def order_fallthroughs(grammar, namer):
+    """
+    A way that matches wherever it is reached stands last among the ways of its choice.
+
+    Such a way is one the parse can always get through, so every way behind it is one a machine that never returns will
+    never reach. Last, it is the fallthrough every gated choice ends in and nothing is lost behind it.
+
+    Moved whole rather than split into what it reads and what it does not: splitting is the empties phase's own rule and
+    mints the names to say it with, which do not exist this early. Moving changes which parse is preferred where both a
+    reading way and this one match, so the corpus is what says the rewrite is an identity — and where it says otherwise,
+    that is the case the split is for.
+
+    What the grammar carries in is the spec's own `l-empty`, whose line prefix matches empty and stands in front of
+    `s-indent(<n)` — one production, and two of it once the contexts are monomorphized. A way holding a guard is not
+    among them: it matches only where the guard does, which the input settles as surely as a character would, and a way
+    behind it stays reachable.
+    """
+    guardless, ways = _unconditional_ways(grammar)
+
+    def ordered(node):
+        node = ir.rebuilt(node, ordered)
+        if not isinstance(node, ir.Alt):
+            return node
+        kept, trailing = [], []
+        for at, way in enumerate(node.items):
+            if at == len(node.items) - 1 or not _does_always_match(way, guardless, ways):
+                kept.append(way)
+            else:
+                trailing.append(way)
+        if not trailing:
+            return node
+        return ir.Alt(items=tuple(kept) + tuple(trailing))
+
+    return {
+        name: dataclasses.replace(production, body=ordered(production.body)) for name, production in grammar.items()
+    }
+
+
+def _guardless(node):
+    """
+    `node` with every guard that can refuse replaced by a match that takes a character.
+
+    How a way is asked whether it always matches rather than merely whether it can match empty: a guard takes no
+    character, so nullability answers yes for a way that in fact holds only where the guard does. Standing in a
+    character for the guard makes the empty match the only thing left to find, and `_is_nullable` finds it.
+
+    `Cut` is a guard and is not replaced: it commits the parse rather than asking it anything, and a way holding nothing
+    else still matches whatever stands in front of it.
+
+    A gate is asked the same question, the rebuild reaching what a way does and not what it is entered on: a way whose
+    gate holds a guard matches only where the guard does, exactly as one carrying it among its actions, and it is the
+    hoist between the two spellings rather than anything about the grammar that would otherwise tell them apart.
+    """
+    is_conditional = isinstance(node, ir.Alternative) and any(
+        isinstance(guard, _ASKING_GUARDS) for guard in node.gate.guards
+    )
+    if isinstance(node, _ASKING_GUARDS) or is_conditional:
+        return ir.ConsumeChar()
+    return ir.rebuilt(node, _guardless)
+
+
+def _unconditional_ways(grammar):
+    """`(grammar, ways)` read with the guards standing in as characters — what `_does_always_match` asks of."""
+    guardless = {
+        name: dataclasses.replace(production, body=_guardless(production.body)) for name, production in grammar.items()
+    }
+    return guardless, _split_ways(guardless)
+
+
+def _does_always_match(way, guardless, ways):
+    """
+    Whether `way` matches wherever it is reached, taking no character and passing no guard.
+
+    The property that makes a way a fallthrough, and the one the order of a choice has to answer for. A way that can
+    match empty only where a guard holds is not one: `l-yeast-stream`'s end-of-input way matches empty exactly where
+    there is no character left, which the input settles as surely as a character would, so a way behind it stays
+    reachable and the order is not what tells the two apart.
+
+    The guard is looked for wherever it sits rather than at the head — wrapped in a token, behind the emits of a way the
+    splice copied, or in the gate the re-encode has not filled yet. Read from the head alone, the same way is exempt
+    before a step that moves an emit in front of it and a fault after, a count moving where nothing about the grammar
+    did.
+    """
+    return _is_nullable(_guardless(way), guardless, ways)
+
+
+ONLY_THE_LAST_WAY_ALWAYS_MATCHES = Invariant("only-the-last-way-always-matches", _early_fallthroughs)
+
+
+def _lookahead_owed(grammar):
+    """
+    One fault per character of shared prefix still standing between a conflict and the decision it makes — the sum being
+    what a round of factoring owes.
+
+    The measure a loop of factoring runs on, and the reason the meter is not it. Factoring trades an undecided choice at
+    one depth for an undecided choice one character shallower, so the meter can sit flat or rise while every round makes
+    real progress; this cannot. A round consumes exactly one character of each targeted conflict's shared prefix and no
+    rewrite pushes a discriminator deeper, so the sum falls by the number of targets and never rises. None means no
+    conflict is waiting on a character it has not reached.
+
+    Only conflicts a character decides are counted. Ways that take the same characters and disagree about what the
+    tokens are called owe nothing to factoring — no depth of it separates them — and a conflict with no verdict at all
+    owes nothing it can be asked for.
+    """
+    import determinize  # noqa: PLC0415 — the walk is determinize's and it reads this module, so the import is made here
+
+    faults = []
+    for name in _undecided_reasons(grammar):
+        found = determinize.verdict(grammar, name)
+        if found.kind == "character":
+            faults += [f"{name}: character {at + 1} of {found.depth} still to walk" for at in range(found.depth)]
+    return faults
+
+
+LOOKAHEAD_IS_WALKED = Invariant("no-lookahead-left-to-factor", _lookahead_owed)
 
 
 def deterministic_productions(grammar):
@@ -3127,6 +3292,10 @@ def _is_nullable(node, grammar, ways):
         return _is_nullable(node.cond, grammar, ways)
     if isinstance(node, (ir.Token, ir.Wrap, ir.Max, ir.Commit, ir.Recover)):
         return node.item is None or _is_nullable(node.item, grammar, ways)
+    if isinstance(node, ir.Opt):
+        return True  # a way and no way at all, the second of which takes nothing
+    if isinstance(node, _VALUE_KINDS):
+        return True  # a value the parse works out takes no character
     raise TypeError(f"cannot tell whether {type(node).__name__} can take nothing")
 
 
@@ -3222,6 +3391,10 @@ def _split(node, grammar, ways):
             else all(part is not None for _reads, part in answers)
         )
         return (node if does_read else None, node if does_take_none else None)
+    if isinstance(node, ir.Opt):
+        return (node.item if _split(node.item, grammar, ways)[0] is not None else None, ir.Empty())
+    if isinstance(node, _VALUE_KINDS):
+        return (None, node)  # a value the parse works out, which matches nothing and so takes no character
     raise TypeError(f"cannot tell what {type(node).__name__} takes")
 
 
@@ -3806,6 +3979,9 @@ STEPS = [
     Step(
         "monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), FINITE_LEXICAL, NO_I_T_PARAMETERS)
     ),
+    # As early as the reading allows, since every step after it is held to keeping it: a way that matches wherever it is
+    # reached stands last, where it is the fallthrough, and not in front of ways a committed machine would never reach.
+    Step("order-fallthroughs", order_fallthroughs, ONLY_THE_LAST_WAY_ALWAYS_MATCHES),
     # Phase 1 establishes `ONLY_SETS_AND_LITERALS`: a question about a character is a `CharSet`. A set the context picks
     # denotes nothing until the specialization has bound the context, so this follows Phase 0. The difference is taken
     # into the ways it subtracts from first, since a subtraction says a set only where both of its sides do.
