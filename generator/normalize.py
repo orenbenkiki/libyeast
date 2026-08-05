@@ -1781,6 +1781,7 @@ _LEAF_ITEMS = (
     *_GUARDS,
     ir.Char,
     ir.CharSet,
+    ir.ConsumeChar,
     ir.ConsumeCountedSpan,
     ir.ConsumeSpan,
     ir.Empty,
@@ -2008,6 +2009,27 @@ def _untold_bodies(grammar):
 
 BODIES_ARE_STATES = Invariant("every-body-is-a-choice-a-run-or-a-set", _untold_bodies)
 
+
+def _ungated_ways(grammar):
+    """
+    Ways a parse enters on nothing, where another way stands behind them.
+
+    A machine takes a way by looking at the character in front of it, so a way with no peek is one it would have to try
+    and give back — which is the backtracking the whole shape is for getting rid of. The last way of a choice is exempt:
+    an empty gate is the unconditional fallthrough, and something has to be what happens when nothing else fires. A body
+    with one way is no decision at all and is asked nothing.
+    """
+    return [
+        f"{name}: a way entered on no character, where another way stands behind it"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice) and len(production.body.alternatives) > 1
+        for way in production.body.alternatives[:-1]
+        if way.gate.peek is None
+    ]
+
+
+WAYS_ARE_GATED = Invariant("every-way-gated", _ungated_ways)
+
 # What a loop repeats is a state it jumps to, so a run's turn is a call. Its own count rather than a share of the
 # phase's: naming the turn mints a production for it, which is a body of the tree's own shape until the re-encode
 # reaches it, so what the phase counts does not move.
@@ -2204,6 +2226,40 @@ def build_alternatives(grammar, namer):
         else:
             alternatives = (_as_alternative(body),)
         return dataclasses.replace(production, body=ir.Choice(alternatives=alternatives))
+
+    return {name: told(production) for name, production in grammar.items()}
+
+
+def gate_hoist(grammar, namer):
+    """
+    A way whose first action takes a character is entered on that character: the set rises into the gate and the action
+    becomes taking what the gate found.
+
+    A gate is what the machine looks at to choose a way, and it looks without consuming — so the set moves and a
+    `ConsumeChar` stands where it did, taking the one character the gate has already found there. The two say the same
+    match in the same order, which is what the interpreter reads them as: the peek as a lookahead, then the actions.
+
+    Every alternative, not only the ones a choice needs to tell apart. A way whose first action is a set fails there
+    where the set is not, gate or no gate, so saying it in the gate says what the machine is entered on and changes
+    nothing about when the way matches.
+    """
+
+    def hoisted(way):
+        if way.gate.peek is not None or not way.actions or not isinstance(way.actions[0], ir.CharSet):
+            return way
+        return dataclasses.replace(
+            way,
+            gate=dataclasses.replace(way.gate, peek=way.actions[0]),
+            actions=(ir.ConsumeChar(), *way.actions[1:]),
+        )
+
+    def told(production):
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            return production
+        return dataclasses.replace(
+            production, body=ir.Choice(alternatives=tuple(hoisted(way) for way in body.alternatives))
+        )
 
     return {name: told(production) for name, production in grammar.items()}
 
@@ -3185,4 +3241,7 @@ STEPS = [
     # ordered list of alternatives one of which the parse takes.
     Step("call-run-turns", call_run_turns, RUN_TURNS_ARE_CALLS),
     Step("build-alternatives", build_alternatives, BODIES_ARE_STATES),
+    # Phase 10 is the gate: a way is entered on the character in front of it, which is what a machine that never
+    # backtracks chooses by. The hoists reduce `every-way-gated` between them.
+    Step("gate-hoist", gate_hoist, WAYS_ARE_GATED, reduces=WAYS_ARE_GATED),
 ]

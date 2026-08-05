@@ -478,6 +478,19 @@ All notable changes to this project are documented here. The format follows
   own only way, which is a walk that never ends rather than an answer that is wrong. The per-way scope walk went with
   the rewrite, 85 lines of it, the path check having replaced what it read.
 
+  Phase 10 is the gate. A machine that never backtracks takes a way by looking at the character in front of it, so
+  `every-way-gated` counts the ways a parse would have to try and give back: 372 of the 600 alternatives that make a
+  decision, the last way of each choice being exempt as the unconditional fallthrough and a body with one way being no
+  decision at all. `gate-hoist` is the first of the hoists that reduce it, and the one with no analysis behind it: a way
+  whose first action takes a character is entered on that character, so the set rises into the gate and a `ConsumeChar`
+  stands where it did, taking the one the gate has already found. It is done in every alternative rather than only where
+  a choice needs telling apart — a way whose first action is a set fails there where the set is not, gate or no gate —
+  and it takes the count to 324.
+
+  What is left says what the rest of the phase is: 272 of them begin with a call, and what a call can start with is an
+  entry set the grammar has never computed; 47 begin with an action the gate has to look past, which it may, an action
+  touching no input; and 5 with a guard, which the gate carries beside the peek rather than in it.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving
