@@ -2016,21 +2016,71 @@ def _ungated_ways(grammar):
     """
     Ways a parse enters on nothing, where another way stands behind them.
 
-    A machine takes a way by looking at the character in front of it, so a way with no peek is one it would have to try
-    and give back — which is the backtracking the whole shape is for getting rid of. The last way of a choice is exempt:
-    an empty gate is the unconditional fallthrough, and something has to be what happens when nothing else fires. A body
-    with one way is no decision at all and is asked nothing.
+    A machine takes a way by looking at what stands in front of it, so a way its gate says nothing about is one it would
+    have to try and give back — which is the backtracking the whole shape is for getting rid of. A peek is the usual
+    answer and not the only one: a guard is a question the machine can put where it stands too, and a way entered at the
+    end of the input has no character to be asked about at all, which is the input deciding rather than the decision
+    being left open.
+
+    The last way of a choice is exempt: an empty gate is the unconditional fallthrough, and something has to be what
+    happens where nothing else fires. A body with one way is no decision at all and is asked nothing.
     """
     return [
-        f"{name}: a way entered on no character, where another way stands behind it"
+        f"{name}: a way its gate says nothing about, where another way stands behind it"
         for name, production in grammar.items()
         if isinstance(production.body, ir.Choice) and len(production.body.alternatives) > 1
         for way in production.body.alternatives[:-1]
-        if way.gate.peek is None
+        if way.gate.peek is None and not way.gate.guards
     ]
 
 
 WAYS_ARE_GATED = Invariant("every-way-gated", _ungated_ways)
+
+
+def _do_spans_overlap(one, other):
+    """Whether two runs of codepoint intervals admit a character in common."""
+    return any(not (left[1] < right[0] or right[1] < left[0]) for left in one for right in other)
+
+
+def _undecided_choices(grammar):
+    """
+    Choices no character tells apart — the meter, and what determinizing exists to drive to none.
+
+    A machine that never backtracks takes the way whose gate the character in front of it fires, so a choice is decided
+    when at most one gate can fire on any character: the ways it offers are entered on sets that do not meet. Two ways
+    admitting the same character are decided by order and nothing else, which is a guess the machine has no way to take
+    back, and a way with no gate at all is worse — it would have to be tried.
+
+    The last way is the exception and not a fault: an empty gate there is the unconditional fallthrough, taken where no
+    gate fired, which is a decision a character made by firing nothing. A guard is no part of this, a guard being a
+    condition on the parse rather than a question about the character; a choice its ways' peeks do not separate counts
+    here even where a guard would have separated them, which errs toward work rather than away from it.
+
+    Counted per choice rather than per way: the choice is what the machine decides at, and one way of it left ungated
+    leaves the whole decision undecided.
+    """
+    faults = []
+    for name, production in grammar.items():
+        body = production.body
+        if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
+            continue
+        peeks = [
+            _peek_spans(way.gate.peek, grammar) if way.gate.peek is not None else None for way in body.alternatives
+        ]
+        if any(spans is None for spans in peeks[:-1]):
+            faults.append(f"{name}: a choice offering a way entered on no character")
+            continue
+        admitted = [spans for spans in peeks if spans is not None]
+        if any(
+            _do_spans_overlap(admitted[before], admitted[after])
+            for before in range(len(admitted))
+            for after in range(before + 1, len(admitted))
+        ):
+            faults.append(f"{name}: a choice whose ways admit the same character, and order is what tells them apart")
+    return faults
+
+
+DECISIONS_GO_ON_A_CHARACTER = Invariant("every-decision-goes-on-a-character", _undecided_choices)
 
 # What a loop repeats is a state it jumps to, so a run's turn is a call. Its own count rather than a share of the
 # phase's: naming the turn mints a production for it, which is a body of the tree's own shape until the re-encode
@@ -2388,6 +2438,108 @@ def gate_hoist_call(grammar, namer):
         if ways[called][1] or not entry[called] or not _does_refuse_softly(called, grammar, ways):
             return way
         return dataclasses.replace(way, gate=dataclasses.replace(way.gate, peek=_spans_node(entry[called])))
+
+    def told(production):
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            return production
+        return dataclasses.replace(
+            production, body=ir.Choice(alternatives=tuple(hoisted(way) for way in body.alternatives))
+        )
+
+    return {name: told(production) for name, production in grammar.items()}
+
+
+def hoist_past_actions(grammar, namer):
+    """
+    A way is entered on the character its first question asks, whatever actions stand in front of that question.
+
+    A gate is tested before the way is entered and an action touches no input, so what the machine looks at to choose
+    this way is the same character either way. The peek moves and the actions stay where they are: the interpreter runs
+    the peek as a lookahead and then the actions, and a way that fails at the character test rewinds whatever its
+    actions did, so testing before performing them is the same parse token for token.
+
+    A call the way can pass through — one whose production can take nothing — does not end the walk either: what enters
+    the way is then what that call can start on *and* what stands behind it, which is the union the walk accumulates. A
+    way that passes through everything it holds is left alone, no character having to be in front of it at all.
+
+    The walk stops at a commit, and this is the same refusal `gate-hoist-call` makes one call deeper: a `(cut)`, an
+    `(error)` or a committed region opened before the question means failing there is an error rather than a refusal,
+    and a gate that keeps the way from being entered at all turns that error into a way not taken. It stops at a scan of
+    none or more too, which forces no character to be there.
+
+    Only the peek moves. A guard stays among the actions: it may read what an action before it wrote, and hoisting one
+    over that action would have it read what the parse had not yet done.
+    """
+    entry = _entry_spans(grammar)
+    ways = _split_ways(grammar)
+
+    def asked(items):
+        """The spans a way is entered on and the index of the consume to take on the gate's word, or `None`."""
+        got = []
+        for at, item in enumerate(items):
+            if isinstance(item, (ir.Cut, ir.Error, ir.PushMessage)):
+                return None
+            if isinstance(item, ir.CharSet):
+                return got + (_peek_spans(item, grammar) or []), at
+            if isinstance(item, ir.Ref):
+                if not entry[item.name] or not _does_refuse_softly(item.name, grammar, ways):
+                    return None
+                got += list(entry[item.name])
+                if not ways[item.name][1]:
+                    return got, None
+                continue  # the callee may take nothing, so what stands behind it enters the way as well
+            if isinstance(item, (ir.ConsumeSpan, ir.ConsumeCountedSpan)):
+                return None  # a scan of none or more forces no character to be there
+            if isinstance(item, (*_ACTIONS, *_GUARDS, ir.Empty)):
+                continue
+            return None
+        return None  # the way passes through everything it holds: no character has to be in front of it
+
+    def hoisted(way):
+        if way.gate.peek is not None:
+            return way
+        found = asked(_items_of_way(way))
+        if found is None:
+            return way
+        spans, at = found
+        actions = way.actions if at is None else (*way.actions[:at], ir.ConsumeChar(), *way.actions[at + 1 :])
+        return dataclasses.replace(way, gate=dataclasses.replace(way.gate, peek=_spans_node(spans)), actions=actions)
+
+    def told(production):
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            return production
+        return dataclasses.replace(
+            production, body=ir.Choice(alternatives=tuple(hoisted(way) for way in body.alternatives))
+        )
+
+    return {name: told(production) for name, production in grammar.items()}
+
+
+def hoist_guards(grammar, namer):
+    """
+    A way that begins with a guard carries it in its gate, where the machine asks it.
+
+    A gate is a peek and the zero-width conditions that must hold with it, and a guard leading a way is exactly one of
+    those: `EndOfStream` says the way is entered where no character is left, and a look-behind asks about the character
+    already taken. Both are questions the machine can put where it stands, which is what a gate is for.
+
+    Only a leading run of them moves. A guard further in may read what an action before it wrote — an indentation
+    comparison after a push — and asking it at the gate would have it read what the parse has not done yet.
+    """
+
+    def hoisted(way):
+        leading = 0
+        while leading < len(way.actions) and isinstance(way.actions[leading], (ir.EndOfStream, ir.LookBehind)):
+            leading += 1
+        if not leading:
+            return way
+        return dataclasses.replace(
+            way,
+            gate=dataclasses.replace(way.gate, guards=(*way.gate.guards, *way.actions[:leading])),
+            actions=way.actions[leading:],
+        )
 
     def told(production):
         body = production.body
@@ -3379,6 +3531,23 @@ STEPS = [
     Step("build-alternatives", build_alternatives, BODIES_ARE_STATES),
     # Phase 10 is the gate: a way is entered on the character in front of it, which is what a machine that never
     # backtracks chooses by. The hoists reduce `every-way-gated` between them.
-    Step("gate-hoist", gate_hoist, WAYS_ARE_GATED, reduces=WAYS_ARE_GATED),
-    Step("gate-hoist-call", gate_hoist_call, WAYS_ARE_GATED, reduces=WAYS_ARE_GATED),
+    Step(
+        "gate-hoist",
+        gate_hoist,
+        (WAYS_ARE_GATED, DECISIONS_GO_ON_A_CHARACTER),
+        reduces=(WAYS_ARE_GATED, DECISIONS_GO_ON_A_CHARACTER),
+    ),
+    Step(
+        "gate-hoist-call",
+        gate_hoist_call,
+        (WAYS_ARE_GATED, DECISIONS_GO_ON_A_CHARACTER),
+        reduces=(WAYS_ARE_GATED, DECISIONS_GO_ON_A_CHARACTER),
+    ),
+    Step(
+        "hoist-past-actions",
+        hoist_past_actions,
+        (WAYS_ARE_GATED, DECISIONS_GO_ON_A_CHARACTER),
+        reduces=(WAYS_ARE_GATED, DECISIONS_GO_ON_A_CHARACTER),
+    ),
+    Step("hoist-guards", hoist_guards, WAYS_ARE_GATED, reduces=WAYS_ARE_GATED),
 ]

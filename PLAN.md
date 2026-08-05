@@ -232,7 +232,7 @@ The phases, each established and then enforced:
 | 7     | `no-item-holds-a-match`                          | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
 | 8     | `a-way-is-actions-a-call-and-a-continuation`     | everything a way holds past its first call                                                      |
 | 9     | `every-body-is-a-choice-a-run-or-a-set`          | the tree's own spelling, for the machine's                                                      |
-| 10    | `every-way-gated`                                | every way entered on no character, and the meter arrives to say how many                        |
+| 10    | `every-way-gated`                                | every way entered on nothing the machine can ask, and the meter arrives to say what is left     |
 | later | `every-decision-goes-on-a-character`             | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
@@ -278,7 +278,7 @@ It is four phases rather than one, each a goal its steps establish between them:
 | 7     | an item standing in a way is what the machine does where it stands          | 3 exclusions, owed to the block structure |
 | 8     | a way is actions, a call and a continuation, and nothing follows the second | landed                                    |
 | 9     | a body is a set, a run of a call, or a choice of alternatives               | landed                                    |
-| 10    | every way is entered on a character, and the meter says how many are not    | `gate-hoist`, and the meter with it       |
+| 10    | every way is entered on what the machine can ask where it stands            | 36 ways, 94 undecided choices             |
 
 Binarization is no step of its own: one way in the grammar has three calls, and `mint-continuations` takes it with the
 rest. The re-encode is late rather than first so that every step above it stays in the vocabulary the sweep, the

@@ -512,6 +512,28 @@ All notable changes to this project are documented here. The format follows
   continuation whose bool means "the rest of the parse matched" keeps its name: it is protocol rather than a predicate,
   named for the act it performs where it stands.
 
+  **The meter, which nothing has printed since the pipeline was reordered.** `every-decision-goes-on-a-character` counts
+  a multi-way choice whose gates do not tell its ways apart — a way the gate says nothing about with another behind it,
+  or two ways admitting the same character, order being all that separates them. The last way is no fault: an empty gate
+  there is the fallthrough, taken where nothing else fired, which is a character deciding by firing nothing. It reads
+  **228** where the alternatives are first made and no gate says anything, and the hoists take it to **94**.
+
+  The rest of the gating goes with it. `hoist-past-actions` enters a way on the character its first question asks
+  whatever actions stand in front of it — a gate is tested before the way is entered and an action touches no input, so
+  the same character chooses either way, and a way that fails the test rewinds whatever its actions did. The walk goes
+  through a call that can take nothing as well, what enters the way then being what that call can start on *and* what
+  stands behind it. It stops at a commit, which is `gate-hoist-call`'s refusal one call deeper: a `(cut)`, an `(error)`
+  or a region opened before the question makes failing there an error rather than a refusal, and a gate that keeps the
+  way from being entered turns that error into a way not taken. `hoist-guards` puts a leading `EndOfStream` or
+  look-behind in the gate beside the peek, both being questions the machine can put where it stands — and
+  `every-way-gated` says so too now, a way entered at the end of the input having no character to be asked about at all.
+  Together: 372 ungated ways down to **36**.
+
+  Those 36 are accounted for rather than left. 18 call a production that answers a wrong character with an error, 6 one
+  that can start on nothing, 6 stand behind a commit, and 6 pass through everything they hold so that no character has
+  to be in front of them at all. Every one is a question about *when a failure is an error*, which is determinizing's to
+  answer and not a hoist's.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving
