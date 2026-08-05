@@ -2167,6 +2167,37 @@ def _shared_called_heads(grammar):
 NO_SHARED_CALLED_HEAD = Invariant("no-conflict-shares-a-called-head", _shared_called_heads)
 
 
+def _partial_overlaps(grammar):
+    """
+    Ways of one choice whose gates share a character without being the same set.
+
+    What stands between a choice and being decided is not that its gates meet — it is that they meet *partly*. Two ways
+    admitting exactly the same characters are a shared prefix waiting to be factored, and factoring moves their decision
+    one character deeper. Two whose gates cross, or one inside the other, are neither told apart nor shared: the
+    character firing both says take the earlier, which is order deciding rather than the input.
+
+    A choice its gates already tell apart has none of these by definition, so this counts conflicts without having to
+    ask which they are.
+    """
+    faults = []
+    for name, production in grammar.items():
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            continue
+        peeks = [
+            _peek_spans(way.gate.peek, grammar) if way.gate.peek is not None else None for way in body.alternatives
+        ]
+        for before in range(len(peeks)):
+            for after in range(before + 1, len(peeks)):
+                one, other = peeks[before], peeks[after]
+                if one is not None and other is not None and one != other and _do_spans_overlap(one, other):
+                    faults.append(f"{name}: two ways whose gates share a character without being the same set")
+    return faults
+
+
+GATES_MEET_WHOLLY = Invariant("no-partial-overlap", _partial_overlaps)
+
+
 def deterministic_productions(grammar):
     """
     The productions a parse may enter committed: the ones whose ways a character tells apart.
@@ -2752,6 +2783,77 @@ def _spliced_once(grammar, namer, is_wanted):
     return {**{name: told(name, production) for name, production in grammar.items()}, **minted}
 
 
+def _gate_blocks(gates):
+    """
+    The characters `gates` admit, grouped into the runs every gate treats alike — one span list per group.
+
+    The coarsest cut that leaves no gate straddling a group: the characters are split at every gate's edges and the
+    pieces gathered by *which gates admit them*, so a stretch no gate tells apart stays one piece. Cutting at the edges
+    alone splits a way along boundaries that have nothing to do with it — a way per boundary rather than a way per
+    decision, which measured ten times the copies for the same answer.
+    """
+    edges = sorted({edge for spans in gates for lo, hi in spans for edge in (lo, hi + 1)})
+    grouped = {}
+    for start, stop in zip(edges, edges[1:]):
+        piece = (start, stop - 1)
+        admitted = frozenset(
+            at for at, spans in enumerate(gates) if any(lo <= piece[0] and piece[1] <= hi for lo, hi in spans)
+        )
+        if admitted:
+            grouped.setdefault(admitted, []).append(piece)
+    return [_merged_spans(pieces) if pieces[0][0] >= 0 else pieces for pieces in grouped.values()]
+
+
+def split_gates(grammar, namer):
+    """
+    Cut the ways of a choice along the characters its gates treat alike, so that no two gates meet only in part.
+
+    A choice is decided where at most one gate fires, and what stands in the way of that is not gates meeting — it is
+    their meeting partly. Two ways admitting exactly the same characters are a shared prefix waiting to be factored; two
+    whose gates cross are neither told apart nor shared, and the character firing both says "take the earlier", which is
+    order deciding rather than the input. Cut along the groups and every overlap left is a whole one, which is what the
+    factoring behind this reads.
+
+    The same match spread over copies: a way's groups are its own gate cut up, so the characters it fires on are what
+    they were and each copy does what the way did. The copies stand where the way stood, so a way that came before
+    another still does — and the ways it now shares a gate with are exactly the ones it overlapped.
+    """
+
+    def split(body):
+        peeks = [
+            _peek_spans(way.gate.peek, grammar) if way.gate.peek is not None else None for way in body.alternatives
+        ]
+        gated = [spans for spans in peeks if spans is not None]
+        if not gated:
+            return body
+        blocks = _gate_blocks(gated)
+        ways = []
+        for way, spans in zip(body.alternatives, peeks):
+            mine = (
+                []
+                if spans is None
+                else [
+                    block for block in blocks if all(any(lo <= at and to <= hi for lo, hi in spans) for at, to in block)
+                ]
+            )
+            if len(mine) < 2:
+                ways.append(way)
+                continue
+            ways += [
+                dataclasses.replace(way, gate=dataclasses.replace(way.gate, peek=_spans_node(block))) for block in mine
+            ]
+        return ir.Choice(alternatives=tuple(ways))
+
+    return {
+        name: (
+            dataclasses.replace(production, body=split(production.body))
+            if isinstance(production.body, ir.Choice)
+            else production
+        )
+        for name, production in grammar.items()
+    }
+
+
 def inline_shared_heads(grammar, namer):
     """
     Where two ways of a conflict begin by calling the same production, that production is spliced into them, so what
@@ -2766,6 +2868,12 @@ def inline_shared_heads(grammar, namer):
     shared call further along a way is behind a character that has already decided. The three refusals are the splice's
     own, on the same grounds: a way that has taken a character, one that has committed, and a callee carrying on at
     something that does not come back level.
+
+    One pass, and the rounds are a question the measurement leaves open rather than settles: run again over the grammar
+    this leaves, the count falls 101, 86, 72, 62, 49, 47 and stops with the grammar smaller for it, 820 productions to
+    666 — but run again over the grammar this *starts* from, it climbs to 277 instead. What is left of a conflict after
+    one pass and a hoist is a truer conflict than what stands before either, and the rounds are worth having only from
+    there. Until that is arranged rather than observed, one pass.
     """
     shared = {}
     for name in _undecided_reasons(grammar):
@@ -3830,6 +3938,15 @@ STEPS = [
         ),
     ),
     Step(
+        "hoist-past-actions-3",
+        hoist_past_actions,
+        WAYS_ARE_GATED,
+        reduces=WAYS_ARE_GATED,
+    ),
+    # The inlining reads what a character does not decide, so it runs where the gates are on: before them a way that is
+    # merely not gated yet reads as a conflict, and what the inlining does about that is copy productions for decisions
+    # already made. After them the same fixpoint takes the count down instead of up, and the grammar with it.
+    Step(
         "inline-shared-heads",
         inline_shared_heads,
         NO_SHARED_CALLED_HEAD,
@@ -3841,9 +3958,14 @@ STEPS = [
         },
     ),
     Step(
-        "hoist-past-actions-3",
-        hoist_past_actions,
-        WAYS_ARE_GATED,
-        reduces=WAYS_ARE_GATED,
+        "split-gates",
+        split_gates,
+        GATES_MEET_WHOLLY,
+        lapses=dict.fromkeys(
+            ("no-call-enters-both-ways", "no-conflict-shares-a-called-head"),
+            "a way cut along the characters its gate treats alike is that way over again, so what one copy does they "
+            "all do: a call that entered both ways is entered by each, and a beginning one shared with another way is "
+            "shared by its copies too. Both counts follow the copies, and both are what the factoring reads",
+        ),
     ),
 ]

@@ -589,7 +589,22 @@ All notable changes to this project are documented here. The format follows
   other way — down into a conflict rather than up into its callers — and refused on the same three grounds, so the two
   steps share one pass and differ only in which calls they name. A terminal is spliced too, being one way and that way a
   character: said as a gate on its set and a consume, the call stops hiding the prefix. The count falls to 101 and the
-  grammar with it, 858 productions to 820, since what a shared head is spliced out of the sweep can drop.
+  grammar with it, 858 productions to 820, since what a shared head is spliced out of the sweep can drop. One pass, and
+  the rounds are a question left open rather than settled: run again over the grammar it leaves, the count falls 101,
+  86, 72, 62, 49, 47 and the grammar to 666 productions; run again over the grammar it starts from, it climbs to 277.
+  What is left of a conflict after a pass and a hoist is a truer conflict than what stands before either.
+
+  **What stands between a choice and being decided is not that its gates meet — it is that they meet partly.** Two ways
+  admitting exactly the same characters are a shared prefix waiting to be factored; two whose gates cross are neither
+  told apart nor shared, and the character firing both says take the earlier, which is order deciding rather than the
+  input. `no-partial-overlap` counts those, **438**, and `split-gates` settles it: the ways are cut along the groups
+  their gates treat alike — the coarsest cut that leaves no gate straddling a group, since cutting at every edge instead
+  splits a way along boundaries that have nothing to do with it, ten times the copies for the same answer. The same
+  match spread over copies, each standing where the way stood, so order is what it was and the ways a copy shares a gate
+  with are exactly the ones it overlapped.
+
+  The meter does not move for it, and should not: an overlap made whole is still an overlap. What it is for is the
+  factoring behind it, which reads exactly the gates that are now equal.
 
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
