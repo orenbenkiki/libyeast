@@ -2136,6 +2136,37 @@ def _conflicts_with_several_follows(grammar):
 CONFLICTS_CAN_BE_ASKED = Invariant("every-conflict-can-be-asked", _conflicts_with_several_follows)
 
 
+def _shared_called_heads(grammar):
+    """
+    Conflicts whose ways begin by calling the same production — a shared beginning hidden behind a call.
+
+    What a character decides, it decides on what the ways *do*, and two ways that begin by handing control to the same
+    production do the same thing until it returns. That is a shared prefix like any other, and factoring it is what
+    moves the decision to where the input makes it — but a gate is a way's own, so nothing that reads gates can see a
+    prefix that lives one call down. Spliced into the ways, it is a prefix again, and the plain factoring reaches it.
+
+    Only where the choice is one no character decides. A choice whose gates already tell its ways apart has nothing to
+    move: the shared call is then a thing two decided ways happen to do, and inlining it would copy a production for no
+    decision at all.
+    """
+    faults = []
+    for name in _undecided_reasons(grammar):
+        heads = {}
+        for way in grammar[name].body.alternatives:
+            called = way.first if way.first is not None else way.second
+            if called is not None:
+                heads[called.name] = heads.get(called.name, 0) + 1
+        faults += [
+            f"{name}: {count} ways beginning with a call to `{head}`, a shared prefix a gate cannot see"
+            for head, count in heads.items()
+            if count > 1
+        ]
+    return faults
+
+
+NO_SHARED_CALLED_HEAD = Invariant("no-conflict-shares-a-called-head", _shared_called_heads)
+
+
 def deterministic_productions(grammar):
     """
     The productions a parse may enter committed: the ones whose ways a character tells apart.
@@ -2625,22 +2656,30 @@ def splice_conflicts(grammar, namer):
     is.
     """
     while True:
-        spliced = _spliced_once(grammar, namer)
+        follows = _follows_of(grammar)
+        conflicts = {name for name in _undecided_reasons(grammar) if len(follows.get(name, ())) > 1}
+        spliced = _spliced_once(grammar, namer, lambda _owner, called: called in conflicts)  # noqa: B023 — this round's
         if spliced == grammar:
             return grammar
         grammar = cleaned(spliced)[0]
 
 
-def _spliced_once(grammar, namer):
-    """One pass of `splice_conflicts`, which runs it to a fixpoint."""
-    follows = _follows_of(grammar)
-    conflicts = {name for name in _undecided_reasons(grammar) if len(follows.get(name, ())) > 1}
+def _spliced_once(grammar, namer, is_wanted):
+    """
+    One pass of splicing: every call `is_wanted` names, made where the way can hold what the callee does, replaced by
+    the callee's ways.
+
+    The pass two steps share on different grounds. `splice-conflicts` wants a conflict spliced *up* into the places that
+    call it, so each copy has one follow and the walk can be asked; `inline-shared-heads` wants a callee spliced *down*
+    into the ways of a conflict that share it, so what those ways have in common stops hiding behind a call. The rewrite
+    is the same either way, and so are the three things that refuse it.
+    """
     signature = _scope_signature(grammar)
     minted = {}
 
     def spliced(owner, way):
-        target = way.first if way.first is not None and way.first.name in conflicts else None
-        if target is None and way.first is None and way.second is not None and way.second.name in conflicts:
+        target = way.first if way.first is not None and is_wanted(owner, way.first.name) else None
+        if target is None and way.first is None and way.second is not None and is_wanted(owner, way.second.name):
             target, carried = way.second, None
         elif target is not None:
             carried = way.second
@@ -2653,9 +2692,17 @@ def _spliced_once(grammar, namer):
             # each would open a region of its own, and the first one's failure would be the error rather than the next
             # way's turn. The flow collections' unterminated-bracket commits are every one of these.
             return [way]
+        called = grammar[target.name].body
+        if isinstance(called, ir.CharSet):
+            # A terminal has one way and it is a character: entered on that set, taking the one the gate found. Said
+            # this way the call stops hiding a prefix, which is the whole of what the inlining is for.
+            inner_ways = (ir.Alternative(gate=ir.Gate(peek=called), actions=(ir.ConsumeChar(),)),)
+        elif isinstance(called, ir.Choice):
+            inner_ways = called.alternatives
+        else:
+            return [way]  # a run is a loop, and a loop has no ways to stand where the call did
         if carried is not None and any(
-            inner.second is not None and signature[inner.second.name] != ((), ())
-            for inner in grammar[target.name].body.alternatives
+            inner.second is not None and signature[inner.second.name] != ((), ()) for inner in inner_ways
         ):
             # What the callee carries on at would become a call the way comes back from, with the caller's own
             # continuation pushed behind it — so a scope that call leaves open would meet the push rather than its own
@@ -2663,7 +2710,7 @@ def _spliced_once(grammar, namer):
             # this step.
             return [way]
         ways = []
-        for inner in grammar[target.name].body.alternatives:
+        for inner in inner_ways:
             peek = inner.gate.peek if way.gate.peek is None else way.gate.peek if inner.gate.peek is None else None
             if peek is None and way.gate.peek is not None and inner.gate.peek is not None:
                 met = _spans_meeting(
@@ -2703,6 +2750,32 @@ def _spliced_once(grammar, namer):
         return dataclasses.replace(production, body=ir.Choice(alternatives=ways))
 
     return {**{name: told(name, production) for name, production in grammar.items()}, **minted}
+
+
+def inline_shared_heads(grammar, namer):
+    """
+    Where two ways of a conflict begin by calling the same production, that production is spliced into them, so what
+    they share stops hiding behind a call.
+
+    A gate is a way's own, so nothing that reads gates can see a prefix living one call down: two ways that both begin
+    by handing control to `b-carriage-return` do the same thing until it returns, and no amount of comparing their gates
+    says so. Spliced, what they share is a run of actions at the front of each — a prefix like any other, which the
+    plain factoring reaches and moves the decision behind.
+
+    Only at conflicts, and only at the head. A choice whose gates already tell its ways apart has nothing to move, and a
+    shared call further along a way is behind a character that has already decided. The three refusals are the splice's
+    own, on the same grounds: a way that has taken a character, one that has committed, and a callee carrying on at
+    something that does not come back level.
+    """
+    shared = {}
+    for name in _undecided_reasons(grammar):
+        heads = {}
+        for way in grammar[name].body.alternatives:
+            called = way.first if way.first is not None else way.second
+            if called is not None:
+                heads[called.name] = heads.get(called.name, 0) + 1
+        shared[name] = {head for head, count in heads.items() if count > 1}
+    return _spliced_once(grammar, namer, lambda owner, called: called in shared.get(owner, ()))
 
 
 def hoist_guards(grammar, namer):
@@ -3755,6 +3828,17 @@ STEPS = [
             "it: the copies are what the walk can finally be asked about, and what it says of them is that a character "
             "decides all but a handful, so the counts follow the copies rather than the work",
         ),
+    ),
+    Step(
+        "inline-shared-heads",
+        inline_shared_heads,
+        NO_SHARED_CALLED_HEAD,
+        reduces=NO_SHARED_CALLED_HEAD,
+        lapses={
+            "no-call-enters-both-ways": "a callee spliced into the ways that shared it is that callee once per way, "
+            "and a call of its that entered both ways is entered by each copy: the count follows the copies, and what "
+            "the factoring behind this takes back is the shared beginning they now show"
+        },
     ),
     Step(
         "hoist-past-actions-3",

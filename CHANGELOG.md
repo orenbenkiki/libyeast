@@ -579,6 +579,18 @@ All notable changes to this project are documented here. The format follows
   The 5 left are each named: four are blocked by a commit standing before the call and want the commit lifted, which is
   the step the 24 ungated ways want too; one wants the tail call it carries on at made level.
 
+  **A prefix can hide behind a call, and a gate cannot see one that does.** Two ways of `b-break` both begin by handing
+  control to `b-carriage-return`, so they do the same thing until it returns — a shared beginning like any other, and
+  invisible to everything that compares gates. `no-conflict-shares-a-called-head` counts them, 117, and only at
+  conflicts: a choice whose gates already tell its ways apart has nothing to move, and inlining there would copy a
+  production for no decision at all.
+
+  `inline-shared-heads` splices that callee into the ways that share it, which is the splice's own rewrite pointed the
+  other way — down into a conflict rather than up into its callers — and refused on the same three grounds, so the two
+  steps share one pass and differ only in which calls they name. A terminal is spliced too, being one way and that way a
+  character: said as a gate on its set and a consume, the call stops hiding the prefix. The count falls to 101 and the
+  grammar with it, 858 productions to 820, since what a shared head is spliced out of the sweep can drop.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving
