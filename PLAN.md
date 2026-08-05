@@ -229,7 +229,10 @@ The phases, each established and then enforced:
 | 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack                             |
 | 5     | `only-root-empties`                              | every empty match but the ones a parse enters by name                                           |
 | 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`     | every scope that holds what it covers, for the pair that brackets it                            |
-| 7     | `every-body-is-a-choice-of-alternatives`         | every shape a state machine has no state for — the tree, and what a way holds under it          |
+| 7     | `no-item-holds-a-match`                          | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
+| 8     | `a-way-is-actions-a-call-and-a-continuation`     | everything a way holds past its first call                                                      |
+| 9     | `every-body-is-a-choice-of-alternatives`         | the tree's own spelling, for the machine's                                                      |
+| 10    | `every-way-gated`                                | every way entered on no character, and the meter arrives to say how many                        |
 | later | `every-decision-goes-on-a-character`             | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
@@ -268,31 +271,27 @@ What is kept from the other order: only the *universal* shape lands blind. The r
 the meter arrives with the gates rather than before them: a count over the tree measures a shape about to be discarded,
 and its number would not be comparable to the one that matters.
 
-The steps, smallest first, sized against the 326 productions and 465 ways the phase inherits:
+It is four phases rather than one, each a goal its steps establish between them:
 
-| step                  | invariant                                    | at  | what it does                                                               |
-| --------------------- | -------------------------------------------- | --- | -------------------------------------------------------------------------- |
-| `lift-choices`        | `every-choice-is-a-body`                     | 469 | a choice below the top of a body gets a production, being where a state is |
-| `lift-runs`           | `every-run-is-a-body`                        | 106 | a run gets a name and stays possessive, the machine's loop state           |
-| `mint-continuations`  | `a-way-is-actions-a-call-and-a-continuation` | 151 | everything past a way's first call becomes what it carries on at           |
-| `recover-to-the-edge` | `no-recover-nodes`                           | 8   | the handler onto the alternative's own edge                                |
-| `lower-bind`          | `no-bind-nodes`                              | 1   | the one binding node as an action                                          |
-| `bound-forbidden`     | `every-exclusion-is-bounded`                 | 4   | `c-forbidden` as the bounded literal peek it is                            |
-| `build-alternatives`  | `every-body-is-a-choice-of-alternatives`     | 326 | the re-encode into `Choice`/`Alternative`/`Gate`                           |
-| `gate-hoist`          | `every-way-gated`                            | —   | a way's leading character question rises into its gate                     |
+| phase | goal                                                                        | what is left of it                                        |
+| ----- | --------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 7     | an item standing in a way is what the machine does where it stands          | 3 exclusions, owed to the block structure                 |
+| 8     | a way is actions, a call and a continuation, and nothing follows the second | `mint-continuations`, 151 ways with something past a call |
+| 9     | a body is a choice of alternatives, in the canonical form's own spelling    | `build-alternatives`, the re-encode                       |
+| 10    | every way is entered on a character, and the meter says how many are not    | `gate-hoist`, and the meter with it                       |
 
-Binarization is not among them: one way in the grammar has three calls, and `mint-continuations` takes it with the rest.
-The re-encode is last rather than first so that every step above it stays in the vocabulary the sweep, the interpreter
-and the corpus already speak — by the time it runs, a body already *is* a choice of ways that are actions, a call and a
-continuation, and the step changes spelling rather than meaning.
+Binarization is no step of its own: one way in the grammar has three calls, and `mint-continuations` takes it with the
+rest. The re-encode is late rather than first so that every step above it stays in the vocabulary the sweep, the
+interpreter and the corpus already speak — by the time it runs, a body already *is* a choice of ways that are actions, a
+call and a continuation, and the step changes spelling rather than meaning.
 
-**What the lookarounds leave owed.** They are not one of the two buckets: 64 of the 74 are a question about one
+**What phase 7 leaves owed**, and it is the lookarounds' only remaining share. 64 of the 74 are a question about one
 character, held to a `CharSet` by `every-peek-is-a-character-set`, and a peek of a set *is* the zero-width guard the
 canonical gate carries — one bit tested against the key the decoder already made, and for the two look-behinds one
-register holding the last one, which is what `is_sol` already is. What is left is the ten `(exclude)` guards: four are
-`c-forbidden` and `bound-forbidden` takes them, and six carry `s-indent-le-line` — "a line at this indentation with
-content" — which is a condition on a line start rather than a lookahead, and lands where the block-structure work makes
-a line start a decision the grammar spells.
+register holding the last one, which is what `is_sol` already is. Of the exclusions, `bound-exclusions` took the four
+asking for `c-forbidden` and left **3** asking `s-indent-le-line` as well — "a line at this indentation with content", a
+run of spaces with no bound. That is a condition on a line start rather than a question about what follows one, and it
+lands where the block-structure work makes a line start a decision the grammar spells.
 
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:

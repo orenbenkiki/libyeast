@@ -422,6 +422,20 @@ All notable changes to this project are documented here. The format follows
   what a body may be now, a choice of ways or a run of one or a way under a handler or a way, and the count and the
   lifting both read it; a binding is deliberately not among them, a body that is one hiding a write behind a match.
 
+  The exclusions are the phase's other half, and `every-exclusion-is-bounded` reads 7. An `(exclude)` is a guard the
+  parse carries and tests at every start of line while it stands, so what it asks has to be answerable where it is asked
+  — and four of them ask it by name, `c-forbidden`, which a guard would have to run a parse to answer.
+  `bound-exclusions` writes what they ask as what it denotes: at a line start, `---` or `...` and then a break, a space,
+  a tab or the end — two `LiteralPeek`s of three characters with one follow class between them, which the parser's own
+  fill already guarantees. The reading is a peek's: a name is read through, an annotation is dead, and the follow test
+  distributes over the two runs because a question is probed and given back, so what is duplicated is a test rather than
+  a match.
+
+  The count stops at 3, and they are the phase's declared debt rather than its oversight: those exclusions also ask
+  whether the line stands at this indentation with content, which is a run of spaces with no bound — a condition on a
+  line start rather than a question about what follows one. It lands where the block-structure work makes a line start a
+  decision the grammar spells.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving
