@@ -1790,6 +1790,11 @@ _LEAF_ITEMS = (
 # productions of their own, a recovery moves to the edge an alternative rides, and a binding becomes an action.
 _HOLDS_A_MATCH = (ir.Alt, ir.Bind, ir.LongestRun, ir.Recover, ir.Seq)
 
+# What a production's body may be, each a state the machine has: a choice of ways, a run of one, a way under a handler,
+# or a way. A binding is not among them — a body that is one hides a write behind a match, which `no-bind-nodes` counts
+# wherever it stands.
+_BODY_KINDS = (ir.Alt, ir.LongestRun, ir.Recover, ir.Seq)
+
 
 def _inner_ways(node):
     """The matches `node` holds, each a way in its own right — what the walk goes on into once it has counted one."""
@@ -1837,9 +1842,7 @@ def _nested_matches(grammar, reported):
 
     for name, production in grammar.items():
         body = production.body
-        for opened in (
-            body.items if isinstance(body, ir.Alt) else (body.item if isinstance(body, ir.LongestRun) else body,)
-        ):
+        for opened in _inner_ways(body) if isinstance(body, _BODY_KINDS) else (body,):
             way(opened, name)
     return faults
 
@@ -1849,6 +1852,19 @@ ITEMS_ARE_LEAVES = Invariant("no-item-holds-a-match", lambda grammar: _nested_ma
 # The phase's first share: a choice is where the machine has a state, and standing inside a way it has nowhere to be
 # one. Its own production is that state, and the way holds the call.
 CHOICES_ARE_BODIES = Invariant("every-choice-is-a-body", lambda grammar: _nested_matches(grammar, ir.Alt))
+
+# The second: a run is the machine's loop state, which is a production it jumps back to the top of. Naming it decides
+# nothing about the run itself — it stays the possessive scan it was, and whether a turn is taken is the gate's
+# question, asked where the gates arrive.
+RUNS_ARE_BODIES = Invariant("every-run-is-a-body", lambda grammar: _nested_matches(grammar, ir.LongestRun))
+
+# The third: a recovery is a handler over a match, which an alternative carries on its own edge. It has no edge to ride
+# until the alternatives are made, so it gets a production of its own meanwhile — a body the re-encode reads as the way
+# it is, its item the call and its recovery what rides the push.
+RECOVERIES_ARE_BODIES = Invariant("every-recovery-is-a-body", lambda grammar: _nested_matches(grammar, ir.Recover))
+
+# The last: a binding is a match and the write that follows it, which the vocabulary already spells as two things.
+NO_BIND_NODES = _absent("no-bind-nodes", ir.Bind)
 
 
 def _with_inner_ways(node, rebuilt):
@@ -1866,45 +1882,75 @@ def _with_inner_ways(node, rebuilt):
     raise TypeError(f"cannot tell which matches {type(node).__name__} holds")
 
 
-def lift_choices(grammar, namer):
+def _lifting(kind):
     """
-    Give every choice standing inside a way a production of its own, and leave the call where it stood.
+    The transform giving every `kind` standing inside a way a production of its own, and leaving the call where it
+    stood.
 
-    A choice is where the parse decides, and a machine decides in a state: standing in the middle of a way it has
-    nowhere to be one, since the state is the production and what a way holds is what runs inside it. Minted out, the
-    choice is a state a call reaches and comes back from, and the way holds an item like any other.
+    A choice is where the parse decides and a run is where it loops, and a machine does either in a state: standing in
+    the middle of a way neither has anywhere to be one, since the state is the production and what a way holds is what
+    runs inside it. Minted out, each is a state a call reaches and comes back from, and the way holds an item like any
+    other. Naming a run settles nothing about the run itself — it stays the possessive scan it was, and whether it takes
+    another turn is a question the gates ask.
 
     Minting rather than distributing, which is the other way to take a choice out of a sequence: `a (x | y) b` as `a x b
     | a y b` runs `a` twice wherever it takes a character or pushes anything, and a copy of `b` per way is a copy of
     whatever `b` calls. The call costs a push and duplicates nothing.
     """
-    minted = {}
 
-    def item(node, owner):
-        if isinstance(node, _LEAF_ITEMS):
-            return node
-        if isinstance(node, ir.Alt):
-            name = namer.fresh(owner)
-            minted[name] = ir.Prod(
-                grammar[owner].number, name, (), _with_inner_ways(node, lambda way: rebuilt(way, owner))
-            )
-            return ir.Ref(name=name, args=())
-        return _with_inner_ways(node, lambda way: rebuilt(way, owner))
+    def transform(grammar, namer):
+        minted = {}
 
-    def rebuilt(node, owner):
-        if isinstance(node, ir.Seq):
-            return dataclasses.replace(node, items=tuple(item(part, owner) for part in node.items))
-        return item(node, owner)
-
-    def body(node, owner):
-        if isinstance(node, (ir.Alt, ir.LongestRun)):
+        def item(node, owner):
+            if isinstance(node, _LEAF_ITEMS):
+                return node
+            if isinstance(node, kind):
+                name = namer.fresh(owner)
+                minted[name] = ir.Prod(
+                    grammar[owner].number, name, (), _with_inner_ways(node, lambda way: rebuilt(way, owner))
+                )
+                return ir.Ref(name=name, args=())
             return _with_inner_ways(node, lambda way: rebuilt(way, owner))
-        return rebuilt(node, owner)
 
-    lifted = {
-        name: dataclasses.replace(production, body=body(production.body, name)) for name, production in grammar.items()
+        def rebuilt(node, owner):
+            if isinstance(node, ir.Seq):
+                return dataclasses.replace(node, items=tuple(item(part, owner) for part in node.items))
+            return item(node, owner)
+
+        def body(node, owner):
+            if isinstance(node, _BODY_KINDS) and not isinstance(node, ir.Seq):
+                return _with_inner_ways(node, lambda way: rebuilt(way, owner))
+            return rebuilt(node, owner)
+
+        lifted = {
+            name: dataclasses.replace(production, body=body(production.body, name))
+            for name, production in grammar.items()
+        }
+        return {**lifted, **minted}
+
+    return transform
+
+
+def lower_bind(grammar, namer):
+    """
+    Write each binding as the match it binds for and the write that follows it: `Bind(cond, param, value)` becomes `cond
+    SetVar(param, value)`.
+
+    A binding is not a scope over the match: it matches `cond`, works the value out where that match ends — the digit's
+    own text, for the one binding left, which `(atoi)` reads off the run — and writes it. That is a match and then an
+    action, and the interpreter says so twice over: what a binding does once its condition has matched is exactly what
+    `SetVar` does, down to undoing the write where what follows fails so the condition can try its next way.
+    """
+
+    def lowered(node):
+        node = ir.rebuilt(node, lowered)
+        if isinstance(node, ir.Bind):
+            return ir.Seq(items=(node.cond, ir.SetVar(param=node.param, value=node.value)))
+        return node
+
+    return {
+        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
     }
-    return {**lifted, **minted}
 
 
 def _is_actions_alone(node, grammar, seen=frozenset()):
@@ -2692,7 +2738,7 @@ STEPS = [
     # them, each settling its own share of it.
     Step(
         "lift-choices",
-        lift_choices,
+        _lifting(ir.Alt),
         (ITEMS_ARE_LEAVES, CHOICES_ARE_BODIES),
         reduces=ITEMS_ARE_LEAVES,
         lapses=dict.fromkeys(
@@ -2702,4 +2748,23 @@ STEPS = [
             "it now stands",
         ),
     ),
+    Step(
+        "lift-runs",
+        _lifting(ir.LongestRun),
+        (ITEMS_ARE_LEAVES, RUNS_ARE_BODIES),
+        reduces=ITEMS_ARE_LEAVES,
+        lapses=dict.fromkeys(
+            ("every-empty-match-is-a-way", "no-call-enters-both-ways", "only-root-empties"),
+            "a run of none or more is the same choice under another name — take a turn or take none — and naming it "
+            "puts that choice behind a call, where the loop state is; the turn is a character's to decide and the "
+            "gates are what decide it",
+        ),
+    ),
+    Step(
+        "lift-recoveries",
+        _lifting(ir.Recover),
+        (ITEMS_ARE_LEAVES, RECOVERIES_ARE_BODIES),
+        reduces=ITEMS_ARE_LEAVES,
+    ),
+    Step("lower-bind", lower_bind, (ITEMS_ARE_LEAVES, NO_BIND_NODES)),
 ]

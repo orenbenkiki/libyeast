@@ -404,6 +404,24 @@ All notable changes to this project are documented here. The format follows
   than a name's, a path through what a parse enters by name being cut before reachability is asked, and what still
   reaches itself is the grammar's own doing and a fault.
 
+  The other three shares follow, and the phase's count reaches none. `lift-runs` gives each run standing in a way a
+  production of its own — the machine's loop state, which is a production it jumps back to the top of — settling
+  `every-run-is-a-body` at 82, and costing the same three counts again for its own reason: a run of none or more is that
+  same choice under another name, take a turn or take none. Naming a run settles nothing about the run itself; it stays
+  the possessive scan it was, and whether it takes another turn is a question the gates ask. `lift-recoveries` does the
+  same for the eight recoveries, which is where a handler waits until there is an edge to ride — an alternative carries
+  one, and until the alternatives are made a production of its own is what a recovery is. `lower-bind` takes the last
+  binding, the block header's `Bind(ns-dec-digit, m, atoi(match))`, and writes it as the match and the write that
+  follows it: an identity the interpreter states twice over, what a binding does once its condition has matched being
+  exactly what a `SetVar` does, down to undoing the write where what follows fails so the condition can try its next
+  way.
+
+  `no-item-holds-a-match` is none from there, over 532 productions: every item standing in a way is a call, an action, a
+  guard, a character taken or nothing at all. What the count itself got wrong is worth keeping — it did not know a
+  recovery could *be* a body, so the productions `lift-recoveries` minted read as faults of their own. One list says
+  what a body may be now, a choice of ways or a run of one or a way under a handler or a way, and the count and the
+  lifting both read it; a binding is deliberately not among them, a body that is one hiding a write behind a match.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving
