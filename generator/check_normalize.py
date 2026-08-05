@@ -144,7 +144,7 @@ def _first_broken(stages, fixtures, suite, hint=None, bound=None):
     return stages[high][0], _corpus_errors(*stages[high], fixtures, suite)
 
 
-def _check(bisect=False, hint=None):
+def _check(does_bisect=False, hint=None):
     fixtures = spec_tests.load()
     suite = check_star.cases()
     stages, points = normalize.stages(annotated2ir.load())
@@ -160,7 +160,7 @@ def _check(bisect=False, hint=None):
         print(f"FAILING: {len(corpus)} corpus divergence(s)", flush=True)
         for divergence in corpus[:5]:
             print(f"    {divergence}", flush=True)
-        if bisect:
+        if does_bisect:
             print("    searching for the step that broke them", flush=True)
             wanted, cases = _narrowed(corpus, fixtures, suite)
             found = _first_broken(stages, wanted, cases, hint, _reporting_stage(corpus, stages))
@@ -241,7 +241,7 @@ def main():
 
     def worker():
         try:
-            _check(bisect=arguments.bisect is not None, hint=hint)
+            _check(does_bisect=arguments.bisect is not None, hint=hint)
         except SystemExit as exit:  # gate.report exits on failure; carry its code back to the main thread
             status["code"] = exit.code
         except BaseException:  # noqa: BLE001 — a thread's exception reaches no exit code of its own

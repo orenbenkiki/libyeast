@@ -91,9 +91,9 @@ def reflow(block, indent):
     return out
 
 
-def offenders(path, apply):
+def offenders(path, is_applying):
     """
-    Reflow the file's comment blocks; return the starting line of each that changed, writing back if ``apply``.
+    Reflow the file's comment blocks; return the starting line of each that changed, writing back if asked.
     """
     source = open(path).read()
     lines = source.split("\n")
@@ -113,7 +113,7 @@ def offenders(path, apply):
             continue
         result.append(lines[index])
         index += 1
-    if apply and changed:
+    if is_applying and changed:
         with open(path, "w") as handle:
             handle.write("\n".join(result))
     return changed
@@ -121,20 +121,20 @@ def offenders(path, apply):
 
 def main():
     arguments = sys.argv[1:]
-    check = "--check" in arguments
-    apply = "--apply" in arguments
+    is_checking = "--check" in arguments
+    is_applying = "--apply" in arguments
     paths = [argument for argument in arguments if not argument.startswith("-")]
     total = 0
     for path in paths:
-        changed = offenders(path, apply and not check)
+        changed = offenders(path, is_applying and not is_checking)
         total += len(changed)
-        if check:
+        if is_checking:
             for start in changed:
                 print(f"{path}:{start}: comment block is not reflowed to {WIDTH} columns")
-    if check and total:
+    if is_checking and total:
         print(f"wrap-long-comments: {total} block(s) not reflowed — run `make reformat-py`")
         sys.exit(1)
-    if apply:
+    if is_applying:
         print(f"wrap-long-comments: {total} block(s) reflowed")
 
 

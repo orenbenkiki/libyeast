@@ -516,11 +516,11 @@ def _probe(pattern, emitter, grammar):
     checkpoint = emitter.checkpoint()
     emitter.probing += 1  # a lookahead reads past a `Limited` window's edge freely; the rewind restores the count
     try:
-        matched = match(pattern, emitter, grammar, _accept)
+        did_match = match(pattern, emitter, grammar, _accept)
     except CommitFailure:
-        matched = False
+        did_match = False
     emitter.rewind(checkpoint)
-    return matched
+    return did_match
 
 
 def _does_gate_hold(gate, emitter, grammar):
@@ -748,19 +748,19 @@ def match(node, emitter, grammar, k):
                 # failure is the production's — no other is tried. The proved-disjoint gates are what make this the same
                 # parse backtracking finds; an empty gate is the unconditional fallthrough and always holds, and a guard
                 # refusing tries the next alternative, as its zero-width prefix fails it in backtracking.
-                committed = False
+                did_match = False
                 for alternative in body.alternatives:
                     if _does_gate_hold(alternative.gate, emitter, grammar):
-                        committed = match(alternative, emitter, grammar, continue_out)
+                        did_match = match(alternative, emitter, grammar, continue_out)
                         break
             else:
-                committed = match(body, emitter, grammar, continue_out)
+                did_match = match(body, emitter, grammar, continue_out)
         finally:
             emitter.entered.pop()
-        if not committed:
+        if not did_match:
             emitter.env = saved_env
             emitter.forbidden = saved_forbidden
-        return committed
+        return did_match
     if isinstance(node, ir.Seq):
 
         def step(index):
@@ -1021,9 +1021,9 @@ def match(node, emitter, grammar, k):
             checkpoint = emitter.checkpoint()
             emitter.probing += 1  # a look-behind reads speculatively, past any `Limited` edge; the rewind restores it
             emitter.position = start
-            reached = match(node.item, emitter, grammar, lambda: emitter.position == target)
+            did_reach = match(node.item, emitter, grammar, lambda: emitter.position == target)
             emitter.rewind(checkpoint)
-            if reached:
+            if did_reach:
                 return k()
         return False
     if isinstance(node, ir.Token):
@@ -1042,10 +1042,10 @@ def match(node, emitter, grammar, k):
             emitter.rewind(middle)  # reopen the run so the wrapped item can try its next way
             return False
 
-        matched = match(node.item, emitter, grammar, close_token)
-        if not matched:
+        did_match = match(node.item, emitter, grammar, close_token)
+        if not did_match:
             emitter.rewind(entry)  # undo the leading cut and the code change
-        return matched
+        return did_match
     if isinstance(node, ir.Wrap):
         entry = emitter.checkpoint()
         emitter.marker(node.begin)
@@ -1058,10 +1058,10 @@ def match(node, emitter, grammar, k):
             emitter.rewind(middle)
             return False
 
-        matched = match(node.item, emitter, grammar, close_wrap)
-        if not matched:
+        did_match = match(node.item, emitter, grammar, close_wrap)
+        if not did_match:
             emitter.rewind(entry)
-        return matched
+        return did_match
     if isinstance(node, ir.Emit):
         checkpoint = emitter.checkpoint()
         emitter.marker(node.code)
@@ -1304,11 +1304,11 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset()):
     failed_at = None
     while True:
         try:
-            matched = match(node, emitter, grammar, _accept)
+            did_match = match(node, emitter, grammar, _accept)
         except CommitFailure as failure:
             _fail(emitter, MESSAGES[failure.code])  # committed: the error names what the cut expected
         else:
-            if matched:
+            if did_match:
                 emitter.cut()
                 # A parse that has matched has closed what it opened: the scopes the grammar writes as pairs balance,
                 # and an abandoned parse's are cleared where it was abandoned. What a wrapper held in a Python frame

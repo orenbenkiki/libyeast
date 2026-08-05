@@ -491,6 +491,27 @@ All notable changes to this project are documented here. The format follows
   entry set the grammar has never computed; 47 begin with an action the gate has to look past, which it may, an action
   touching no input; and 5 with a guard, which the gate carries beside the peek rather than in it.
 
+  So the entry sets are computed — `{name: spans}`, the characters a parse of each production can start on, as a least
+  fixed point over the calls, erring wide where it errs since a gate too wide costs a parse that fails where it could
+  have been refused and a gate too narrow loses one that should have matched. `gate-hoist-call` then enters a
+  call-leading way on what its callee can start with: the way cannot match unless the callee does, so the set refuses
+  exactly what the way would have failed on one call deeper. `every-way-gated` falls from 324 to 93.
+
+  Two side conditions, and the second is one the corpus found rather than the argument. A callee that can take nothing
+  is refused, the way passing through it to whatever stands behind. And a callee that answers a character it cannot
+  start on with an *error* rather than a refusal is refused too: a `(commit)` opened before anything has to take a
+  character makes the failure the error that region names, so gating the way out of the parse lets the choice go on to a
+  way that matches where the parse used to stop. That is a different language and not a narrower one, and the suite said
+  so exactly — `2G84/00`, a case libyeast began accepting where the suite rejects it. Nineteen callees are of that
+  shape.
+
+- Boolean names audited across the generator, function, variable and parameter alike: a fixpoint's `changed` and `moved`
+  are `did_change` and `did_move`, a match's `matched` is `did_match`, the law's `licensed`/`broken`/`settled` are
+  `is_licensed`/`is_broken`/`is_settled`, `refuses_softly` and `establishes` are `does_refuse_softly` and
+  `does_establish`, and the flags `bisect`/`check`/`apply` are `does_bisect`/`is_checking`/`is_applying`. A CPS
+  continuation whose bool means "the rest of the parse matched" keeps its name: it is protocol rather than a predicate,
+  named for the act it performs where it stands.
+
   Every step's grammar is swept of what the step leaves behind, the four passes running to a fixpoint since each feeds
   the others. Every body is flattened to the shape it denotes: a sequence or a choice of one item is that item, a nested
   one of the same kind is its items in place, and an `<empty>` in a sequence goes, matching where it stood and moving

@@ -85,7 +85,7 @@ def _closure(grammar, configs):
         chosen = grammar[name].body.alternatives[alternative]
         if cursor == 0 or (isinstance(cursor, tuple) and cursor[0] == "act"):
             start = 0 if cursor == 0 else cursor[1]
-            code, parked_here = config.code, False
+            code, is_parked_here = config.code, False
             for index in range(start, len(chosen.actions)):
                 action = chosen.actions[index]
                 if isinstance(action, ir.PushCode):
@@ -98,9 +98,9 @@ def _closure(grammar, configs):
                             _consume_spans(grammar, action, chosen.gate),
                         )
                     )
-                    parked_here = True
+                    is_parked_here = True
                     break
-            if not parked_here:
+            if not is_parked_here:
                 work.append(
                     config._replace(continuations=config.continuations[:-1] + ((name, alternative, 1),), code=code)
                 )

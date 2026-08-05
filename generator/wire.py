@@ -238,7 +238,7 @@ def units(text, code=None):
     escape is a raw byte, so it is one byte; under every other code (the default) an escape is a codepoint, whose byte
     length is its UTF-8 length.
     """
-    invalid = code == CODE_CHAR["unparsed-invalid"]
+    is_invalid = code == CODE_CHAR["unparsed-invalid"]
     result = []
     index = 0
     while index < len(text):
@@ -246,7 +246,7 @@ def units(text, code=None):
         if escape is not None:
             piece = escape.group(0)
             value = int(piece[2:], 16)
-            result.append((value, 1 if invalid else _utf8_length(value), piece))
+            result.append((value, 1 if is_invalid else _utf8_length(value), piece))
             index = escape.end()
         else:
             character = text[index]

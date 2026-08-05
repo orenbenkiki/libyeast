@@ -130,7 +130,7 @@ def settle(grammar, values):
     known = {name: BALANCED for name in grammar}
     errors = {}
     for _pass in range(len(grammar)):
-        changed = False
+        did_change = False
         for name, production in grammar.items():
             try:
                 settled = effect(production.body, values, known)
@@ -140,8 +140,8 @@ def settle(grammar, values):
             errors.pop(name, None)
             if settled != known[name]:
                 known[name] = settled
-                changed = True
-        if not changed:
+                did_change = True
+        if not did_change:
             break
     return known, errors
 

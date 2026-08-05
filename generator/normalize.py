@@ -68,8 +68,8 @@ class Invariant:
     test: object
 
     def __call__(self, grammar, points=None):
-        wants_points = len(inspect.signature(self.test).parameters) > 1
-        return self.test(grammar, points) if wants_points else self.test(grammar)
+        does_want_points = len(inspect.signature(self.test).parameters) > 1
+        return self.test(grammar, points) if does_want_points else self.test(grammar)
 
 
 class Points:
@@ -279,15 +279,15 @@ def _relevant_finite(grammar):
         gather(production.body)
         reads[name], calls[name] = direct, references
     relevant = {name: set(direct) for name, direct in reads.items()}
-    changed = True
-    while changed:
-        changed = False
+    did_change = True
+    while did_change:
+        did_change = False
         for name in grammar:
             for callee, passed in calls[name]:
                 inherited = relevant[callee] - passed
                 if inherited - relevant[name]:
                     relevant[name] |= inherited
-                    changed = True
+                    did_change = True
     return relevant
 
 
@@ -542,23 +542,25 @@ def invariant_faults(stages, points=None):
     for named in sorted(by_name):
         test = by_name[named]
         first = min(index for index, step in enumerate(STEPS) if named in step.carries)
-        settled, standing = False, None
+        is_settled, standing = False, None
         for index in range(first, len(STEPS)):
             step, (label, grammar) = STEPS[index], stages[index + 1]
             count = len(test(grammar, points))
-            licensed = named in step.lapses
-            broken = (
-                (standing is not None and count > standing) or (settled and count) or (step.does_settle(test) and count)
+            is_licensed = named in step.lapses
+            is_broken = (
+                (standing is not None and count > standing)
+                or (is_settled and count)
+                or (step.does_settle(test) and count)
             )
-            if broken and licensed:
+            if is_broken and is_licensed:
                 taken.add((step.name, named))
-            if standing is not None and count > standing and not licensed:
+            if standing is not None and count > standing and not is_licensed:
                 faults.append(f"[{label}] `{named}` rises from {standing} to {count}, and the step declares no lapse")
-            if settled and count and not licensed:
+            if is_settled and count and not is_licensed:
                 faults.append(f"[{label}] `{named}` is settled and stands at {count}, and the step declares no lapse")
-            if step.does_settle(test) and count and not licensed:
+            if step.does_settle(test) and count and not is_licensed:
                 faults.append(f"[{label}] settles `{named}` and leaves {count} standing")
-            settled = (settled or step.does_settle(test)) and not count
+            is_settled = (is_settled or step.does_settle(test)) and not count
             standing = count
     # A lapse is a reason for something that happens. One nothing happens under is a claim the grammar has outgrown, and
     # it goes rather than standing as a licence nobody needs — the same net the declared tables answer to.
@@ -1368,13 +1370,13 @@ def _scope_signature(grammar):
     """
     signature = {name: ((), ()) for name in grammar}
     for _round in range(len(grammar) + 1):
-        moved = False
+        did_move = False
         for name, production in grammar.items():
             answers = _scope_answers(grammar, name, production, signature, [])
             answer = answers[0] if answers else ((), ())
             if signature[name] != answer:
-                signature[name], moved = answer, True
-        if not moved:
+                signature[name], did_move = answer, True
+        if not did_move:
             return signature
     raise AssertionError("what the productions leave on the stack never settled")
 
@@ -2230,6 +2232,67 @@ def build_alternatives(grammar, namer):
     return {name: told(production) for name, production in grammar.items()}
 
 
+def _way_entry(way, grammar, ways, entry):
+    """
+    The characters a way can be entered on, as spans — what a machine would have to see in front of it to take this way.
+
+    A gated way is entered on its gate and nothing else, that being what a gate says. Otherwise the walk goes along the
+    items until something must take a character: a set contributes itself and ends it, a call contributes what its
+    production can start on and ends it unless that production can take nothing, and a scan of none or more contributes
+    its set and goes on, since it may take none. An action or a guard contributes nothing and does not end the walk —
+    neither touches the input — so what stands behind them is what the way is entered on. A kind named nowhere raises: a
+    way entered on characters this cannot see is a gate too narrow, which loses a parse rather than costing one.
+    """
+    if way.gate.peek is not None:
+        return _peek_spans(way.gate.peek, grammar) or []
+    got = []
+    for item in _items_of_way(way):
+        if isinstance(item, (ir.Char, ir.CharSet, ir.Invalid, ir.Range)):
+            return got + (_peek_spans(item, grammar) or [])
+        if isinstance(item, (ir.ConsumeSpan, ir.ConsumeCountedSpan)):
+            got += _peek_spans(item.set, grammar) or []
+            continue  # a scan of none or more may take none, so what follows can be what enters the way
+        if isinstance(item, ir.Ref):
+            got += list(entry[item.name])
+            if not ways[item.name][1]:
+                return got  # the callee always takes a character, so nothing past it is entered here
+            continue
+        if isinstance(item, (*_ACTIONS, *_GUARDS, ir.Empty, ir.ConsumeChar)):
+            continue  # an action or a guard takes no character, and a gated consume is the gate's own business
+        raise TypeError(f"cannot tell what characters {type(item).__name__} lets a way be entered on")
+    return got
+
+
+def _entry_spans(grammar):
+    """
+    `{name: spans}` — the characters a parse of each production can start on.
+
+    A least fixed point, since a production can reach itself: nothing is taken to be an entry until some way says so,
+    which is what makes the answer the smallest one consistent with the grammar rather than everything. It errs wide
+    where it errs at all — a scan that may take none contributes its set *and* what follows — because a gate too wide
+    costs a parse that fails where it could have been refused, and a gate too narrow loses one that should have matched.
+    """
+    ways = _split_ways(grammar)
+    entry = {name: () for name in grammar}
+    for _round in range(len(grammar) + 1):
+        did_move = False
+        for name, production in grammar.items():
+            body = production.body
+            if isinstance(body, ir.CharSet):
+                got = _peek_spans(body, grammar) or []
+            elif isinstance(body, ir.LongestRun):
+                got = list(entry[body.item.name])
+            else:
+                got = [span for way in body.alternatives for span in _way_entry(way, grammar, ways, entry)]
+            merged = tuple(_merged_spans([span for span in got if span[0] >= 0]))
+            merged += ((-1, -1),) * any(span[0] < 0 for span in got)
+            if entry[name] != merged:
+                entry[name], did_move = merged, True
+        if not did_move:
+            return entry
+    raise AssertionError("the characters a production can be entered on never settled")
+
+
 def gate_hoist(grammar, namer):
     """
     A way whose first action takes a character is entered on that character: the set rises into the gate and the action
@@ -2252,6 +2315,79 @@ def gate_hoist(grammar, namer):
             gate=dataclasses.replace(way.gate, peek=way.actions[0]),
             actions=(ir.ConsumeChar(), *way.actions[1:]),
         )
+
+    def told(production):
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            return production
+        return dataclasses.replace(
+            production, body=ir.Choice(alternatives=tuple(hoisted(way) for way in body.alternatives))
+        )
+
+    return {name: told(production) for name, production in grammar.items()}
+
+
+def _does_refuse_softly(name, grammar, ways, seen=frozenset()):
+    """
+    Whether entering `name` on a character it cannot start with fails rather than raising.
+
+    A gate on a call refuses the way where the callee could not have started, which is the answer the callee would have
+    given one call deeper — unless the callee answers with an error rather than a refusal. A `(commit)` opened before
+    anything has to take a character makes the failure the error that region names, and a `(cut)` or an `(error)`
+    standing there says so outright. Then a gate that never enters it turns an error into a way not taken, and the
+    choice goes on to a way that matches: a parse that accepted nothing before accepts something now, which the corpus
+    reads as libyeast taking a document the suite rejects.
+
+    A production reached again says nothing new, the way in having been judged where it stood; a set or a run refuses by
+    not matching, having nothing to raise with.
+    """
+    if name in seen:
+        return True
+    body = grammar[name].body
+    if not isinstance(body, ir.Choice):
+        return True
+    for way in body.alternatives:
+        for item in _items_of_way(way):
+            if isinstance(item, (ir.Cut, ir.Error, ir.PushMessage)):
+                return False
+            if isinstance(item, (ir.Char, ir.CharSet, ir.ConsumeChar, ir.Invalid, ir.Range)):
+                break
+            if isinstance(item, ir.Ref):
+                if not _does_refuse_softly(item.name, grammar, ways, seen | {name}):
+                    return False
+                if not ways[item.name][1]:
+                    break
+    return True
+
+
+def gate_hoist_call(grammar, namer):
+    """
+    A way that begins by handing control to a production is entered on what that production can start on.
+
+    The way cannot match unless the callee does, and the callee cannot start on a character outside its entry set — so
+    the set refuses exactly what the way would have failed on anyway, one call deeper. The entry set errs wide where it
+    errs, which is the safe direction here: a gate too wide costs a parse that fails where it could have been refused,
+    and a gate too narrow loses one that should have matched.
+
+    Not where the callee can take nothing. Such a way passes through the call to whatever stands behind it, so what
+    enters it is the callee's entry set *and* the rest of the way's, and this hoist has only the first half. Nor where
+    the callee answers a character it cannot start on with an error rather than a refusal: refusing at the gate would
+    let the choice go on to a way that matches where the parse used to stop, which is a different language and not a
+    narrower one.
+    """
+    entry = _entry_spans(grammar)
+    ways = _split_ways(grammar)
+
+    def hoisted(way):
+        if way.gate.peek is not None:
+            return way
+        items = _items_of_way(way)
+        if not items or not isinstance(items[0], ir.Ref):
+            return way
+        called = items[0].name
+        if ways[called][1] or not entry[called] or not _does_refuse_softly(called, grammar, ways):
+            return way
+        return dataclasses.replace(way, gate=dataclasses.replace(way.gate, peek=_spans_node(entry[called])))
 
     def told(production):
         body = production.body
@@ -2558,13 +2694,13 @@ def _split(node, grammar, ways):
         # `_split_ways` keeps, so the node stands for whichever it can and nothing rewrites by the answer.
         parts = _ways_or_items(node)
         answers = [_split(part, grammar, ways) for part in parts]
-        reads = any(part is not None for part, _empty in answers)
-        empty = (
+        does_read = any(part is not None for part, _empty in answers)
+        does_take_none = (
             any(part is not None for _reads, part in answers)
             if isinstance(node, ir.Choice)
             else all(part is not None for _reads, part in answers)
         )
-        return (node if reads else None, node if empty else None)
+        return (node if does_read else None, node if does_take_none else None)
     raise TypeError(f"cannot tell what {type(node).__name__} takes")
 
 
@@ -2647,8 +2783,8 @@ def _split_ways(grammar):
         settled = {}
         for name, production in grammar.items():
             _message, reads, empty = _production_split(production, grammar, ways)
-            told = reads is not None and empty is not None and name not in entered
-            settled[name] = (reads is not None, empty is not None, told)
+            is_told_apart = reads is not None and empty is not None and name not in entered
+            settled[name] = (reads is not None, empty is not None, is_told_apart)
         if settled == ways:
             return ways
         ways = settled
@@ -2958,7 +3094,7 @@ def hold_established_indents(grammar, namer):
     the same `n`.
     """
 
-    def establishes(node):
+    def does_establish(node):
         """Whether `node` is a call whose production hands an indentation back to this one."""
         return isinstance(node, ir.Ref) and node.name in _establishing(grammar) and _is_by_reference(grammar, node)
 
@@ -2967,10 +3103,10 @@ def hold_established_indents(grammar, namer):
         `items` with each call that hands an indentation back replaced by what that production does — and again on what
         that brings in, since the one that establishes may be a call further down the chain.
         """
-        while any(establishes(item) for item in items):
+        while any(does_establish(item) for item in items):
             held = []
             for item in items:
-                if not establishes(item):
+                if not does_establish(item):
                     held.append(item)
                     continue
                 body = grammar[item.name].body
@@ -3244,4 +3380,5 @@ STEPS = [
     # Phase 10 is the gate: a way is entered on the character in front of it, which is what a machine that never
     # backtracks chooses by. The hoists reduce `every-way-gated` between them.
     Step("gate-hoist", gate_hoist, WAYS_ARE_GATED, reduces=WAYS_ARE_GATED),
+    Step("gate-hoist-call", gate_hoist_call, WAYS_ARE_GATED, reduces=WAYS_ARE_GATED),
 ]

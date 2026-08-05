@@ -186,7 +186,7 @@ def fold(tokens):
     pending_anchor = pending_tag = None
     scalar = None  # (style, [text parts]) while inside a begin-scalar..end-scalar
     escape = None  # the raw text of a begin-escape..end-escape span
-    in_alias = False
+    is_in_alias = False
     alias = []
     anchor = None  # [name parts] while inside a begin-anchor..end-anchor
     tag = None  # [handle parts, suffix parts, handle-closed?] while inside a begin-tag..end-tag
@@ -220,12 +220,12 @@ def fold(tokens):
                 events.append(Event("=VAL", pending_anchor, pending_tag, style, "".join(scalar[1])))
                 pending_anchor = pending_tag = scalar = None
             continue
-        if in_alias:
+        if is_in_alias:
             if code == _C["meta"]:
                 alias.append(token.text and _unescape_wire(token.text))
             elif code == _C["end-alias"]:
                 events.append(Event("=ALI", value="".join(alias)))
-                in_alias = False
+                is_in_alias = False
                 alias = []
             continue
         if anchor is not None:
@@ -280,7 +280,7 @@ def fold(tokens):
         elif code == _C["begin-scalar"]:
             scalar = [None, []]
         elif code == _C["begin-alias"]:
-            in_alias, alias = True, []
+            is_in_alias, alias = True, []
         elif code == _C["begin-anchor"]:
             anchor = []
         elif code == _C["begin-tag"]:
