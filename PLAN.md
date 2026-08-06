@@ -232,16 +232,30 @@ The phases, each established and then enforced:
 | 7     | `no-item-holds-a-match`                          | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
 | 8     | `a-way-is-actions-a-call-and-a-continuation`     | everything a way holds past its first call                                                      |
 | 9     | `every-body-is-a-choice-a-run-or-a-set`          | the tree's own spelling, for the machine's                                                      |
-| 10    | `every-way-gated`                                | every way entered on nothing the machine can ask, and the meter arrives to say what is left     |
+| 10    | `every-way-carries-a-test`                       | every way entered on nothing the machine can test, and the meter arrives to say what is left    |
 | later | `every-decision-goes-on-a-character`             | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
 
-Beside the phases stands `only-the-last-way-always-matches`, which belongs to none of them: a way that matches wherever
-it is reached stands last among the ways of its choice, settled by `order-fallthroughs` as soon as the contexts are
-monomorphized and held by every step after. Settled at the door, a step that would mint a way in front of a fallthrough
-is caught where it does it.
+Beside the phases stands `no-unreachable-option`, which belongs to none of them: a way that can take no character stands
+last among the ways of its choice, since a machine that never returns reaches nothing behind it. Read from the door, so
+a step that mints such a way is caught where it does it — the grammar carries **4** in, three steps in the middle copy
+or spell the shape again under declared lapses, and the pipeline settles it at none.
+
+**The two questions, in order.** A machine that never backtracks needs each way of a choice to carry a test it can make
+before entering it, and then it needs the tests to be exclusive. They are separate problems and the first comes whole:
+`every-way-carries-a-test` stands at **18**, and every one of them is the same thing: a way handing control to a
+production that answers a character it cannot start on with an error rather than a refusal, so gating the way out would
+turn a parse that stops into one that takes another way. No hoist reaches them — they want the commit lifted off the
+callee, which is what `lift-commits` is for.
+
+What follows it is `every-decision-goes-on-a-character` at **164**, which is the exclusivity question and splits in two:
+**65** choices offering a way with no character set of its own — of which 77 ways are entered on a guard, deciding on
+where the parse stands rather than on what is in front of it — and **99** whose ways admit the same character, order
+being what tells them apart today. The second number is what factoring and speculation are for. The first is the
+question of whether the machine's dispatch tests the gate's guards beside its character set, which is a decision about
+the generated parser and not about the grammar.
 
 **What the wrappers leave owed.** `every-scope-closes-on-its-own-way` holds the four pairs per way, which is the right
 rule for them and the wrong one for the markers: a marker pair crosses productions by design — `b-chomped-last` emits
@@ -424,7 +438,7 @@ each phase inherits when it arrives, the meter the first line of them:
 | -------- | ---------------------------------------------------------------------------------------------------------------- |
 | **469**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody             |
 | **92**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                          |
-| **70**   | `every-way-gated` — ways in a multi-way choice with no character to go on                                        |
+| **70**   | `every-way-carries-a-test` — ways in a multi-way choice with no character to go on                               |
 | 14       | `no-call-deciding-nothing` · 13 `no-standing-pop-holder` · 6 `no-factorable-prefix` · 4 `no-shared-leading-push` |
 | 1        | `nothing-carries-on-over-a-pop`                                                                                  |
 
@@ -436,9 +450,9 @@ the elimination creates nothing new — which it does: `distribute-empties` boug
 meter.
 
 And a lapse must be *taken*: one naming an invariant no step carries, or one the step does not actually break, is a
-stale declaration and a fault. That net retired four lapses at once — three left behind when `every-way-gated` was
-narrowed to multi-way choices, and one on `read-globals` which turned out to mark a mis-defined invariant rather than a
-special step, `every-binding-declared` having counted a global as an undeclared binding when a global *has* no
+stale declaration and a fault. That net retired four lapses at once — three left behind when `every-way-carries-a-test`
+was narrowed to multi-way choices, and one on `read-globals` which turned out to mark a mis-defined invariant rather
+than a special step, `every-binding-declared` having counted a global as an undeclared binding when a global *has* no
 declaration.
 
 **The meter is an invariant and nothing more.** It was reported beside the system for as long as it existed, which meant
@@ -454,7 +468,7 @@ the worst read `is_one_char(node) and _peek_spans(node) is not None`, whose seco
 gone wrong.
 
 A count reduced and settled by nobody is work owed rather than oversight, and the old order left two such:
-`every-way-gated`, the 46 ways in a multi-way choice with no character to go on, which the four gate hoists reduced
+`every-way-carries-a-test`, the 46 ways in a multi-way choice with no character to go on, which the gate hoists reduced
 between them; and `no-call-deciding-nothing`, 298 calls brought to 9 by `inline-single-way` and standing at 8, each one
 a splice it refused because the callee is load-bearing somewhere.
 

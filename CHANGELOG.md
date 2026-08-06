@@ -606,21 +606,53 @@ All notable changes to this project are documented here. The format follows
   The meter does not move for it, and should not: an overlap made whole is still an overlap. What it is for is the
   factoring behind it, which reads exactly the gates that are now equal.
 
-  **A way that matches wherever it is reached stands last.** `only-the-last-way-always-matches` counts one with another
-  way behind it: the parse can always get through such a way, so what stands behind it is what a machine that never
-  returns will never reach — reachable today only because backtracking takes the empty match, fails the continuation,
-  returns and tries the next. The grammar carries **two** in, `l-empty`'s line prefix in each of its two contexts,
-  matching empty in front of `s-indent(<n)`. `order-fallthroughs` moves them last, settling the count as soon as the
-  contexts are monomorphized, and all 38 steps hold it with no lapse — so the shape is caught where a step would
-  introduce it rather than measured at the end.
+  **A way that takes nothing stands last, or what is behind it is unreachable.** `no-unreachable-option` counts a way
+  that can take no character with another way behind it: such a way always gets through, so what stands behind it is
+  what a machine that never returns will never reach — reachable today only because backtracking takes the empty match,
+  fails the continuation, returns and tries the next. The grammar carries **4** in, `order-fallthroughs` moves what it
+  can to the back, and the pipeline settles it at **none**.
 
-  The way is asked whether it *always* matches, not whether it *can* match empty, and asked of the whole of it rather
-  than of its head: a guard makes a way conditional wherever it sits — wrapped in a token, behind the emits of a copy
-  the splice made, or in a gate the re-encode has not filled yet — and a way that holds only where a guard does leaves
-  what is behind it reachable. Read of the head alone, the same way is exempt before a step moves an emit in front of it
-  and a fault after, which is a count moving where nothing about the grammar did. The question is asked by standing a
-  character in for each guard and taking the nullability of what is left, so there is one reading of an empty match and
-  not two.
+  A way holding a guard is not one of them, wherever the guard sits: it matches only where the guard does, which the
+  input settles as surely as a character would, so a way behind it stays reachable. That is asked of the way and of the
+  gate both, since the hoists move a guard between the two spellings and neither is a fact about the grammar.
+
+  Three steps in the middle raise it and say why: `lower-optionals` writes `x?` as `x | <empty>` even where `x` can
+  already take nothing, because dropping the second empty match changes which parse is preferred — the optional offers
+  all of the item's ways and *then* an empty one, where the item alone offers only its own — and 439 fixtures read
+  differently without it. `mint-consuming-and-residue` spells such a production twice and copies the shape into both.
+  `splice-conflicts` copies it once per call site. Each is taken back by the steps behind it.
+
+  **Every way of a choice carries a test the machine can make before entering it.** `every-way-gated` is
+  `every-way-carries-a-test`, which is what it counted all along and now says: a machine takes a way by testing
+  something first, and what the test is comes second — a character set is the usual one, a guard is one too, asking
+  where the parse stands in its line, whether any character is left, how the indentation compares. Whether the tests of
+  a choice are exclusive is the next question and a different count.
+
+  `hoist-askable-guards` settles the guards' half of it, taking the count from **75 to 18**. A guard among a way's
+  actions is a question asked a moment too late — reached only by entering the way, when entering the way is what it
+  could have decided — so it moves to the gate, where the machine asks it. Which guards move is the whole of the step: a
+  guard about the input alone passes any action, since none of them writes where the parse stands or what surrounds it;
+  a comparison passes only actions that do not write what it reads, an indentation test behind a `PushIndent` reading
+  what the parse has not done yet; and nothing passes a commit — a `Cut`, an `Error`, a `PushMessage` — past which
+  failing is an error rather than a refusal, so a gate that keeps the way from being entered would turn a parse that
+  stopped into one that took another way. `no-guard-left-among-the-actions` counts what is still owed and settles at
+  none.
+
+  A test spelled as a call is one the way cannot be entered on either, and the same step lifts those: a production of
+  one way that holds no action, makes no call and carries on nowhere *is* its gate, so entering it is asking that gate.
+  Eight ways handed control to one such production — the sweep had merged every zero-width end-of-stream helper into a
+  single `EndOfStream`, which kept the block header's name — and the call becomes the guard, said where the call stood.
+  Lifting and hoisting feed each other, a callee left holding nothing but its gate being one its own callers can lift,
+  so both run until neither finds anything; each round drops a call or moves a guard, and there are finitely many of
+  both.
+
+  An empty match among a way's actions is swept away with them, which is what let the eight through: `<empty>` is
+  dropped from a sequence and a way's actions are a tuple on an alternative rather than a sequence, so the litter sat
+  there and a walk looking for what a way begins with stopped at it. It takes no character and does nothing.
+
+  The 18 left are not this step's to take: each hands control to a production that answers a character it cannot start
+  on with an error rather than a refusal, so gating the way out would turn a parse that stops into one that takes
+  another way — a different language. They want the commit lifted off the callee.
 
   **What tells a conflict's ways apart, and how far in.** `determinize.verdict` walks the live ways to their first
   divergence: the characters, and factoring the shared prefix down to it puts the decision where the input makes it; the

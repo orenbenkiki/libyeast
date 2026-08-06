@@ -156,14 +156,19 @@ settles `no-n-parameter`, the indentation itself; Phase 5 is the empties, and se
 `no-call-enters-both-ways`, then `only-root-empties`; Phase 6 is the wrappers, one invariant per kind of scope. A step
 written where its goal's other steps already ran is a smaller step, against a grammar with less in it.
 
-One invariant belongs to no phase. `only-the-last-way-always-matches` is settled as soon as the contexts are
-monomorphized and held by every step after it: a way that matches wherever it is reached is one the parse can always get
-through, so every way behind it is one a machine that never returns will never reach — which backtracking hides, the way
-matching and the continuation failing and the parse returning to try the next. Settled early, the steps that mint ways
-are held to it rather than measured against it afterwards. The grammar carries two in, `l-empty`'s line prefix in each
-of its two contexts, matching empty in front of `s-indent(<n)`; they are moved last, where the fallthrough every gated
-choice ends in belongs. A way holding a guard is not one of them, wherever the guard sits: it matches only where the
-guard does, which the input settles as surely as a character would, and a way behind it stays reachable.
+One invariant belongs to no phase. `no-unreachable-option` is read from the moment the contexts are monomorphized and
+every step after answers for it: a way that can take no character always gets through, so every way behind it is one a
+machine that never returns will never reach — which backtracking hides, the way matching and the continuation failing
+and the parse returning to try the next. The grammar carries **4** in; `order-fallthroughs` moves what it can to the
+back, where the fallthrough every choice ends in belongs, and the pipeline settles it at none. A way holding a guard is
+not one of them, wherever the guard sits: it matches only where the guard does, which the input settles as surely as a
+character would, and a way behind it stays reachable.
+
+It is a question about the match and not about a machine, which is why it is asked of the grammar as written, where a
+way is a tree and there are no gates to read. What a machine could tell the ways apart by is `every-way-carries-a-test`,
+and that one is asked where the gates exist. One reading answers each — `_is_nullable` for the first, `_entry_of` for
+the second — and both raise on a node kind they have not been told about, since a reading that answers permissively for
+a spelling it does not recognise reports its own blindness as a property of the grammar.
 
 A scope that holds what it covers has nowhere to stand in an alternative — `gate  actions…  [P1  actions…]  [P2]` has a
 place for an action and none for a node enclosing a call, and a `(token)` around a call is an action that must run where
