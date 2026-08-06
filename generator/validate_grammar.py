@@ -109,9 +109,28 @@ def check_matches(grammar):
     return errors
 
 
+def check_renaming(grammar):
+    """
+    Every node's `renamed` rewrites exactly the names its `references` reports.
+
+    The two are written side by side on each class, because a class's fields mean different things — a call is not a
+    continuation, a protected match is not the handler that answers for it — and neither can be derived from the other.
+    What keeps them in step is this: rename every name in the grammar to itself with a mark, and what comes back must
+    report the marked names and nothing else. A class that lists a field to reachability and forgets it in the rewrite
+    fails here, where the sweep would otherwise leave a call pointing at a production that has been merged away.
+    """
+    errors = []
+    for name, production in grammar.items():
+        wanted = [f"{held}!" for held in production.references()]
+        got = production.renamed({held: f"{held}!" for held in production.references()}).references()
+        if got != wanted:
+            errors.append(f"{name}: renaming reports {got}, where its references are {wanted}")
+    return errors
+
+
 def validate(grammar):
     """Return a list of human-readable validation errors (empty if the grammar is clean)."""
-    errors = check_annotated(grammar) + check_matches(grammar)
+    errors = check_annotated(grammar) + check_matches(grammar) + check_renaming(grammar)
     referenced = set()
     for name, prod in grammar.items():
         for ref in (n for n in walk(prod.body) if isinstance(n, ir.Ref)):

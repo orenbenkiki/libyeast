@@ -191,6 +191,23 @@ def _refs(*values):
     return names
 
 
+def _renamed(names, *values):
+    """
+    `values` with every production name they hold replaced by what `names` maps it to — the mirror of `_refs`, for the
+    `renamed` methods: a node renames itself, a tuple its items, and anything else is what it was. A new value, as
+    everything here is: the nodes are frozen, and an earlier stage of the pipeline still holds the old one.
+
+    Each class writes its own `renamed` beside its own `references` rather than both deriving from a list of fields,
+    because its fields mean different things — a call is not a continuation, a protected match is not the handler that
+    answers for it. What holds the two together is a check rather than a shared declaration: renaming everything must
+    change exactly the names `references` reports.
+    """
+    return tuple(
+        _renamed(names, *value) if isinstance(value, tuple) else value.renamed(names) if is_dataclass(value) else value
+        for value in values
+    )
+
+
 # --- value / parameter expressions ---
 
 
@@ -203,6 +220,9 @@ class Param:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class Lit:
@@ -212,6 +232,9 @@ class Lit:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -224,6 +247,9 @@ class Match:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -240,6 +266,9 @@ class Global:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class Indent:
@@ -252,6 +281,9 @@ class Indent:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -268,6 +300,9 @@ class AutoDetectIndent:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class Column:
@@ -281,6 +316,9 @@ class Column:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class Add:
@@ -291,6 +329,10 @@ class Add:
 
     def references(self):
         return _refs(self.a, self.b)
+
+    def renamed(self, names):
+        a, b = _renamed(names, self.a, self.b)
+        return replace(self, a=a, b=b)
 
 
 @dataclass(frozen=True)
@@ -303,6 +345,10 @@ class Sub:
     def references(self):
         return _refs(self.a, self.b)
 
+    def renamed(self, names):
+        a, b = _renamed(names, self.a, self.b)
+        return replace(self, a=a, b=b)
+
 
 @dataclass(frozen=True)
 class Len:
@@ -313,6 +359,10 @@ class Len:
     def references(self):
         return _refs(self.arg)
 
+    def renamed(self, names):
+        (arg,) = _renamed(names, self.arg)
+        return replace(self, arg=arg)
+
 
 @dataclass(frozen=True)
 class Atoi:
@@ -322,6 +372,10 @@ class Atoi:
 
     def references(self):
         return _refs(self.arg)
+
+    def renamed(self, names):
+        (arg,) = _renamed(names, self.arg)
+        return replace(self, arg=arg)
 
 
 @dataclass(frozen=True)
@@ -334,6 +388,10 @@ class Branch:
     def references(self):
         return _refs(self.item)
 
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
+
 
 @dataclass(frozen=True)
 class Flip:
@@ -344,6 +402,10 @@ class Flip:
 
     def references(self):
         return _refs(self.branches)
+
+    def renamed(self, names):
+        (branches,) = _renamed(names, self.branches)
+        return replace(self, branches=branches)
 
 
 # --- grammar nodes (matchers) ---
@@ -358,6 +420,9 @@ class Char:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class Range:
@@ -368,6 +433,9 @@ class Range:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -380,6 +448,9 @@ class Ref:
     def references(self):
         return [self.name, *_refs(self.args)]
 
+    def renamed(self, names):
+        return replace(self, name=names.get(self.name, self.name), args=_renamed(names, *self.args))
+
 
 @dataclass(frozen=True)
 class Empty:
@@ -387,6 +458,9 @@ class Empty:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -396,6 +470,9 @@ class StartOfLine:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class EndOfStream:
@@ -403,6 +480,9 @@ class EndOfStream:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -414,6 +494,9 @@ class Invalid:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -435,6 +518,9 @@ class CharSet:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class Seq:
@@ -444,6 +530,10 @@ class Seq:
 
     def references(self):
         return _refs(self.items)
+
+    def renamed(self, names):
+        (items,) = _renamed(names, self.items)
+        return replace(self, items=items)
 
 
 @dataclass(frozen=True)
@@ -455,6 +545,10 @@ class Alt:
     def references(self):
         return _refs(self.items)
 
+    def renamed(self, names):
+        (items,) = _renamed(names, self.items)
+        return replace(self, items=items)
+
 
 @dataclass(frozen=True)
 class Star:
@@ -465,6 +559,10 @@ class Star:
     def references(self):
         return _refs(self.item)
 
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
+
 
 @dataclass(frozen=True)
 class Plus:
@@ -474,6 +572,10 @@ class Plus:
 
     def references(self):
         return _refs(self.item)
+
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
 
 
 @dataclass(frozen=True)
@@ -496,6 +598,10 @@ class LongestRun:
     def references(self):
         return _refs(self.item)
 
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
+
 
 @dataclass(frozen=True)
 class Opt:
@@ -505,6 +611,10 @@ class Opt:
 
     def references(self):
         return _refs(self.item)
+
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
 
 
 @dataclass(frozen=True)
@@ -516,6 +626,10 @@ class Rep:
 
     def references(self):
         return _refs(self.count, self.item)
+
+    def renamed(self, names):
+        count, item = _renamed(names, self.count, self.item)
+        return replace(self, count=count, item=item)
 
 
 @dataclass(frozen=True)
@@ -534,6 +648,10 @@ class TrimStar:
     def references(self):
         return _refs(self.full, self.trim)
 
+    def renamed(self, names):
+        full, trim = _renamed(names, self.full, self.trim)
+        return replace(self, full=full, trim=trim)
+
 
 @dataclass(frozen=True)
 class ConsumeSpan:
@@ -548,6 +666,10 @@ class ConsumeSpan:
     def references(self):
         return _refs(self.set)
 
+    def renamed(self, names):
+        (set,) = _renamed(names, self.set)
+        return replace(self, set=set)
+
 
 @dataclass(frozen=True)
 class ConsumeChar:
@@ -559,6 +681,9 @@ class ConsumeChar:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -580,6 +705,10 @@ class LiteralPeek:
     def references(self):
         return _refs(self.then, self.barrier)
 
+    def renamed(self, names):
+        then, barrier = _renamed(names, self.then, self.barrier)
+        return replace(self, then=then, barrier=barrier)
+
 
 @dataclass(frozen=True)
 class ConsumePeeked:
@@ -594,6 +723,9 @@ class ConsumePeeked:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -610,6 +742,10 @@ class Gate:
 
     def references(self):
         return _refs(self.peek, self.guards)
+
+    def renamed(self, names):
+        peek, guards = _renamed(names, self.peek, self.guards)
+        return replace(self, peek=peek, guards=guards)
 
 
 @dataclass(frozen=True)
@@ -633,6 +769,12 @@ class Alternative:
     def references(self):
         return _refs(self.gate, self.actions, self.first, self.second, self.recover)
 
+    def renamed(self, names):
+        gate, actions, first, second, recover = _renamed(
+            names, self.gate, self.actions, self.first, self.second, self.recover
+        )
+        return replace(self, gate=gate, actions=actions, first=first, second=second, recover=recover)
+
 
 @dataclass(frozen=True)
 class Choice:
@@ -647,6 +789,10 @@ class Choice:
     def references(self):
         return _refs(self.alternatives)
 
+    def renamed(self, names):
+        (alternatives,) = _renamed(names, self.alternatives)
+        return replace(self, alternatives=alternatives)
+
 
 @dataclass(frozen=True)
 class ConsumeLiteral:
@@ -660,6 +806,9 @@ class ConsumeLiteral:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -677,6 +826,10 @@ class ConsumeCountedSpan:
     def references(self):
         return _refs(self.set, self.count)
 
+    def renamed(self, names):
+        set, count = _renamed(names, self.set, self.count)
+        return replace(self, set=set, count=count)
+
 
 @dataclass(frozen=True)
 class ConsumeTrimmedSpan:
@@ -692,6 +845,10 @@ class ConsumeTrimmedSpan:
     def references(self):
         return _refs(self.full, self.trim)
 
+    def renamed(self, names):
+        full, trim = _renamed(names, self.full, self.trim)
+        return replace(self, full=full, trim=trim)
+
 
 @dataclass(frozen=True)
 class Look:
@@ -701,6 +858,10 @@ class Look:
 
     def references(self):
         return _refs(self.item)
+
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
 
 
 @dataclass(frozen=True)
@@ -712,6 +873,10 @@ class NegLook:
     def references(self):
         return _refs(self.item)
 
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
+
 
 @dataclass(frozen=True)
 class LookBehind:
@@ -721,6 +886,10 @@ class LookBehind:
 
     def references(self):
         return _refs(self.item)
+
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
 
 
 @dataclass(frozen=True)
@@ -733,6 +902,10 @@ class Diff:
     def references(self):
         return _refs(self.base, self.minus)
 
+    def renamed(self, names):
+        base, minus = _renamed(names, self.base, self.minus)
+        return replace(self, base=base, minus=minus)
+
 
 @dataclass(frozen=True)
 class ExcludeAt:
@@ -742,6 +915,10 @@ class ExcludeAt:
 
     def references(self):
         return _refs(self.item)
+
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
 
 
 @dataclass(frozen=True)
@@ -763,6 +940,10 @@ class Max:
     def references(self):
         return _refs(self.limit, self.item)  # `message` is a message key, not a production
 
+    def renamed(self, names):
+        limit, item = _renamed(names, self.limit, self.item)
+        return replace(self, limit=limit, item=item)
+
 
 @dataclass(frozen=True)
 class Lt:
@@ -774,6 +955,10 @@ class Lt:
     def references(self):
         return _refs(self.a, self.b)
 
+    def renamed(self, names):
+        a, b = _renamed(names, self.a, self.b)
+        return replace(self, a=a, b=b)
+
 
 @dataclass(frozen=True)
 class Le:
@@ -784,6 +969,10 @@ class Le:
 
     def references(self):
         return _refs(self.a, self.b)
+
+    def renamed(self, names):
+        a, b = _renamed(names, self.a, self.b)
+        return replace(self, a=a, b=b)
 
 
 @dataclass(frozen=True)
@@ -800,6 +989,10 @@ class Case:
     def references(self):
         return _refs(self.branches, self.default)
 
+    def renamed(self, names):
+        branches, default = _renamed(names, self.branches, self.default)
+        return replace(self, branches=branches, default=default)
+
 
 @dataclass(frozen=True)
 class Bind:
@@ -812,6 +1005,10 @@ class Bind:
     def references(self):
         return _refs(self.cond, self.value)
 
+    def renamed(self, names):
+        cond, value = _renamed(names, self.cond, self.value)
+        return replace(self, cond=cond, value=value)
+
 
 @dataclass(frozen=True)
 class SetVar:
@@ -822,6 +1019,10 @@ class SetVar:
 
     def references(self):
         return _refs(self.value)
+
+    def renamed(self, names):
+        (value,) = _renamed(names, self.value)
+        return replace(self, value=value)
 
 
 @dataclass(frozen=True)
@@ -840,6 +1041,9 @@ class ClearVar:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class Increase:
@@ -853,6 +1057,9 @@ class Increase:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 # --- token annotations ---
@@ -881,6 +1088,10 @@ class Token:
     def references(self):
         return _refs(self.item)
 
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
+
 
 @dataclass(frozen=True)
 class Wrap:
@@ -898,6 +1109,10 @@ class Wrap:
     def references(self):
         return _refs(self.item)
 
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
+
 
 @dataclass(frozen=True)
 class Emit:
@@ -907,6 +1122,9 @@ class Emit:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -921,6 +1139,10 @@ class PushIndent:
 
     def references(self):
         return _refs(self.level)
+
+    def renamed(self, names):
+        (level,) = _renamed(names, self.level)
+        return replace(self, level=level)
 
 
 @dataclass(frozen=True)
@@ -943,6 +1165,10 @@ class PopIndent:
     def references(self):
         return _refs(self.level)
 
+    def renamed(self, names):
+        (level,) = _renamed(names, self.level)
+        return replace(self, level=level)
+
 
 @dataclass(frozen=True)
 class PushCode:
@@ -956,6 +1182,9 @@ class PushCode:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class PopCode:
@@ -967,6 +1196,9 @@ class PopCode:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -983,6 +1215,9 @@ class PushMessage:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class PopMessage:
@@ -996,6 +1231,9 @@ class PopMessage:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -1018,6 +1256,10 @@ class PushRecovery:
     def references(self):
         return _refs(self.recovery, self.resume)
 
+    def renamed(self, names):
+        recovery, resume = _renamed(names, self.recovery, self.resume)
+        return replace(self, recovery=recovery, resume=resume)
+
 
 @dataclass(frozen=True)
 class PopRecovery:
@@ -1029,6 +1271,9 @@ class PopRecovery:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -1045,6 +1290,10 @@ class OpenWindow:
     def references(self):
         return _refs(self.limit)  # `message` is a message key, not a production
 
+    def renamed(self, names):
+        (limit,) = _renamed(names, self.limit)
+        return replace(self, limit=limit)
+
 
 @dataclass(frozen=True)
 class CloseWindow:
@@ -1056,6 +1305,9 @@ class CloseWindow:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -1069,6 +1321,9 @@ class OpenProvisional:
     def references(self):
         return []
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class MarkProvisional:
@@ -1081,6 +1336,9 @@ class MarkProvisional:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -1100,6 +1358,9 @@ class RetypeProvisional:
     def references(self):
         return []  # `rest` and `breaks` are token codes, not productions
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class InjectBefore:
@@ -1116,6 +1377,9 @@ class InjectBefore:
     def references(self):
         return []  # `codes` are token codes, not productions
 
+    def renamed(self, names):
+        return self
+
 
 @dataclass(frozen=True)
 class CommitProvisional:
@@ -1127,6 +1391,9 @@ class CommitProvisional:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -1141,6 +1408,9 @@ class Cut:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -1164,6 +1434,10 @@ class Commit:
     def references(self):
         return _refs(self.item)
 
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
+
 
 @dataclass(frozen=True)
 class Error:
@@ -1179,6 +1453,9 @@ class Error:
 
     def references(self):
         return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -1202,6 +1479,10 @@ class Recover:
     def references(self):
         return _refs(self.recovery, self.item)
 
+    def renamed(self, names):
+        recovery, item = _renamed(names, self.recovery, self.item)
+        return replace(self, recovery=recovery, item=item)
+
 
 @dataclass(frozen=True)
 class Prod:
@@ -1214,6 +1495,10 @@ class Prod:
 
     def references(self):
         return _refs(self.body)
+
+    def renamed(self, names):
+        (body,) = _renamed(names, self.body)
+        return replace(self, body=body)
 
 
 # The nodes that match without consuming: a lookahead reads the input and gives it back. In alphabetical order.

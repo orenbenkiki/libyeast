@@ -733,14 +733,9 @@ def _merged(grammar, keep):
     canonical = {name: standing[block[name]] for name in grammar if name not in keep and standing[block[name]] != name}
     if not canonical:
         return grammar, {}
-
-    def rewrite(node):
-        node = ir.rebuilt(node, rewrite)
-        if isinstance(node, ir.Ref) and node.name in canonical:
-            return dataclasses.replace(node, name=canonical[node.name])
-        return node
-
-    return {name: dataclasses.replace(p, body=rewrite(p.body)) for name, p in grammar.items()}, canonical
+    # Each node renames what it holds, which is the same declaration reachability reads: a name is followed because the
+    # class says it holds one, not because a walk recognised the node it is spelled in.
+    return {name: p.renamed(canonical) for name, p in grammar.items()}, canonical
 
 
 def _flattened(node):
