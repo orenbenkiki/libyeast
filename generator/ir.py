@@ -999,6 +999,39 @@ class PopMessage:
 
 
 @dataclass(frozen=True)
+class PushRecovery:
+    """
+    A zero-width action that says what answers for a failed `(cut)` from here on: `recovery` matches whatever of the
+    input the parse gives up, and `resume` is where it carries on once that has matched.
+
+    What the parse holds is the two together, so an unwind reads where to stop and where to go on from one place rather
+    than working either out from what the abandoned parse left behind. `resume` names the way's own continuation — the
+    point the protected call returns to — which is what makes carrying on here the same as the call having matched.
+
+    A recovery that says nothing recovers nothing: a rule reached under a resume policy that does not recover here has
+    no branch to take, so the cut goes on unwinding to whoever does answer for it.
+    """
+
+    recovery: object
+    resume: object
+
+    def references(self):
+        return _refs(self.recovery, self.resume)
+
+
+@dataclass(frozen=True)
+class PopRecovery:
+    """
+    A zero-width action that takes back what the innermost `PushRecovery` established, so a cut past this point unwinds
+    to whatever answered before it. Paired with `PushRecovery`, and like the other pairs it holds on the parse's own
+    stack rather than where it was written, so a split that cuts the two apart is nothing either half has to know.
+    """
+
+    def references(self):
+        return []
+
+
+@dataclass(frozen=True)
 class OpenWindow:
     """
     A zero-width action that opens a `(max)` window `limit` characters wide, past which a committed consume fails the
@@ -1241,10 +1274,12 @@ NOT_ONE_CHAR = (
     PopCode,
     PopIndent,
     PopMessage,
+    PopRecovery,
     Prod,
     PushCode,
     PushIndent,
     PushMessage,
+    PushRecovery,
     Recover,
     Rep,
     RetypeProvisional,
@@ -1315,9 +1350,11 @@ _IS_ONE_CHAR = Reading(
             PopCode,
             PopIndent,
             PopMessage,
+            PopRecovery,
             PushCode,
             PushIndent,
             PushMessage,
+            PushRecovery,
             Recover,
             Rep,
             Seq,

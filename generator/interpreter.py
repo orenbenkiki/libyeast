@@ -163,6 +163,9 @@ class Emitter:
         # force and an open under it only counts: the window is set at zero and cleared when the count returns to it
         self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
         self.entered = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
+        self.returns = []  # where each entered production carries on when it matches, outermost first — the return
+        # stack the generated parser keeps, held here so an unwind can carry on at a call's return point rather than
+        # only where the Python call stack happens to be. Pushed and taken back with `entered`, one for one
         self.commitments = []  # one `[reached]` record per open committed region, innermost last — not checkpointed:
         # the push and pop actions restore it on their own failure paths, and a region once reached stays reached
         self.deterministic = (
@@ -735,9 +738,11 @@ def match(node, emitter, grammar, k):
             return False
 
         emitter.entered.append(node.name)
+        emitter.returns.append(continue_out)  # where this call carries on, which an unwind reads as its resume point
         if len(emitter.entered) >= DEPTH_LIMIT:
             trace = " -> ".join(emitter.entered[-DEPTH_TRACE:])
             emitter.entered.pop()
+            emitter.returns.pop()
             raise DepthExceeded(f"production nesting reached {DEPTH_LIMIT}, deepest: ...{trace}")
         if len(emitter.entered) > DEPTH_LIMIT - DEPTH_TRACE:
             print(f"    depth {len(emitter.entered)}: {node.name}", file=sys.stderr)
@@ -757,6 +762,7 @@ def match(node, emitter, grammar, k):
                 did_match = match(body, emitter, grammar, continue_out)
         finally:
             emitter.entered.pop()
+            emitter.returns.pop()
         if not did_match:
             emitter.env = saved_env
             emitter.forbidden = saved_forbidden

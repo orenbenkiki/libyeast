@@ -153,8 +153,10 @@ settles `every-difference-is-between-character-sets` and then `every-character-q
 follows the specialization because a set the context picks denotes nothing until a caller is known; Phase 2 settles
 `no-f-parameter`, the block scalar's leading-empty floor; Phase 3 settles `no-m-parameter`, the detected indent; Phase 4
 settles `no-n-parameter`, the indentation itself; Phase 5 is the empties, and settles `every-empty-match-is-a-way`, then
-`no-call-enters-both-ways`, then `only-root-empties`; Phase 6 is the wrappers, one invariant per kind of scope. A step
-written where its goal's other steps already ran is a smaller step, against a grammar with less in it.
+`no-call-enters-both-ways`, then `only-root-empties`; Phase 6 is the wrappers, one invariant per kind of scope; Phase 8
+is the flattening, which settles `no-choice-of-choices` by writing out a choice that a way of a choice calls, so every
+way of it stands where a gate can be put on it rather than one call below. A step written where its goal's other steps
+already ran is a smaller step, against a grammar with less in it.
 
 One invariant belongs to no phase. `no-unreachable-option` is read from the moment the contexts are monomorphized and
 every step after answers for it: a way that can take no character always gets through, so every way behind it is one a

@@ -1821,7 +1821,8 @@ _TAKES_NOTHING = (*_ACTIONS, *_GUARDS, ir.Empty)
 _PASSED_OVER = (*_TAKES_NOTHING, ir.ConsumeChar)
 
 # The guards whose question is about the input alone: where the parse stands, what lies in front of it, what is behind
-# it. No action writes any of that, so such a guard asks the same thing wherever in a way it is reached.
+# it. No action writes any of that — the window bounds what a committed consume may take and says nothing about where
+# the input ends — so such a guard asks the same thing wherever in a way it is reached.
 _INPUT_GUARDS = (ir.EndOfStream, ir.Look, ir.LookBehind, ir.NegLook, ir.StartOfLine)
 
 # What an action writes that a comparison could read: the indentation the parse carries and the values it works out.
@@ -2001,6 +2002,30 @@ def _wide_exclusions(grammar):
 EXCLUSIONS_ARE_BOUNDED = Invariant("every-exclusion-is-bounded", _wide_exclusions)
 
 
+def _called_alternations(grammar):
+    """
+    Ways of a choice that are a call to a choice — a decision spelled one call below the choice that offers it.
+
+    `a | P | c` where `P` is `d | e` offers three ways and makes four decisions, the fourth behind a call nothing about
+    the outer choice can see. Written out, `a | d | e | c` is the same four ways with every one of them standing where
+    the choice can be asked about it — which is what lets a gate be put on each.
+
+    Read of the tree's spelling, an `Alt` of ways one of which names an `Alt`. Past the re-encode there are no `Alt`
+    nodes at all, so what settles this stays settled by the shape rather than by a promise.
+    """
+    return [
+        f"{name}: a way of a choice that is a call to a choice"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, ir.Alt)
+        for way in node.items
+        if isinstance(way, ir.Ref) and isinstance(grammar[way.name].body, ir.Alt)
+    ]
+
+
+CHOICES_ARE_FLAT = Invariant("no-choice-of-choices", _called_alternations)
+
+
 def _items_of_way(way):
     """
     The items a way is made of, whichever way it is spelt.
@@ -2125,6 +2150,38 @@ def _untestable_ways(grammar):
 
 
 WAYS_CARRY_A_TEST = Invariant("every-way-carries-a-test", _untestable_ways)
+
+
+def _untested_calls_of_tested_choices(grammar):
+    """
+    Ways with no test of their own that hand control to a choice whose every way has one.
+
+    The decision is made one call deeper than it is asked: the caller offers a way nothing can turn away, and behind it
+    the callee tells its ways apart perfectly well. Spliced, the callee's ways stand where the call did and carry their
+    tests with them, so the choice the caller offers is one its gates decide.
+
+    A choice is only worth splicing where every way of it is tested — one untested way among them would arrive as an
+    untested way here, which is what the caller already has.
+    """
+    faults = []
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for way in production.body.alternatives:
+            if way.gate.peek is not None or way.gate.guards:
+                continue
+            called = way.first if isinstance(way.first, ir.Ref) else way.second
+            if not isinstance(called, ir.Ref):
+                continue
+            body = grammar[called.name].body
+            if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
+                continue
+            if all(other.gate.peek is not None or other.gate.guards for other in body.alternatives):
+                faults.append(f"{name}: an untested way handing control to a choice its own gates decide")
+    return faults
+
+
+CALLED_CHOICES_ARE_SPLICED = Invariant("no-untested-way-calls-a-tested-choice", _untested_calls_of_tested_choices)
 
 
 def _do_spans_overlap(one, other):
@@ -2886,30 +2943,19 @@ _HELD_MATCH = ir.Reading(
         # A window with nothing in it is a bound rather than a scope around a match, so it is what it is.
         ir.Token: lambda node: node.item if node.item is not None else node,
         (
+            *_ALWAYS_READS,
+            *_TAKES_NOTHING,
+            *_SCANS,
+            *_RUNS,
             ir.Alt,
-            ir.CharSet,
-            ir.ConsumeSpan,
-            ir.Emit,
-            ir.EndOfStream,
-            ir.Error,
-            ir.ExcludeAt,
-            ir.Increase,
-            ir.Le,
-            ir.LongestRun,
-            ir.LookBehind,
-            ir.Lt,
-            ir.NegLook,
-            ir.OpenWindow,
-            ir.PopCode,
-            ir.PopIndent,
-            ir.PopMessage,
-            ir.PushCode,
-            ir.PushIndent,
-            ir.PushMessage,
+            ir.Alternative,
+            ir.Bind,
+            ir.Choice,
+            ir.Commit,
+            ir.Opt,
             ir.Ref,
+            ir.Rep,
             ir.Seq,
-            ir.SetVar,
-            ir.StartOfLine,
         ): lambda node: node,
     },
 )
@@ -2976,23 +3022,7 @@ _REFUSAL_VERDICT = ir.Reading(
         (ir.CharSet, ir.ConsumeSpan): Verdict.STOP,
         ir.Ref: Verdict.INTO_CALL,
         ir.LongestRun: Verdict.INTO_ITEM,
-        (
-            ir.Emit,
-            ir.EndOfStream,
-            ir.ExcludeAt,
-            ir.Increase,
-            ir.Le,
-            ir.LookBehind,
-            ir.Lt,
-            ir.NegLook,
-            ir.OpenWindow,
-            ir.PopCode,
-            ir.PopIndent,
-            ir.PushCode,
-            ir.PushIndent,
-            ir.SetVar,
-            ir.StartOfLine,
-        ): Verdict.PASS,
+        (*_PLAIN_ACTIONS, *_ASKING_GUARDS, *_VALUE_KINDS, ir.Bind, ir.Empty, ir.Token, ir.Wrap): Verdict.PASS,
     },
 )
 
@@ -3453,6 +3483,77 @@ def hoist_askable_guards(grammar, namer):
 
     while True:
         settled = _over_ways(_lift_called_gates(grammar), hoisted)
+        if settled == grammar:
+            return settled
+        grammar = settled
+
+
+def flatten_called_alternations(grammar, namer):
+    """
+    A way of a choice that is a call to a choice becomes that choice's ways, standing where the call did.
+
+    `a | P | c` where `P` is `d | e` makes four decisions and shows three, the fourth hidden behind a call. Written out
+    it is `a | d | e | c` — the same four ways, tried in the same order, each now standing where the choice that offers
+    it can be asked about it.
+
+    What `_flattened_calls` does of an `Alt`, whose parts are the ways a choice offers.
+    """
+    return _flattened_calls(grammar, ir.Alt)
+
+
+def _reached_within(grammar, kind):
+    """
+    `{name: {name}}` — the productions each one names directly inside a `kind` node, and everything those reach in turn.
+
+    What tells a flattening that would end from one that would not: a body written out into one that can reach back
+    writes itself out again every round.
+    """
+    reaches = {name: set() for name in grammar}
+    while True:
+        settled = {}
+        for name, production in grammar.items():
+            found = set()
+            for node in _held(production.body):
+                if isinstance(node, kind):
+                    for held in node.items:
+                        if isinstance(held, ir.Ref):
+                            found |= {held.name} | reaches[held.name]
+            settled[name] = found
+        if settled == reaches:
+            return reaches
+        reaches = settled
+
+
+def _flattened_calls(grammar, kind):
+    """
+    The grammar with every call standing alone inside a `kind` node written out as what it names, run until nothing
+    moves — a body written out may itself hold such a call — and never into a body that can reach back.
+
+    Only where the call stands as a whole part: a call inside a longer way would leave a choice among the items, which
+    is a distribution rather than a flattening and costs a copy of everything behind it. And only where the callee takes
+    no parameter, since writing one out would mean substituting its arguments rather than moving its parts.
+    """
+    while True:
+        reaches = _reached_within(grammar, kind)
+
+        def flattened(node, owner, reaches=reaches, grammar=grammar):
+            node = ir.rebuilt(node, lambda held: flattened(held, owner))
+            if not isinstance(node, kind):
+                return node
+            parts = []
+            for held in node.items:
+                called = grammar[held.name] if isinstance(held, ir.Ref) and not held.args else None
+                is_reachable = called is not None and (held.name == owner or owner in reaches[held.name])
+                if called is None or called.params or not isinstance(called.body, kind) or is_reachable:
+                    parts.append(held)
+                else:
+                    parts += list(called.body.items)
+            return dataclasses.replace(node, items=tuple(parts))
+
+        settled = {
+            name: dataclasses.replace(production, body=flattened(production.body, name))
+            for name, production in grammar.items()
+        }
         if settled == grammar:
             return settled
         grammar = settled
@@ -4505,7 +4606,20 @@ STEPS = [
     ),
     Step("lower-bind", lower_bind, (ITEMS_ARE_LEAVES, NO_BIND_NODES)),
     Step("bound-exclusions", bound_exclusions, EXCLUSIONS_ARE_BOUNDED, reduces=EXCLUSIONS_ARE_BOUNDED),
-    # Phase 8 is the call: a way does its actions, hands control to one production, and says where to carry on when it
+    # Phase 8 flattens what a call hides: a choice among the ways of a choice, and a run of items among the items of a
+    # way. It runs before the way is split into a call and a continuation, since a choice written out here is one every
+    # phase behind this sees whole — every way of it standing where a gate can be put on it rather than one call below.
+    Step(
+        "flatten-called-alternations",
+        flatten_called_alternations,
+        CHOICES_ARE_FLAT,
+        lapses={
+            "no-call-enters-both-ways": "a choice written out where it was called is its ways standing there, so a "
+            "call one of them makes is now made from where the caller stood: the count follows the ways rather than "
+            "any new entering, and what the gates behind this can put on each of them is what it buys"
+        },
+    ),
+    # Phase 9 is the call: a way does its actions, hands control to one production, and says where to carry on when it
     # comes back. What stood past the call is what carries on.
     Step(
         "mint-continuations",
@@ -4518,11 +4632,11 @@ STEPS = [
             "rather than a choice anything makes",
         ),
     ),
-    # Phase 9 says every body in the machine's own words: a set of characters, a run over the state it repeats, or the
+    # Phase 10 says every body in the machine's own words: a set of characters, a run over the state it repeats, or the
     # ordered list of alternatives one of which the parse takes.
     Step("call-run-turns", call_run_turns, RUN_TURNS_ARE_CALLS),
     Step("build-alternatives", build_alternatives, BODIES_ARE_STATES),
-    # Phase 10 is the gate: a way is entered on the character in front of it, which is what a machine that never
+    # Phase 11 is the gate: a way is entered on the character in front of it, which is what a machine that never
     # backtracks chooses by. The hoists reduce `every-way-carries-a-test` between them.
     Step(
         "gate-hoist",

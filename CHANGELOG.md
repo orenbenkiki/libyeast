@@ -654,6 +654,29 @@ All notable changes to this project are documented here. The format follows
   on with an error rather than a refusal, so gating the way out would turn a parse that stops into one that takes
   another way — a different language. They want the commit lifted off the callee.
 
+  **A choice a way of a choice calls is written out where the call stood.** `a | P | c` where `P` is `d | e` makes four
+  decisions and shows three, the fourth behind a call nothing about the outer choice can see; written out,
+  `a | d | e | c` is the same four ways in the same order with every one standing where a gate can be put on it.
+  `no-choice-of-choices` counts the ones still hidden — **40** where the step runs — and `flatten-called-alternations`
+  settles it, running until nothing moves and never into a choice that can reach back, which would write itself out for
+  ever. It runs before a way is split into a call and a continuation, so every phase behind it sees the choice whole.
+
+  This is the first thing to move the numbers the goal is measured by. `every-way-carries-a-test` falls **18 to 6**, the
+  meter from 164 to **141**, and the corpus cases where a committed run and a backtracking one read differently from 129
+  to **108** — on a grammar that got *smaller*, 819 productions to 798.
+
+  The six left are one thing: a way handing control to a production that answers a character it cannot start on with an
+  error rather than a refusal, each guarded by a `NegLook`, all of them the auto-detected-indent copies of the block
+  scalar's content.
+
+  The same flattening for a called run of items is written and not landed. It hands `splice-conflicts` a way carrying a
+  recovery, and that step builds the spliced way with the callee's recovery, dropping the caller's — a latent bug in
+  committed code that no shape had reached before. The fix is not a side condition but finishing phase 6: a recovery is
+  a snapshot-and-restore scope over the way's first call, the same shape as the three wrappers that became pairs, and it
+  is the one that stayed a field on the alternative. `PushRecovery`/`PopRecovery` are defined, and the interpreter now
+  keeps the return stack the pair needs — where each entered production carries on when it matches, pushed and taken
+  back with the production trace, one for one.
+
   **Every question about a node is asked through a table that cannot answer for a kind nobody named.** `ir.Reading` maps
   node kinds to what to do about them, and holds itself to three rules: a kind it was not told about **raises**, naming
   the reading; a handler nothing ever reaches is **reported** by `unexercised` after a whole-corpus run; and a kind

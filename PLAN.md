@@ -230,9 +230,10 @@ The phases, each established and then enforced:
 | 5     | `only-root-empties`                              | every empty match but the ones a parse enters by name                                           |
 | 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`     | every scope that holds what it covers, for the pair that brackets it                            |
 | 7     | `no-item-holds-a-match`                          | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
-| 8     | `a-way-is-actions-a-call-and-a-continuation`     | everything a way holds past its first call                                                      |
-| 9     | `every-body-is-a-choice-a-run-or-a-set`          | the tree's own spelling, for the machine's                                                      |
-| 10    | `every-way-carries-a-test`                       | every way entered on nothing the machine can test, and the meter arrives to say what is left    |
+| 8     | `no-choice-of-choices`                           | a decision spelled one call below the choice that offers it                                     |
+| 9     | `a-way-is-actions-a-call-and-a-continuation`     | everything a way holds past its first call                                                      |
+| 10    | `every-body-is-a-choice-a-run-or-a-set`          | the tree's own spelling, for the machine's                                                      |
+| 11    | `every-way-carries-a-test`                       | every way entered on nothing the machine can test, and the meter arrives to say what is left    |
 | later | `every-decision-goes-on-a-character`             | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
@@ -245,10 +246,17 @@ or spell the shape again under declared lapses, and the pipeline settles it at n
 
 **The two questions, in order.** A machine that never backtracks needs each way of a choice to carry a test it can make
 before entering it, and then it needs the tests to be exclusive. They are separate problems and the first comes whole:
-`every-way-carries-a-test` stands at **18**, and every one of them is the same thing: a way handing control to a
-production that answers a character it cannot start on with an error rather than a refusal, so gating the way out would
-turn a parse that stops into one that takes another way. No hoist reaches them — they want the commit lifted off the
-callee, which is what `lift-commits` is for.
+`every-way-carries-a-test` stands at **6**, all of them the same thing — a way handing control to a production that
+answers a character it cannot start on with an error rather than a refusal, so gating the way out would turn a parse
+that stops into one that takes another way. No hoist reaches them; each is guarded by a `NegLook` rather than by a
+count, and they are the auto-detected-indent copies of the block scalar's content.
+
+**What the flattening bought, and what it says about where the rest is.** Phase 8 writes out a choice that a way of a
+choice calls, so every way of it stands where a gate can be put on it rather than one call below. Landing it alone took
+testability from 18 to 6, the meter from 164 to **141**, and the corpus cases where a committed run and a backtracking
+one read differently from 129 to **108** — the first movement in either of the two numbers that measure the goal. The
+same flattening for a called *run of items* is written and does not land: it hands `splice-conflicts` a way carrying a
+recovery, and that step drops the caller's recovery in favour of the callee's. Which is why phase 6 comes first.
 
 What follows it is `every-decision-goes-on-a-character` at **164**, which is the exclusivity question and splits in two:
 **65** choices offering a way with no character set of its own — of which 77 ways are entered on a guard, deciding on
