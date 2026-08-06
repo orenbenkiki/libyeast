@@ -84,22 +84,97 @@ def is_one_char(node, grammar, seen=frozenset()):
     narrow it); an `Alt` is one when every branch is (a union of char sets), so a lowered optional `x | <empty>` is not
     one; a `Ref` is one when its production is.
 
-    Every other kind is named as not one, and a kind named nowhere raises rather than being answered for: a silent
-    `False` here turns a scan into a way, and the run would gain an empty fallback nobody wrote.
+    Every other kind that reaches here is named as not one, and a kind named nowhere raises: `_IS_ONE_CHAR` is a
+    `Reading`, so it answers only for what it has been told about and the corpus proves every answer is reached. A
+    silent `False` here would turn a scan into a way, and the run would gain an empty fallback nobody wrote.
     """
-    if isinstance(node, (Char, Range, Invalid, CharSet)):
-        return True
-    if isinstance(node, Diff):
-        return is_one_char(node.base, grammar, seen)
-    if isinstance(node, Alt):
-        return bool(node.items) and all(is_one_char(item, grammar, seen) for item in node.items)  # empty: no match
-    if isinstance(node, Case):
-        return all(is_one_char(branch.item, grammar, seen) for branch in node.branches)  # a context-picked class
-    if isinstance(node, Ref):
-        return node.name in seen or is_one_char(grammar[node.name].body, grammar, seen | {node.name})
-    if isinstance(node, NOT_ONE_CHAR):
-        return False
-    raise TypeError(f"cannot tell whether {type(node).__name__} matches exactly one character")
+    return _IS_ONE_CHAR(node, grammar, seen)
+
+
+# What a reading says of a kind it does not meet where it is asked, overriding whatever wider group named it: a `(case)`
+# past the specialization, a tree node past the re-encode. It is checked rather than believed — reaching one raises —
+# which is what lets a group of a hundred kinds be reused across readings that each meet a different part of it.
+NEVER = "never"
+
+
+class Reading:
+    """
+    A total dispatch over node kinds: what to do for each, with nothing left to a default.
+
+    The mechanism every question about a node is asked through, because the alternative — a chain of `isinstance` tests
+    ending in a fallthrough — answers permissively for whatever spelling its author did not think of, and reports its
+    own blindness as a fact about the grammar. Three rules hold a reading to what it claims:
+
+    - **A kind it was not told about raises**, naming the reading and the kind. There is no default and no way to write
+      one: a kind absent from the table is one the reading has never been asked to answer for, and answering anyway is
+      the whole of the failure this replaces.
+    - **Every handler is used.** A kind whose handler nothing ever reaches is a guess about the grammar, and
+      `unexercised` reports it once the whole corpus has run — only then, since a kind is exercised by the inputs that
+      reach it and a partial run says nothing about the rest.
+
+    Those two between them pin the table to exactly the kinds that occur: what is missing raises, what is spare is
+    reported. So a reading says nothing about kinds it cannot see, and a kind added to the IR touches only the readings
+    that actually meet it — on the day they do, loudly, rather than never.
+
+    `NEVER` is how a reading keeps a wide group and still says what of it cannot arrive: it overrides whatever named the
+    kind, it is left out of what coverage asks about, and it raises if the kind ever does arrive. A group with a
+    reasonable meaning of its own is therefore worth naming once and reusing, each reading taking back the part of it
+    that does not reach there.
+
+    - **No kind is named twice.** Named groups overlap — `Cut` is a guard and a commit both — and a chain of tests
+      resolves that silently by its order, with nothing saying which resolution was meant. Here it is an error until
+      someone writes the answer down.
+
+    Handlers take the node and whatever the caller threads through, and a reading is called the same way: `reading(node,
+    grammar, ways)` reaches `handler(node, grammar, ways)`. A handler that is not callable is the answer itself —
+    `Empty: True` rather than a lambda ignoring what it is given — and, being the one value every call gets back, it
+    should be one nothing mutates.
+    """
+
+    _all = []
+
+    def __init__(self, what, over):
+        self.what = what
+        self._by_kind = {}
+        # `NEVER` is applied after everything else and is the only entry allowed to override, so a reading names a wide
+        # group for what it does meet and takes back the part of it that cannot arrive — in either order, since nothing
+        # here depends on how the table is written down.
+        for wanted in (False, True):
+            for kinds, handler in over.items():
+                if (handler is NEVER) != wanted:
+                    continue
+                for kind in kinds if isinstance(kinds, tuple) else (kinds,):
+                    if kind in self._by_kind and not wanted:
+                        raise TypeError(f"the reading of {what} names {kind.__name__} twice")
+                    self._by_kind[kind] = handler
+        stray = sorted(kind.__name__ for kind in self._by_kind if kind not in KINDS)
+        if stray:
+            raise TypeError(f"the reading of {what} names {', '.join(stray)}, which are no kinds of node")
+        self._used = set()
+        Reading._all.append(self)
+
+    def __call__(self, node, *carried):
+        handler = self._by_kind.get(type(node))
+        if handler is None:
+            raise TypeError(f"the reading of {self.what} has not been told what {type(node).__name__} means")
+        if handler is NEVER:
+            raise TypeError(f"the reading of {self.what} was told {type(node).__name__} cannot reach it, and it has")
+        self._used.add(type(node))
+        return handler(node, *carried) if callable(handler) else handler
+
+    def unused(self):
+        """The kinds this reading claims to handle and was never asked about — each one a guess nothing bore out."""
+        return sorted(
+            kind.__name__ for kind, handler in self._by_kind.items() if handler is not NEVER and kind not in self._used
+        )
+
+
+def unexercised():
+    """
+    `{what: [kind]}` for every reading holding a handler nothing reached — meaningful only after the whole corpus has
+    run, since a kind is exercised by the inputs that reach it and a partial run says nothing about the rest.
+    """
+    return {reading.what: reading.unused() for reading in Reading._all if reading.unused()}
 
 
 def _refs(*values):
@@ -1187,6 +1262,74 @@ NOT_ONE_CHAR = (
 # between them are the whole of it — and a kind added to neither raises there before it can reach anything here. What
 # reads it is every net that has to tell "a kind I know, which is not this" from "a kind nobody has named".
 KINDS = NOT_ONE_CHAR + (Alt, Case, Char, CharSet, Diff, Invalid, Range, Ref)
+
+# What `is_one_char` answers, as the reading it is: `NOT_ONE_CHAR` and the eight named here are `KINDS` exactly, so the
+# table is total by construction and a kind added to neither breaks it where the module loads.
+_IS_ONE_CHAR = Reading(
+    "whether a node matches exactly one character",
+    {
+        (Char, Range, Invalid, CharSet): True,
+        Diff: lambda node, grammar, seen: is_one_char(node.base, grammar, seen),
+        # An empty alternation matches nothing at all, so it is no character either.
+        Alt: lambda node, grammar, seen: bool(node.items)
+        and all(is_one_char(item, grammar, seen) for item in node.items),
+        Ref: lambda node, grammar, seen: node.name in seen
+        or is_one_char(grammar[node.name].body, grammar, seen | {node.name}),
+        # Every kind that reaches here and is not one character: a repetition or a sequence takes a run rather than a
+        # character, an action and a guard take none, a value expression is no match at all, and the canonical form's
+        # own consumes are answered where they are made. Spelled out rather than taken from a wider group, since no
+        # other reading shares one — what is missing raises, and what is spare `unexercised` reports.
+        (
+            Add,
+            Alternative,
+            Atoi,
+            Bind,
+            Choice,
+            ClearVar,
+            CloseWindow,
+            Column,
+            Commit,
+            ConsumeChar,
+            ConsumeCountedSpan,
+            ConsumeSpan,
+            Cut,
+            Emit,
+            Empty,
+            EndOfStream,
+            Error,
+            ExcludeAt,
+            Gate,
+            Global,
+            Increase,
+            Indent,
+            Le,
+            Len,
+            LiteralPeek,
+            LongestRun,
+            Lt,
+            Match,
+            Max,
+            OpenWindow,
+            Opt,
+            Plus,
+            PopCode,
+            PopIndent,
+            PopMessage,
+            PushCode,
+            PushIndent,
+            PushMessage,
+            Recover,
+            Rep,
+            Seq,
+            SetVar,
+            Star,
+            StartOfLine,
+            Sub,
+            Token,
+            Wrap,
+        ): False,
+    },
+)
 
 # The kinds that take characters themselves, rather than through whatever they hold. What a walk of a node's children
 # must not descend into, on pain of counting the same characters twice or of counting a peek's set as a match. In

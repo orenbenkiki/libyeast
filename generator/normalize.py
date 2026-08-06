@@ -40,9 +40,21 @@ pair, and `lower-tokens` a `(token)` as the code pair. What a wrapper guaranteed
 instead: `every-scope-closes-on-its-own-way` says a scope opened on a way is closed on it, the ways of a choice agree on
 what they leave open, and a run's turn leaves none. A `(recover)` is a handler rather than a scope and stays, its home
 being the edge an alternative rides.
+
+**A reading that dispatches on node kinds names every kind it accepts and raises on the rest.** Never a trailing default
+— no `return None`, `return True`, `continue` or `break` catching a kind nobody thought about. A default answer for a
+spelling the reading does not recognise is not caution: it reports the reading's own blindness as a fact about the
+grammar, and every count taken from it is wrong quietly and plausibly. `_entry_of`, `_is_nullable` and `_split` each end
+in a raise for that reason, and so must anything written beside them.
+
+**And one reading per question.** What characters can be in front of a match is `_entry_of`; whether a match can take
+nothing is `_is_nullable`; what its reading and empty halves are is `_split`. A step or a check that needs one of these
+calls it rather than walking the grammar again — two readings of one question drift, and the drift shows up as a count
+that moves where nothing about the grammar did.
 """
 
 import dataclasses
+import enum
 import inspect
 
 import annotated2ir
@@ -887,7 +899,7 @@ def _shortest_match(node, grammar, seen=frozenset()):
         return 1
     if isinstance(node, ir.Diff):
         return _shortest_match(node.base, grammar, seen)
-    if isinstance(node, (*_ACTIONS, *_GUARDS, ir.Empty, ir.Star, ir.Opt)):
+    if isinstance(node, (*_TAKES_NOTHING, ir.Star, ir.Opt)):
         return 0  # an action or a guard takes nothing, and a repetition of none or more takes no turn
     if isinstance(node, ir.Seq):
         return min(_SHORTEST_CAP, sum(_shortest_match(item, grammar, seen) for item in node.items))
@@ -1190,26 +1202,40 @@ def _peek_spans(peek, grammar):
     interval `(-1, -1)` — a unit no character class can also hold, so it overlaps only itself — and an alternation
     holding it beside character classes, the recovery's any-byte peek, is the classes' intervals with that unit.
     """
-    if isinstance(peek, ir.CharSet):
-        return [tuple(span) for span in peek.spans]
-    if isinstance(peek, ir.Invalid):
-        return [(-1, -1)]
-    if isinstance(peek, ir.LiteralPeek):
-        return [(peek.text[0], peek.text[0])]  # the first character is the dispatch; the rest is the gate's own test
-    if isinstance(peek, ir.Alt):
-        # Unioned here rather than denoted, since the invalid byte has no denotation: it is a unit no character holds,
-        # and an alternation carrying one — as the `Invalid` node or as the interval a `CharSet` says it with — denotes
-        # nothing while admitting perfectly well.
-        gathered = []
-        for item in peek.items:
-            admitted = _peek_spans(item, grammar)
-            if admitted is None:
-                return None
-            gathered += admitted
-        invalid = [span for span in gathered if span[0] < 0]
-        return [(-1, -1)] * bool(invalid) + _merged_spans([span for span in gathered if span[0] >= 0])
+    return _PEEK_SPANS(peek, grammar)
+
+
+def _united_peek_spans(peek, grammar):
+    """
+    An alternation's intervals, unioned here rather than denoted: the invalid byte has no denotation — it is a unit no
+    character holds — and an alternation carrying one, as the `Invalid` node or as the interval a `CharSet` says it
+    with, denotes nothing while admitting perfectly well.
+    """
+    gathered = []
+    for item in peek.items:
+        admitted = _peek_spans(item, grammar)
+        if admitted is None:
+            return None
+        gathered += admitted
+    invalid = [span for span in gathered if span[0] < 0]
+    return [(-1, -1)] * bool(invalid) + _merged_spans([span for span in gathered if span[0] >= 0])
+
+
+def _denoted_peek_spans(peek, grammar):
+    """A question's intervals by what it denotes, which is `None` where the set is not pinned down."""
     denotation = chars.denote(grammar, peek)
     return None if denotation is None else _denoted_spans(denotation)
+
+
+_PEEK_SPANS = ir.Reading(
+    "the codepoint intervals a peek admits, or none where its set is not pinned down",
+    {
+        ir.CharSet: lambda peek, grammar: [tuple(span) for span in peek.spans],
+        ir.Invalid: [(-1, -1)],
+        ir.Alt: _united_peek_spans,
+        (ir.Char, ir.Diff, ir.Range, ir.Ref): _denoted_peek_spans,
+    },
+)
 
 
 # No point of interest is tracked yet: a point is a name a later phase's declared step speaks about, and none of those
@@ -1786,6 +1812,14 @@ _GUARDS = (ir.Cut, ir.EndOfStream, ir.Le, ir.Look, ir.LookBehind, ir.Lt, ir.NegL
 # The guards that can refuse — every one but `Cut`, which commits the parse rather than asking it anything.
 _ASKING_GUARDS = tuple(guard for guard in _GUARDS if guard is not ir.Cut)
 
+# What takes no character at all, the counterpart of `_ALWAYS_READS`: an action leaves something behind, a guard asks a
+# question, an empty match does neither. What stands behind one of these is what a match begins on.
+_TAKES_NOTHING = (*_ACTIONS, *_GUARDS, ir.Empty)
+
+# What a walk for the character in front of a way passes over: everything that takes none, and the one character a gate
+# has already found there, which the gate answers for rather than the way.
+_PASSED_OVER = (*_TAKES_NOTHING, ir.ConsumeChar)
+
 # The guards whose question is about the input alone: where the parse stands, what lies in front of it, what is behind
 # it. No action writes any of that, so such a guard asks the same thing wherever in a way it is reached.
 _INPUT_GUARDS = (ir.EndOfStream, ir.Look, ir.LookBehind, ir.NegLook, ir.StartOfLine)
@@ -1857,17 +1891,20 @@ _BODY_KINDS = (ir.Alt, ir.Choice, ir.LongestRun, ir.Recover, ir.Seq)
 
 def _inner_ways(node):
     """The matches `node` holds, each a way in its own right — what the walk goes on into once it has counted one."""
-    if isinstance(node, ir.Choice):
-        return node.alternatives
-    if isinstance(node, ir.Alt):
-        return node.items
-    if isinstance(node, ir.Seq):
-        return (node,)
-    if isinstance(node, ir.LongestRun):
-        return (node.item,)
-    if isinstance(node, ir.Recover):
-        return (node.item, node.recovery)
-    return (node.cond,)  # a binding, whose condition is the match it puts a value in scope for
+    return _INNER_WAYS(node)
+
+
+_INNER_WAYS = ir.Reading(
+    "the ways a body offers, each a match in its own right",
+    {
+        ir.Choice: lambda node: node.alternatives,
+        ir.Alt: lambda node: node.items,
+        ir.Seq: lambda node: (node,),
+        ir.LongestRun: lambda node: (node.item,),
+        ir.Recover: lambda node: (node.item, node.recovery),
+        ir.Bind: lambda node: (node.cond,),  # a binding: the match it puts a value in scope for
+    },
+)
 
 
 def _nested_matches(grammar, reported):
@@ -2268,16 +2305,54 @@ def _guards_to_ask(way):
     """
     found, passed = [], []
     for item in _items_of_way(way):
-        if isinstance(item, _ASKING_GUARDS):
-            if isinstance(item, _INPUT_GUARDS) or not any(isinstance(action, _STATE_WRITERS) for action in passed):
-                found.append(item)
-            continue
-        if isinstance(item, _COMMITS):
+        verdict = _GUARD_VERDICT(item)
+        if verdict is Verdict.STOP:
             break
-        if not isinstance(item, _ACTIONS):
-            break  # a match stands in front of the guard, so the guard is not what the way is entered on
-        passed.append(item)
+        if verdict is Verdict.PASS:
+            passed.append(item)
+            continue
+        if isinstance(item, _INPUT_GUARDS) or not any(isinstance(action, _STATE_WRITERS) for action in passed):
+            found.append(item)
     return tuple(found)
+
+
+class Verdict(enum.Enum):
+    """What a walk over a way's items does with the one it is looking at."""
+
+    TAKE = "take"  # this item is what the walk was looking for
+    PASS = "pass"  # it says nothing either way, so the walk goes on to what stands behind it
+    STOP = "stop"  # the walk ends here with no answer
+    INTO_CALL = "into call"  # follow the production it names
+    INTO_ITEM = "into item"  # follow what it holds
+    COMMIT = "commit"  # past here, failing is the error it names rather than a refusal handed back
+
+
+# The actions that only leave something behind: every one but those that commit the parse, which `_COMMITS` names and
+# which a walk looking for what a way can be refused at has to stop at rather than pass over.
+_PLAIN_ACTIONS = tuple(action for action in _ACTIONS if action not in _COMMITS)
+
+_GUARD_VERDICT = ir.Reading(
+    "the `Verdict` a walk for the guards a way could be entered on reaches about an item",
+    {
+        _ASKING_GUARDS: Verdict.TAKE,
+        _COMMITS: Verdict.STOP,
+        # A match stands in front of the guard, so the guard is not what the way is entered on.
+        (*_SCANS, ir.ConsumeChar, ir.Ref): Verdict.STOP,
+        _PLAIN_ACTIONS: Verdict.PASS,
+        # What the groups above name and this never meets: it walks a way of the canonical form, where a character
+        # question has been taken into the gate, an empty match swept away, and the provisional actions stand elsewhere.
+        (
+            ir.Commit,
+            ir.CommitProvisional,
+            ir.Empty,
+            ir.InjectBefore,
+            ir.LookBehind,
+            ir.MarkProvisional,
+            ir.OpenProvisional,
+            ir.RetypeProvisional,
+        ): ir.NEVER,
+    },
+)
 
 
 def _askable_guards(grammar):
@@ -2476,19 +2551,34 @@ RUN_TURNS_ARE_CALLS = Invariant(
 
 def _asked_parts(node, grammar):
     """
-    What a question asks, in order — names read through, annotations read off, sequences flattened into one run.
+    What a question asks, in order — names read through, codes read off, sequences flattened into one run.
 
     The same reading `_peeked_question` makes of a peek, said of a question with more than one part in it: a probe emits
-    nothing and gives back what it read, so a code around a character is no part of what is asked and a name is the
-    caller's hold rather than a question the machine can put to the input.
+    nothing and gives back what it read, so the run's code around a character is no part of what is asked, and a name
+    carrying arguments is the caller's hold rather than a question the machine can put to the input.
     """
-    if isinstance(node, ir.Ref) and not node.args:
-        return _asked_parts(grammar[node.name].body, grammar)
-    if isinstance(node, (ir.Token, ir.Wrap)):
-        return _asked_parts(node.item, grammar)
-    if isinstance(node, ir.Seq):
-        return tuple(part for item in node.items for part in _asked_parts(item, grammar))
-    return () if isinstance(node, _PEEK_OUTPUT) else (node,)
+    return _ASKED_PARTS(node, grammar)
+
+
+_ASKED_PARTS = ir.Reading(
+    "the parts a question asks of the input, in the order it asks them",
+    {
+        # A name with arguments is the caller's hold rather than a question the machine can put to the input.
+        ir.Ref: lambda node, grammar: _asked_parts(grammar[node.name].body, grammar) if not node.args else (node,),
+        ir.Seq: lambda node, grammar: tuple(part for item in node.items for part in _asked_parts(item, grammar)),
+        # The run's code shapes the output rather than the question, so it is no part of what is asked.
+        (ir.PopCode, ir.PushCode): (),
+        (
+            ir.Alt,
+            ir.CharSet,
+            ir.ConsumeSpan,
+            ir.Le,
+            ir.Look,
+            ir.NegLook,
+            ir.StartOfLine,
+        ): lambda node, grammar: (node,),
+    },
+)
 
 
 def _literal_text(node, grammar):
@@ -2677,36 +2767,55 @@ def _entry_of(node, grammar, ways, entry):
     matched. A kind named nowhere raises rather than answering nothing, an unrecognised spelling being the one way this
     can silently narrow.
     """
-    if isinstance(node, (ir.Char, ir.CharSet, ir.Invalid, ir.Range)):
-        return _peek_spans(node, grammar) or []
-    if isinstance(node, _SCANS):
-        return _peek_spans(node.set, grammar) or []
-    if isinstance(node, ir.Ref):
-        return list(entry[node.name])
-    if isinstance(node, (*_ACTIONS, *_GUARDS, *_VALUE_KINDS, ir.ConsumeChar, ir.Empty)):
-        return []  # none of these takes a character, so a way holding one is entered on whatever stands behind it
-    if isinstance(node, _HOLDERS):
-        return _entry_of(node.item, grammar, ways, entry) if node.item is not None else []
-    if isinstance(node, (ir.LongestRun, ir.Opt, ir.Plus, ir.Star)):
-        return _entry_of(node.item, grammar, ways, entry)
-    if isinstance(node, ir.Rep):
-        return _entry_of(node.item, grammar, ways, entry)
-    if isinstance(node, ir.Bind):
-        return _entry_of(node.cond, grammar, ways, entry)
-    if isinstance(node, (ir.Alt, ir.Choice)):
-        return [span for way in _ways_or_items(node) for span in _entry_of(way, grammar, ways, entry)]
-    if isinstance(node, (ir.Alternative, ir.Seq)):
-        if isinstance(node, ir.Alternative) and node.gate.peek is not None:
-            return _peek_spans(node.gate.peek, grammar) or []  # a gated way is entered on its gate and nothing else
-        got = []
-        for item in _items_of_way(node):
-            if isinstance(item, ir.ConsumeChar):
-                continue  # the gate has already found this character, so it says what the way is entered on
-            got += _entry_of(item, grammar, ways, entry)
-            if not _is_nullable(item, grammar, ways):
-                return got  # this item must take a character, so nothing past it is what the way begins on
-        return got
-    raise TypeError(f"cannot tell what characters {type(node).__name__} lets a match begin on")
+    return _ENTRY(node, grammar, ways, entry)
+
+
+def _entry_of_way(node, grammar, ways, entry):
+    """
+    What a way or a sequence can be entered on: each part in turn, up to the first that must take a character, since
+    nothing behind that can be what the way begins on.
+    """
+    if isinstance(node, ir.Alternative) and node.gate.peek is not None:
+        return _peek_spans(node.gate.peek, grammar) or []  # a gated way is entered on its gate and nothing else
+    got = []
+    for item in _items_of_way(node):
+        if isinstance(item, ir.ConsumeChar):
+            continue  # the gate has already found this character, so it says what the way is entered on
+        got += _entry_of(item, grammar, ways, entry)
+        if not _is_nullable(item, grammar, ways):
+            return got
+    return got
+
+
+# Asked only of the canonical form, which is what the gates are hoisted on: every tree kind — a sequence, an
+# alternation, an optional, a repetition, a scope holding what it covers — is gone by the time anything asks this, and
+# what is left is a choice of ways, each a gate, actions, a call and where it carries on.
+_ENTRY = ir.Reading(
+    "the codepoint intervals a match can begin on",
+    {
+        ir.CharSet: lambda node, grammar, ways, entry: _peek_spans(node, grammar) or [],
+        _SCANS: lambda node, grammar, ways, entry: _peek_spans(node.set, grammar) or [],
+        ir.Ref: lambda node, grammar, ways, entry: list(entry[node.name]),
+        # None of these takes a character, so a way holding one is entered on whatever stands behind it.
+        _PASSED_OVER: [],
+        ir.LongestRun: lambda node, grammar, ways, entry: _entry_of(node.item, grammar, ways, entry),
+        ir.Choice: lambda node, grammar, ways, entry: [
+            span for way in node.alternatives for span in _entry_of(way, grammar, ways, entry)
+        ],
+        ir.Alternative: _entry_of_way,
+        # What `_PASSED_OVER` names and this never meets: the gate's own character is skipped where a way is walked, an
+        # empty match is swept out of a way's actions, and the provisional actions stand past this phase.
+        (
+            ir.CommitProvisional,
+            ir.ConsumeChar,
+            ir.Empty,
+            ir.InjectBefore,
+            ir.MarkProvisional,
+            ir.OpenProvisional,
+            ir.RetypeProvisional,
+        ): ir.NEVER,
+    },
+)
 
 
 def _entry_spans(grammar):
@@ -2766,9 +2875,44 @@ def _unheld(node):
     A `(token)` around a character is a character taken and a code given to it, and a reading after what a way does
     first has to see the character. A `(commit)` is not stripped: what it says about failing is the thing being asked.
     """
-    while isinstance(node, _HOLDERS) and not isinstance(node, ir.Commit) and node.item is not None:
-        node = node.item
+    while (inner := _HELD_MATCH(node)) is not node:
+        node = inner
     return node
+
+
+_HELD_MATCH = ir.Reading(
+    "the match a node holds inside the scope written around it, or the node itself where it holds none",
+    {
+        # A window with nothing in it is a bound rather than a scope around a match, so it is what it is.
+        ir.Token: lambda node: node.item if node.item is not None else node,
+        (
+            ir.Alt,
+            ir.CharSet,
+            ir.ConsumeSpan,
+            ir.Emit,
+            ir.EndOfStream,
+            ir.Error,
+            ir.ExcludeAt,
+            ir.Increase,
+            ir.Le,
+            ir.LongestRun,
+            ir.LookBehind,
+            ir.Lt,
+            ir.NegLook,
+            ir.OpenWindow,
+            ir.PopCode,
+            ir.PopIndent,
+            ir.PopMessage,
+            ir.PushCode,
+            ir.PushIndent,
+            ir.PushMessage,
+            ir.Ref,
+            ir.Seq,
+            ir.SetVar,
+            ir.StartOfLine,
+        ): lambda node: node,
+    },
+)
 
 
 def _does_refuse(node, grammar, ways, seen=frozenset()):
@@ -2796,22 +2940,61 @@ def _does_refuse(node, grammar, ways, seen=frozenset()):
         if isinstance(way, ir.Alternative) and way.gate.peek is not None:
             continue  # the gate turns the wrong character away before the way is entered, so nothing has committed
         for item in map(_unheld, _items_of_way(way)):
-            if isinstance(item, _COMMITS):
+            verdict = _REFUSAL_VERDICT(item)
+            if verdict is Verdict.COMMIT:
                 return False
-            if isinstance(item, _ALWAYS_READS):
+            if verdict is Verdict.STOP:
                 break
-            if isinstance(item, ir.Ref):
+            if verdict is Verdict.PASS:
+                continue
+            if verdict is Verdict.INTO_CALL:
                 if item.name in seen:
                     break
                 if not _does_refuse(grammar[item.name].body, grammar, ways, seen | {item.name}):
                     return False
                 if not ways[item.name][1]:
                     break
-            if isinstance(item, (ir.Alt, ir.Choice, ir.Seq)):
-                if not _does_refuse(item, grammar, ways, seen):
-                    return False
-                break  # what it holds can refuse, so the way is given back before anything of it commits
+                continue
+            if not _does_refuse(_held_item(item), grammar, ways, seen):
+                return False
+            break  # what it holds can refuse, so the way is given back before anything of it commits
     return True
+
+
+def _held_item(node):
+    """What a repetition repeats or an optional holds, and the node itself where it holds its parts in a row."""
+    return node.item if isinstance(node, (*_RUNS, ir.Opt, ir.Rep)) else node
+
+
+# What a walk for where a match can be refused does with each item, beside taking it: follow the call it makes, or
+# follow what it holds.
+_REFUSAL_VERDICT = ir.Reading(
+    "the `Verdict` a walk for where a match can be refused reaches about an item",
+    {
+        (ir.Error, ir.PushMessage): Verdict.COMMIT,
+        # A character has to be taken here, so whatever fails behind it fails a parse that had already started.
+        (ir.CharSet, ir.ConsumeSpan): Verdict.STOP,
+        ir.Ref: Verdict.INTO_CALL,
+        ir.LongestRun: Verdict.INTO_ITEM,
+        (
+            ir.Emit,
+            ir.EndOfStream,
+            ir.ExcludeAt,
+            ir.Increase,
+            ir.Le,
+            ir.LookBehind,
+            ir.Lt,
+            ir.NegLook,
+            ir.OpenWindow,
+            ir.PopCode,
+            ir.PopIndent,
+            ir.PushCode,
+            ir.PushIndent,
+            ir.SetVar,
+            ir.StartOfLine,
+        ): Verdict.PASS,
+    },
+)
 
 
 def _does_refuse_softly(name, grammar, ways):
@@ -2851,6 +3034,34 @@ def gate_hoist_call(grammar, namer):
     return _over_ways(grammar, hoisted)
 
 
+_ENTRY_VERDICT = ir.Reading(
+    "the `Verdict` a walk for the character in front of a way reaches about an item",
+    {
+        # Past a commit, failing is an error rather than a refusal, so a gate that keeps the way from being entered
+        # would turn a parse that stopped into one that took another way. A scan of none or more forces no character to
+        # be there, which is the same refusal one item along.
+        (*_COMMITS, *_SCANS): Verdict.STOP,
+        ir.CharSet: Verdict.TAKE,
+        ir.Ref: Verdict.INTO_CALL,
+        # What `_PASSED_OVER` names but the commits: those end the walk rather than being stepped over.
+        (*_PLAIN_ACTIONS, *_ASKING_GUARDS, ir.ConsumeChar, ir.Empty): Verdict.PASS,
+        # What the groups above name and this never meets: it walks a way of the canonical form, past the phases that
+        # make a provisional and past the sweep that takes an empty match out of a way's actions. A gated way is
+        # returned before the walk starts, so the character its gate found is never stepped over here.
+        (
+            ir.Commit,
+            ir.CommitProvisional,
+            ir.ConsumeChar,
+            ir.Empty,
+            ir.InjectBefore,
+            ir.MarkProvisional,
+            ir.OpenProvisional,
+            ir.RetypeProvisional,
+        ): ir.NEVER,
+    },
+)
+
+
 def hoist_past_actions(grammar, namer):
     """
     A way is entered on the character its first question asks, whatever actions stand in front of that question.
@@ -2879,22 +3090,19 @@ def hoist_past_actions(grammar, namer):
         """The spans a way is entered on and the index of the consume to take on the gate's word, or `None`."""
         got = []
         for at, item in enumerate(items):
-            if isinstance(item, _COMMITS):
+            verdict = _ENTRY_VERDICT(item)
+            if verdict is Verdict.STOP:
                 return None
-            if isinstance(item, ir.CharSet):
-                return got + (_peek_spans(item, grammar) or []), at
-            if isinstance(item, ir.Ref):
-                if not entry[item.name] or not _does_refuse_softly(item.name, grammar, ways):
-                    return None
-                got += list(entry[item.name])
-                if not ways[item.name][1]:
-                    return got, None
-                continue  # the callee may take nothing, so what stands behind it enters the way as well
-            if isinstance(item, _SCANS):
-                return None  # a scan of none or more forces no character to be there
-            if isinstance(item, (*_ACTIONS, *_GUARDS, ir.Empty)):
+            if verdict is Verdict.PASS:
                 continue
-            return None
+            if verdict is Verdict.TAKE:
+                return got + (_peek_spans(item, grammar) or []), at
+            if not entry[item.name] or not _does_refuse_softly(item.name, grammar, ways):
+                return None
+            got += list(entry[item.name])
+            if not ways[item.name][1]:
+                return got, None
+            # The callee may take nothing, so what stands behind it enters the way as well.
         return None  # the way passes through everything it holds: no character has to be in front of it
 
     def hoisted(way):
@@ -3372,23 +3580,25 @@ def _is_actions_alone(node, grammar, seen=frozenset()):
     is one where some way is, since that way is the one taken; a recursion reached again is not, having no way of its
     own to answer with.
     """
-    if isinstance(node, (*_ACTIONS, ir.Empty)):
-        return True
-    if isinstance(node, ir.Seq):
-        return all(_is_actions_alone(item, grammar, seen) for item in node.items)
-    if isinstance(node, ir.Alt):
-        return any(_is_actions_alone(item, grammar, seen) for item in node.items)
-    if isinstance(node, ir.Choice):
-        return any(_is_actions_alone(way, grammar, seen) for way in node.alternatives)
-    if isinstance(node, ir.Alternative):
-        return all(_is_actions_alone(item, grammar, seen) for item in _items_of_way(node))
-    if isinstance(node, (ir.Token, ir.Wrap)):
-        return _is_actions_alone(node.item, grammar, seen)
-    if isinstance(node, ir.Ref):
-        return node.name not in seen and _is_actions_alone(grammar[node.name].body, grammar, seen | {node.name})
-    if isinstance(node, ir.KINDS):
-        return False
-    raise TypeError(f"cannot tell whether {type(node).__name__} is built of actions alone")
+    return _IS_ONLY_ACTIONS(node, grammar, seen)
+
+
+# Asked where a commit is lifted, which is of a way's leading parts and what they call — so the kinds it meets are the
+# few a way can begin with there, and a wider group would be claiming more than the corpus bears out.
+_IS_ONLY_ACTIONS = ir.Reading(
+    "whether a match is built of actions alone",
+    {
+        (ir.Empty, ir.SetVar): True,
+        ir.Seq: lambda node, grammar, seen: all(_is_actions_alone(item, grammar, seen) for item in node.items),
+        # A choice is one where some way is, since that way is the one taken.
+        ir.Alt: lambda node, grammar, seen: any(_is_actions_alone(item, grammar, seen) for item in node.items),
+        ir.Token: lambda node, grammar, seen: _is_actions_alone(node.item, grammar, seen),
+        # A recursion reached again is not one, having no way of its own to answer with.
+        ir.Ref: lambda node, grammar, seen: node.name not in seen
+        and _is_actions_alone(grammar[node.name].body, grammar, seen | {node.name}),
+        (ir.Bind, ir.Char, ir.CharSet, ir.NegLook, ir.Rep): False,
+    },
+)
 
 
 def _does_empty_leave_nothing(node, grammar, ways, seen=frozenset()):
@@ -3402,22 +3612,27 @@ def _does_empty_leave_nothing(node, grammar, ways, seen=frozenset()):
     `(wrap)`'s markers are tokens whether or not anything is between them.
     """
     if _split(node, grammar, ways)[1] is None:
-        return True
-    if isinstance(node, (*_GUARDS, ir.ConsumeSpan, ir.ConsumeCountedSpan, ir.Empty)):
-        return True
-    if isinstance(node, (*_ACTIONS, ir.Bind, ir.Wrap)):
-        return False
-    if isinstance(node, (ir.Seq, ir.Alt)):
-        return all(_does_empty_leave_nothing(item, grammar, ways, seen) for item in node.items)
-    if isinstance(node, (ir.Choice, ir.Alternative)):
-        return all(_does_empty_leave_nothing(item, grammar, ways, seen) for item in _ways_or_items(node))
-    if isinstance(node, (ir.Star, ir.Plus, ir.LongestRun, ir.Rep, ir.Token, ir.Max, ir.Commit, ir.Recover)):
-        return node.item is None or _does_empty_leave_nothing(node.item, grammar, ways, seen)
-    if isinstance(node, ir.Ref):
-        return node.name in seen or _does_empty_leave_nothing(
-            grammar[node.name].body, grammar, ways, seen | {node.name}
-        )
-    raise TypeError(f"cannot tell whether {type(node).__name__} leaves anything behind")
+        return True  # it has no empty way at all, so none of them leaves anything
+    return _DOES_EMPTY_LEAVE_NOTHING(node, grammar, ways, seen)
+
+
+# Asked only of what a run repeats, and only where that turn can take nothing — so what reaches it is the handful of
+# shapes such a turn is made of.
+_DOES_EMPTY_LEAVE_NOTHING = ir.Reading(
+    "whether every way of a match that takes no character leaves nothing behind",
+    {
+        # A guard reads the input and answers, leaving the parse where it found it.
+        (ir.Empty, ir.EndOfStream, ir.StartOfLine): True,
+        (ir.Alt, ir.Seq): lambda node, grammar, ways, seen: all(
+            _does_empty_leave_nothing(item, grammar, ways, seen) for item in node.items
+        ),
+        (ir.LongestRun, ir.Token): lambda node, grammar, ways, seen: (
+            node.item is None or _does_empty_leave_nothing(node.item, grammar, ways, seen)
+        ),
+        ir.Ref: lambda node, grammar, ways, seen: node.name in seen
+        or _does_empty_leave_nothing(grammar[node.name].body, grammar, ways, seen | {node.name}),
+    },
+)
 
 
 def _is_nullable(node, grammar, ways):
@@ -3425,42 +3640,52 @@ def _is_nullable(node, grammar, ways):
     Whether `node` has a way that takes no character — what `ways` says of a production, said of any node.
 
     A reading rather than a rewrite: it answers where `_split` refuses to, a commit holding both an empty match and a
-    reading one being a shape no split can say as two ways but a perfectly ordinary thing to ask about. Every kind is
-    named and one named nowhere raises, an empty match answered for by accident being the whole debt this phase removes.
+    reading one being a shape no split can say as two ways but a perfectly ordinary thing to ask about. An empty match
+    answered for by accident is the whole debt this phase removes, so it is a `Reading` — a kind it was not told about
+    raises, and the corpus proves every answer it holds is reached.
     """
-    if isinstance(node, _ALWAYS_READS):
-        return False
-    if isinstance(node, (*_ACTIONS, *_GUARDS, ir.ConsumeSpan, ir.Empty)):
-        return True
-    if isinstance(node, ir.Ref):
-        return ways[node.name][1]
-    if isinstance(node, ir.Seq):
-        return all(_is_nullable(item, grammar, ways) for item in node.items)
-    if isinstance(node, ir.Alt):
-        return any(_is_nullable(item, grammar, ways) for item in node.items)
-    if isinstance(node, ir.Choice):
-        return any(_is_nullable(way, grammar, ways) for way in node.alternatives)
-    if isinstance(node, ir.Alternative):
-        return all(_is_nullable(item, grammar, ways) for item in _items_of_way(node))
-    if isinstance(node, ir.Star):
-        return True
-    if isinstance(node, ir.LongestRun):
-        return node.least == 0 or _is_nullable(node.item, grammar, ways)
-    if isinstance(node, ir.Plus):
-        return _is_nullable(node.item, grammar, ways)
-    if isinstance(node, (ir.Rep, ir.ConsumeCountedSpan)):
-        # A count the parse works out may be none at all, and then the repetition takes nothing.
-        taken = node.item if isinstance(node, ir.Rep) else node.set
-        return not isinstance(node.count, ir.Lit) or node.count.value <= 0 or _is_nullable(taken, grammar, ways)
-    if isinstance(node, ir.Bind):
-        return _is_nullable(node.cond, grammar, ways)
-    if isinstance(node, _HOLDERS):
-        return node.item is None or _is_nullable(node.item, grammar, ways)
-    if isinstance(node, ir.Opt):
-        return True  # a way and no way at all, the second of which takes nothing
-    if isinstance(node, _VALUE_KINDS):
-        return True  # a value the parse works out takes no character
-    raise TypeError(f"cannot tell whether {type(node).__name__} can take nothing")
+    return _IS_NULLABLE(node, grammar, ways)
+
+
+def _counted_span_is_nullable(node, grammar, ways):
+    """Whether a counted scan can take nothing — a count the parse works out may be none at all."""
+    return not isinstance(node.count, ir.Lit) or node.count.value <= 0 or _is_nullable(node.set, grammar, ways)
+
+
+_IS_NULLABLE = ir.Reading(
+    "whether a match can take no character",
+    {
+        _ALWAYS_READS: False,
+        (*_TAKES_NOTHING, ir.ConsumeSpan): True,
+        ir.Ref: lambda node, grammar, ways: ways[node.name][1],
+        (ir.Alternative, ir.Seq): lambda node, grammar, ways: all(
+            _is_nullable(item, grammar, ways) for item in _items_of_way(node)
+        ),
+        ir.Alt: lambda node, grammar, ways: any(_is_nullable(way, grammar, ways) for way in node.items),
+        # A run of none or more takes nothing by taking no turn; one of at least a turn takes nothing only where the
+        # turn does.
+        (ir.Opt, ir.Star): True,
+        ir.LongestRun: lambda node, grammar, ways: node.least == 0 or _is_nullable(node.item, grammar, ways),
+        ir.Plus: lambda node, grammar, ways: _is_nullable(node.item, grammar, ways),
+        ir.ConsumeCountedSpan: _counted_span_is_nullable,
+        ir.Bind: lambda node, grammar, ways: _is_nullable(node.cond, grammar, ways),
+        _HOLDERS: lambda node, grammar, ways: node.item is None or _is_nullable(node.item, grammar, ways),
+        # What the groups above name and nothing ever asks this. A choice is asked as the `Alt` it is before the
+        # re-encode, the canonical form being read a way at a time; the provisional actions and the wider consumes stand
+        # where their own phases put them, past this question.
+        (
+            ir.CommitProvisional,
+            ir.ConsumeLiteral,
+            ir.ConsumePeeked,
+            ir.Choice,
+            ir.InjectBefore,
+            ir.MarkProvisional,
+            ir.Max,
+            ir.OpenProvisional,
+            ir.RetypeProvisional,
+        ): ir.NEVER,
+    },
+)
 
 
 def _unsplittable_runs(grammar, ways):
@@ -3487,78 +3712,84 @@ def _split(node, grammar, ways):
     `a_reads b` and then `a_empty b_reads`, which enumerates exactly as `a b` does — and an alternation's come out in
     the order it wrote them, no way of the grammar having an empty way ahead of a reading one.
     """
-    if isinstance(node, _ALWAYS_READS):
-        return node, None
-    if isinstance(node, (*_ACTIONS, *_GUARDS, ir.Empty)):
-        return None, node
-    if isinstance(node, ir.ConsumeSpan):
-        # The scan is possessive, so it takes none exactly where the set is not there — which is the question the empty
-        # way asks, and the reading way is the character and the run behind it, as a `Plus` over the set is written.
-        return ir.Seq(items=(node.set, node)), ir.NegLook(item=as_char_set(node.set, grammar))
-    if isinstance(node, ir.Ref):
-        reads, empty, apart = ways[node.name]
-        if apart:
-            return ir.Ref(f"{node.name}_reads", node.args), ir.Ref(f"{node.name}_empty", node.args)
-        return (node if reads else None), (node if empty else None)
-    if isinstance(node, ir.Seq):
-        return _split_seq(node, grammar, ways)
-    if isinstance(node, ir.Alt):
-        parts = [_split(item, grammar, ways) for item in node.items]
-        reads = tuple(way for way, _none in parts if way is not None)
-        empty = tuple(none for _way, none in parts if none is not None)
-        return (ir.Alt(items=reads) if reads else None), (ir.Alt(items=empty) if empty else None)
-    if isinstance(node, _RUNS):
-        least = 0 if isinstance(node, ir.Star) else 1 if isinstance(node, ir.Plus) else node.least
-        reads, empty = _split(node.item, grammar, ways)
-        taking = ir.LongestRun(item=reads, least=1) if reads is not None else None
-        if least == 0:
-            return taking, ir.Empty()  # a run of none or more takes nothing where the first turn cannot match
-        if empty is None:
-            return node, None  # the item always reads, so a run that must take a turn does
-        # The run ends on a turn that takes nothing, which is kept once — and `_unsplittable_runs` holds that turn to
-        # leaving nothing, so the reading way is the reading turns and the empty way is the one that took none.
-        return taking, empty
-    if isinstance(node, ir.Rep):
-        return _split_counted(node, node.item, grammar, ways)
-    if isinstance(node, ir.ConsumeCountedSpan):
-        return _split_counted(node, node.set, grammar, ways)
-    if isinstance(node, ir.Bind):
-        reads, empty = _split(node.cond, grammar, ways)
-        return (
-            (dataclasses.replace(node, cond=reads) if reads is not None else None),
-            (dataclasses.replace(node, cond=empty) if empty is not None else None),
-        )
-    if isinstance(node, _HOLDERS):
-        if node.item is None:
-            return None, node  # a `(max)` window with nothing in it: a bound, and no match of its own
-        reads, empty = _split(node.item, grammar, ways)
-        if isinstance(node, (ir.Commit, ir.Recover)) and reads is not None and empty is not None:
-            # Both are the error where the item cannot match, so a reading form of one would raise where the parse
-            # should have gone on to the empty form. The body's own commit is lifted off before this; a deeper one has
-            # nowhere to be lifted to.
-            raise ValueError(f"a {type(node).__name__.lower()} hides both an empty match and a reading one")
-        return (
-            (dataclasses.replace(node, item=reads) if reads is not None else None),
-            (dataclasses.replace(node, item=empty) if empty is not None else None),
-        )
-    if isinstance(node, (ir.Choice, ir.Alternative)):
-        # The canonical form is not split into a reading copy and an empty one — the steps that rewrote by such copies
-        # ran before it existed. What is asked of it here is only which of the two it can do, which is what
-        # `_split_ways` keeps, so the node stands for whichever it can and nothing rewrites by the answer.
-        parts = _ways_or_items(node)
-        answers = [_split(part, grammar, ways) for part in parts]
-        does_read = any(part is not None for part, _empty in answers)
-        does_take_none = (
-            any(part is not None for _reads, part in answers)
-            if isinstance(node, ir.Choice)
-            else all(part is not None for _reads, part in answers)
-        )
-        return (node if does_read else None, node if does_take_none else None)
-    if isinstance(node, ir.Opt):
-        return (node.item if _split(node.item, grammar, ways)[0] is not None else None, ir.Empty())
-    if isinstance(node, _VALUE_KINDS):
-        return (None, node)  # a value the parse works out, which matches nothing and so takes no character
-    raise TypeError(f"cannot tell what {type(node).__name__} takes")
+    return _SPLIT(node, grammar, ways)
+
+
+def _split_scan(node, grammar, ways):
+    """
+    A scan's `(reads, empty)`. It is possessive, so it takes none exactly where the set is not there — which is the
+    question the empty way asks — and the reading way is the character and the run behind it, as a `Plus` over the set
+    is written.
+    """
+    return ir.Seq(items=(node.set, node)), ir.NegLook(item=as_char_set(node.set, grammar))
+
+
+def _split_call(node, grammar, ways):
+    """A call's `(reads, empty)`: the two names where the callee is told apart under them, else what it can do."""
+    reads, empty, apart = ways[node.name]
+    if apart:
+        return ir.Ref(f"{node.name}_reads", node.args), ir.Ref(f"{node.name}_empty", node.args)
+    return (node if reads else None), (node if empty else None)
+
+
+def _split_alt(node, grammar, ways):
+    """An alternation's `(reads, empty)`: its reading ways together, and its empty ones together."""
+    parts = [_split(item, grammar, ways) for item in node.items]
+    reads = tuple(way for way, _none in parts if way is not None)
+    empty = tuple(none for _way, none in parts if none is not None)
+    return (ir.Alt(items=reads) if reads else None), (ir.Alt(items=empty) if empty else None)
+
+
+def _split_run(node, grammar, ways):
+    """A run's `(reads, empty)`, by whether it must take a turn and whether a turn can take nothing."""
+    least = 0 if isinstance(node, ir.Star) else 1 if isinstance(node, ir.Plus) else node.least
+    reads, empty = _split(node.item, grammar, ways)
+    taking = ir.LongestRun(item=reads, least=1) if reads is not None else None
+    if least == 0:
+        return taking, ir.Empty()  # a run of none or more takes nothing where the first turn cannot match
+    if empty is None:
+        return node, None  # the item always reads, so a run that must take a turn does
+    # The run ends on a turn that takes nothing, which is kept once — and `_unsplittable_runs` holds that turn to
+    # leaving nothing, so the reading way is the reading turns and the empty way is the one that took none.
+    return taking, empty
+
+
+def _split_bind(node, grammar, ways):
+    """A binding's `(reads, empty)`: the binding around each half of what it binds."""
+    reads, empty = _split(node.cond, grammar, ways)
+    return (
+        (dataclasses.replace(node, cond=reads) if reads is not None else None),
+        (dataclasses.replace(node, cond=empty) if empty is not None else None),
+    )
+
+
+def _split_holder(node, grammar, ways):
+    """A scope's `(reads, empty)`: the scope around each half of what it holds."""
+    if node.item is None:
+        return None, node  # a `(max)` window with nothing in it: a bound, and no match of its own
+    reads, empty = _split(node.item, grammar, ways)
+    if isinstance(node, (ir.Commit, ir.Recover)) and reads is not None and empty is not None:
+        # Both are the error where the item cannot match, so a reading form of one would raise where the parse should
+        # have gone on to the empty form. The body's own commit is lifted off before this; a deeper one has nowhere to
+        # be lifted to.
+        raise ValueError(f"a {type(node).__name__.lower()} hides both an empty match and a reading one")
+    return (
+        (dataclasses.replace(node, item=reads) if reads is not None else None),
+        (dataclasses.replace(node, item=empty) if empty is not None else None),
+    )
+
+
+def _split_canonical(node, grammar, ways):
+    """
+    A choice's or a way's `(reads, empty)` in the canonical form, which is not split into a reading copy and an empty
+    one — the steps that rewrote by such copies ran before that form existed. What is asked here is only which of the
+    two it can do, which is what `_split_ways` keeps, so the node stands for whichever it can and nothing rewrites by
+    the answer. A choice reads where any way does and takes nothing where any way does; a way needs every part to.
+    """
+    answers = [_split(part, grammar, ways) for part in _ways_or_items(node)]
+    does_read = any(part is not None for part, _empty in answers)
+    held = any if isinstance(node, ir.Choice) else all
+    return (node if does_read else None, node if held(part is not None for _reads, part in answers) else None)
 
 
 def _split_seq(node, grammar, ways):
@@ -3615,6 +3846,41 @@ def _lifted_commit(body, grammar):
     if not all(_is_actions_alone(item, grammar) for item in items[:-1]):
         return None, body
     return items[-1].message, ir.Seq(items=items[:-1] + (items[-1].item,))
+
+
+_SPLIT = ir.Reading(
+    "the pair of a match's ways that take a character and its ways that take none, each `None` where it has none",
+    {
+        _ALWAYS_READS: lambda node, grammar, ways: (node, None),
+        _TAKES_NOTHING: lambda node, grammar, ways: (None, node),
+        ir.ConsumeSpan: _split_scan,
+        ir.Ref: _split_call,
+        ir.Seq: _split_seq,
+        ir.Alt: _split_alt,
+        _RUNS: _split_run,
+        ir.Rep: lambda node, grammar, ways: _split_counted(node, node.item, grammar, ways),
+        ir.ConsumeCountedSpan: lambda node, grammar, ways: _split_counted(node, node.set, grammar, ways),
+        ir.Bind: _split_bind,
+        _HOLDERS: _split_holder,
+        (ir.Alternative, ir.Choice): _split_canonical,
+        ir.Opt: lambda node, grammar, ways: (
+            node.item if _split(node.item, grammar, ways)[0] is not None else None,
+            ir.Empty(),
+        ),
+        # What the two wide groups name and this never meets: the provisional actions and the literal questions belong
+        # to phases past the empties, and a split of them would be a rewrite of a shape that is not there yet.
+        (
+            ir.CommitProvisional,
+            ir.ConsumeLiteral,
+            ir.ConsumePeeked,
+            ir.InjectBefore,
+            ir.LiteralPeek,
+            ir.MarkProvisional,
+            ir.OpenProvisional,
+            ir.RetypeProvisional,
+        ): ir.NEVER,
+    },
+)
 
 
 def _production_split(production, grammar, ways):
@@ -3870,7 +4136,7 @@ def _entered_unconsumed(node, grammar, ways):
         return _entered_unconsumed(node.cond, grammar, ways)
     if isinstance(node, _WALKED_UNCONSUMED):
         return set() if node.item is None else _entered_unconsumed(node.item, grammar, ways)
-    if isinstance(node, (*_ALWAYS_READS, *_ACTIONS, *_GUARDS, ir.ConsumeSpan, ir.ConsumeCountedSpan, ir.Empty)):
+    if isinstance(node, (*_ALWAYS_READS, *_TAKES_NOTHING, *_SCANS)):
         return set()  # a character question or a zero-width action reaches no production where it stands
     raise TypeError(f"cannot tell what {type(node).__name__} enters where it stands")
 

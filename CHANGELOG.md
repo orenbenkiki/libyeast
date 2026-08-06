@@ -654,6 +654,31 @@ All notable changes to this project are documented here. The format follows
   on with an error rather than a refusal, so gating the way out would turn a parse that stops into one that takes
   another way — a different language. They want the commit lifted off the callee.
 
+  **Every question about a node is asked through a table that cannot answer for a kind nobody named.** `ir.Reading` maps
+  node kinds to what to do about them, and holds itself to three rules: a kind it was not told about **raises**, naming
+  the reading; a handler nothing ever reaches is **reported** by `unexercised` after a whole-corpus run; and a kind
+  named twice will not build. The first two pin every table to exactly the kinds that occur — what is missing raises,
+  what is spare is reported — so a reading says nothing about what it cannot see, and a kind added to the IR touches
+  only the readings that actually meet it, on the day they do rather than never. `NEVER` is how a reading keeps a wide
+  group and takes back the part that cannot arrive, checked rather than believed. Thirteen readings are tables now, and
+  every one of them is exercised to the last handler.
+
+  It replaces a chain of `isinstance` tests ending in a fallthrough, which answers permissively for whatever spelling
+  its author did not think of and reports its own blindness as a property of the grammar. That is not a hypothetical:
+  one invariant was read as 26, then 8, then 44, then 16, then 4 for the *same grammar*, each number a walk silently
+  defaulting on a spelling it did not recognise — a character wrapped in a `(token)`, a way's gate rather than its
+  items, a repetition, a count the parse works out.
+
+  What it found on landing: `is_one_char` carried a `(case)` branch nothing has ever reached, and `_is_actions_alone`
+  claimed all 73 kinds while eleven reach it. Two overlaps that the order of a test chain had been settling silently now
+  say which way they go — `Error` and `PushMessage` are actions and commits both, and a walk looking for what a way can
+  be refused at must stop at them rather than step over them. And stripping "the scopes written around a match" turns
+  out to strip only a `(token)`; no `(max)`, `(recover)` or `(wrap)` ever reaches it.
+
+  Three readings answer with a named `Verdict` rather than a value, which is what lets a walk over a way's items be a
+  table as well: take the item, step over it, stop, follow the call it makes, follow what it holds, or treat it as the
+  commit past which failing is an error rather than a refusal.
+
   **What tells a conflict's ways apart, and how far in.** `determinize.verdict` walks the live ways to their first
   divergence: the characters, and factoring the shared prefix down to it puts the decision where the input makes it; the
   codes over the same span, which no depth of factoring separates, so the run is held and retyped instead; or no verdict

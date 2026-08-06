@@ -167,8 +167,22 @@ character would, and a way behind it stays reachable.
 It is a question about the match and not about a machine, which is why it is asked of the grammar as written, where a
 way is a tree and there are no gates to read. What a machine could tell the ways apart by is `every-way-carries-a-test`,
 and that one is asked where the gates exist. One reading answers each — `_is_nullable` for the first, `_entry_of` for
-the second — and both raise on a node kind they have not been told about, since a reading that answers permissively for
-a spelling it does not recognise reports its own blindness as a property of the grammar.
+the second.
+
+**Every question about a node is asked through `ir.Reading`**, a table from node kind to what to do about it, because
+the alternative — a chain of `isinstance` tests ending in a fallthrough — answers permissively for whatever spelling its
+author did not think of, and reports its own blindness as a property of the grammar. A kind the table was not told about
+raises, naming the reading; a handler nothing ever reaches is reported by `unexercised` once the whole corpus has run,
+since only then is a kind known to be unreachable rather than merely unmet. Those two pin each table to exactly the
+kinds that occur, so a reading says nothing about what it cannot see and a kind added to the IR touches only the
+readings that actually meet it, on the day they do. `NEVER` is how a reading keeps a wide group and takes back the part
+of it that cannot arrive — checked rather than believed, since reaching one raises. A table naming a kind twice will not
+build: the groups overlap — `Error` and `PushMessage` are actions and commits both — and a chain of tests settles that
+by its order with nothing saying which order was meant.
+
+Three of the readings answer with a `Verdict` rather than a value, which is what lets a walk over a way's items be a
+table too: whether to take the item, step over it, stop there, follow the call it makes, or treat it as the commit past
+which failing is an error rather than a refusal.
 
 A scope that holds what it covers has nowhere to stand in an alternative — `gate  actions…  [P1  actions…]  [P2]` has a
 place for an action and none for a node enclosing a call, and a `(token)` around a call is an action that must run where
