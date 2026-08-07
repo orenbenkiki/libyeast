@@ -678,6 +678,33 @@ All notable changes to this project are documented here. The format follows
   where it used to recover. No shape had reached it before; a flattening that wrote out a called run of items did, and
   four recovery fixtures said so. With the pair there is nothing to drop: a rewrite that moves a way moves its actions.
 
+  **A run of items a way calls is written out too, and a gate that decides nothing moves up.** `a P c` where `P` is
+  `d e` does four things in a row and shows three, so a reading that walks a way to find what it does first stops at the
+  call. `flatten-called-sequences` writes it out — leaving a call that stands last, since what a way does past its call
+  is a production of its own by design — and `no-sequence-of-sequences` falls to a residue of 6, the recursion guard's.
+  It could not land until a recovery stopped being a field a way carries, which is what the pair before it is for.
+
+  Beside it, `no-gate-decides-nothing`: a gate on the only way of a body selects nothing, there being nothing to select
+  between. It is **none at the door** — there are no gates until the ways are re-encoded — so the count names whichever
+  step strands one. Five hoists do, 354 between them, each declaring it: they gate every way they can, the only way of a
+  body included, and there the gate is an assertion the callers can discharge.
+
+  `lift-gates-to-callers` moves what can move, 354 to **219**, and it moves by **splitting rather than rewriting**:
+  `A = Gate A'` with `A' = Stuff`, so `A` goes on meaning exactly what it meant and each caller that can carry the gate
+  calls `A'` instead. Rewriting `A` in place needed a side condition for every other thing that entered it — every
+  caller must carry it, except productions entered by name, except the ones a fixture runs directly — and all three
+  vanished with the split. The 219 left are called from ways that act before the call or reach them in tail position,
+  where what the caller was entered on says nothing about the character there.
+
+  What that exposed, and what it is worth: a production every caller gates cannot be seen to refuse, because the parse
+  never enters it on a character it cannot start with. The coverage gate already credits a gate refusing to the
+  production it guards — "otherwise gating a rule correctly would make it look untested" — and now says the same of a
+  production whose refusals its callers have all taken up.
+
+  The corpus cases where a committed run and a backtracking one read differently fall from 108 to **90**. The meter
+  rises from 141 to 157 and `every-conflict-can-be-asked` from 5 to 17, which is what the copies cost: 36 ungated forms
+  minted and every written-out run adding ways to be undecided about.
+
   **A choice a way of a choice calls is written out where the call stood.** `a | P | c` where `P` is `d | e` makes four
   decisions and shows three, the fourth behind a call nothing about the outer choice can see; written out,
   `a | d | e | c` is the same four ways in the same order with every one standing where a gate can be put on it.

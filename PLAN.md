@@ -245,18 +245,25 @@ a step that mints such a way is caught where it does it — the grammar carries 
 or spell the shape again under declared lapses, and the pipeline settles it at none.
 
 **The two questions, in order.** A machine that never backtracks needs each way of a choice to carry a test it can make
-before entering it, and then it needs the tests to be exclusive. They are separate problems and the first comes whole:
-`every-way-carries-a-test` stands at **6**, all of them the same thing — a way handing control to a production that
+before entering it, and then it needs the tests to be exclusive. They are separate problems and the first comes close to
+whole: `every-way-carries-a-test` stands at **8**, and the standing ones are a way handing control to a production that
 answers a character it cannot start on with an error rather than a refusal, so gating the way out would turn a parse
 that stops into one that takes another way. No hoist reaches them; each is guarded by a `NegLook` rather than by a
 count, and they are the auto-detected-indent copies of the block scalar's content.
 
-**What the flattening bought, and what it says about where the rest is.** Phase 8 writes out a choice that a way of a
-choice calls, so every way of it stands where a gate can be put on it rather than one call below. Landing it alone took
-testability from 18 to 6, the meter from 164 to **141**, and the corpus cases where a committed run and a backtracking
-one read differently from 129 to **108** — the first movement in either of the two numbers that measure the goal. The
-same flattening for a called *run of items* is written and does not land: it hands `splice-conflicts` a way carrying a
-recovery, and that step drops the caller's recovery in favour of the callee's. Which is why phase 6 comes first.
+**What the flattening bought.** Phase 8 writes out both what a call hides — a choice among the ways of a choice, and a
+run of items among the items of a way — so every part stands where a gate can be put on it rather than one call below.
+Between them and the gate lift, the corpus cases where a committed run and a backtracking one read differently fall from
+129 to **90**, which is the number that measures the goal. The meter went the other way, 164 to 141 and then back to
+**157**, and `every-conflict-can-be-asked` from 5 to **17**: that is what the copies cost, 36 ungated forms minted and
+every written-out run adding ways to be undecided about. Whether all of that rise is copies or some of it is real has
+not been measured.
+
+**What the gate lift leaves owed.** `no-gate-decides-nothing` stands at **219** — a gate on the only way of a body,
+which selects nothing. Those are reached from ways that act before the call or call them in tail position, where what
+the caller was entered on says nothing about the character at that point. Moving them wants the caller split too: the
+actions before the call into a continuation of their own, the tail call into its own way. Which is the same
+mint-don't-mutate move, one level out.
 
 What follows it is `every-decision-goes-on-a-character` at **164**, which is the exclusivity question and splits in two:
 **65** choices offering a way with no character set of its own — of which 77 ways are entered on a guard, deciding on

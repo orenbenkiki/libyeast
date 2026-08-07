@@ -251,6 +251,32 @@ def _base(name):
     return _HELPER_SUFFIX.sub("", _MONOMORPHIC_SUFFIX.sub("", name) if _MONOMORPHIC_SUFFIX else name)
 
 
+def _decided_by_callers(grammar, wanted):
+    """
+    The bases among `wanted` that every caller gates before entering — so nothing can be seen to refuse them.
+
+    A gate is tested before the call it stands in front of, so where every way that names a production carries one, the
+    parse never enters that production on a character it cannot start with. It has no way left to refuse, and asking the
+    corpus for an input that makes it is asking for one that cannot exist.
+
+    This is the rule the one-hop case already follows — a gate saying no counts as the production it guards saying no,
+    "otherwise gating a rule correctly would make it look untested" — said of a production whose refusals have all been
+    taken up by its callers rather than by the one gate immediately in front of it. A production some way calls ungated
+    is not among them: there the parse can still walk in and be turned away.
+    """
+    gated = {name: True for name in wanted}
+    for production in grammar.values():
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            continue
+        for way in body.alternatives:
+            for held in (way.first, way.second):
+                if isinstance(held, ir.Ref) and held.name in gated and way.gate.peek is None:
+                    gated[held.name] = False
+    called = {name for production in grammar.values() for name in production.references()}
+    return {_base(name) for name, is_gated in gated.items() if is_gated and name in called}
+
+
 def gaps(grammar, exercisers=None):
     """
     The productions `grammar` leaves unexercised and the messages nothing fires, as error strings — empty when the
@@ -286,6 +312,7 @@ def gaps(grammar, exercisers=None):
         for stage, _fixtures in ([] if exercisers is None else exercisers)
         if base in stage and is_total(stage[base].body, stage, frozenset({base}))
     }
+    excused |= _decided_by_callers(grammar, {name for name in wanting})
     errors += [
         f"{name}: no fixture makes it reject an input, and it is not total"
         for name in wanting

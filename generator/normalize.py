@@ -2023,6 +2023,33 @@ def _called_alternations(grammar):
 CHOICES_ARE_FLAT = Invariant("no-choice-of-choices", _called_alternations)
 
 
+def _called_sequences(grammar):
+    """
+    Items of a way that are a call to a run of items — what a way does, spelled one call below the way that does it.
+
+    `a P c` where `P` is `d e` is four things done in a row and shows three, so a reading that walks a way to find what
+    it does first stops at the call rather than at `d`. Written out, `a d e c` is the same run with every part of it
+    standing where the way holds it.
+
+    A call standing last is not one of them: what a way does past its call is a production of its own by design, which
+    is what the phase behind this mints. It is a call in the middle that hides a run, and only that.
+
+    Read of the tree's spelling, a `Seq` of items one of which names a `Seq`. Past the re-encode there are no `Seq`
+    nodes at all, so what settles this stays settled by the shape rather than by a promise.
+    """
+    return [
+        f"{name}: an item of a way that is a call to a run of items"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, ir.Seq)
+        for item in node.items[:-1]
+        if isinstance(item, ir.Ref) and isinstance(grammar[item.name].body, ir.Seq)
+    ]
+
+
+SEQUENCES_ARE_FLAT = Invariant("no-sequence-of-sequences", _called_sequences)
+
+
 def _items_of_way(way):
     """
     The items a way is made of, whichever way it is spelt.
@@ -2147,6 +2174,30 @@ def _untestable_ways(grammar):
 
 
 WAYS_CARRY_A_TEST = Invariant("every-way-carries-a-test", _untestable_ways)
+
+
+def _gates_deciding_nothing(grammar):
+    """
+    Gates on the only way of a body — a test where there is nothing to choose between.
+
+    A gate is what the machine looks at to take one way rather than another. Where a body offers one way, it selects
+    nothing: it can only refuse, and refuse where the caller has already been turned away by its own gate on the same
+    characters, since that is where this one came from. Said as a gate it reads as a decision the machine makes; what it
+    is is an assertion the caller has discharged.
+
+    It is a count and not an opinion, and it starts at none — there are no gates at all until the ways are re-encoded —
+    so whichever step first raises it is the one putting a decision where no decision is made.
+    """
+    return [
+        f"{name}: a gate on the only way of a body, which decides nothing"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice) and len(production.body.alternatives) == 1
+        for way in production.body.alternatives
+        if way.gate.peek is not None or way.gate.guards
+    ]
+
+
+GATES_DECIDE = Invariant("no-gate-decides-nothing", _gates_deciding_nothing)
 
 
 def _untested_calls_of_tested_choices(grammar):
@@ -3207,6 +3258,96 @@ def hoist_past_actions(grammar, namer):
     return _over_ways(grammar, hoisted)
 
 
+def lift_gates_to_callers(grammar, namer):
+    """
+    A gate on the only way of a body moves into the ways that call it, where it decides something.
+
+    A body offering one way has nothing to select between, so a gate on it can only refuse — and refuse where the caller
+    would have been turned away one step later anyway. Moved up, it is a gate among several ways and tells them apart;
+    what is left below consumes what a gate above has already found, which is what `ConsumeChar` means here.
+
+    It moves only where every way that calls the production can carry it: the call must be the first thing the way does,
+    so the callee is entered exactly where the way is and the two gates ask about the same character. One caller that
+    cannot leaves the gate where it is — the callee is shared, and a test taken out for one caller's sake would be gone
+    for the rest.
+
+    Met rather than replaced: a way already gated is entered on what both admit, and where they admit nothing in common
+    the way could never have been taken.
+
+    One pass and not a fixpoint: the split leaves the gated production standing, so a second pass would find it again
+    and mint another copy for ever. Every call site that can convert converts in the one pass, the ungated forms being
+    minted for all of them at once, and what is left calling the gated form is what could not carry the gate.
+    """
+    return _gates_lifted_once(grammar, namer)
+
+
+def _gates_lifted_once(grammar, namer):
+    """One round of `lift_gates_to_callers`: every gate that can move up this time does."""
+    ungated = {}
+    for name, production in grammar.items():
+        body = production.body
+        if not isinstance(body, ir.Choice) or len(body.alternatives) != 1:
+            continue
+        [way] = body.alternatives
+        if way.gate.peek is None and not way.gate.guards:
+            continue
+        held = namer.fresh(name)
+        ungated[name] = (held, way.gate)
+    if not ungated:
+        return grammar
+    minted = {
+        held: ir.Prod(
+            grammar[name].number,
+            held,
+            grammar[name].params,
+            ir.Choice(alternatives=(dataclasses.replace(grammar[name].body.alternatives[0], gate=ir.Gate()),)),
+        )
+        for name, (held, _gate) in ungated.items()
+    }
+
+    def told(name, production):
+        body = production.body
+        if not isinstance(body, ir.Choice) or name in minted:
+            return production
+        ways = []
+        for way in body.alternatives:
+            straight_away = way.first if way.first is not None else way.second
+            found = ungated.get(straight_away.name) if isinstance(straight_away, ir.Ref) else None
+            if found is None or way.actions or straight_away.args:
+                ways.append(way)
+                continue
+            held, gate = found
+            peek = _met_peeks(way.gate.peek, gate.peek, grammar)
+            if peek is _NOTHING_ADMITTED:
+                continue  # entered on nothing: a way the parse could never have taken
+            called = ir.Ref(name=held, args=straight_away.args)
+            ways.append(
+                dataclasses.replace(
+                    way,
+                    gate=ir.Gate(peek=peek, guards=(*way.gate.guards, *gate.guards)),
+                    first=called if way.first is not None else None,
+                    second=called if way.first is None else way.second,
+                )
+            )
+        return dataclasses.replace(production, body=ir.Choice(alternatives=tuple(ways)))
+
+    return {**{name: told(name, production) for name, production in grammar.items()}, **minted}
+
+
+# What two gates admit between them where they admit nothing at all: a way entered on both is a way never entered.
+_NOTHING_ADMITTED = object()
+
+
+def _met_peeks(one, other, grammar):
+    """The peek a way gated on both is entered on, `_NOTHING_ADMITTED` where they share no character."""
+    if one is None or other is None:
+        return one if other is None else other
+    met = _spans_meeting(_peek_spans(one, grammar) or [], _peek_spans(other, grammar) or [])
+    if not met:
+        return _NOTHING_ADMITTED
+    return _spans_node(_merged_spans([span for span in met if span[0] >= 0]) + [s for s in met if s[0] < 0])
+
+
 def _spans_meeting(one, other):
     """The codepoints both span lists admit — what a way entered on both is entered on."""
     return [
@@ -3560,6 +3701,16 @@ def flatten_called_alternations(grammar, namer):
     return _flattened_calls(grammar, ir.Alt)
 
 
+def flatten_called_sequences(grammar, namer):
+    """
+    An item of a way that is a call to a run of items becomes those items, standing where the call did.
+
+    What `_flattened_calls` does of a `Seq`, whose parts are the items a way performs — leaving a call that stands last,
+    since what a way does past its call is a production of its own by design.
+    """
+    return _flattened_calls(grammar, ir.Seq, does_flatten_last=False)
+
+
 def _reached_within(grammar, kind):
     """
     `{name: {name}}` — the productions each one names directly inside a `kind` node, and everything those reach in turn.
@@ -3583,7 +3734,7 @@ def _reached_within(grammar, kind):
         reaches = settled
 
 
-def _flattened_calls(grammar, kind):
+def _flattened_calls(grammar, kind, does_flatten_last=True):
     """
     The grammar with every call standing alone inside a `kind` node written out as what it names, run until nothing
     moves — a body written out may itself hold such a call — and never into a body that can reach back.
@@ -3600,10 +3751,11 @@ def _flattened_calls(grammar, kind):
             if not isinstance(node, kind):
                 return node
             parts = []
-            for held in node.items:
+            for at, held in enumerate(node.items):
                 called = grammar[held.name] if isinstance(held, ir.Ref) and not held.args else None
                 is_reachable = called is not None and (held.name == owner or owner in reaches[held.name])
-                if called is None or called.params or not isinstance(called.body, kind) or is_reachable:
+                is_kept = not does_flatten_last and at == len(node.items) - 1
+                if called is None or called.params or not isinstance(called.body, kind) or is_reachable or is_kept:
                     parts.append(held)
                 else:
                     parts += list(called.body.items)
@@ -4563,8 +4715,10 @@ def _unbounded_reads(param):
 STEPS = [
     # Phase 0 establishes `NO_I_T_PARAMETERS`: nothing declares, passes or reads the chomping or the block scalar's
     # indentation mode. Each is data-dependent until this runs, so neither can be specialized: the setters become
-    # switches first.
-    Step("lift-setters", lift_setters, FINITE_LEXICAL, reduces=FINITE_LEXICAL),
+    # switches first. `no-gate-decides-nothing` is named here, at the door, because it is none here: there are no gates
+    # at all until the ways are re-encoded, so whichever step first raises it is the one putting a decision where no
+    # decision is made.
+    Step("lift-setters", lift_setters, (FINITE_LEXICAL, GATES_DECIDE), reduces=FINITE_LEXICAL),
     Step(
         "monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), FINITE_LEXICAL, NO_I_T_PARAMETERS)
     ),
@@ -4678,6 +4832,17 @@ STEPS = [
             "any new entering, and what the gates behind this can put on each of them is what it buys"
         },
     ),
+    Step(
+        "flatten-called-sequences",
+        flatten_called_sequences,
+        SEQUENCES_ARE_FLAT,
+        reduces=SEQUENCES_ARE_FLAT,
+        lapses={
+            "no-call-enters-both-ways": "a run of items written out where it was called is those items standing "
+            "there, so a call among them is now made from where the caller stood: the count follows the items rather "
+            "than any new entering, and what a reading of what a way does first can finally see is what it buys"
+        },
+    ),
     # Phase 9 is the call: a way does its actions, hands control to one production, and says where to carry on when it
     # comes back. What stood past the call is what carries on.
     Step(
@@ -4718,14 +4883,34 @@ STEPS = [
         gate_hoist_call,
         (WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
         reduces=(WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
+        lapses={
+            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
+            "there it decides nothing, there being nothing to select between. What it is there is an assertion "
+            "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
+        },
     ),
     Step(
         "hoist-past-actions",
         hoist_past_actions,
         (WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
         reduces=(WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
+        lapses={
+            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
+            "there it decides nothing, there being nothing to select between. What it is there is an assertion "
+            "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
+        },
     ),
-    Step("hoist-guards", hoist_guards, WAYS_CARRY_A_TEST, reduces=WAYS_CARRY_A_TEST),
+    Step(
+        "hoist-guards",
+        hoist_guards,
+        WAYS_CARRY_A_TEST,
+        reduces=WAYS_CARRY_A_TEST,
+        lapses={
+            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
+            "there it decides nothing, there being nothing to select between. What it is there is an assertion "
+            "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
+        },
+    ),
     Step(
         "splice-conflicts",
         splice_conflicts,
@@ -4750,6 +4935,11 @@ STEPS = [
         hoist_past_actions,
         WAYS_CARRY_A_TEST,
         reduces=WAYS_CARRY_A_TEST,
+        lapses={
+            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
+            "there it decides nothing, there being nothing to select between. What it is there is an assertion "
+            "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
+        },
     ),
     # The inlining reads what a character does not decide, so it runs where the gates are on: before them a way that is
     # merely not gated yet reads as a conflict, and what the inlining does about that is copy productions for decisions
@@ -4783,5 +4973,24 @@ STEPS = [
         hoist_askable_guards,
         (GUARDS_ARE_ASKED_AT_THE_GATE, WAYS_CARRY_A_TEST),
         reduces=WAYS_CARRY_A_TEST,
+        lapses={
+            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
+            "there it decides nothing, there being nothing to select between. What it is there is an assertion "
+            "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
+        },
+    ),
+    # A gate on a body offering one way decides nothing where it stands: moved into the ways that call it, it tells them
+    # apart, and what is left below consumes what a gate above has already found.
+    Step(
+        "lift-gates-to-callers",
+        lift_gates_to_callers,
+        GATES_DECIDE,
+        reduces=GATES_DECIDE,
+        lapses=dict.fromkeys(
+            ("every-exclusion-is-bounded", "no-call-enters-both-ways"),
+            "the ungated form of a production is that production again under a name of its own, so what it holds it "
+            "holds twice and what it calls is called from where its callers stood: both counts follow the copies "
+            "rather than anything new, and the gate each caller now carries is what they buy",
+        ),
     ),
 ]
