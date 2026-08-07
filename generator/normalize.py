@@ -1796,9 +1796,11 @@ _ACTIONS = (
     ir.PopCode,
     ir.PopIndent,
     ir.PopMessage,
+    ir.PopRecovery,
     ir.PushCode,
     ir.PushIndent,
     ir.PushMessage,
+    ir.PushRecovery,
     ir.RetypeProvisional,
     ir.SetVar,
 )
@@ -2892,6 +2894,68 @@ def _entry_spans(grammar):
         if not did_move:
             return entry
     raise AssertionError("the characters a production can be entered on never settled")
+
+
+NO_WAY_CARRIES_A_RECOVERY = Invariant(
+    "no-way-carries-a-recovery",
+    lambda grammar: [
+        f"{name}: a way carrying what answers for a failed cut, rather than saying it"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice)
+        for way in production.body.alternatives
+        if way.recover is not None
+    ],
+)
+
+
+def lower_recoveries(grammar, namer):
+    """
+    Write what a way carries as the pair that says it: the push before the call it covers, the pop where that call
+    returns, and both of what the unwind needs named outright.
+
+    A recovery is the last scope to become its pair because it is the only one whose close carries information. The
+    others restore and are done; this one *resumes*, so the push has to name where — and where a way carries on only has
+    a name once the way is a call and a continuation, which is why this runs here rather than beside the other three.
+
+    Two productions are minted per site, because a way that ends at the call it covers has neither a place to close the
+    region nor a name to resume at. The first holds the `PopRecovery` and whatever the way carried on to, and becomes
+    where the call returns; the second holds that continuation alone, and is what the unwind resumes at — it must not
+    pop, the unwind having already taken the region off.
+
+    What it buys is that nothing about the region is implied by where it sits. A rewrite that moves a way moves its
+    actions, and the pair goes with them; one that builds a way out of another's parts cannot take the callee's and drop
+    the caller's, there being nothing to drop.
+    """
+    minted = {}
+
+    def told(name, production):
+        body = production.body
+        if not isinstance(body, ir.Choice):
+            return production
+        ways = []
+        for way in body.alternatives:
+            if way.recover is None:
+                ways.append(way)
+                continue
+            popping, resuming = namer.fresh(name), namer.fresh(name)
+            for held, actions in ((popping, (ir.PopRecovery(),)), (resuming, ())):
+                minted[held] = ir.Prod(
+                    grammar[name].number,
+                    held,
+                    (),
+                    ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), actions=actions, second=way.second),)),
+                )
+            ways.append(
+                dataclasses.replace(
+                    way,
+                    actions=(*way.actions, ir.PushRecovery(recovery=way.recover, resume=ir.Ref(name=resuming))),
+                    second=ir.Ref(name=popping),
+                    recover=None,
+                )
+            )
+        return dataclasses.replace(production, body=ir.Choice(alternatives=tuple(ways)))
+
+    return {**{name: told(name, production) for name, production in grammar.items()}, **minted}
 
 
 def gate_hoist(grammar, namer):
@@ -4631,6 +4695,16 @@ STEPS = [
     # ordered list of alternatives one of which the parse takes.
     Step("call-run-turns", call_run_turns, RUN_TURNS_ARE_CALLS),
     Step("build-alternatives", build_alternatives, BODIES_ARE_STATES),
+    Step(
+        "lower-recoveries",
+        lower_recoveries,
+        NO_WAY_CARRIES_A_RECOVERY,
+        lapses={
+            "only-root-empties": "where a way ends at the call it covers, what it carries on to is nothing — so the "
+            "production minted to name where the unwind resumes matches empty. Naming it is the point: the alternative "
+            "is the resume being implied by where the pair sits, which is what the pair exists to stop"
+        },
+    ),
     # Phase 11 is the gate: a way is entered on the character in front of it, which is what a machine that never
     # backtracks chooses by. The hoists reduce `every-way-carries-a-test` between them.
     Step(

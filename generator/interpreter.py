@@ -26,6 +26,7 @@ unparsed, each line split into its content and its break.
 
 import os
 import sys
+from typing import NamedTuple
 
 import ir
 import wire
@@ -52,6 +53,30 @@ with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # says so, carries on at the next document. Matching it, rather than emitting the tokens by hand, keeps recovery in the
 # grammar, where the C parser generates it from — a cut says only where the unwind lands, never what to do about it.
 RECOVER = ir.RECOVER
+
+
+class _Recovery(NamedTuple):
+    """
+    What a `PushRecovery` leaves standing: what answers for a failed cut inside the region, where the parse carries on
+    once it has, and everything the unwind has to put back before either runs.
+
+    `returns` is how deep the return stack stood where the region opened. Running the recovery and then the resume
+    completes the way the region was pushed in, so what follows is that way's ordinary return — this is where to find
+    it, not a rule of its own.
+    """
+
+    recovery: object
+    resume: object
+    returns: int
+    pending: int
+    code: str
+    stack: tuple
+    forbidden: tuple
+    env: dict
+    ceiling: object
+    ceiling_message: object
+    commitments: int
+    window_depth: int
 
 
 class CommitFailure(Exception):
@@ -166,6 +191,9 @@ class Emitter:
         self.returns = []  # where each entered production carries on when it matches, outermost first — the return
         # stack the generated parser keeps, held here so an unwind can carry on at a call's return point rather than
         # only where the Python call stack happens to be. Pushed and taken back with `entered`, one for one
+        self.recoveries = []  # one record per open recovery region, innermost last: what answers for a failed cut,
+        # where the parse carries on once it has, and everything the unwind puts back first. Standing on this list is
+        # what says a region is open — its pop takes the record off and puts it back where what follows fails
         self.commitments = []  # one `[reached]` record per open committed region, innermost last — not checkpointed:
         # the push and pop actions restore it on their own failure paths, and a region once reached stays reached
         self.deterministic = (
@@ -1225,6 +1253,37 @@ def match(node, emitter, grammar, k):
             return True
         emitter.rewind(checkpoint)
         return False
+    if isinstance(node, ir.PushRecovery):
+        entry = _Recovery(
+            recovery=node.recovery,
+            resume=node.resume,
+            returns=len(emitter.returns),
+            pending=len(emitter.pending),
+            code=emitter.code,
+            stack=emitter.stack,
+            forbidden=emitter.forbidden,
+            env=dict(emitter.env),
+            ceiling=emitter.ceiling,
+            ceiling_message=emitter.ceiling_message,
+            commitments=len(emitter.commitments),
+            window_depth=emitter.window_depth,
+        )
+        emitter.recoveries.append(entry)
+        standing = len(emitter.recoveries)
+        try:
+            return k()
+        except CommitFailure as failure:
+            if len(emitter.recoveries) < standing or emitter.recoveries[standing - 1] is not entry:
+                raise  # the region has closed, so whatever answers for this stands further out
+            return _recover(entry, failure, emitter, grammar)
+        finally:
+            del emitter.recoveries[standing - 1 :]
+    if isinstance(node, ir.PopRecovery):
+        entry = emitter.recoveries.pop()
+        if k():
+            return True
+        emitter.recoveries.append(entry)  # what follows failed, so the region is open again for another way inside it
+        return False
     if isinstance(node, ir.Recover):
         depth, code, stack, forbidden, env, ceiling, ceiling_message, window_depth, commitments = (
             len(emitter.pending),
@@ -1261,6 +1320,35 @@ def match(node, emitter, grammar, k):
             emitter.rewind(stopped)  # this rule does not answer for it after all: leave no trace and let it go on up
             raise
     raise NotImplementedError(f"interpreter does not support {type(node).__name__}")
+
+
+def _recover(entry, failure, emitter, grammar):
+    """
+    A failed cut answered by the region `entry` opened: put back what the abandoned parse left of the scopes it was
+    inside — their closes never ran — emit the error, close the markers down to where the region began, and match what
+    answers for it. Then the resume, and then the way's ordinary return, the two together being what makes carrying on
+    the same as what the region covered having matched.
+
+    A recovery that does not match is this region declining to answer, so the parse is left as it was found and the cut
+    goes on unwinding.
+    """
+    stopped = emitter.checkpoint()
+    emitter.code = entry.code
+    emitter.stack = entry.stack  # what the abandoned parse pushed and never got to take back
+    emitter.forbidden = entry.forbidden
+    emitter.env = dict(entry.env)
+    emitter.ceiling = entry.ceiling
+    emitter.ceiling_message = entry.ceiling_message
+    emitter.window_depth = entry.window_depth  # the opens it left standing, which no close of its own will take back
+    del emitter.commitments[entry.commitments :]  # the regions the abandoned parse left open
+    emitter.error(MESSAGES[failure.code])
+    while len(emitter.pending) > entry.pending:
+        emitter.marker(emitter.pending[-1])  # close what the region covered opened, down to here and no further
+    carried = emitter.returns[entry.returns - 1]
+    if match(entry.recovery, emitter, grammar, lambda: match(entry.resume, emitter, grammar, carried)):
+        return True
+    emitter.rewind(stopped)
+    raise failure
 
 
 def run(grammar, production, data, parameters=None, deterministic=frozenset()):

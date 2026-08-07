@@ -654,6 +654,30 @@ All notable changes to this project are documented here. The format follows
   on with an error rather than a refusal, so gating the way out would turn a parse that stops into one that takes
   another way — a different language. They want the commit lifted off the callee.
 
+  **What answers for a failed cut is said, not carried.** A `(recover)` was the one scope phase 6 left as a node, on the
+  reading that it is "a handler rather than a scope, with no close whose position means anything". The interpreter says
+  otherwise: it takes what the parse holds where the region opens and puts it back where a cut unwinds into it, exactly
+  as the window, the message and the code pairs do. What made it different is that it also *resumes*, and none of the
+  others do — so its close carries information, and that is why it is the last to be written rather than the fourth.
+
+  `lower-recoveries` writes it as `PushRecovery(recovery, resume)` before the call it covers and `PopRecovery` where
+  that call returns, both operands named outright. It runs after `build-alternatives`, since where a way carries on only
+  has a name once the way is a call and a continuation, and it mints two productions per site: one holding the pop and
+  whatever the way carried on to, which is where the call returns, and one holding that continuation alone, which is
+  where the unwind resumes — it must not pop, the unwind having taken the region off itself. The second matches empty
+  where the way ended at the call it covered, which is a declared lapse of `only-root-empties`: naming where the parse
+  resumes is the point, and the alternative is that it is implied by where the pair sits.
+
+  The interpreter keeps the two lists this needs: the return stack — where each entered production carries on when it
+  matches, pushed and taken back with the production trace, one for one — and the open recovery regions, where standing
+  on the list is what says a region is open. Neither is checkpointed; each is balanced by its own pushes and pops, like
+  the committed regions.
+
+  **This is what a way carrying a scope cost.** `splice-conflicts` builds a spliced way out of a callee's parts and took
+  the callee's recovery, dropping the caller's — silently, since a dropped handler only shows as a parse that stops
+  where it used to recover. No shape had reached it before; a flattening that wrote out a called run of items did, and
+  four recovery fixtures said so. With the pair there is nothing to drop: a rewrite that moves a way moves its actions.
+
   **A choice a way of a choice calls is written out where the call stood.** `a | P | c` where `P` is `d | e` makes four
   decisions and shows three, the fourth behind a call nothing about the outer choice can see; written out,
   `a | d | e | c` is the same four ways in the same order with every one standing where a gate can be put on it.

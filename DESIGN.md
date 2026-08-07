@@ -186,6 +186,14 @@ Three of the readings answer with a `Verdict` rather than a value, which is what
 table too: whether to take the item, step over it, stop there, follow the call it makes, or treat it as the commit past
 which failing is an error rather than a refusal.
 
+Every scope is a pair, the recovery included. What answers for a failed cut is `PushRecovery(recovery, resume)` before
+the call it covers and `PopRecovery` where that call returns — both named outright, so nothing about the region is
+implied by where it sits and a rewrite that moves a way moves it with the actions. It is the last scope to be written
+because it is the only one whose close carries information: the others restore and are done, this one resumes, and where
+a way carries on only has a name once the way is a call and a continuation. Two productions are minted per site, one
+holding the pop and one holding the resume, since a way that ends at the call it covers has neither a place to close the
+region nor a name to carry on at.
+
 A scope that holds what it covers has nowhere to stand in an alternative — `gate  actions…  [P1  actions…]  [P2]` has a
 place for an action and none for a node enclosing a call, and a `(token)` around a call is an action that must run where
 the call returns. So each becomes the pair that brackets it, which the interpreter already implements independently of
