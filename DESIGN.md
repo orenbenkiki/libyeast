@@ -152,14 +152,15 @@ green corpus is a checkpoint that lands on its own. The order is dependency's ra
 settles `every-difference-is-between-character-sets` and then `every-character-question-is-a-character-set`, and follows
 the specialization because a set the context picks denotes nothing until a caller is known; Phase 2 settles
 `no-f-parameter`, the block scalar's leading-empty floor; Phase 3 settles `no-m-parameter`, the detected indent; Phase 4
-settles `no-n-parameter`, the indentation itself; Phase 5 is the empties, and settles `every-empty-match-is-a-way`, then
-`no-call-enters-both-ways`, then `only-root-empties`; Phase 6 is the wrappers, one invariant per kind of scope; Phase 8
-is the flattening, which settles `no-choice-of-choices` by writing out a choice that a way of a choice calls, so every
-way of it stands where a gate can be put on it rather than one call below. A step written where its goal's other steps
-already ran is a smaller step, against a grammar with less in it.
+settles `no-n-parameter`, the indentation itself; Phase 5 is the empties, and settles
+`every-way-is-either-empty-or-consumes`, then `every-production-is-either-empty-or-consumes`, then
+`no-nested-production-matches-empty`; Phase 6 is the wrappers, one invariant per kind of scope; Phase 8 is the
+flattening, which settles `no-choice-of-choices` by writing out a choice that a way of a choice calls, so every way of
+it stands where a gate can be put on it rather than one call below. A step written where its goal's other steps already
+ran is a smaller step, against a grammar with less in it.
 
-One invariant belongs to no phase. `no-unreachable-option` is claimed from the moment the contexts are monomorphized and
-every step after answers for it: a choice goes on to its next way exactly where the one in front of it fails and is
+One invariant belongs to no phase. `every-option-is-reachable` is claimed from the moment the contexts are monomorphized
+and every step after answers for it: a choice goes on to its next way exactly where the one in front of it fails and is
 handed back, so a way no input refuses leaves nothing for the ways behind it to be entered on. Backtracking hides it —
 the way matches, the continuation fails, the parse returns and tries the next — and a machine that never returns simply
 loses them. It reads none from the claim through the whole pipeline.

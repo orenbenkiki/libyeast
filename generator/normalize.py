@@ -30,8 +30,8 @@ each as the scan it is, `lower-runs` says the two repetitions as the one `Longes
 `mint-consuming-and-residue` gives every production that may match empty a name for each of the two things it is,
 `distribute-residues` writes the choice between the two where the caller stands rather than behind the one name, and
 `dissolve-residues` writes what is left taking no character into the call sites that enter it. Nothing a caller chooses
-to enter can match empty — `only-root-empties` at none, the root and the recovery keeping their empty ways, having no
-call site to hold the choice.
+to enter can match empty — `no-nested-production-matches-empty` at none, the root and the recovery keeping their empty
+ways, having no call site to hold the choice.
 
 Phase 6 is the wrappers. A scope that holds what it covers has nowhere to stand in an alternative, which has a place for
 an action and none for a node enclosing a call, so each becomes the pair that brackets it: `lower-wraps` writes a
@@ -1980,21 +1980,29 @@ def _nested_matches(grammar, reported):
     return faults
 
 
-ITEMS_ARE_LEAVES = Invariant("no-item-holds-a-match", lambda grammar: _nested_matches(grammar, _HOLDS_A_MATCH))
+EVERY_SUB_ITEM_IS_ONE_STEP = Invariant(
+    "every-sub-item-is-one-step", lambda grammar: _nested_matches(grammar, _HOLDS_A_MATCH)
+)
 
 # The phase's first share: a choice is where the machine has a state, and standing inside a way it has nowhere to be
 # one. Its own production is that state, and the way holds the call.
-CHOICES_ARE_BODIES = Invariant("every-choice-is-a-body", lambda grammar: _nested_matches(grammar, ir.Alt))
+EVERY_CHOICE_IS_A_PRODUCTION = Invariant(
+    "every-choice-is-a-production", lambda grammar: _nested_matches(grammar, ir.Alt)
+)
 
 # The second: a run is the machine's loop state, which is a production it jumps back to the top of. Naming it decides
 # nothing about the run itself — it stays the possessive scan it was, and whether a turn is taken is the gate's
 # question, asked where the gates arrive.
-RUNS_ARE_BODIES = Invariant("every-run-is-a-body", lambda grammar: _nested_matches(grammar, ir.LongestRun))
+EVERY_RUN_IS_A_PRODUCTION = Invariant(
+    "every-run-is-a-production", lambda grammar: _nested_matches(grammar, ir.LongestRun)
+)
 
 # The third: a recovery is a handler over a match, which an alternative carries on its own edge. It has no edge to ride
 # until the alternatives are made, so it gets a production of its own meanwhile — a body the re-encode reads as the way
 # it is, its item the call and its recovery what rides the push.
-RECOVERIES_ARE_BODIES = Invariant("every-recovery-is-a-body", lambda grammar: _nested_matches(grammar, ir.Recover))
+EVERY_RECOVERY_IS_A_PRODUCTION = Invariant(
+    "every-recovery-is-a-production", lambda grammar: _nested_matches(grammar, ir.Recover)
+)
 
 # The last: a binding is a match and the write that follows it, which the vocabulary already spells as two things.
 NO_BIND_NODES = _absent("no-bind-nodes", ir.Bind)
@@ -2434,14 +2442,14 @@ def _follows_of(grammar):
     return follows
 
 
-def _conflicts_with_several_follows(grammar):
+def _every_conflict_is_reached_with_same_follow(grammar):
     """
-    Choices no character decides that are reached with more than one follow.
+    Check that every choice whose ways are not told apart is reached with one follow, whatever the number of callers.
 
     A conflict resolves on what comes *after* it as often as on what it holds — the way that stops where a content line
     follows is told from the one that goes on by the line, which is the caller's and not the conflict's. So a walk over
     the live ways has to stand somewhere, and where the production is called from places that carry on differently there
-    is no single somewhere to stand: the question "which way does the input take" has as many answers as callers.
+    is no single somewhere to stand: the question "which way does the input take" has as many answers as follows.
 
     Not a fault of the conflict's own — it is what makes the conflict unaskable, and every such site is a verdict the
     meter is claiming without having one. So this is the count that says how much of the meter can even be worked on:
@@ -2455,12 +2463,14 @@ def _conflicts_with_several_follows(grammar):
     ]
 
 
-CONFLICTS_CAN_BE_ASKED = Invariant("every-conflict-can-be-asked", _conflicts_with_several_follows)
+EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW = Invariant(
+    "every-conflict-is-reached-with-same-follow", _every_conflict_is_reached_with_same_follow
+)
 
 
-def _shared_called_heads(grammar):
+def _no_conflict_shares_a_called_head(grammar):
     """
-    Conflicts whose ways begin by calling the same production — a shared beginning hidden behind a call.
+    Check that no two ways of a choice whose ways are not told apart begin by calling the same production.
 
     What a character decides, it decides on what the ways *do*, and two ways that begin by handing control to the same
     production do the same thing until it returns. That is a shared prefix like any other, and factoring it is what
@@ -2486,12 +2496,12 @@ def _shared_called_heads(grammar):
     return faults
 
 
-NO_SHARED_CALLED_HEAD = Invariant("no-conflict-shares-a-called-head", _shared_called_heads)
+NO_CONFLICT_SHARES_A_CALLED_HEAD = Invariant("no-conflict-shares-a-called-head", _no_conflict_shares_a_called_head)
 
 
-def _partial_overlaps(grammar):
+def _no_gate_partly_overlaps_another(grammar):
     """
-    Ways of one choice whose gates share a character without being the same set.
+    Check that two gates of one choice admit either exactly the same characters or none in common.
 
     What stands between a choice and being decided is not that its gates meet — it is that they meet *partly*. Two ways
     admitting exactly the same characters are a shared prefix waiting to be factored, and factoring moves their decision
@@ -2517,7 +2527,7 @@ def _partial_overlaps(grammar):
     return faults
 
 
-GATES_MEET_WHOLLY = Invariant("no-partial-overlap", _partial_overlaps)
+NO_GATE_PARTLY_OVERLAPS_ANOTHER = Invariant("no-gate-partly-overlaps-another", _no_gate_partly_overlaps_another)
 
 
 def _guards_to_ask(way):
@@ -2601,9 +2611,9 @@ _GUARD_VERDICT = ir.Reading(
 )
 
 
-def _askable_guards(grammar):
+def _no_guard_left_among_the_actions(grammar):
     """
-    Ways with no gate whose question is a guard the machine could be asked before entering them.
+    Check that no way holds among its actions a guard the machine could be asked before entering it.
 
     A way is entered on what the machine can ask where it stands, and a guard is exactly that — a question about the
     parse rather than about a character, but one the gate holds beside the peek. Left among the actions, it is reached
@@ -2620,7 +2630,7 @@ def _askable_guards(grammar):
     ]
 
 
-GUARDS_ARE_ASKED_AT_THE_GATE = Invariant("no-guard-left-among-the-actions", _askable_guards)
+NO_GUARD_LEFT_AMONG_THE_ACTIONS = Invariant("no-guard-left-among-the-actions", _no_guard_left_among_the_actions)
 
 
 def _can_be_refused(node, grammar, seen=frozenset()):
@@ -2733,9 +2743,9 @@ def _over_ways(grammar, rewritten):
     return {name: told(production) for name, production in grammar.items()}
 
 
-def _unreachable_options(grammar):
+def _every_option_is_reachable(grammar):
     """
-    Ways no input can reach, because the way in front of them is never handed back.
+    Check that some input reaches every way a choice offers, the ways in front of it being ones an input can refuse.
 
     A choice goes on to its next way exactly where the one before it fails and is handed back. So a way that no input
     refuses — one that always matches, or whose failure is the error a commit names — is the last way the machine takes,
@@ -2760,7 +2770,7 @@ def _unreachable_options(grammar):
     return faults
 
 
-EVERY_OPTION_IS_REACHABLE = Invariant("no-unreachable-option", _unreachable_options)
+EVERY_OPTION_IS_REACHABLE = Invariant("every-option-is-reachable", _every_option_is_reachable)
 
 
 def deterministic_productions(grammar):
@@ -2784,7 +2794,7 @@ def deterministic_productions(grammar):
 # What a loop repeats is a state it jumps to, so a run's turn is a call. Its own count rather than a share of the
 # phase's: naming the turn mints a production for it, which is a body of the tree's own shape until the re-encode
 # reaches it, so what the phase counts does not move.
-RUN_TURNS_ARE_CALLS = Invariant(
+EVERY_RUN_TURNS_ON_A_CALL = Invariant(
     "every-run-turns-on-a-call",
     lambda grammar: [
         f"{name}: a run whose turn is not a call, where the loop has no state to jump to"
@@ -4224,8 +4234,8 @@ def _split_scan(node, grammar, ways):
 
 def _split_call(node, grammar, ways):
     """A call's `(reads, empty)`: the two names where the callee is told apart under them, else what it can do."""
-    reads, empty, apart = ways[node.name]
-    if apart:
+    reads, empty, is_both = ways[node.name]
+    if is_both:
         return ir.Ref(f"{node.name}_reads", node.args), ir.Ref(f"{node.name}_empty", node.args)
     return (node if reads else None), (node if empty else None)
 
@@ -4405,8 +4415,8 @@ def _production_split(production, grammar, ways):
 
 def _split_ways(grammar):
     """
-    `{name: (reads, empty, apart)}` — whether each production has a way that takes a character, whether it has one that
-    takes none, and whether the two are told apart under names of their own.
+    `{name: (reads, empty, is_both)}` — whether each production has a way that takes a character, whether it has one
+    that takes none, and whether it does both while being one a caller chooses to enter, which is the defect.
 
     A least fixed point, since a reference can reach back to its own production: nothing is taken to match until some
     way of it says so, so a recursion on its own contributes neither. A production the parse enters by name is left
@@ -4419,8 +4429,8 @@ def _split_ways(grammar):
         settled = {}
         for name, production in grammar.items():
             _message, reads, empty = _production_split(production, grammar, ways)
-            is_told_apart = reads is not None and empty is not None and name not in entered
-            settled[name] = (reads is not None, empty is not None, is_told_apart)
+            is_both = reads is not None and empty is not None and name not in entered
+            settled[name] = (reads is not None, empty is not None, is_both)
         if settled == ways:
             return ways
         ways = settled
@@ -4462,13 +4472,12 @@ def mint_consuming_and_residue(grammar, namer):
     return result
 
 
-def _unnamed_empties(grammar):
+def _every_way_is_either_empty_or_consumes(grammar):
     """
-    Productions whose empty match is not a way of its own — a caller reaching one is choosing whether to enter something
-    that may take nothing, with nothing to go on.
+    Check that no way both takes a character and takes none, so which way was taken says whether input was consumed.
 
-    A way that takes no character is allowable where that is all it can do: such a production has no choice in it to
-    name, and what becomes of it is the phase's next question rather than this step's. The ways are read through the
+    Asked only of the productions that can do both and that the parse never enters by name: one entered by name is left
+    whole, nobody choosing to enter it, so an empty match there decides nothing. The ways are read through the
     production's own commit, that being one message scope over the choice rather than a way of it.
     """
     ways = _split_ways(grammar)
@@ -4502,7 +4511,9 @@ def _offered(body):
     raise TypeError(f"cannot tell what ways {type(body).__name__} offers")
 
 
-EMPTIES_NAMED = Invariant("every-empty-match-is-a-way", _unnamed_empties)
+EVERY_WAY_IS_EITHER_EMPTY_OR_CONSUMES = Invariant(
+    "every-way-is-either-empty-or-consumes", _every_way_is_either_empty_or_consumes
+)
 
 
 def distribute_residues(grammar, namer):
@@ -4532,25 +4543,20 @@ def distribute_residues(grammar, namer):
     }
 
 
-def _blind_calls(grammar):
+def _every_production_is_either_empty_or_consumes(grammar):
     """
-    Calls that enter a production which may take a character and may take none — a choice made with nothing to go on,
-    what is entered deciding for itself whether anything is consumed.
+    Check that no production both takes a character and takes none, so a call knows what entering it costs.
 
-    The root and the recovery reach each other and a parse enters both by name, so neither is told apart and the calls
-    between them are no part of this count: nobody chooses to enter one, and each being two things would make the other
-    a choice on nothing at all.
+    The root and the recovery reach each other and a parse enters both by name, so neither is counted: nobody chooses to
+    enter one, and each being two things would make the other a choice on nothing at all.
     """
     ways = _split_ways(grammar)
-    return [
-        f"{name}: calls `{node.name}`, which may take a character and may take none"
-        for name, production in grammar.items()
-        for node in _held(production.body)
-        if isinstance(node, ir.Ref) and ways[node.name][2]
-    ]
+    return [f"{name}: may take a character and may take none" for name in grammar if ways[name][2]]
 
 
-CALLS_DECIDED = Invariant("no-call-enters-both-ways", _blind_calls)
+EVERY_PRODUCTION_IS_EITHER_EMPTY_OR_CONSUMES = Invariant(
+    "every-production-is-either-empty-or-consumes", _every_production_is_either_empty_or_consumes
+)
 
 
 def dissolve_residues(grammar, namer):
@@ -4595,14 +4601,14 @@ def dissolve_residues(grammar, namer):
     }
 
 
-def _blind_empties(grammar):
+def _no_nested_production_matches_empty(grammar):
     """
-    Productions that match empty and that a caller chooses whether to enter — each one a decision made with no character
-    to go on, since what is entered may take nothing at all.
+    Check that no production a caller chooses to enter can match empty, entering one being a decision with no character
+    to go on.
 
     A parse enters the root and the recovery by name rather than by a call, so an empty match there decides nothing and
-    neither is one of these. Everything else that could match empty is now a way of the caller's own, where a gate can
-    be put on it.
+    neither is asked. Everything else that could match empty is a way of the caller's own, where a gate can be put on
+    it.
     """
     ways = _split_ways(grammar)
     entered = entered_by_name(grammar)
@@ -4613,7 +4619,9 @@ def _blind_empties(grammar):
     ]
 
 
-ONLY_ROOT_EMPTIES = Invariant("only-root-empties", _blind_empties)
+NO_NESTED_PRODUCTION_MATCHES_EMPTY = Invariant(
+    "no-nested-production-matches-empty", _no_nested_production_matches_empty
+)
 
 
 # What the runs become, and what they must not become. A repetition is the last thing in the grammar that is neither a
@@ -4673,9 +4681,9 @@ _WALKED_UNCONSUMED = (
 )
 
 
-def _unconsumed_cycles(grammar):
+def _no_production_reaches_itself_unconsumed(grammar):
     """
-    Productions that reach themselves with nothing taken — a parse that arrives there cannot go on.
+    Check that no production reaches itself with nothing taken, a parse that arrives there being unable to go on.
 
     The machine being built is a pushdown that commits to the first gate that fires and never backtracks, so it has no
     way to notice it is where it already was: a production reaching itself at the same position runs for ever. Nothing
@@ -4712,7 +4720,9 @@ def _unconsumed_cycles(grammar):
     ]
 
 
-NO_UNCONSUMED_CYCLE = Invariant("no-production-reaches-itself-unconsumed", _unconsumed_cycles)
+NO_PRODUCTION_REACHES_ITSELF_UNCONSUMED = Invariant(
+    "no-production-reaches-itself-unconsumed", _no_production_reaches_itself_unconsumed
+)
 
 
 def hold_established_indents(grammar, namer):
@@ -4765,9 +4775,9 @@ def hold_established_indents(grammar, namer):
     return {name: dataclasses.replace(production, body=held(production.body)) for name, production in grammar.items()}
 
 
-def _written_indents(grammar):
+def _no_production_writes_the_indentation(grammar):
     """
-    Writes of the indentation — a value a call hands back to whatever asked, rather than one the parse stands under.
+    Check that nothing writes the indentation, so the parse stands under it rather than a call handing it back.
 
     What reads such a write is a production away from where it happens, so nothing local says where the value's region
     is, and the parameter carrying it out is the only thing holding it together.
@@ -4780,7 +4790,9 @@ def _written_indents(grammar):
     ]
 
 
-INDENTS_HELD = Invariant("no-indentation-write", _written_indents)
+NO_PRODUCTION_WRITES_THE_INDENTATION = Invariant(
+    "no-production-writes-the-indentation", _no_production_writes_the_indentation
+)
 
 
 def push_indents(grammar, namer):
@@ -4894,9 +4906,9 @@ def _clear_reads(param):
     return transform
 
 
-def _unbounded_reads(param):
+def _every_read_is_bounded(param):
     """
-    The invariant that `param` has an end: a production reading it and not saying where the value stops.
+    The invariant that every production reading `param` says where the value stops.
 
     Past its end a read is refused rather than answered from what the last construct left, which is what holds a value
     to one region — and what a single slot standing for the parameter needs, a stale answer being indistinguishable from
@@ -4936,7 +4948,7 @@ STEPS = [
         monomorphize,
         (_absent("no-context-case", ir.Case, ir.Flip), FINITE_PARAMETERS_ARE_ALWAYS_LITERAL, NO_I_T_PARAMETERS),
     ),
-    # `no-unreachable-option` is none once the specialization has run, and no earlier: a context that picks between
+    # `every-option-is-reachable` is none once the specialization has run, and no earlier: a context that picks between
     # shapes is not a grammar the readings of a way can be asked about. Every step behind this is held to it.
     Step("holds-once-specialized", invariants=EVERY_OPTION_IS_REACHABLE),
     # Phase 1 establishes `EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET`: a question about a character is a `CharSet`. A
@@ -4952,17 +4964,17 @@ STEPS = [
     # Phase 2 establishes `NO_F_PARAMETER`: the block scalar's leading-empty floor is the parse's one value rather than
     # one a call carries. The value is given an end first, a single slot answering for a parameter only where a read
     # past the region it was measured in is refused rather than answered from what the last construct left.
-    Step("clear-f", _clear_reads("f"), _unbounded_reads("f")),
+    Step("clear-f", _clear_reads("f"), _every_read_is_bounded("f")),
     Step("read-global-f", _read_off("f", ir.Global(name="f")), NO_F_PARAMETER),
     # Phase 3 establishes `NO_M_PARAMETER`: the detected indent is the parse's one value. Nothing reads it twice over a
     # region something else can write in — the block header measures it and the scalar that asked reads it, one
     # construct at a time — so a clear and a drop are the whole of it.
-    Step("clear-m", _clear_reads("m"), _unbounded_reads("m")),
+    Step("clear-m", _clear_reads("m"), _every_read_is_bounded("m")),
     Step("read-global-m", _read_off("m", ir.Global(name="m")), NO_M_PARAMETER),
     # Phase 4 establishes `NO_N_PARAMETER`: the indentation is on the parse's own stack rather than carried by a call.
     # The pushes go in first and the parameter stays beside them, so what says they stand where they should is every
     # read comparing the two over the corpus; dropping the parameter is what leaves the stack the one place it is.
-    Step("hold-established-indents", hold_established_indents, INDENTS_HELD),
+    Step("hold-established-indents", hold_established_indents, NO_PRODUCTION_WRITES_THE_INDENTATION),
     Step("push-indents", push_indents, EVERY_INDENTATION_CHANGE_IS_PUSHED),
     Step("read-indents", _read_off("n", ir.Indent()), NO_N_PARAMETER),
     # Phase 5 is the empties, and what it is finished by is no production matching empty but the ones a parse enters by
@@ -4974,7 +4986,7 @@ STEPS = [
     ),
     # `no-production-reaches-itself-unconsumed` is none from here, and is not a question an earlier grammar answers: a
     # cycle is read off the ways a production offers, which the optionals are the last thing to be spelled outside of.
-    Step("holds-once-optionals-are-ways", invariants=NO_UNCONSUMED_CYCLE),
+    Step("holds-once-optionals-are-ways", invariants=NO_PRODUCTION_REACHES_ITSELF_UNCONSUMED),
     Step(
         "span-consumes",
         span_consumes,
@@ -4985,10 +4997,10 @@ STEPS = [
     Step(
         "mint-consuming-and-residue",
         mint_consuming_and_residue,
-        EMPTIES_NAMED,
+        EVERY_WAY_IS_EITHER_EMPTY_OR_CONSUMES,
     ),
-    Step("distribute-residues", distribute_residues, CALLS_DECIDED),
-    Step("dissolve-residues", dissolve_residues, ONLY_ROOT_EMPTIES),
+    Step("distribute-residues", distribute_residues, EVERY_PRODUCTION_IS_EITHER_EMPTY_OR_CONSUMES),
+    Step("dissolve-residues", dissolve_residues, NO_NESTED_PRODUCTION_MATCHES_EMPTY),
     # Phase 6 takes the scopes off what they cover, each step one kind, and every one of them is held to the pairs it
     # leaves closing where they open — the guarantee a wrapper gave by construction, now a count.
     Step("lower-wraps", lower_wraps, NO_WRAP_NODES),
@@ -4996,15 +5008,19 @@ STEPS = [
     Step("lower-commits", lower_commits, NO_COMMIT_NODES),
     Step("lower-tokens", lower_tokens, NO_TOKEN_NODES),
     # Phase 7 takes the tree apart: an item standing in a way is something the machine does where it stands, and every
-    # shape holding a match inside it becomes a production of its own. The steps reduce `no-item-holds-a-match` between
-    # them, each settling its own share of it.
+    # shape holding a match inside it becomes a production of its own. The steps reduce `every-sub-item-is-one-step`
+    # between them, each settling its own share of it.
     Step(
         "lift-choices",
         _lifting(ir.Alt),
-        (ITEMS_ARE_LEAVES, CHOICES_ARE_BODIES),
-        reduces=ITEMS_ARE_LEAVES,
+        (EVERY_SUB_ITEM_IS_ONE_STEP, EVERY_CHOICE_IS_A_PRODUCTION),
+        reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
         lapses=dict.fromkeys(
-            ("every-empty-match-is-a-way", "no-call-enters-both-ways", "only-root-empties"),
+            (
+                "every-way-is-either-empty-or-consumes",
+                "every-production-is-either-empty-or-consumes",
+                "no-nested-production-matches-empty",
+            ),
             "a choice between reading and taking nothing becomes a production where it is a state, and a call reaches "
             "it: what phase 5 wrote at the call site because nothing could gate it there, the gates answer for where "
             "it now stands",
@@ -5013,10 +5029,14 @@ STEPS = [
     Step(
         "lift-runs",
         _lifting(ir.LongestRun),
-        (ITEMS_ARE_LEAVES, RUNS_ARE_BODIES),
-        reduces=ITEMS_ARE_LEAVES,
+        (EVERY_SUB_ITEM_IS_ONE_STEP, EVERY_RUN_IS_A_PRODUCTION),
+        reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
         lapses=dict.fromkeys(
-            ("every-empty-match-is-a-way", "no-call-enters-both-ways", "only-root-empties"),
+            (
+                "every-way-is-either-empty-or-consumes",
+                "every-production-is-either-empty-or-consumes",
+                "no-nested-production-matches-empty",
+            ),
             "a run of none or more is the same choice under another name — take a turn or take none — and naming it "
             "puts that choice behind a call, where the loop state is; the turn is a character's to decide and the "
             "gates are what decide it",
@@ -5025,10 +5045,10 @@ STEPS = [
     Step(
         "lift-recoveries",
         _lifting(ir.Recover),
-        (ITEMS_ARE_LEAVES, RECOVERIES_ARE_BODIES),
-        reduces=ITEMS_ARE_LEAVES,
+        (EVERY_SUB_ITEM_IS_ONE_STEP, EVERY_RECOVERY_IS_A_PRODUCTION),
+        reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
     ),
-    Step("lower-bind", lower_bind, (ITEMS_ARE_LEAVES, NO_BIND_NODES)),
+    Step("lower-bind", lower_bind, (EVERY_SUB_ITEM_IS_ONE_STEP, NO_BIND_NODES)),
     Step("bound-exclusions", bound_exclusions, EVERY_EXCLUSION_IS_BOUNDED, reduces=EVERY_EXCLUSION_IS_BOUNDED),
     # Phase 8 flattens what a call hides: a choice among the ways of a choice, and a run of items among the items of a
     # way. It runs before the way is split into a call and a continuation, since a choice written out here is one every
@@ -5037,22 +5057,12 @@ STEPS = [
         "flatten-called-alternations",
         flatten_called_alternations,
         NO_CHOICE_OF_CHOICES,
-        lapses={
-            "no-call-enters-both-ways": "a choice written out where it was called is its ways standing there, so a "
-            "call one of them makes is now made from where the caller stood: the count follows the ways rather than "
-            "any new entering, and what the gates behind this can put on each of them is what it buys"
-        },
     ),
     Step(
         "flatten-called-sequences",
         flatten_called_sequences,
         NO_SEQUENCE_OF_SEQUENCES,
         reduces=NO_SEQUENCE_OF_SEQUENCES,
-        lapses={
-            "no-call-enters-both-ways": "a run of items written out where it was called is those items standing "
-            "there, so a call among them is now made from where the caller stood: the count follows the items rather "
-            "than any new entering, and what a reading of what a way does first can finally see is what it buys"
-        },
     ),
     # Phase 9 is the call: a way does its actions, hands control to one production, and says where to carry on when it
     # comes back. What stood past the call is what carries on.
@@ -5061,7 +5071,11 @@ STEPS = [
         mint_continuations,
         A_WAY_IS_ACTIONS_A_CALL_AND_A_CONTINUATION,
         lapses=dict.fromkeys(
-            ("every-empty-match-is-a-way", "no-call-enters-both-ways", "only-root-empties"),
+            (
+                "every-way-is-either-empty-or-consumes",
+                "every-production-is-either-empty-or-consumes",
+                "no-nested-production-matches-empty",
+            ),
             "what a way does past its call is a production of its own, and one carrying actions alone takes no "
             "character: the canonical form mints those deliberately, a continuation being where the parse carries on "
             "rather than a choice anything makes",
@@ -5069,7 +5083,7 @@ STEPS = [
     ),
     # Phase 10 says every body in the machine's own words: a set of characters, a run over the state it repeats, or the
     # ordered list of alternatives one of which the parse takes.
-    Step("call-run-turns", call_run_turns, RUN_TURNS_ARE_CALLS),
+    Step("call-run-turns", call_run_turns, EVERY_RUN_TURNS_ON_A_CALL),
     Step(
         "build-alternatives",
         build_alternatives,
@@ -5085,9 +5099,10 @@ STEPS = [
         lower_recoveries,
         NO_WAY_CARRIES_A_RECOVERY,
         lapses={
-            "only-root-empties": "where a way ends at the call it covers, what it carries on to is nothing — so the "
-            "production minted to name where the unwind resumes matches empty. Naming it is the point: the alternative "
-            "is the resume being implied by where the pair sits, which is what the pair exists to stop"
+            "no-nested-production-matches-empty": "where a way ends at the call it covers, what it carries on to is "
+            "nothing — so the production minted to name where the unwind resumes matches empty. Naming it is the "
+            "point: the alternative is the resume being implied by where the pair sits, which is what the pair exists "
+            "to stop"
         },
     ),
     # Phase 11 is the gate: a way is entered on the character in front of it, which is what a machine that never
@@ -5129,16 +5144,16 @@ STEPS = [
     Step(
         "splice-conflicts",
         splice_conflicts,
-        CONFLICTS_CAN_BE_ASKED,
-        reduces=CONFLICTS_CAN_BE_ASKED,
+        EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW,
+        reduces=EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW,
         lapses=dict.fromkeys(
             (
                 "every-choice-is-deterministic",
-                "every-empty-match-is-a-way",
+                "every-way-is-either-empty-or-consumes",
                 "every-way-carries-a-test",
-                "no-call-enters-both-ways",
-                "no-unreachable-option",
-                "only-root-empties",
+                "every-production-is-either-empty-or-consumes",
+                "every-option-is-reachable",
+                "no-nested-production-matches-empty",
             ),
             "a conflict spliced where it was called is that conflict once per site, each in the context that reaches "
             "it: the copies are what the walk can finally be asked about, and what it says of them is that a character "
@@ -5162,27 +5177,19 @@ STEPS = [
     Step(
         "inline-shared-heads",
         inline_shared_heads,
-        NO_SHARED_CALLED_HEAD,
-        reduces=NO_SHARED_CALLED_HEAD,
-        lapses={
-            "no-call-enters-both-ways": "a callee spliced into the ways that shared it is that callee once per way, "
-            "and a call of its that entered both ways is entered by each copy: the count follows the copies, and what "
-            "the factoring behind this takes back is the shared beginning they now show"
-        },
+        NO_CONFLICT_SHARES_A_CALLED_HEAD,
+        reduces=NO_CONFLICT_SHARES_A_CALLED_HEAD,
     ),
     Step(
         "split-gates",
         split_gates,
-        GATES_MEET_WHOLLY,
-        lapses=dict.fromkeys(
-            ("no-call-enters-both-ways", "no-conflict-shares-a-called-head"),
-            "a way cut along the characters its gate treats alike is that way over again, so what one copy does they "
-            "all do: a call that entered both ways is entered by each, and a beginning one shared with another way is "
-            "shared by its copies too. Both counts follow the copies, and both are what the factoring reads",
-        )
-        | {
+        NO_GATE_PARTLY_OVERLAPS_ANOTHER,
+        lapses={
+            "no-conflict-shares-a-called-head": "a way cut along the characters its gate treats alike is that way over "
+            "again, so a beginning one shared with another way is shared by its copies too: the count follows the "
+            "copies, and it is what the factoring reads",
             "every-choice-is-deterministic": "a copy admits exactly what the way it was cut from admits and stands "
-            "beside it in the same choice, so the cut makes pairs the reading finds where it found one way before"
+            "beside it in the same choice, so the cut makes pairs the reading finds where it found one way before",
         },
     ),
     # Last of the gating, since the splitting and the splicing before it copy ways and a guard moved before them would
@@ -5190,7 +5197,7 @@ STEPS = [
     Step(
         "hoist-askable-guards",
         hoist_askable_guards,
-        (GUARDS_ARE_ASKED_AT_THE_GATE, EVERY_WAY_CARRIES_A_TEST),
+        (NO_GUARD_LEFT_AMONG_THE_ACTIONS, EVERY_WAY_CARRIES_A_TEST),
         reduces=EVERY_WAY_CARRIES_A_TEST,
     ),
     # A gate on a body offering one way decides nothing where it stands: moved into the ways that call it, it tells them
@@ -5200,11 +5207,10 @@ STEPS = [
         lift_gates_to_callers,
         EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
         reduces=EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
-        lapses=dict.fromkeys(
-            ("every-exclusion-is-bounded", "no-call-enters-both-ways"),
-            "the ungated form of a production is that production again under a name of its own, so what it holds it "
-            "holds twice and what it calls is called from where its callers stood: both counts follow the copies "
-            "rather than anything new, and the gate each caller now carries is what they buy",
-        ),
+        lapses={
+            "every-exclusion-is-bounded": "the ungated form of a production is that production again under a name of "
+            "its own, so what it holds it holds twice: the count follows the copies rather than anything new, and the "
+            "gate each caller now carries is what they buy"
+        },
     ),
 ]

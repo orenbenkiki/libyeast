@@ -227,9 +227,9 @@ The phases, each established and then enforced:
 | 2     | `no-f-parameter`                              | the block scalar's leading-empty floor, one value for the parse                                 |
 | 3     | `no-m-parameter`                              | the auto-detected indent, one value for the parse                                               |
 | 4     | `no-n-parameter`                              | the indentation, moved off the calls and onto the parse's own stack                             |
-| 5     | `only-root-empties`                           | every empty match but the ones a parse enters by name                                           |
+| 5     | `no-nested-production-matches-empty`          | every empty match but the ones a parse enters by name                                           |
 | 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`  | every scope that holds what it covers, for the pair that brackets it                            |
-| 7     | `no-item-holds-a-match`                       | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
+| 7     | `every-sub-item-is-one-step`                  | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
 | 8     | `no-choice-of-choices`                        | a decision spelled one call below the choice that offers it                                     |
 | 9     | `a-way-is-actions-a-call-and-a-continuation`  | everything a way holds past its first call                                                      |
 | 10    | `every-body-is-a-choice-a-run-or-a-set`       | the tree's own spelling, for the machine's                                                      |
@@ -239,7 +239,7 @@ The phases, each established and then enforced:
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
 
-Beside the phases stands `no-unreachable-option`, which belongs to none of them: a choice goes on to its next way
+Beside the phases stands `every-option-is-reachable`, which belongs to none of them: a choice goes on to its next way
 exactly where the one in front of it is handed back, so a way no input refuses is the last way the machine takes and
 everything behind it is unreachable. Claimed once the specialization has run, which is the first grammar the reading of
 a way can be asked about, and **none** from there through every step — no lapse, nothing copied, nothing owed.
@@ -254,9 +254,9 @@ count, and they are the auto-detected-indent copies of the block scalar's conten
 **What the flattening bought.** Phase 8 writes out both what a call hides — a choice among the ways of a choice, and a
 run of items among the items of a way — so every part stands where a gate can be put on it rather than one call below.
 The corpus cases where a committed run and a backtracking one read differently stand at **261**, which is the number
-that measures the goal. The meter stands at **111** and `every-conflict-can-be-asked` at **12**: that is what the copies
-cost, every written-out run adding ways to be undecided about. Whether all of that is copies or some of it is real has
-not been measured.
+that measures the goal. The meter stands at **111** and `every-conflict-is-reached-with-same-follow` at **12**: that is
+what the copies cost, every written-out run adding ways to be undecided about. Whether all of that is copies or some of
+it is real has not been measured.
 
 **What the gate lift leaves owed.** `every-choice-of-one-is-unconditional` stands at **207** — a body offering one way
 that is entered on a test, by a gate or by a guard among its actions, where there is nothing to choose between. Those
