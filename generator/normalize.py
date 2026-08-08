@@ -13,9 +13,9 @@ names, after which nothing declares, passes or reads either — `no-i-t-paramete
 
 Phase 1 is the character questions. A set of characters is written many ways and asked in several — a union, a
 difference, a reference, the item of a lookaround — and the parser tests one key for one bit. `lower-char-sets` says
-every one of them as the intervals it denotes, after which each question about a character is a `CharSet` or a literal —
-`every-character-question-is-a-set-or-a-literal` at none. It follows the specialization because a set a context
-parameter picks denotes nothing until a caller is known.
+every one of them as the intervals it denotes, after which each question about a character is a `CharSet` —
+`every-character-question-is-a-character-set` at none. It follows the specialization because a set a context parameter
+picks denotes nothing until a caller is known.
 
 Phases 2 to 4 are the values a call carries. The block scalar's leading-empty floor `f` and the detected indent `m` are
 one value for the parse rather than one per call, so each is given an end and then read off a single slot; the
@@ -37,9 +37,9 @@ Phase 6 is the wrappers. A scope that holds what it covers has nowhere to stand 
 an action and none for a node enclosing a call, so each becomes the pair that brackets it: `lower-wraps` writes a
 `(wrap)` as its two markers, `lower-windows` a `(max)` as the window pair, `lower-commits` a `(commit)` as the message
 pair, and `lower-tokens` a `(token)` as the code pair. What a wrapper guaranteed by construction the pairs are held to
-instead: `every-scope-closes-on-its-own-way` says a scope opened on a way is closed on it, the ways of a choice agree on
-what they leave open, and a run's turn leaves none. A `(recover)` is a handler rather than a scope and stays, its home
-being the edge an alternative rides.
+instead: `every-scope-closes-on-the-path-that-opens-it` says a scope opened on a path is closed on it, the ways of a
+choice agree on what they leave open, and a run's turn leaves none. A `(recover)` is a handler rather than a scope and
+stays, its home being the edge an alternative rides.
 
 **A reading that dispatches on node kinds names every kind it accepts and raises on the rest.** Never a trailing default
 — no `return None`, `return True`, `continue` or `break` catching a kind nobody thought about. A default answer for a
@@ -499,34 +499,29 @@ def _absent(name, *kinds):
     return Invariant(name, test)
 
 
-def _computed_finite(grammar):
-    """
-    Calls handing a set-by-matching finite parameter a value worked out rather than written — one the specialization
-    cannot pick a copy for.
-
-    A finite parameter specializes away only where every call names one of its values outright: a copy per value is
-    made, and a call carrying an expression has no copy to go to. The chomping and the indentation mode are the two the
-    grammar sets by matching; made lexical, each is what the context already is.
-    """
+def _finite_parameters_are_always_literal(grammar):
+    """Check that every call hands each finite parameter a literal value."""
     faults = []
     for name, production in grammar.items():
 
         def walk(node, owner=name):
             if isinstance(node, ir.Ref):
                 callee = grammar.get(node.name)
-                for param in ("t", "i"):
+                for param in ir.FINITE_PARAMS:
                     if callee is None or param not in callee.params:
                         continue
                     position = callee.params.index(param)
                     if position < len(node.args) and not isinstance(node.args[position], ir.Lit):
-                        faults.append(f"{owner}: hands `{node.name}` a `{param}` it works out")
+                        faults.append(f"{owner}: hands `{node.name}` a `{param}` that is not a literal")
             ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
 
         walk(production.body)
     return faults
 
 
-FINITE_LEXICAL = Invariant("every-set-finite-parameter-is-lexical", _computed_finite)
+FINITE_PARAMETERS_ARE_ALWAYS_LITERAL = Invariant(
+    "finite-parameters-are-always-literal", _finite_parameters_are_always_literal
+)
 
 
 def untested_steps():
@@ -899,20 +894,13 @@ def stages(grammar):
     return result, namer.points
 
 
-def _wide_differences(grammar):
+def _every_difference_is_between_character_sets(grammar):
     """
-    Differences taking characters from something that is not a character set — the shape a set subtraction cannot say.
+    Check that both sides of every `(---)` denote a character set.
 
-    A `(---)` denotes a set only where both sides are sets. Where its base is a choice holding a match of several
-    characters — an escape, which is what the double-quoted, single-quoted and tag characters subtract from — the
-    subtraction is a filter over a language instead, and nothing downstream can intersect it with a gate or hand it to
-    the parser as one bit.
-
-    The two sides are asked different questions, each the one its half of the lowering answers: a base is a set where it
-    matches one character, that being what the reduction folds, and a subtracted side is one where its characters are
-    pinned, that being what the reduction reads. An annotation around a subtracted character changes neither — the
-    difference reads the text a match takes and not the code it carries — which is `nb-char` taking the byte-order mark
-    out of the printable characters.
+    The base must match exactly one character, and each subtracted side must have codepoints that can be worked out
+    here. Annotations around a subtracted character do not count against it: a difference reads the text a match takes,
+    not the code it carries.
     """
     return [
         f"{name}: a `(---)` takes characters from something that is not a character set"
@@ -925,7 +913,9 @@ def _wide_differences(grammar):
     ]
 
 
-DIFFERENCES_BETWEEN_SETS = Invariant("every-difference-is-between-character-sets", _wide_differences)
+EVERY_DIFFERENCE_IS_BETWEEN_CHARACTER_SETS = Invariant(
+    "every-difference-is-between-character-sets", _every_difference_is_between_character_sets
+)
 
 # What a shortest match is counted up to. A difference takes a set of single characters, so it can remove only a match
 # of one character: past one, how much more a way takes makes no difference to what the subtraction reaches.
@@ -1051,17 +1041,12 @@ NO_DIFF_NODES = _absent("no-diff-nodes", ir.Diff)
 _PEEK_OUTPUT = (ir.Emit, ir.PopCode, ir.PushCode, ir.Token, ir.Wrap)
 
 
-def _wide_peeks(grammar):
+def _every_peek_is_a_character_set(grammar):
     """
-    Lookarounds holding something other than a character set — a question the machine cannot put to one character.
-
-    The twin of `no-diff-nodes` for the peeks, and it answers for what the character count cannot: that one judges a
-    peek whose question is a character and says nothing about one whose question is wider, where this refuses every
-    shape but the set. It is what holds the steps that mint peeks — a possessive scan's empty way is the negative peek
-    of its own set — to minting them as sets, 39 of the 64 in the final grammar being theirs rather than the grammar's.
+    Check that every lookaround holds a character set, so its question is one the machine can put to one character.
 
     An `(exclude)` is no peek of this kind and is no business of this count: it asks about a line rather than about a
-    character, and where it goes is the phase that makes a line start a decision.
+    character.
     """
     return [
         f"{name}: a {type(node).__name__} holds a {type(node.item).__name__} rather than a character set"
@@ -1071,7 +1056,7 @@ def _wide_peeks(grammar):
     ]
 
 
-PEEKS_ARE_SETS = Invariant("every-peek-is-a-character-set", _wide_peeks)
+EVERY_PEEK_IS_A_CHARACTER_SET = Invariant("every-peek-is-a-character-set", _every_peek_is_a_character_set)
 
 
 def _peeked_question(node, grammar):
@@ -1128,21 +1113,15 @@ def lower_char_sets(grammar, namer):
     }
 
 
-def _other_character_questions(grammar):
+def _every_character_question_is_a_character_set(grammar):
     """
-    Every question about a character said as something other than a `CharSet` — the one shape the parser can be given.
+    Check that every question about a character is written as a `CharSet` — the one shape the parser can be given.
 
     A question is about a character when what it matches is exactly one: a union, a difference, a raw character node,
-    and the item a lookaround peeks. Whether the spans can be worked out is no part of the question — a node matching
-    one character is a character set, and one this cannot reduce is worse than one it can, not excused, the reduction
-    failing being how a set stops being sayable at all.
-
-    A reference is a hold on the production where the set is said, so a match taking one is no fault; inside a
-    lookaround it is a fault, what a peek holds being the question rather than the hold. A peek is judged on the
-    question it asks rather than on the shape it names it with — an annotation inside one is dead, a probe emitting
-    nothing — so peeking a `#` under the code its character carries is a character question like any other. A guard over
-    several characters — an `(exclude)`, a difference of two multi-character productions — asks nothing about a
-    character and is no business of this count.
+    and the item a lookaround peeks. A reference is a hold on the production where the set is said, so a match taking
+    one is no fault; inside a lookaround it is a fault, what a peek holds being the question rather than the hold. A
+    guard over several characters — an `(exclude)`, a difference of two multi-character productions — asks nothing about
+    a character and is no business of this count.
     """
     faults = []
     for name, production in grammar.items():
@@ -1166,7 +1145,9 @@ def _other_character_questions(grammar):
     return faults
 
 
-ONLY_SETS_AND_LITERALS = Invariant("every-character-question-is-a-set-or-a-literal", _other_character_questions)
+EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET = Invariant(
+    "every-character-question-is-a-character-set", _every_character_question_is_a_character_set
+)
 
 
 def as_char_set(node, grammar):
@@ -1341,10 +1322,10 @@ NO_M_PARAMETER = Invariant("no-m-parameter", lambda grammar: _parameter_uses(gra
 NO_N_PARAMETER = Invariant("no-n-parameter", lambda grammar: _parameter_uses(grammar, {"n"}))
 
 
-def _unpushed_indents(grammar):
+def _every_indentation_change_is_pushed(grammar):
     """
-    Indentations a parse changes without saying so: a call measured against one the parse does not stand under, and a
-    call that establishes one whose region nothing bounds.
+    Check that a push and its pop stand around every call that changes the indentation — one measured against a level,
+    and one that establishes a level a later item reads.
 
     A push and its pop are what put a level where every read reaches it without a call carrying it, and they are looked
     for immediately around the call — the one place the level is known and nothing of the caller's runs between.
@@ -1381,7 +1362,9 @@ def _unpushed_indents(grammar):
     return faults
 
 
-INDENTS_PUSHED = Invariant("every-indentation-change-is-pushed", _unpushed_indents)
+EVERY_INDENTATION_CHANGE_IS_PUSHED = Invariant(
+    "every-indentation-change-is-pushed", _every_indentation_change_is_pushed
+)
 
 
 # The scopes a pair opens and closes: an action, and the one that takes it back. In alphabetical order by the opening
@@ -1468,9 +1451,9 @@ def _scope_answers(grammar, name, production, signature, faults):
     return [_scope_walk(items, name, signature, faults) for items in opened]
 
 
-def _unclosed_scopes(grammar):
+def _every_scope_closes_on_the_path_that_opens_it(grammar):
     """
-    Scopes no path closes, and closes with nothing standing open to take.
+    Check that every scope a path opens is closed on that same path, and that every close takes the scope standing open.
 
     What a wrapper guarantees by holding what it covers, a pair has to be held to instead: `ir.Wrap` is a node rather
     than the two markers it stands for precisely so a `begin` cannot lose its `end`. The pair is held to closing on the
@@ -1498,7 +1481,9 @@ def _unclosed_scopes(grammar):
     return faults
 
 
-SCOPES_CLOSED = Invariant("every-scope-closes-on-the-path-that-opens-it", _unclosed_scopes)
+EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT = Invariant(
+    "every-scope-closes-on-the-path-that-opens-it", _every_scope_closes_on_the_path_that_opens_it
+)
 
 
 def _replaced(node, swap):
@@ -1613,10 +1598,10 @@ def span_consumes(grammar, namer):
     }
 
 
-def _repeated_character_classes(grammar):
+def _every_character_run_is_a_span(grammar):
     """
-    Runs over a character class still written as a repetition — a value the scan decides, said as a way the parse
-    repeats.
+    Check that no repetition is over a character class — a run of characters is a value the scan decides rather than a
+    way the parse repeats.
 
     What repeats is asked of `ir.repeated` rather than of a list of kinds kept here: a list goes stale the moment a
     repetition is spelled a new way, and this count would then read none because the kinds it named are gone rather than
@@ -1630,7 +1615,7 @@ def _repeated_character_classes(grammar):
     ]
 
 
-CHARACTER_RUNS_SCANNED = Invariant("every-character-run-is-a-span", _repeated_character_classes)
+EVERY_CHARACTER_RUN_IS_A_SPAN = Invariant("every-character-run-is-a-span", _every_character_run_is_a_span)
 
 # The two repetitions the vendored notation writes are gone, one `LongestRun` standing for both. What is left after this
 # is one operation for repeating a way, which is what every reading past here is written against. The counted `Rep` is
@@ -1640,7 +1625,8 @@ NO_STAR_OR_PLUS_NODES = _absent("no-star-or-plus-nodes", ir.Star, ir.Plus)
 
 # Phase 6's first: a scope that holds what it covers is the pair that brackets it instead. A `(wrap)` is the one that
 # says so outright — a node rather than the two markers so that a `begin` cannot lose its `end`, which is a guarantee
-# `every-scope-closes-on-its-own-way` takes over for the pairs and `check_markers` still owes for the markers.
+# `every-scope-closes-on-the-path-that-opens-it` takes over for the pairs and `check_markers` still owes for the
+# markers.
 NO_WRAP_NODES = _absent("no-wrap-nodes", ir.Wrap)
 
 
@@ -1743,8 +1729,8 @@ def lower_tokens(grammar, namer):
     What changes is where the displaced code waits. The wrapper keeps it in a Python local, which is to say in the frame
     of the match that is running; the pair puts it on the parse's own stack, which is what lets the two halves end up in
     different productions once a way is split into a call and a continuation. That is the whole reason for the step, and
-    the reason `every-scope-closes-on-its-own-way` has to hold while it happens: a pop takes back whatever is on top, so
-    a pair cut apart carelessly would take back what another way had put there.
+    the reason `every-scope-closes-on-the-path-that-opens-it` has to hold while it happens: a pop takes back whatever is
+    on top, so a pair cut apart carelessly would take back what another way had put there.
     """
 
     def lowered(node):
@@ -2029,9 +2015,9 @@ def _is_bounded_question(node):
     return False
 
 
-def _wide_exclusions(grammar):
+def _every_exclusion_is_bounded(grammar):
     """
-    Exclusions asking a question the machine cannot test in a bounded run of characters.
+    Check that every `(exclude)` asks what a bounded run of characters answers.
 
     An `(exclude)` is a guard the parse carries, tested at every start of line while it stands, so what it asks has to
     be answerable where it is asked: `c-forbidden` is a line beginning `---` or `...` and then a break, a space or the
@@ -2047,12 +2033,12 @@ def _wide_exclusions(grammar):
     ]
 
 
-EXCLUSIONS_ARE_BOUNDED = Invariant("every-exclusion-is-bounded", _wide_exclusions)
+EVERY_EXCLUSION_IS_BOUNDED = Invariant("every-exclusion-is-bounded", _every_exclusion_is_bounded)
 
 
-def _called_alternations(grammar):
+def _no_choice_of_choices(grammar):
     """
-    Ways of a choice that are a call to a choice — a decision spelled one call below the choice that offers it.
+    Check that no way of a choice is a call to a choice.
 
     `a | P | c` where `P` is `d | e` offers three ways and makes four decisions, the fourth behind a call nothing about
     the outer choice can see. Written out, `a | d | e | c` is the same four ways with every one of them standing where
@@ -2071,12 +2057,12 @@ def _called_alternations(grammar):
     ]
 
 
-CHOICES_ARE_FLAT = Invariant("no-choice-of-choices", _called_alternations)
+NO_CHOICE_OF_CHOICES = Invariant("no-choice-of-choices", _no_choice_of_choices)
 
 
-def _called_sequences(grammar):
+def _no_sequence_of_sequences(grammar):
     """
-    Items of a way that are a call to a run of items — what a way does, spelled one call below the way that does it.
+    Check that no item of a way, bar the last, is a call to a run of items.
 
     `a P c` where `P` is `d e` is four things done in a row and shows three, so a reading that walks a way to find what
     it does first stops at the call rather than at `d`. Written out, `a d e c` is the same run with every part of it
@@ -2098,7 +2084,7 @@ def _called_sequences(grammar):
     ]
 
 
-SEQUENCES_ARE_FLAT = Invariant("no-sequence-of-sequences", _called_sequences)
+NO_SEQUENCE_OF_SEQUENCES = Invariant("no-sequence-of-sequences", _no_sequence_of_sequences)
 
 
 def _items_of_way(way):
@@ -2131,9 +2117,9 @@ def _way_items(body):
     return tuple(_items_of_way(way) for way in (_inner_ways(body) if isinstance(body, _BODY_KINDS) else (body,)))
 
 
-def _crowded_ways(grammar):
+def _a_way_is_actions_a_call_and_a_continuation(grammar):
     """
-    Ways holding more than the machine performs in one: actions, a call, and where to carry on when it returns.
+    Check that every way is actions, the call it hands control to, and the one production that carries on.
 
     An edge of the machine is one push — the continuation it will come back to — and a jump. So a way is what it does
     before it hands control on, the call it hands it to, and the one production that carries on: what stands past the
@@ -2160,12 +2146,14 @@ def _crowded_ways(grammar):
     return faults
 
 
-WAYS_ARE_CALL_AND_CONTINUATION = Invariant("a-way-is-actions-a-call-and-a-continuation", _crowded_ways)
+A_WAY_IS_ACTIONS_A_CALL_AND_A_CONTINUATION = Invariant(
+    "a-way-is-actions-a-call-and-a-continuation", _a_way_is_actions_a_call_and_a_continuation
+)
 
 
-def _untold_bodies(grammar):
+def _every_body_is_a_choice_a_run_or_a_set(grammar):
     """
-    Bodies that are not one of the three things the machine has a state for.
+    Check that every body is one of the three things the machine has a state for.
 
     A terminal is a set of characters and nothing else. A loop is a run over a call — the state it jumps back to the top
     of, which says nothing about when it stops, that being a character's to decide. Everything else is an ordered list
@@ -2199,12 +2187,14 @@ def _untold_bodies(grammar):
     return faults
 
 
-BODIES_ARE_STATES = Invariant("every-body-is-a-choice-a-run-or-a-set", _untold_bodies)
+EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET = Invariant(
+    "every-body-is-a-choice-a-run-or-a-set", _every_body_is_a_choice_a_run_or_a_set
+)
 
 
-def _untestable_ways(grammar):
+def _every_way_carries_a_test(grammar):
     """
-    Ways a parse enters on nothing the machine can test, where another way stands behind them.
+    Check that every way a choice offers, bar the last, carries a gate the machine can test before entering it.
 
     A machine takes a way by testing something before it enters it, so a way its gate says nothing about is one it would
     have to try and give back — which is the backtracking the whole shape is for getting rid of. What the test is comes
@@ -2224,63 +2214,33 @@ def _untestable_ways(grammar):
     ]
 
 
-WAYS_CARRY_A_TEST = Invariant("every-way-carries-a-test", _untestable_ways)
+EVERY_WAY_CARRIES_A_TEST = Invariant("every-way-carries-a-test", _every_way_carries_a_test)
 
 
-def _gates_deciding_nothing(grammar):
+def _every_choice_of_one_is_unconditional(grammar):
     """
-    Gates on the only way of a body — a test where there is nothing to choose between.
+    Check that a body offering one way enters it on nothing — no gate, and no guard among its actions.
 
     A gate is what the machine looks at to take one way rather than another. Where a body offers one way, it selects
     nothing: it can only refuse, and refuse where the caller has already been turned away by its own gate on the same
-    characters, since that is where this one came from. Said as a gate it reads as a decision the machine makes; what it
-    is is an assertion the caller has discharged.
-
-    It is a count and not an opinion, and it starts at none — there are no gates at all until the ways are re-encoded —
-    so whichever step first raises it is the one putting a decision where no decision is made.
+    characters, since that is where this one came from. A guard among the actions asks that same question one step
+    later, so it is the same fault said another way. Both belong at the caller, which is the choice that decided to
+    enter.
     """
     return [
-        f"{name}: a gate on the only way of a body, which decides nothing"
+        f"{name}: a body offering one way enters it on a test, where there is nothing to choose between"
         for name, production in grammar.items()
         if isinstance(production.body, ir.Choice) and len(production.body.alternatives) == 1
         for way in production.body.alternatives
-        if way.gate.peek is not None or way.gate.guards
+        if way.gate.peek is not None
+        or way.gate.guards
+        or any(isinstance(action, _ASKING_GUARDS) for action in way.actions)
     ]
 
 
-GATES_DECIDE = Invariant("no-gate-decides-nothing", _gates_deciding_nothing)
-
-
-def _untested_calls_of_tested_choices(grammar):
-    """
-    Ways with no test of their own that hand control to a choice whose every way has one.
-
-    The decision is made one call deeper than it is asked: the caller offers a way nothing can turn away, and behind it
-    the callee tells its ways apart perfectly well. Spliced, the callee's ways stand where the call did and carry their
-    tests with them, so the choice the caller offers is one its gates decide.
-
-    A choice is only worth splicing where every way of it is tested — one untested way among them would arrive as an
-    untested way here, which is what the caller already has.
-    """
-    faults = []
-    for name, production in grammar.items():
-        if not isinstance(production.body, ir.Choice):
-            continue
-        for way in production.body.alternatives:
-            if way.gate.peek is not None or way.gate.guards:
-                continue
-            called = way.first if isinstance(way.first, ir.Ref) else way.second
-            if not isinstance(called, ir.Ref):
-                continue
-            body = grammar[called.name].body
-            if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
-                continue
-            if all(other.gate.peek is not None or other.gate.guards for other in body.alternatives):
-                faults.append(f"{name}: an untested way handing control to a choice its own gates decide")
-    return faults
-
-
-CALLED_CHOICES_ARE_SPLICED = Invariant("no-untested-way-calls-a-tested-choice", _untested_calls_of_tested_choices)
+EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL = Invariant(
+    "every-choice-of-one-is-unconditional", _every_choice_of_one_is_unconditional
+)
 
 
 def _do_spans_overlap(one, other):
@@ -2288,21 +2248,134 @@ def _do_spans_overlap(one, other):
     return any(not (left[1] < right[0] or right[1] < left[0]) for left in one for right in other)
 
 
-def _undecided_choices(grammar):
+# The end of the stream as a value the character in front of the parse takes: a unit no character class holds, the way
+# the invalid byte's `(-1, -1)` is one, so a gate wanting a character and a gate wanting the end are told apart by the
+# same span algebra as any two classes.
+_END_OF_STREAM = (-2, -2)
+
+# Everything that character can be: the end of the stream, the invalid byte, and the codepoints.
+_EVERY_CHARACTER = ((_END_OF_STREAM[0], 0x10FFFF),)
+
+
+@dataclasses.dataclass(frozen=True)
+class _Region:
     """
-    Choices no character tells apart — the meter, and what determinizing exists to drive to none.
+    What a gate admits, one field per axis a choice can tell its ways apart on: the character in front of the parse, the
+    character behind it, whether the parse stands at the start of a line, and the indentation it stands under.
 
-    A machine that never backtracks takes the way whose gate the character in front of it fires, so a choice is decided
-    when at most one gate can fire on any character: the ways it offers are entered on sets that do not meet. Two ways
-    admitting the same character are decided by order and nothing else, which is a guess the machine has no way to take
-    back, and a way with no gate at all is worse — it would have to be tried.
+    An axis a gate says nothing about admits the whole of itself, so two gates are told apart exactly where some axis
+    admits nothing in common — and a gate whose question this cannot place narrows nothing, which proves no way apart
+    from any other. `indentation` is an inclusive `(low, high)`, `high` being `None` where nothing bounds it above.
+    """
 
-    The last way is the exception and not a fault: an empty gate there is the unconditional fallthrough, taken where no
-    gate fired, which is a decision a character made by firing nothing. A guard is no part of this, a guard being a
-    condition on the parse rather than a question about the character; a choice its ways' peeks do not separate counts
-    here even where a guard would have separated them, which errs toward work rather than away from it.
+    ahead: tuple = _EVERY_CHARACTER
+    behind: tuple = _EVERY_CHARACTER
+    line_starts: frozenset = frozenset((True, False))
+    indentation: tuple = (0, None)
 
-    Counted per choice rather than per way: the choice is what the machine decides at, and one way of it left ungated
+
+def _admitting_ahead(region, spans):
+    """`region` narrowed to the characters `spans` admits in front of the parse."""
+    return dataclasses.replace(region, ahead=tuple(_spans_meeting(region.ahead, spans)))
+
+
+def _looked_ahead(guard, region, grammar):
+    """`region` narrowed to what the parse must find in front of it."""
+    spans = _peek_spans(guard.item, grammar)
+    return region if spans is None else _admitting_ahead(region, spans)
+
+
+def _looked_away(guard, region, grammar):
+    """`region` narrowed to what the parse must not find in front of it."""
+    spans = _peek_spans(guard.item, grammar)
+    return (
+        region
+        if spans is None
+        else dataclasses.replace(region, ahead=tuple(_merged_spans(_subtracted_spans(list(region.ahead), spans))))
+    )
+
+
+def _looked_behind(guard, region, grammar):
+    """`region` narrowed to what the parse must have taken to stand here."""
+    spans = _peek_spans(guard.item, grammar)
+    return region if spans is None else dataclasses.replace(region, behind=tuple(_spans_meeting(region.behind, spans)))
+
+
+def _compared(guard, region, _grammar):
+    """
+    `region` narrowed to the indentations a comparison admits.
+
+    Only a comparison between the indentation in force and a written number lands on the axis. One against the length of
+    a match is a question about what was taken rather than about where the parse stands, and narrows nothing.
+    """
+    low, high = region.indentation
+    is_below = isinstance(guard, ir.Lt)
+    if isinstance(guard.a, ir.Indent) and isinstance(guard.b, ir.Lit):
+        high = guard.b.value - 1 if is_below else guard.b.value
+    elif isinstance(guard.a, ir.Lit) and isinstance(guard.b, ir.Indent):
+        low = guard.a.value + 1 if is_below else guard.a.value
+    else:
+        return region
+    return dataclasses.replace(
+        region, indentation=(max(region.indentation[0], low), _lower(region.indentation[1], high))
+    )
+
+
+def _lower(one, other):
+    """The lower of two upper bounds, `None` being no bound at all."""
+    return other if one is None else one if other is None else min(one, other)
+
+
+_GATE_REGION = ir.Reading(
+    "what a guard admits on the axes a choice tells its ways apart on",
+    {
+        ir.StartOfLine: lambda _guard, region, _grammar: dataclasses.replace(
+            region, line_starts=region.line_starts & frozenset((True,))
+        ),
+        ir.EndOfStream: lambda _guard, region, _grammar: _admitting_ahead(region, (_END_OF_STREAM,)),
+        ir.Look: _looked_ahead,
+        ir.NegLook: _looked_away,
+        ir.LookBehind: _looked_behind,
+        (ir.Le, ir.Lt): _compared,
+        # A commit rather than a test: it says nothing about where the parse stands, so it narrows no axis.
+        ir.Cut: lambda _guard, region, _grammar: region,
+    },
+)
+
+
+def _gate_region(gate, grammar):
+    """What `gate` admits on every axis — the region of the input a way behind it is entered on."""
+    region = _Region()
+    if gate.peek is not None:
+        spans = _peek_spans(gate.peek, grammar)
+        region = region if spans is None else _admitting_ahead(region, spans)
+    for guard in gate.guards:
+        region = _GATE_REGION(guard, region, grammar)
+    return region
+
+
+def _are_regions_apart(one, other):
+    """Whether no input at all falls in both regions, which is what tells two ways apart."""
+    low, high = max(one.indentation[0], other.indentation[0]), _lower(one.indentation[1], other.indentation[1])
+    return (
+        not _do_spans_overlap(one.ahead, other.ahead)
+        or not _do_spans_overlap(one.behind, other.behind)
+        or not one.line_starts & other.line_starts
+        or (high is not None and high < low)
+    )
+
+
+def _every_choice_is_deterministic(grammar):
+    """
+    Check that no two ways of a choice are entered on the same input — the meter, and what determinizing drives to none.
+
+    A gate constrains the input on axes that are independent of one another: the character in front of the parse, the
+    character behind it, whether the parse stands at a line start, and the indentation it stands under. The way a gate
+    admits is the product of what it says on each, and two ways are told apart where some axis admits nothing in common.
+    Ways that are not told apart are decided by order alone, which is a guess a machine that never backtracks has no way
+    to take back.
+
+    Counted per choice rather than per way: the choice is what the machine decides at, and one pair not told apart
     leaves the whole decision undecided.
     """
     return [f"{name}: {reason}" for name, reason in _undecided_reasons(grammar).items()]
@@ -2310,30 +2383,33 @@ def _undecided_choices(grammar):
 
 def _undecided_reasons(grammar):
     """
-    `{name: reason}` per choice no character tells apart — the meter's own reading, said once for both its readers.
+    `{name: reason}` per choice whose ways are not told apart — the meter's own reading, said once for all its readers.
+
+    The last way is the catch-all and no part of the disjointness, whatever its gate says: it is reached only where
+    nothing in front of it fired, so what it admits is what the ways before it leave — and where its own gate then
+    refuses, the choice refuses and a recovery is what answers. Every way in front of it carries a gate and admits
+    nothing another one admits, which is what leaves the order carrying no weight.
     """
     reasons = {}
     for name, production in grammar.items():
         body = production.body
-        if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
+        deciding = body.alternatives[:-1] if isinstance(body, ir.Choice) else ()
+        if not deciding:
             continue
-        peeks = [
-            _peek_spans(way.gate.peek, grammar) if way.gate.peek is not None else None for way in body.alternatives
-        ]
-        if any(spans is None for spans in peeks[:-1]):
-            reasons[name] = "a choice offering a way entered on no character"
+        if any(way.gate.peek is None and not way.gate.guards for way in deciding):
+            reasons[name] = "a choice offering a catch-all with ways standing behind it"
             continue
-        admitted = [spans for spans in peeks if spans is not None]
+        regions = [_gate_region(way.gate, grammar) for way in deciding]
         if any(
-            _do_spans_overlap(admitted[before], admitted[after])
-            for before in range(len(admitted))
-            for after in range(before + 1, len(admitted))
+            not _are_regions_apart(regions[before], regions[after])
+            for before in range(len(regions))
+            for after in range(before + 1, len(regions))
         ):
-            reasons[name] = "a choice whose ways admit the same character, and order is what tells them apart"
+            reasons[name] = "a choice whose ways admit the same input, and order is what tells them apart"
     return reasons
 
 
-DECISIONS_GO_ON_A_CHARACTER = Invariant("every-decision-goes-on-a-character", _undecided_choices)
+EVERY_CHOICE_IS_DETERMINISTIC = Invariant("every-choice-is-deterministic", _every_choice_is_deterministic)
 
 
 def _follows_of(grammar):
@@ -2685,34 +2761,6 @@ def _unreachable_options(grammar):
 
 
 EVERY_OPTION_IS_REACHABLE = Invariant("no-unreachable-option", _unreachable_options)
-
-
-def _lookahead_owed(grammar):
-    """
-    One fault per character of shared prefix still standing between a conflict and the decision it makes — the sum being
-    what a round of factoring owes.
-
-    The measure a loop of factoring runs on, and the reason the meter is not it. Factoring trades an undecided choice at
-    one depth for an undecided choice one character shallower, so the meter can sit flat or rise while every round makes
-    real progress; this cannot. A round consumes exactly one character of each targeted conflict's shared prefix and no
-    rewrite pushes a discriminator deeper, so the sum falls by the number of targets and never rises. None means no
-    conflict is waiting on a character it has not reached.
-
-    Only conflicts a character decides are counted. Ways that take the same characters and disagree about what the
-    tokens are called owe nothing to factoring — no depth of it separates them — and a conflict with no verdict at all
-    owes nothing it can be asked for.
-    """
-    import determinize  # noqa: PLC0415 — the walk is determinize's and it reads this module, so the import is made here
-
-    faults = []
-    for name in _undecided_reasons(grammar):
-        found = determinize.verdict(grammar, name)
-        if found.kind == "character":
-            faults += [f"{name}: character {at + 1} of {found.depth} still to walk" for at in range(found.depth)]
-    return faults
-
-
-LOOKAHEAD_IS_WALKED = Invariant("no-lookahead-left-to-factor", _lookahead_owed)
 
 
 def deterministic_productions(grammar):
@@ -4870,24 +4918,37 @@ STEPS = [
     # all until the ways are re-encoded and no scope pairs until the holders are taken apart, and both counts are none
     # here. Whichever step first raises one is the one putting a decision where no decision is made, or a scope whose
     # ends part company.
-    Step("holds-at-the-door", invariants=(GATES_DECIDE, SCOPES_CLOSED)),
+    Step(
+        "holds-at-the-door",
+        invariants=(EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL, EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT),
+    ),
     # Phase 0 establishes `NO_I_T_PARAMETERS`: nothing declares, passes or reads the chomping or the block scalar's
     # indentation mode. Each is data-dependent until this runs, so neither can be specialized: the setters become
     # switches first.
-    Step("lift-setters", lift_setters, FINITE_LEXICAL, reduces=FINITE_LEXICAL),
+    Step(
+        "lift-setters",
+        lift_setters,
+        FINITE_PARAMETERS_ARE_ALWAYS_LITERAL,
+        reduces=FINITE_PARAMETERS_ARE_ALWAYS_LITERAL,
+    ),
     Step(
         "monomorphize",
         monomorphize,
-        (_absent("no-context-case", ir.Case, ir.Flip), FINITE_LEXICAL, NO_I_T_PARAMETERS),
+        (_absent("no-context-case", ir.Case, ir.Flip), FINITE_PARAMETERS_ARE_ALWAYS_LITERAL, NO_I_T_PARAMETERS),
     ),
     # `no-unreachable-option` is none once the specialization has run, and no earlier: a context that picks between
     # shapes is not a grammar the readings of a way can be asked about. Every step behind this is held to it.
     Step("holds-once-specialized", invariants=EVERY_OPTION_IS_REACHABLE),
-    # Phase 1 establishes `ONLY_SETS_AND_LITERALS`: a question about a character is a `CharSet`. A set the context picks
-    # denotes nothing until the specialization has bound the context, so this follows Phase 0. The difference is taken
-    # into the ways it subtracts from first, since a subtraction says a set only where both of its sides do.
-    Step("distribute-differences", distribute_differences, DIFFERENCES_BETWEEN_SETS),
-    Step("lower-char-sets", lower_char_sets, (ONLY_SETS_AND_LITERALS, NO_DIFF_NODES, PEEKS_ARE_SETS)),
+    # Phase 1 establishes `EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET`: a question about a character is a `CharSet`. A
+    # set the context picks denotes nothing until the specialization has bound the context, so this follows Phase 0. The
+    # difference is taken into the ways it subtracts from first, since a subtraction says a set only where both of its
+    # sides do.
+    Step("distribute-differences", distribute_differences, EVERY_DIFFERENCE_IS_BETWEEN_CHARACTER_SETS),
+    Step(
+        "lower-char-sets",
+        lower_char_sets,
+        (EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET, NO_DIFF_NODES, EVERY_PEEK_IS_A_CHARACTER_SET),
+    ),
     # Phase 2 establishes `NO_F_PARAMETER`: the block scalar's leading-empty floor is the parse's one value rather than
     # one a call carries. The value is given an end first, a single slot answering for a parameter only where a read
     # past the region it was measured in is refused rather than answered from what the last construct left.
@@ -4902,7 +4963,7 @@ STEPS = [
     # The pushes go in first and the parameter stays beside them, so what says they stand where they should is every
     # read comparing the two over the corpus; dropping the parameter is what leaves the stack the one place it is.
     Step("hold-established-indents", hold_established_indents, INDENTS_HELD),
-    Step("push-indents", push_indents, INDENTS_PUSHED),
+    Step("push-indents", push_indents, EVERY_INDENTATION_CHANGE_IS_PUSHED),
     Step("read-indents", _read_off("n", ir.Indent()), NO_N_PARAMETER),
     # Phase 5 is the empties, and what it is finished by is no production matching empty but the ones a parse enters by
     # name. This step is the first of it: an empty match is a way beside the one that reads, not a node hiding one.
@@ -4917,7 +4978,7 @@ STEPS = [
     Step(
         "span-consumes",
         span_consumes,
-        (CHARACTER_RUNS_SCANNED, NO_STAR_OR_PLUS_NODES),
+        (EVERY_CHARACTER_RUN_IS_A_SPAN, NO_STAR_OR_PLUS_NODES),
         reduces=NO_STAR_OR_PLUS_NODES,
     ),
     Step("lower-runs", lower_runs, NO_STAR_OR_PLUS_NODES),
@@ -4968,14 +5029,14 @@ STEPS = [
         reduces=ITEMS_ARE_LEAVES,
     ),
     Step("lower-bind", lower_bind, (ITEMS_ARE_LEAVES, NO_BIND_NODES)),
-    Step("bound-exclusions", bound_exclusions, EXCLUSIONS_ARE_BOUNDED, reduces=EXCLUSIONS_ARE_BOUNDED),
+    Step("bound-exclusions", bound_exclusions, EVERY_EXCLUSION_IS_BOUNDED, reduces=EVERY_EXCLUSION_IS_BOUNDED),
     # Phase 8 flattens what a call hides: a choice among the ways of a choice, and a run of items among the items of a
     # way. It runs before the way is split into a call and a continuation, since a choice written out here is one every
     # phase behind this sees whole — every way of it standing where a gate can be put on it rather than one call below.
     Step(
         "flatten-called-alternations",
         flatten_called_alternations,
-        CHOICES_ARE_FLAT,
+        NO_CHOICE_OF_CHOICES,
         lapses={
             "no-call-enters-both-ways": "a choice written out where it was called is its ways standing there, so a "
             "call one of them makes is now made from where the caller stood: the count follows the ways rather than "
@@ -4985,8 +5046,8 @@ STEPS = [
     Step(
         "flatten-called-sequences",
         flatten_called_sequences,
-        SEQUENCES_ARE_FLAT,
-        reduces=SEQUENCES_ARE_FLAT,
+        NO_SEQUENCE_OF_SEQUENCES,
+        reduces=NO_SEQUENCE_OF_SEQUENCES,
         lapses={
             "no-call-enters-both-ways": "a run of items written out where it was called is those items standing "
             "there, so a call among them is now made from where the caller stood: the count follows the items rather "
@@ -4998,7 +5059,7 @@ STEPS = [
     Step(
         "mint-continuations",
         mint_continuations,
-        WAYS_ARE_CALL_AND_CONTINUATION,
+        A_WAY_IS_ACTIONS_A_CALL_AND_A_CONTINUATION,
         lapses=dict.fromkeys(
             ("every-empty-match-is-a-way", "no-call-enters-both-ways", "only-root-empties"),
             "what a way does past its call is a production of its own, and one carrying actions alone takes no "
@@ -5009,7 +5070,16 @@ STEPS = [
     # Phase 10 says every body in the machine's own words: a set of characters, a run over the state it repeats, or the
     # ordered list of alternatives one of which the parse takes.
     Step("call-run-turns", call_run_turns, RUN_TURNS_ARE_CALLS),
-    Step("build-alternatives", build_alternatives, BODIES_ARE_STATES),
+    Step(
+        "build-alternatives",
+        build_alternatives,
+        EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET,
+        lapses={
+            "every-choice-of-one-is-unconditional": "a body said as a choice is the first shape the question can be "
+            "put to: the guards these count stood among the actions of a way before, where nothing asked whether the "
+            "way they enter is one the parse chooses"
+        },
+    ),
     Step(
         "lower-recoveries",
         lower_recoveries,
@@ -5025,16 +5095,16 @@ STEPS = [
     Step(
         "gate-hoist",
         gate_hoist,
-        (WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
-        reduces=(WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
+        (EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
+        reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
     ),
     Step(
         "gate-hoist-call",
         gate_hoist_call,
-        (WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
-        reduces=(WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
+        (EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
+        reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
         lapses={
-            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
+            "every-choice-of-one-is-unconditional": "a hoist gates every way it can, the only way of a body included — "
             "there it decides nothing, there being nothing to select between. What it is there is an assertion "
             "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
         },
@@ -5042,10 +5112,10 @@ STEPS = [
     Step(
         "hoist-past-actions",
         hoist_past_actions,
-        (WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
-        reduces=(WAYS_CARRY_A_TEST, DECISIONS_GO_ON_A_CHARACTER),
+        (EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
+        reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
         lapses={
-            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
+            "every-choice-of-one-is-unconditional": "a hoist gates every way it can, the only way of a body included — "
             "there it decides nothing, there being nothing to select between. What it is there is an assertion "
             "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
         },
@@ -5053,13 +5123,8 @@ STEPS = [
     Step(
         "hoist-guards",
         hoist_guards,
-        WAYS_CARRY_A_TEST,
-        reduces=WAYS_CARRY_A_TEST,
-        lapses={
-            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
-            "there it decides nothing, there being nothing to select between. What it is there is an assertion "
-            "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
-        },
+        EVERY_WAY_CARRIES_A_TEST,
+        reduces=EVERY_WAY_CARRIES_A_TEST,
     ),
     Step(
         "splice-conflicts",
@@ -5068,7 +5133,7 @@ STEPS = [
         reduces=CONFLICTS_CAN_BE_ASKED,
         lapses=dict.fromkeys(
             (
-                "every-decision-goes-on-a-character",
+                "every-choice-is-deterministic",
                 "every-empty-match-is-a-way",
                 "every-way-carries-a-test",
                 "no-call-enters-both-ways",
@@ -5083,10 +5148,10 @@ STEPS = [
     Step(
         "hoist-past-actions-3",
         hoist_past_actions,
-        WAYS_CARRY_A_TEST,
-        reduces=WAYS_CARRY_A_TEST,
+        EVERY_WAY_CARRIES_A_TEST,
+        reduces=EVERY_WAY_CARRIES_A_TEST,
         lapses={
-            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
+            "every-choice-of-one-is-unconditional": "a hoist gates every way it can, the only way of a body included — "
             "there it decides nothing, there being nothing to select between. What it is there is an assertion "
             "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
         },
@@ -5114,28 +5179,27 @@ STEPS = [
             "a way cut along the characters its gate treats alike is that way over again, so what one copy does they "
             "all do: a call that entered both ways is entered by each, and a beginning one shared with another way is "
             "shared by its copies too. Both counts follow the copies, and both are what the factoring reads",
-        ),
+        )
+        | {
+            "every-choice-is-deterministic": "a copy admits exactly what the way it was cut from admits and stands "
+            "beside it in the same choice, so the cut makes pairs the reading finds where it found one way before"
+        },
     ),
     # Last of the gating, since the splitting and the splicing before it copy ways and a guard moved before them would
     # be moved once per copy: every guard a way could be entered on is asked at its gate.
     Step(
         "hoist-askable-guards",
         hoist_askable_guards,
-        (GUARDS_ARE_ASKED_AT_THE_GATE, WAYS_CARRY_A_TEST),
-        reduces=WAYS_CARRY_A_TEST,
-        lapses={
-            "no-gate-decides-nothing": "a hoist gates every way it can, the only way of a body included — and "
-            "there it decides nothing, there being nothing to select between. What it is there is an assertion "
-            "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
-        },
+        (GUARDS_ARE_ASKED_AT_THE_GATE, EVERY_WAY_CARRIES_A_TEST),
+        reduces=EVERY_WAY_CARRIES_A_TEST,
     ),
     # A gate on a body offering one way decides nothing where it stands: moved into the ways that call it, it tells them
     # apart, and what is left below consumes what a gate above has already found.
     Step(
         "lift-gates-to-callers",
         lift_gates_to_callers,
-        GATES_DECIDE,
-        reduces=GATES_DECIDE,
+        EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
+        reduces=EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
         lapses=dict.fromkeys(
             ("every-exclusion-is-bounded", "no-call-enters-both-ways"),
             "the ungated form of a production is that production again under a name of its own, so what it holds it "

@@ -220,21 +220,21 @@ tree form the pop is the next item in a sequence.
 
 The phases, each established and then enforced:
 
-| phase | invariant                                        | what it removes                                                                                 |
-| ----- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| 0     | `no-i-t-parameters`                              | the chomping and the indentation mode, made lexical then specialized                            |
-| 1     | `every-character-question-is-a-set-or-a-literal` | every way of asking about a character but the set of its codepoints, the subtraction among them |
-| 2     | `no-f-parameter`                                 | the block scalar's leading-empty floor, one value for the parse                                 |
-| 3     | `no-m-parameter`                                 | the auto-detected indent, one value for the parse                                               |
-| 4     | `no-n-parameter`                                 | the indentation, moved off the calls and onto the parse's own stack                             |
-| 5     | `only-root-empties`                              | every empty match but the ones a parse enters by name                                           |
-| 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`     | every scope that holds what it covers, for the pair that brackets it                            |
-| 7     | `no-item-holds-a-match`                          | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
-| 8     | `no-choice-of-choices`                           | a decision spelled one call below the choice that offers it                                     |
-| 9     | `a-way-is-actions-a-call-and-a-continuation`     | everything a way holds past its first call                                                      |
-| 10    | `every-body-is-a-choice-a-run-or-a-set`          | the tree's own spelling, for the machine's                                                      |
-| 11    | `every-way-carries-a-test`                       | every way entered on nothing the machine can test, and the meter arrives to say what is left    |
-| later | `every-decision-goes-on-a-character`             | the backtracking, and the calls written out behind it                                           |
+| phase | invariant                                     | what it removes                                                                                 |
+| ----- | --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 0     | `no-i-t-parameters`                           | the chomping and the indentation mode, made lexical then specialized                            |
+| 1     | `every-character-question-is-a-character-set` | every way of asking about a character but the set of its codepoints, the subtraction among them |
+| 2     | `no-f-parameter`                              | the block scalar's leading-empty floor, one value for the parse                                 |
+| 3     | `no-m-parameter`                              | the auto-detected indent, one value for the parse                                               |
+| 4     | `no-n-parameter`                              | the indentation, moved off the calls and onto the parse's own stack                             |
+| 5     | `only-root-empties`                           | every empty match but the ones a parse enters by name                                           |
+| 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`  | every scope that holds what it covers, for the pair that brackets it                            |
+| 7     | `no-item-holds-a-match`                       | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
+| 8     | `no-choice-of-choices`                        | a decision spelled one call below the choice that offers it                                     |
+| 9     | `a-way-is-actions-a-call-and-a-continuation`  | everything a way holds past its first call                                                      |
+| 10    | `every-body-is-a-choice-a-run-or-a-set`       | the tree's own spelling, for the machine's                                                      |
+| 11    | `every-way-carries-a-test`                    | every way entered on nothing the machine can test, and the meter arrives to say what is left    |
+| later | `every-choice-is-deterministic`               | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
@@ -253,31 +253,31 @@ count, and they are the auto-detected-indent copies of the block scalar's conten
 
 **What the flattening bought.** Phase 8 writes out both what a call hides — a choice among the ways of a choice, and a
 run of items among the items of a way — so every part stands where a gate can be put on it rather than one call below.
-Between them and the gate lift, the corpus cases where a committed run and a backtracking one read differently fall from
-129 to **90**, which is the number that measures the goal. The meter went the other way, 164 to 141 and then back to
-**157**, and `every-conflict-can-be-asked` from 5 to **17**: that is what the copies cost, 36 ungated forms minted and
-every written-out run adding ways to be undecided about. Whether all of that rise is copies or some of it is real has
+The corpus cases where a committed run and a backtracking one read differently stand at **261**, which is the number
+that measures the goal. The meter stands at **111** and `every-conflict-can-be-asked` at **12**: that is what the copies
+cost, every written-out run adding ways to be undecided about. Whether all of that is copies or some of it is real has
 not been measured.
 
-**What the gate lift leaves owed.** `no-gate-decides-nothing` stands at **219** — a gate on the only way of a body,
-which selects nothing. Those are reached from ways that act before the call or call them in tail position, where what
-the caller was entered on says nothing about the character at that point. Moving them wants the caller split too: the
-actions before the call into a continuation of their own, the tail call into its own way. Which is the same
-mint-don't-mutate move, one level out.
+**What the gate lift leaves owed.** `every-choice-of-one-is-unconditional` stands at **207** — a body offering one way
+that is entered on a test, by a gate or by a guard among its actions, where there is nothing to choose between. Those
+are reached from ways that act before the call or call them in tail position, where what the caller was entered on says
+nothing about the character at that point. Moving them wants the caller split too: the actions before the call into a
+continuation of their own, the tail call into its own way. Which is the same mint-don't-mutate move, one level out.
 
-What follows it is `every-decision-goes-on-a-character` at **164**, which is the exclusivity question and splits in two:
-**65** choices offering a way with no character set of its own — of which 77 ways are entered on a guard, deciding on
-where the parse stands rather than on what is in front of it — and **99** whose ways admit the same character, order
-being what tells them apart today. The second number is what factoring and speculation are for. The first is the
-question of whether the machine's dispatch tests the gate's guards beside its character set, which is a decision about
-the generated parser and not about the grammar.
+What follows it is `every-choice-is-deterministic` at **111**, which is the exclusivity question and splits in two:
+**8** choices offering a way in front of the catch-all that nothing enters it on, and **103** whose ways admit the same
+input, order being what tells them apart today. The second number is what factoring and speculation are for. A gate is
+read as what it admits on each axis that is independent of the others — the character in front of the parse, the
+character behind it, whether the parse stands at a line start, and the indentation it stands under — so a choice split
+on the indentation is told apart where one split on the character is.
 
-**What the wrappers leave owed.** `every-scope-closes-on-its-own-way` holds the four pairs per way, which is the right
-rule for them and the wrong one for the markers: a marker pair crosses productions by design — `b-chomped-last` emits
-`end-scalar` for a `begin-scalar` opened elsewhere — so holding one to a single way would report dozens of faults that
-are not. `check_markers` proves the `begin`/`end` balance of the grammar as authored and does not follow the pipeline,
-and the first thing that can put a `begin` in one production and its `end` in another is **binarization** — splitting a
-way into a call and a continuation. So a marker net that follows the pipeline is owed by that phase.
+**What the wrappers leave owed.** `every-scope-closes-on-the-path-that-opens-it` holds the four pairs per way, which is
+the right rule for them and the wrong one for the markers: a marker pair crosses productions by design —
+`b-chomped-last` emits `end-scalar` for a `begin-scalar` opened elsewhere — so holding one to a single way would report
+dozens of faults that are not. `check_markers` proves the `begin`/`end` balance of the grammar as authored and does not
+follow the pipeline, and the first thing that can put a `begin` in one production and its `end` in another is
+**binarization** — splitting a way into a call and a continuation. So a marker net that follows the pipeline is owed by
+that phase.
 
 `Recover` is the other thing left standing, and deliberately: it is a handler rather than a scope — the item, and on a
 cut the recovery at wherever the abandoned parse stopped — so it has no close whose position means anything. Its home is
@@ -451,7 +451,7 @@ each phase inherits when it arrives, the meter the first line of them:
 
 | standing |                                                                                                                  |
 | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| **469**  | `every-decision-goes-on-a-character` — the meter, reduced by `speculate-folds` and settled by nobody             |
+| **469**  | `every-choice-is-deterministic` — the meter, reduced by `speculate-folds` and settled by nobody                  |
 | **92**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                          |
 | **70**   | `every-way-carries-a-test` — ways in a multi-way choice with no character to go on                               |
 | 14       | `no-call-deciding-nothing` · 13 `no-standing-pop-holder` · 6 `no-factorable-prefix` · 4 `no-shared-leading-push` |

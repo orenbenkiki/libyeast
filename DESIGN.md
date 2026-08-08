@@ -149,8 +149,8 @@ The pipeline in `generator/normalize.py` is a sequence of phases, each owning on
 that count is none, and from its end the law's "none stays none" makes every later step keep it. A phase finished with a
 green corpus is a checkpoint that lands on its own. The order is dependency's rather than the meter's — Phase 0 settles
 `no-i-t-parameters`, neither the chomping nor a block scalar's indentation mode declared, passed or read; Phase 1
-settles `every-difference-is-between-character-sets` and then `every-character-question-is-a-set-or-a-literal`, and
-follows the specialization because a set the context picks denotes nothing until a caller is known; Phase 2 settles
+settles `every-difference-is-between-character-sets` and then `every-character-question-is-a-character-set`, and follows
+the specialization because a set the context picks denotes nothing until a caller is known; Phase 2 settles
 `no-f-parameter`, the block scalar's leading-empty floor; Phase 3 settles `no-m-parameter`, the detected indent; Phase 4
 settles `no-n-parameter`, the indentation itself; Phase 5 is the empties, and settles `every-empty-match-is-a-way`, then
 `no-call-enters-both-ways`, then `only-root-empties`; Phase 6 is the wrappers, one invariant per kind of scope; Phase 8
