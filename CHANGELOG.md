@@ -143,6 +143,15 @@ All notable changes to this project are documented here. The format follows
   nothing checks, each naming either an invariant or the reason it can have none, and `standing_invariants` counts what
   the final grammar still breaks whatever the steps settle between them.
 
+  A `Step` with no transform is a **claim**: it changes nothing and only says that where it stands, its invariants read
+  none. That is how a property the pipeline is handed rather than makes gets written down, and the law holds every step
+  behind a claim to it exactly as it holds them to a settled one. Naming such a property on whichever step happens to
+  run next reads as that step establishing it, and puts the blame for a later break on the wrong side of the line — so a
+  step naming an invariant that was **already none when it was handed the grammar** is itself a fault, one that says to
+  write a claim instead. Four properties were named that way and are claims now: `no-gate-decides-nothing` and
+  `every-scope-closes-on-the-path-that-opens-it` at the door, `no-unreachable-option` once the specialization has run,
+  and `no-production-reaches-itself-unconsumed` once the optionals are ways.
+
   Phase 0 is the two parameters the grammar sets by matching: the chomping `t` and the block scalar's indentation mode
   `i`. Each is set by an indicator and read productions later through the environment, so a read of either means nothing
   until a caller is known. `lift-setters` inverts each setter into a `(case)` on its parameter matching the condition
@@ -606,21 +615,21 @@ All notable changes to this project are documented here. The format follows
   The meter does not move for it, and should not: an overlap made whole is still an overlap. What it is for is the
   factoring behind it, which reads exactly the gates that are now equal.
 
-  **A way that takes nothing stands last, or what is behind it is unreachable.** `no-unreachable-option` counts a way
-  that can take no character with another way behind it: such a way always gets through, so what stands behind it is
-  what a machine that never returns will never reach — reachable today only because backtracking takes the empty match,
-  fails the continuation, returns and tries the next. The grammar carries **4** in, `order-fallthroughs` moves what it
-  can to the back, and the pipeline settles it at **none**.
+  **A way no input refuses is the last way the machine takes.** `no-unreachable-option` counts a way with another behind
+  it that nothing can hand back: a choice goes on to its next way exactly where the one in front of it fails and is
+  given back, so a way that always matches — or whose failure is the error a commit names, both of which stop the choice
+  where it stands — leaves nothing for the ways behind it to be entered on. It reads **none** from the point it is
+  claimed through every step, with no lapse anywhere.
 
-  A way holding a guard is not one of them, wherever the guard sits: it matches only where the guard does, which the
-  input settles as surely as a character would, so a way behind it stays reachable. That is asked of the way and of the
-  gate both, since the hoists move a guard between the two spellings and neither is a fact about the grammar.
-
-  Three steps in the middle raise it and say why: `lower-optionals` writes `x?` as `x | <empty>` even where `x` can
-  already take nothing, because dropping the second empty match changes which parse is preferred — the optional offers
-  all of the item's ways and *then* an empty one, where the item alone offers only its own — and 439 fixtures read
-  differently without it. `mint-consuming-and-residue` spells such a production twice and copies the shape into both.
-  `splice-conflicts` copies it once per call site. Each is taken back by the steps behind it.
+  It is one question and not two, which is what took the work. A way is refused where a character it needs is not there,
+  where a guard it asks declines, or where its gate turns it away; it is not refused past a `(cut)`, nor inside a
+  committed region, `interpreter.match` raising through a region that has not closed and handing back through one that
+  has. A counted scan is refused, being all or nothing — a scan of none or more is not. Asking instead whether a way
+  refuses *the character it cannot start with* answers a narrower question with a pessimistic bound: it names the first
+  place a raise is possible and stops, where a way that raises on one input is handed back on another. That reading
+  called 24 ways unreachable, and deleting them broke 11 fixtures — `c-l+literal.n=2.empty`, `header-eof`,
+  `keep-empties`, `keep-none`, `JEF9/00` — which is the test a claim of unreachability has to survive. The narrower
+  question is the one `gate_hoist_call` asks, and it keeps it.
 
   **Every way of a choice carries a test the machine can make before entering it.** `every-way-gated` is
   `every-way-carries-a-test`, which is what it counted all along and now says: a machine takes a way by testing

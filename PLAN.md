@@ -239,10 +239,10 @@ The phases, each established and then enforced:
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
 
-Beside the phases stands `no-unreachable-option`, which belongs to none of them: a way that can take no character stands
-last among the ways of its choice, since a machine that never returns reaches nothing behind it. Read from the door, so
-a step that mints such a way is caught where it does it — the grammar carries **4** in, three steps in the middle copy
-or spell the shape again under declared lapses, and the pipeline settles it at none.
+Beside the phases stands `no-unreachable-option`, which belongs to none of them: a choice goes on to its next way
+exactly where the one in front of it is handed back, so a way no input refuses is the last way the machine takes and
+everything behind it is unreachable. Claimed once the specialization has run, which is the first grammar the reading of
+a way can be asked about, and **none** from there through every step — no lapse, nothing copied, nothing owed.
 
 **The two questions, in order.** A machine that never backtracks needs each way of a choice to carry a test it can make
 before entering it, and then it needs the tests to be exclusive. They are separate problems and the first comes close to

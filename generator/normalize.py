@@ -442,10 +442,16 @@ class Step:
     from, and `untested_steps` counts those. Some steps genuinely have nothing standing to test — what they make true is
     momentary, or is a property of a run rather than of a shape — and each says so in a sentence rather than sitting in
     a count that can never reach none. Naming both is a fault: a step either has an invariant or a reason.
+
+    A `transform` of `None` makes the step a **claim**: it does nothing to the grammar and only says that where it
+    stands, its invariants read none. That is how a property the pipeline is handed rather than makes is written down —
+    tying it to whichever step happens to run next would read as that step establishing it, and the first step to break
+    it would then be blamed on the wrong side of the line. A claim settles what it names, so every step behind it is
+    held to it.
     """
 
     name: str
-    transform: object
+    transform: object = None
     invariants: object = ()
     reduces: tuple = ()
     lapses: dict = dataclasses.field(default_factory=dict)
@@ -460,6 +466,11 @@ class Step:
     def does_settle(self, invariant):
         """Whether this step is the one that takes `invariant`'s count to none."""
         return invariant.name in self.carries and invariant.name not in {held.name for held in self.reduces}
+
+    @property
+    def is_a_claim(self):
+        """Whether the step only says its invariants hold where it stands, leaving the grammar as it found it."""
+        return self.transform is None
 
     @property
     def carries(self):
@@ -529,6 +540,20 @@ def untested_steps():
     return [step.name for step in STEPS if not step.invariants and not step.untestable]
 
 
+def _counted(invariant, grammar, points):
+    """
+    How many places `grammar` breaks `invariant`, or `None` where it is not a question this grammar answers.
+
+    A reading raises on a shape it was never told about, and a grammar the step behind has not yet reshaped holds
+    plenty: a context that still picks between shapes, a match that still holds another. That is not a count of none —
+    it is the question not yet being askable, which is itself what makes the step behind the one that establishes it.
+    """
+    try:
+        return len(invariant(grammar, points))
+    except (RecursionError, TypeError, ValueError):
+        return None
+
+
 def invariant_faults(stages, points=None):
     """
     Where the pipeline breaks its own law, as error strings — empty where it holds.
@@ -539,18 +564,36 @@ def invariant_faults(stages, points=None):
 
     The invariant is named by its test, so several steps reducing one count are read as one law. A count is measured
     from the first stage whose step names it, the stages before it being no business of the invariant's.
+
+    A step names an invariant only where it settles it, only lowers it, or claims it. One naming an invariant that was
+    already none when it was handed the grammar is doing none of the three: it establishes nothing, and the law would
+    read the first step behind it to break the invariant as the one at fault. Such a property is written as a claim,
+    which says where it holds without pinning it on a step that did not make it hold.
     """
     faults, taken = [], set()
     by_name = {held.name: held for step in STEPS for held in step.invariants}
-    for step in STEPS:
+    for index, step in enumerate(STEPS):
         if step.invariants and step.untestable:
             faults.append(f"[{step.name}] names an invariant and says it has none — one or the other")
+        if step.is_a_claim and not step.invariants:
+            faults.append(f"[{step.name}] transforms nothing and names nothing, so it says nothing at all")
+        if step.is_a_claim and step.lapses:
+            faults.append(f"[{step.name}] transforms nothing and declares a lapse, which is a licence to break")
         for named in step.lapses:
             if named not in by_name:
                 faults.append(f"[{step.name}] declares a lapse of `{named}`, which no step carries")
         for held in step.reduces:
             if held.name not in step.carries:
                 faults.append(f"[{step.name}] says it only lowers `{held.name}`, which it does not carry at all")
+        for held in step.invariants:
+            if step.is_a_claim or held in step.reduces:
+                continue
+            standing = _counted(held, stages[index][1], points)
+            if standing == 0:
+                faults.append(
+                    f"[{step.name}] settles `{held.name}`, which was already none when it was handed the grammar — a "
+                    f"claim rather than a step, and a step behind it is where the break would be blamed"
+                )
     for named in sorted(by_name):
         test = by_name[named]
         first = min(index for index, step in enumerate(STEPS) if named in step.carries)
@@ -828,6 +871,9 @@ def stages(grammar):
     callee, and a do-nothing or a duplicate the sweep leaves standing would hold the determinize meter above its honest
     floor. The base grammar is kept whole: it is the grammar as frozen at the completeness gate, cleaned by no step.
 
+    A claim is not a step in this sense — it transforms nothing and stands in the list only to say where a property
+    already holds, so it repeats the stage it was handed rather than making one.
+
     Every step must change the grammar, and one that does not is a fault. A step earns its place by doing something: it
     goes idle when what it looks for has stopped reaching it — a shape an earlier step now spells differently, a
     declared site whose content moved — and that is a regression in the step before it, not a step to leave standing.
@@ -838,6 +884,11 @@ def stages(grammar):
     namer.points.settle("base", grammar)
     result = [("base", grammar)]
     for step in STEPS:
+        if step.is_a_claim:
+            result.append(
+                (step.name, grammar)
+            )  # a claim leaves the grammar it was handed, so the stage is the same one
+            continue
         produced = step.transform(grammar, namer)
         if produced == grammar:
             raise AssertionError(f"the `{step.name}` step changed nothing — what it looks for no longer reaches it")
@@ -2430,11 +2481,25 @@ class Verdict(enum.Enum):
     INTO_CALL = "into call"  # follow the production it names
     INTO_ITEM = "into item"  # follow what it holds
     COMMIT = "commit"  # past here, failing is the error it names rather than a refusal handed back
+    OPEN_REGION = "open region"  # a committed region begins: failing inside it raises rather than being handed back
+    CLOSE_REGION = "close region"  # the region ends, and failing behind it is handed back like any other
+    INTO_REGION = "into region"  # follow what it holds, as a committed region in the spelling that holds its content
 
 
 # The actions that only leave something behind: every one but those that commit the parse, which `_COMMITS` names and
 # which a walk looking for what a way can be refused at has to stop at rather than pass over.
 _PLAIN_ACTIONS = tuple(action for action in _ACTIONS if action not in _COMMITS)
+
+# The actions a walk for where a match can be refused simply steps over, `interpreter.match`'s terms: an `(error)` emits
+# its token and hands the failure back like any other, so only a `(cut)` and the markers of a committed region are not
+# here. `_COMMITS` is a wider group, being what a gate must not be hoisted past — an `(error)` skipped is a token lost.
+_STEPPED_OVER_ACTIONS = tuple(
+    action for action in _ACTIONS if action not in (ir.Cut, ir.Error, ir.PushMessage, ir.PopMessage)
+)
+
+# What matches wherever it stands, so that no input makes it fail: what a walk inside a committed region may step over,
+# every other kind being one whose failure there is the region's message rather than a refusal handed back.
+_CANNOT_FAIL = (*_STEPPED_OVER_ACTIONS, *_VALUE_KINDS, ir.Empty)
 
 _GUARD_VERDICT = ir.Reading(
     "the `Verdict` a walk for the guards a way could be entered on reaches about an item",
@@ -2482,14 +2547,95 @@ def _askable_guards(grammar):
 GUARDS_ARE_ASKED_AT_THE_GATE = Invariant("no-guard-left-among-the-actions", _askable_guards)
 
 
-def _is_a_fallthrough(way, grammar, ways):
+def _can_be_refused(node, grammar, seen=frozenset()):
     """
-    Whether a way takes nothing and nothing about the parse decides it — one the machine always gets through.
+    Whether some input makes `node` fail and be handed back, rather than matching or raising.
 
-    The one reading of what makes a way a fallthrough, so the step that moves such ways last and the invariant that
-    counts the ones which are not cannot disagree about which they are.
+    This is what says whether the ways behind one can be reached: a choice goes on to the next way exactly where this
+    one is handed back, so a way no input refuses is the last way the machine ever takes. Matching and raising both stop
+    the choice, and neither leaves anything for the way behind to be entered on.
+
+    `seen` holds the productions the walk is already inside, a recursion reached again saying nothing new.
     """
-    return _is_nullable(way, grammar, ways) and not _does_a_guard_decide(way)
+    return _CAN_BE_REFUSED(node, grammar, seen)
+
+
+def _can_a_way_be_refused(way, grammar, seen):
+    """
+    Whether some input makes a way fail and be handed back — its items in turn, up to what commits.
+
+    A gate stands in front of the way, so a way carrying one is refused wherever the gate declines. Past a `(cut)` or
+    inside a committed region a failure is the message rather than a way handed back, which is why the walk stops
+    counting there: `interpreter.match` raises through a region that has not closed and hands back through one that has.
+    """
+    if _does_a_gate_decide(way):
+        return True
+    open_regions = 0
+    for item in map(_unheld, _items_of_way(way)):
+        if isinstance(item, ir.PushMessage):
+            open_regions += 1
+        elif isinstance(item, ir.PopMessage):
+            open_regions -= 1
+        elif isinstance(item, ir.Cut):
+            return False  # past a cut every failure is the error it names, so nothing behind it is handed back
+        elif isinstance(item, ir.Commit):
+            continue  # what it holds raises where it fails, the region being the same thing the pair spells
+        elif not open_regions and _can_be_refused(item, grammar, seen):
+            return True
+    return False
+
+
+def _does_a_gate_decide(way):
+    """
+    Whether a gate stands in front of a way, so that the way is entered only where the gate holds.
+
+    A character question or a guard, either being a test the machine makes before the way runs: a wrong input turns the
+    way away and the choice goes on to the next, whatever the way itself would have done had it been entered.
+    """
+    return isinstance(way, ir.Alternative) and (way.gate.peek is not None or bool(way.gate.guards))
+
+
+_CAN_BE_REFUSED = ir.Reading(
+    "whether some input makes a match fail and be handed back, rather than matching or raising",
+    {
+        # An action leaves something behind and an empty match is the thing itself: neither has an input to fail on.
+        (*_ACTIONS, ir.Empty, *_VALUE_KINDS): False,
+        # A character that is not there and a guard that declines are both handed back where they stand.
+        (*_ALWAYS_READS, *_ASKING_GUARDS): True,
+        # A cut matches and turns what fails behind it into the error it names, so it is never handed back itself.
+        ir.Cut: False,
+        # A run of none or more takes no turn where its set is not there, and a trimmed scan is one of those.
+        (ir.ConsumeSpan, ir.ConsumeTrimmedSpan, ir.Opt, ir.Star): False,
+        # A counted scan is all or nothing: asked for more characters than are there, it takes none and is handed back.
+        ir.ConsumeCountedSpan: lambda node, grammar, seen: not (
+            isinstance(node.count, ir.Lit) and node.count.value <= 0
+        ),
+        ir.LongestRun: lambda node, grammar, seen: node.least > 0 and _can_be_refused(node.item, grammar, seen),
+        ir.Plus: lambda node, grammar, seen: _can_be_refused(node.item, grammar, seen),
+        # A count of none takes nothing whatever happens; any other turns on what it repeats.
+        ir.Rep: lambda node, grammar, seen: not (isinstance(node.count, ir.Lit) and node.count.value <= 0)
+        and _can_be_refused(node.item, grammar, seen),
+        # A recursion reached again says nothing new, the way in having been judged where it stood.
+        ir.Ref: lambda node, grammar, seen: node.name not in seen
+        and _can_be_refused(grammar[node.name].body, grammar, seen | {node.name}),
+        (ir.Alternative, ir.Seq): _can_a_way_be_refused,
+        # A choice is handed back only where every way it offers is: one that matches is the choice matching.
+        (ir.Alt, ir.Choice): lambda node, grammar, seen: all(
+            _can_be_refused(way, grammar, seen) for way in _ways_or_items(node)
+        ),
+        # A committed region raises where what it holds fails, so it is never the thing handed back.
+        ir.Commit: False,
+        (ir.Max, ir.Recover, ir.Token, ir.Wrap): lambda node, grammar, seen: (
+            node.item is not None and _can_be_refused(node.item, grammar, seen)
+        ),
+        ir.Bind: lambda node, grammar, seen: _can_be_refused(node.cond, grammar, seen),
+        # A switch the specialization settles: it is handed back only where every branch it could take is.
+        ir.Case: lambda node, grammar, seen: all(
+            _can_be_refused(item, grammar, seen)
+            for item in [branch.item for branch in node.branches] + ([node.default] if node.default else [])
+        ),
+    },
+)
 
 
 def _over_ways(grammar, rewritten):
@@ -2511,37 +2657,21 @@ def _over_ways(grammar, rewritten):
     return {name: told(production) for name, production in grammar.items()}
 
 
-def _does_a_guard_decide(way):
-    """
-    Whether a guard stands in a way that takes no character — a question the parse answers where a character cannot.
-
-    Such a way matches only where the guard holds, so it is no fallthrough and a way behind it stays reachable:
-    `l-yeast-stream`'s end-of-input way matches empty exactly where there is no character left, which the input settles
-    as surely as a character would.
-    """
-    if isinstance(way, ir.Alternative) and way.gate.guards:
-        return True
-    return any(isinstance(_unheld(item), _ASKING_GUARDS) for item in _items_of_way(way))
-
-
 def _unreachable_options(grammar):
     """
-    Ways that can take nothing, with another way standing behind them.
+    Ways no input can reach, because the way in front of them is never handed back.
 
-    A way that takes nothing always gets through, so every way after it is one a machine that does not backtrack will
-    never reach. Backtracking hides that: the way matches, the continuation fails, the parse returns and tries the next.
-    A machine that never returns simply loses them.
+    A choice goes on to its next way exactly where the one before it fails and is handed back. So a way that no input
+    refuses — one that always matches, or whose failure is the error a commit names — is the last way the machine takes,
+    and every way behind it is one nothing can enter. Backtracking hides the first half: the way matches, the
+    continuation fails, the parse returns and tries the next. A machine that never returns simply loses them.
 
     So a choice may hold one such way and it must stand last, where it is the fallthrough every choice ends in. Two of
     them is worse than undecidable: the second is unreachable, and nothing about the grammar says which of the two was
     meant.
 
-    Asked of the grammar as it is written, where a way is a tree and there are no gates to read: whether a way can take
-    nothing is a question about the match, and `_is_nullable` answers it for every kind or raises. What a *machine*
-    could tell the ways apart by is a different question and belongs to the shape that has gates, where
-    `every-way-carries-a-test` asks it of `_entry_of`.
+    What the gates *leave* undecided is a different question, and `every-way-carries-a-test` asks it of `_entry_of`.
     """
-    ways = _split_ways(grammar)
     faults = []
     for name, production in grammar.items():
         for node in _held(production.body):
@@ -2549,47 +2679,9 @@ def _unreachable_options(grammar):
                 node.alternatives if isinstance(node, ir.Choice) else node.items if isinstance(node, ir.Alt) else ()
             )
             for way in offered[:-1]:
-                if _is_a_fallthrough(way, grammar, ways):
-                    faults.append(f"{name}: a way that can take nothing, with another way behind it")
+                if not _can_be_refused(way, grammar):
+                    faults.append(f"{name}: a way no input refuses, with a way behind it")
     return faults
-
-
-def order_fallthroughs(grammar, namer):
-    """
-    A way that matches wherever it is reached stands last among the ways of its choice.
-
-    Such a way is one the parse can always get through, so every way behind it is one a machine that never returns will
-    never reach. Last, it is the fallthrough every gated choice ends in and nothing is lost behind it.
-
-    Moved whole rather than split into what it reads and what it does not: splitting is the empties phase's own rule and
-    mints the names to say it with, which do not exist this early. Moving changes which parse is preferred where both a
-    reading way and this one match, so the corpus is what says the rewrite is an identity — and where it says otherwise,
-    that is the case the split is for.
-
-    What the grammar carries in is the spec's own `l-empty`, whose line prefix matches empty and stands in front of
-    `s-indent(<n)` — one production, and two of it once the contexts are monomorphized. A way holding a guard is not
-    among them: it matches only where the guard does, which the input settles as surely as a character would, and a way
-    behind it stays reachable.
-    """
-    ways = _split_ways(grammar)
-
-    def ordered(node):
-        node = ir.rebuilt(node, ordered)
-        if not isinstance(node, ir.Alt):
-            return node
-        kept, trailing = [], []
-        for at, way in enumerate(node.items):
-            if at == len(node.items) - 1 or not _is_a_fallthrough(way, grammar, ways):
-                kept.append(way)
-            else:
-                trailing.append(way)
-        if not trailing:
-            return node
-        return ir.Alt(items=tuple(kept) + tuple(trailing))
-
-    return {
-        name: dataclasses.replace(production, body=ordered(production.body)) for name, production in grammar.items()
-    }
 
 
 EVERY_OPTION_IS_REACHABLE = Invariant("no-unreachable-option", _unreachable_options)
@@ -3051,7 +3143,7 @@ _HELD_MATCH = ir.Reading(
     "the match a node holds inside the scope written around it, or the node itself where it holds none",
     {
         # A window with nothing in it is a bound rather than a scope around a match, so it is what it is.
-        ir.Token: lambda node: node.item if node.item is not None else node,
+        (ir.Max, ir.Recover, ir.Token, ir.Wrap): lambda node: node.item if node.item is not None else node,
         (
             *_ALWAYS_READS,
             *_TAKES_NOTHING,
@@ -3071,7 +3163,7 @@ _HELD_MATCH = ir.Reading(
 )
 
 
-def _does_refuse(node, grammar, ways, seen=frozenset()):
+def _does_refuse(node, grammar, ways, seen=frozenset(), depth=0):
     """
     Whether entering `node` on a character it cannot start with fails rather than raising.
 
@@ -3090,30 +3182,64 @@ def _does_refuse(node, grammar, ways, seen=frozenset()):
     Only a character ends the walk, never a guard. The question is what happens on a character the way cannot start
     with, and a guard asks about something else — it may hold perfectly well there and hand the parse straight on to
     what commits.
+
+    `depth` is how many committed regions stand open around `node`, which is what tells a refusal from an error:
+    `interpreter.match` hands a failure back through a region that has closed and raises the message through one that
+    has not. So inside a region the character the walk would have ended on is the error instead, and a call made there
+    is one whose own failure is the error too.
     """
     offered = node.alternatives if isinstance(node, ir.Choice) else node.items if isinstance(node, ir.Alt) else (node,)
     for way in offered:
-        if isinstance(way, ir.Alternative) and way.gate.peek is not None:
+        if isinstance(way, ir.Alternative) and way.gate.peek is not None and not depth:
             continue  # the gate turns the wrong character away before the way is entered, so nothing has committed
+        open_regions = depth
         for item in map(_unheld, _items_of_way(way)):
             verdict = _REFUSAL_VERDICT(item)
-            if verdict is Verdict.COMMIT:
+            if verdict is Verdict.OPEN_REGION:
+                open_regions += 1
+                continue
+            if verdict is Verdict.CLOSE_REGION:
+                open_regions -= 1
+                continue
+            if open_regions:
+                # A region stands open, so nothing that fails here is handed back — a guard that declines raises the
+                # region's message as surely as a character that is not there. Only what cannot fail at all is walked
+                # past to what stands behind the close.
+                if isinstance(item, _CANNOT_FAIL):
+                    continue
                 return False
-            if verdict is Verdict.STOP:
-                break
             if verdict is Verdict.PASS:
                 continue
+            if verdict is Verdict.COMMIT:
+                return False
+            if verdict is Verdict.INTO_REGION:
+                if not _does_refuse(item.item, grammar, ways, seen, 1):
+                    return False
+                continue  # nothing in it can fail on a wrong character, so the walk goes on past its end
+            if verdict is Verdict.STOP:
+                break
             if verdict is Verdict.INTO_CALL:
                 if item.name in seen:
                     break
                 if not _does_refuse(grammar[item.name].body, grammar, ways, seen | {item.name}):
                     return False
-                if not ways[item.name][1]:
+                if ways[item.name][0]:
+                    # It can take a character, so there is an input — and, where a count decides how many, a value of
+                    # that count — on which a wrong character is refused right here. That the same call may also take
+                    # nothing on some other input is no reason to walk past it: what is asked is whether the way can be
+                    # refused, and here it can. Only a call that can never read leaves the question to what follows.
                     break
                 continue
-            if not _does_refuse(_held_item(item), grammar, ways, seen):
+            held = _held_item(item)
+            if not _does_refuse(held, grammar, ways, seen):
                 return False
-            break  # what it holds can refuse, so the way is given back before anything of it commits
+            if _is_nullable(held, grammar, ways):
+                continue  # it can take nothing, so a wrong character is not refused here but by what stands behind it
+            break  # it must take a character, so the way is given back on a wrong one before anything of it commits
+        if open_regions > depth:
+            # The way ends with a region it opened still open, the close standing in whatever runs next. What fails
+            # there raises, and a gate that kept the way from being entered would have kept the region from opening.
+            return False
     return True
 
 
@@ -3127,12 +3253,24 @@ def _held_item(node):
 _REFUSAL_VERDICT = ir.Reading(
     "the `Verdict` a walk for where a match can be refused reaches about an item",
     {
-        (ir.Error, ir.PushMessage): Verdict.COMMIT,
+        (ir.Cut, ir.Error): Verdict.COMMIT,
+        ir.PushMessage: Verdict.OPEN_REGION,
+        ir.PopMessage: Verdict.CLOSE_REGION,
+        ir.Commit: Verdict.INTO_REGION,
         # A character has to be taken here, so whatever fails behind it fails a parse that had already started.
-        (ir.CharSet, ir.ConsumeSpan): Verdict.STOP,
+        (*_ALWAYS_READS, *_SCANS): Verdict.STOP,
         ir.Ref: Verdict.INTO_CALL,
-        ir.LongestRun: Verdict.INTO_ITEM,
-        (*_PLAIN_ACTIONS, *_ASKING_GUARDS, *_VALUE_KINDS, ir.Bind, ir.Empty, ir.Token, ir.Wrap): Verdict.PASS,
+        (*_RUNS, ir.Alt, ir.Case, ir.Choice, ir.Opt, ir.Rep, ir.Seq): Verdict.INTO_ITEM,
+        (
+            *_STEPPED_OVER_ACTIONS,
+            *_ASKING_GUARDS,
+            *_VALUE_KINDS,
+            ir.Bind,
+            ir.Empty,
+            ir.Max,
+            ir.Token,
+            ir.Wrap,
+        ): Verdict.PASS,
     },
 )
 
@@ -4104,6 +4242,16 @@ def _split_canonical(node, grammar, ways):
     return (node if does_read else None, node if held(part is not None for _reads, part in answers) else None)
 
 
+def _split_switch(node, grammar, ways):
+    """A switch's `(reads, empty)`: it reads where any branch it could take does, and takes nothing where any does."""
+    branches = [branch.item for branch in node.branches] + ([node.default] if getattr(node, "default", None) else [])
+    answers = [_split(item, grammar, ways) for item in branches]
+    return (
+        node if any(part is not None for part, _empty in answers) else None,
+        node if any(part is not None for _reads, part in answers) else None,
+    )
+
+
 def _split_seq(node, grammar, ways):
     """
     A sequence's `(reads, empty)`. It reads where any one part does, so the reading ways are one per part that can —
@@ -4175,6 +4323,11 @@ _SPLIT = ir.Reading(
         ir.Bind: _split_bind,
         _HOLDERS: _split_holder,
         (ir.Alternative, ir.Choice): _split_canonical,
+        # A switch the specialization settles, met only before it runs: which branch is taken is decided by the caller
+        # and not by the input, so the honest answer is that any of them may be, and the node stands for whichever it
+        # can. Nothing rewrites by these halves — the steps that did run after the specialization.
+        ir.Case: _split_switch,
+        _VALUE_KINDS: lambda node, grammar, ways: (None, node),  # a value matches nothing, so it takes no character
         ir.Opt: lambda node, grammar, ways: (
             node.item if _split(node.item, grammar, ways)[0] is not None else None,
             ir.Empty(),
@@ -4713,18 +4866,23 @@ def _unbounded_reads(param):
 
 
 STEPS = [
+    # What the grammar arrives already holding, so that no step is read as having established it: there are no gates at
+    # all until the ways are re-encoded and no scope pairs until the holders are taken apart, and both counts are none
+    # here. Whichever step first raises one is the one putting a decision where no decision is made, or a scope whose
+    # ends part company.
+    Step("holds-at-the-door", invariants=(GATES_DECIDE, SCOPES_CLOSED)),
     # Phase 0 establishes `NO_I_T_PARAMETERS`: nothing declares, passes or reads the chomping or the block scalar's
     # indentation mode. Each is data-dependent until this runs, so neither can be specialized: the setters become
-    # switches first. `no-gate-decides-nothing` is named here, at the door, because it is none here: there are no gates
-    # at all until the ways are re-encoded, so whichever step first raises it is the one putting a decision where no
-    # decision is made.
-    Step("lift-setters", lift_setters, (FINITE_LEXICAL, GATES_DECIDE), reduces=FINITE_LEXICAL),
+    # switches first.
+    Step("lift-setters", lift_setters, FINITE_LEXICAL, reduces=FINITE_LEXICAL),
     Step(
-        "monomorphize", monomorphize, (_absent("no-context-case", ir.Case, ir.Flip), FINITE_LEXICAL, NO_I_T_PARAMETERS)
+        "monomorphize",
+        monomorphize,
+        (_absent("no-context-case", ir.Case, ir.Flip), FINITE_LEXICAL, NO_I_T_PARAMETERS),
     ),
-    # As early as the reading allows, since every step after it is held to keeping it: a way that matches wherever it is
-    # reached stands last, where it is the fallthrough, and not in front of ways a committed machine would never reach.
-    Step("order-fallthroughs", order_fallthroughs, EVERY_OPTION_IS_REACHABLE, reduces=EVERY_OPTION_IS_REACHABLE),
+    # `no-unreachable-option` is none once the specialization has run, and no earlier: a context that picks between
+    # shapes is not a grammar the readings of a way can be asked about. Every step behind this is held to it.
+    Step("holds-once-specialized", invariants=EVERY_OPTION_IS_REACHABLE),
     # Phase 1 establishes `ONLY_SETS_AND_LITERALS`: a question about a character is a `CharSet`. A set the context picks
     # denotes nothing until the specialization has bound the context, so this follows Phase 0. The difference is taken
     # into the ways it subtracts from first, since a subtraction says a set only where both of its sides do.
@@ -4752,38 +4910,30 @@ STEPS = [
         "lower-optionals",
         lower_optionals,
         NO_OPT_NODES,
-        lapses={
-            "no-unreachable-option": "an optional whose item can already take nothing becomes two ways that both do, "
-            "and the second is the one a machine loses. It stands because dropping it changes which parse is "
-            "preferred — the optional offers all of the item's ways and then an empty match, where the item alone "
-            "offers only its own — and the empties phase is what tells the two apart under names of their own"
-        },
     ),
+    # `no-production-reaches-itself-unconsumed` is none from here, and is not a question an earlier grammar answers: a
+    # cycle is read off the ways a production offers, which the optionals are the last thing to be spelled outside of.
+    Step("holds-once-optionals-are-ways", invariants=NO_UNCONSUMED_CYCLE),
     Step(
         "span-consumes",
         span_consumes,
         (CHARACTER_RUNS_SCANNED, NO_STAR_OR_PLUS_NODES),
         reduces=NO_STAR_OR_PLUS_NODES,
     ),
-    Step("lower-runs", lower_runs, (NO_STAR_OR_PLUS_NODES, NO_UNCONSUMED_CYCLE)),
+    Step("lower-runs", lower_runs, NO_STAR_OR_PLUS_NODES),
     Step(
         "mint-consuming-and-residue",
         mint_consuming_and_residue,
         EMPTIES_NAMED,
-        lapses={
-            "no-unreachable-option": "a production that takes nothing on some way is spelled twice here, and a way "
-            "standing in front of an empty match is copied into both: the count follows the copies, and what the "
-            "residues' dissolving behind this takes back is the empty match itself"
-        },
     ),
     Step("distribute-residues", distribute_residues, CALLS_DECIDED),
     Step("dissolve-residues", dissolve_residues, ONLY_ROOT_EMPTIES),
     # Phase 6 takes the scopes off what they cover, each step one kind, and every one of them is held to the pairs it
     # leaves closing where they open — the guarantee a wrapper gave by construction, now a count.
-    Step("lower-wraps", lower_wraps, (NO_WRAP_NODES, SCOPES_CLOSED)),
-    Step("lower-windows", lower_windows, (NO_MAX_NODES, SCOPES_CLOSED)),
-    Step("lower-commits", lower_commits, (NO_COMMIT_NODES, SCOPES_CLOSED)),
-    Step("lower-tokens", lower_tokens, (NO_TOKEN_NODES, SCOPES_CLOSED)),
+    Step("lower-wraps", lower_wraps, NO_WRAP_NODES),
+    Step("lower-windows", lower_windows, NO_MAX_NODES),
+    Step("lower-commits", lower_commits, NO_COMMIT_NODES),
+    Step("lower-tokens", lower_tokens, NO_TOKEN_NODES),
     # Phase 7 takes the tree apart: an item standing in a way is something the machine does where it stands, and every
     # shape holding a match inside it becomes a production of its own. The steps reduce `no-item-holds-a-match` between
     # them, each settling its own share of it.
@@ -4850,7 +5000,7 @@ STEPS = [
         mint_continuations,
         WAYS_ARE_CALL_AND_CONTINUATION,
         lapses=dict.fromkeys(
-            ("every-empty-match-is-a-way", "no-call-enters-both-ways", "no-unreachable-option", "only-root-empties"),
+            ("every-empty-match-is-a-way", "no-call-enters-both-ways", "only-root-empties"),
             "what a way does past its call is a production of its own, and one carrying actions alone takes no "
             "character: the canonical form mints those deliberately, a continuation being where the parse carries on "
             "rather than a choice anything makes",

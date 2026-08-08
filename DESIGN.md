@@ -158,18 +158,18 @@ is the flattening, which settles `no-choice-of-choices` by writing out a choice 
 way of it stands where a gate can be put on it rather than one call below. A step written where its goal's other steps
 already ran is a smaller step, against a grammar with less in it.
 
-One invariant belongs to no phase. `no-unreachable-option` is read from the moment the contexts are monomorphized and
-every step after answers for it: a way that can take no character always gets through, so every way behind it is one a
-machine that never returns will never reach — which backtracking hides, the way matching and the continuation failing
-and the parse returning to try the next. The grammar carries **4** in; `order-fallthroughs` moves what it can to the
-back, where the fallthrough every choice ends in belongs, and the pipeline settles it at none. A way holding a guard is
-not one of them, wherever the guard sits: it matches only where the guard does, which the input settles as surely as a
-character would, and a way behind it stays reachable.
+One invariant belongs to no phase. `no-unreachable-option` is claimed from the moment the contexts are monomorphized and
+every step after answers for it: a choice goes on to its next way exactly where the one in front of it fails and is
+handed back, so a way no input refuses leaves nothing for the ways behind it to be entered on. Backtracking hides it —
+the way matches, the continuation fails, the parse returns and tries the next — and a machine that never returns simply
+loses them. It reads none from the claim through the whole pipeline.
 
-It is a question about the match and not about a machine, which is why it is asked of the grammar as written, where a
-way is a tree and there are no gates to read. What a machine could tell the ways apart by is `every-way-carries-a-test`,
-and that one is asked where the gates exist. One reading answers each — `_is_nullable` for the first, `_entry_of` for
-the second.
+A way is refused where a character it needs is not there, where a guard it asks declines, or where its gate turns it
+away. It is not refused past a `(cut)`, nor inside a committed region, a failure there being the message that region
+names rather than a way handed back. That is one question — whether *some* input refuses the way — and not the narrower
+one of what happens on a character the way cannot start with, which is what a gate hoist needs and what `_does_refuse`
+answers for it. What a machine could tell the ways apart by is `every-way-carries-a-test`, asked where the gates exist.
+One reading answers each — `_can_be_refused` for the first, `_entry_of` for the second.
 
 **Every question about a node is asked through `ir.Reading`**, a table from node kind to what to do about it, because
 the alternative — a chain of `isinstance` tests ending in a fallthrough — answers permissively for whatever spelling its
