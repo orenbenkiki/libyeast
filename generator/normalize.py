@@ -640,6 +640,17 @@ def invariant_faults(stages, points=None):
             after = _counted(test, stages[index + 1][1], points)
             if before and after == 0 and not step.does_settle(test):
                 faults.append(f"[{step.name}] takes `{named}` to none and does not say it settles it")
+    # Once an invariant is a question the pipeline asks, every step that moves its count says so. Read from the first
+    # step that names it, that being where the count starts being measured: what a step does to a shape the pipeline has
+    # not built yet is construction, and what it does to one already under the law is work on the property.
+    for named, test in by_name.items():
+        first = min(index for index, step in enumerate(STEPS) if named in step.carries)
+        for index in range(first, len(STEPS)):
+            step = STEPS[index]
+            before = _counted(test, stages[index][1], points)
+            after = _counted(test, stages[index + 1][1], points)
+            if before is not None and after is not None and after < before and named not in step.carries:
+                faults.append(f"[{step.name}] lowers `{named}` from {before} to {after} and does not name it")
     # A lapse is a reason for something that happens. One nothing happens under is a claim the grammar has outgrown, and
     # it goes rather than standing as a licence nobody needs — the same net the declared tables answer to.
     for step in STEPS:
@@ -5033,11 +5044,11 @@ STEPS = [
             "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
         },
     ),
-    Step("hoist-guards", hoist_guards, reduces=EVERY_WAY_CARRIES_A_TEST),
+    Step("hoist-guards", hoist_guards, reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC)),
     Step(
         "splice-conflicts",
         splice_conflicts,
-        reduces=EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW,
+        reduces=(EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW, EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL),
         lapses=dict.fromkeys(
             (
                 "every-choice-is-deterministic",
@@ -5055,7 +5066,7 @@ STEPS = [
     Step(
         "hoist-past-actions-3",
         hoist_past_actions,
-        reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_OPTION_IS_REACHABLE),
+        reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_OPTION_IS_REACHABLE, EVERY_CHOICE_IS_DETERMINISTIC),
         lapses={
             "every-choice-of-one-is-unconditional": "a hoist gates every way it can, the only way of a body included — "
             "there it decides nothing, there being nothing to select between. What it is there is an assertion "
@@ -5069,7 +5080,15 @@ STEPS = [
         "inline-shared-heads",
         inline_shared_heads,
         settles=EVERY_OPTION_IS_REACHABLE,
-        reduces=NO_CONFLICT_SHARES_A_CALLED_HEAD,
+        reduces=(
+            NO_CONFLICT_SHARES_A_CALLED_HEAD,
+            EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
+            EVERY_WAY_IS_EITHER_EMPTY_OR_CONSUMES,
+            EVERY_PRODUCTION_IS_EITHER_EMPTY_OR_CONSUMES,
+            NO_NESTED_PRODUCTION_MATCHES_EMPTY,
+            EVERY_WAY_CARRIES_A_TEST,
+            EVERY_CHOICE_IS_DETERMINISTIC,
+        ),
     ),
     Step(
         "split-gates",
@@ -5089,9 +5108,18 @@ STEPS = [
         "hoist-askable-guards",
         hoist_askable_guards,
         settles=NO_GUARD_LEFT_AMONG_THE_ACTIONS,
-        reduces=EVERY_WAY_CARRIES_A_TEST,
+        reduces=(
+            EVERY_WAY_CARRIES_A_TEST,
+            NO_NESTED_PRODUCTION_MATCHES_EMPTY,
+            EVERY_CHOICE_IS_DETERMINISTIC,
+            NO_CONFLICT_SHARES_A_CALLED_HEAD,
+        ),
     ),
     # A gate on a body offering one way decides nothing where it stands: moved into the ways that call it, it tells them
     # apart, and what is left below consumes what a gate above has already found.
-    Step("lift-gates-to-callers", lift_gates_to_callers, reduces=EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL),
+    Step(
+        "lift-gates-to-callers",
+        lift_gates_to_callers,
+        reduces=(EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL, NO_CONFLICT_SHARES_A_CALLED_HEAD),
+    ),
 ]
