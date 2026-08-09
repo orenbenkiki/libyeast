@@ -29,9 +29,10 @@ an optional hides out beside the way that reads, `span-consumes` takes the chara
 each as the scan it is, `lower-runs` says the two repetitions as the one `LongestRun` they are,
 `mint-consuming-and-residue` gives every production that may match empty a name for each of the two things it is,
 `distribute-residues` writes the choice between the two where the caller stands rather than behind the one name, and
-`dissolve-residues` writes what is left taking no character into the call sites that enter it. Nothing a caller chooses
-to enter can match empty — `no-nested-production-matches-empty` at none, the root and the recovery keeping their empty
-ways, having no call site to hold the choice.
+`dissolve-residues` writes what is left taking no character into the call sites that enter it. Nothing anything decides
+to enter can match empty — `no-conditional-production-matches-empty` at none, the root and the recovery keeping their
+empty ways, having no call site to hold the choice, and a continuation being where a way carries on rather than
+something chosen.
 
 Phase 6 is the wrappers. A scope that holds what it covers has nowhere to stand in an alternative, which has a place for
 an action and none for a node enclosing a call, so each becomes the pair that brackets it: `lower-wraps` writes a
@@ -4527,26 +4528,48 @@ def dissolve_residues(grammar, namer):
     }
 
 
-def _no_nested_production_matches_empty(grammar):
+def _entered_unconditionally(grammar):
     """
-    Check that no production a caller chooses to enter can match empty, entering one being a decision with no character
+    The productions nothing decides to enter: the ones reached only where a way carries on, once the call it made has
+    returned.
+
+    A continuation is where the rest of a way lives, reached because the way was taken and not because anything chose
+    it, so an empty match there is the way simply ending. What a way calls is another matter, and so is a run's turn — a
+    run decides whether to go round again, and a turn that takes nothing decides that on nothing.
+    """
+    chosen, carried = set(), set()
+    for production in grammar.values():
+        body = production.body
+        if isinstance(body, ir.Choice):
+            for way in body.alternatives:
+                chosen |= {held.name for held in (way.first, way.recover) if isinstance(held, ir.Ref)}
+                if isinstance(way.second, ir.Ref):
+                    carried.add(way.second.name)
+        elif isinstance(body, ir.LongestRun) and isinstance(body.item, ir.Ref):
+            chosen.add(body.item.name)
+    return carried - chosen
+
+
+def _no_conditional_production_matches_empty(grammar):
+    """
+    Check that no production something decides to enter can match empty, entering one being a decision with no character
     to go on.
 
-    A parse enters the root and the recovery by name rather than by a call, so an empty match there decides nothing and
-    neither is asked. Everything else that could match empty is a way of the caller's own, where a gate can be put on
-    it.
+    A parse enters the root and the recovery by name rather than by a call, and reaches a continuation because the way
+    holding it was taken; an empty match at either decides nothing. Everything else that could match empty is a way of
+    the caller's own, where a gate can be put on it.
     """
     ways = _split_ways(grammar)
-    entered = entered_by_name(grammar)
+    unasked = entered_by_name(grammar) | _entered_unconditionally(grammar)
     return [
-        f"{name}: matches empty, and a caller chooses whether to enter it"
+        f"{name}: matches empty, and something decides whether to enter it"
         for name in grammar
-        if name not in entered and ways[name][1]
+        if name not in unasked and ways[name][1]
     ]
 
 
-NO_NESTED_PRODUCTION_MATCHES_EMPTY = Invariant(
-    "no-nested-production-matches-empty", _no_nested_production_matches_empty
+NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY = Invariant(
+    "no-conditional-production-matches-empty", _no_conditional_production_matches_empty
 )
 
 
@@ -4917,7 +4940,7 @@ STEPS = [
     Step("lower-runs", lower_runs, settles=NO_STAR_OR_PLUS_NODES),
     Step("mint-consuming-and-residue", mint_consuming_and_residue, settles=EVERY_WAY_IS_EITHER_EMPTY_OR_CONSUMES),
     Step("distribute-residues", distribute_residues, settles=EVERY_PRODUCTION_IS_EITHER_EMPTY_OR_CONSUMES),
-    Step("dissolve-residues", dissolve_residues, settles=NO_NESTED_PRODUCTION_MATCHES_EMPTY),
+    Step("dissolve-residues", dissolve_residues, settles=NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY),
     # Phase 6 takes the scopes off what they cover, each step one kind, and every one of them is held to the pairs it
     # leaves closing where they open — the guarantee a wrapper gave by construction, now a count.
     Step("lower-wraps", lower_wraps, settles=NO_WRAP_NODES),
@@ -4936,7 +4959,7 @@ STEPS = [
             (
                 "every-way-is-either-empty-or-consumes",
                 "every-production-is-either-empty-or-consumes",
-                "no-nested-production-matches-empty",
+                "no-conditional-production-matches-empty",
             ),
             "a choice between reading and taking nothing becomes a production where it is a state, and a call reaches "
             "it: what phase 5 wrote at the call site because nothing could gate it there, the gates answer for where "
@@ -4952,7 +4975,7 @@ STEPS = [
             (
                 "every-way-is-either-empty-or-consumes",
                 "every-production-is-either-empty-or-consumes",
-                "no-nested-production-matches-empty",
+                "no-conditional-production-matches-empty",
             ),
             "a run of none or more is the same choice under another name — take a turn or take none — and naming it "
             "puts that choice behind a call, where the loop state is; the turn is a character's to decide and the "
@@ -4986,7 +5009,7 @@ STEPS = [
             (
                 "every-way-is-either-empty-or-consumes",
                 "every-production-is-either-empty-or-consumes",
-                "no-nested-production-matches-empty",
+                "no-conditional-production-matches-empty",
             ),
             "what a way does past its call is a production of its own, and one carrying actions alone takes no "
             "character: the canonical form mints those deliberately, a continuation being where the parse carries on "
@@ -5000,6 +5023,7 @@ STEPS = [
         "build-alternatives",
         build_alternatives,
         settles=(EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET, NO_SEQUENCE_OF_SEQUENCES),
+        reduces=NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY,
         lapses={
             "every-choice-of-one-is-unconditional": "a body said as a choice is the first shape the question can be "
             "put to: the guards these count stood among the actions of a way before, where nothing asked whether the "
@@ -5011,10 +5035,10 @@ STEPS = [
         lower_recoveries,
         settles=NO_WAY_CARRIES_A_RECOVERY,
         lapses={
-            "no-nested-production-matches-empty": "where a way ends at the call it covers, what it carries on to is "
-            "nothing — so the production minted to name where the unwind resumes matches empty. Naming it is the "
-            "point: the alternative is the resume being implied by where the pair sits, which is what the pair exists "
-            "to stop"
+            "no-conditional-production-matches-empty": "where a way ends at the call it covers, what it carries on "
+            "to is nothing — so the production minted to name where the unwind resumes matches empty. Naming it is "
+            "the point: the alternative is the resume being implied by where the pair sits, which is what the pair "
+            "exists to stop"
         },
     ),
     # Phase 11 is the gate: a way is entered on the character in front of it, which is what a machine that never
@@ -5048,7 +5072,11 @@ STEPS = [
     Step(
         "splice-conflicts",
         splice_conflicts,
-        reduces=(EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW, EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL),
+        reduces=(
+            EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW,
+            EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
+            NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY,
+        ),
         lapses=dict.fromkeys(
             (
                 "every-choice-is-deterministic",
@@ -5056,7 +5084,6 @@ STEPS = [
                 "every-way-carries-a-test",
                 "every-production-is-either-empty-or-consumes",
                 "every-option-is-reachable",
-                "no-nested-production-matches-empty",
             ),
             "a conflict spliced where it was called is that conflict once per site, each in the context that reaches "
             "it: the copies are what the walk can finally be asked about, and what it says of them is that a character "
@@ -5085,7 +5112,6 @@ STEPS = [
             EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
             EVERY_WAY_IS_EITHER_EMPTY_OR_CONSUMES,
             EVERY_PRODUCTION_IS_EITHER_EMPTY_OR_CONSUMES,
-            NO_NESTED_PRODUCTION_MATCHES_EMPTY,
             EVERY_WAY_CARRIES_A_TEST,
             EVERY_CHOICE_IS_DETERMINISTIC,
         ),
@@ -5110,7 +5136,7 @@ STEPS = [
         settles=NO_GUARD_LEFT_AMONG_THE_ACTIONS,
         reduces=(
             EVERY_WAY_CARRIES_A_TEST,
-            NO_NESTED_PRODUCTION_MATCHES_EMPTY,
+            NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY,
             EVERY_CHOICE_IS_DETERMINISTIC,
             NO_CONFLICT_SHARES_A_CALLED_HEAD,
         ),
