@@ -178,6 +178,11 @@ def _check(does_bisect=False, hint=None):
     # about it. Every structural property the pipeline claims is judged here, so nothing else below repeats one.
     for fault in normalize.invariant_faults(stages, points):
         errors.append(f"[invariant] {fault}")
+    # A step naming neither an invariant nor a reason for having none promises what nothing checks. A step outliving the
+    # invariant it was written for is the way one arrives here: the invariant is what the pipeline is for and the step
+    # only a means to it, so what is left carrying nothing goes rather than being found a new thing to carry.
+    for name in normalize.untested_steps():
+        errors.append(f"[step] `{name}` names neither an invariant nor a reason for having none")
     # What the runs asked of a global that one value for the parse could not have answered: the reads where the stack
     # beside it held something the slot did not. A global is what does not nest, and this is what says so of the grammar
     # that has just run rather than of the argument that made it one.
@@ -197,12 +202,12 @@ def _check(does_bisect=False, hint=None):
     # production out of every later one.
     stranded = len(fixtures) - len(groups[-1])
     print(f"    {stranded} fixture(s) pinned to an earlier stage's grammar, the last to run them")
-    # A step naming neither an invariant nor a reason for having none promises what nothing checks. Driven to none, at
-    # which point the default goes and a step must say one or the other.
+    # The steps that carry no invariant and say why, which is the one way a step may name none — a fault above counts
+    # the rest.
     exempt = [step.name for step in normalize.STEPS if step.untestable]
     print(
-        f"    {len(normalize.untested_steps())} of {len(normalize.STEPS)} step(s) carry no test of their own; "
-        f"{len(exempt)} have none to carry and say why: {', '.join(exempt)}"
+        f"    {len(exempt)} of {len(normalize.STEPS)} step(s) have no invariant to carry and say why: "
+        f"{', '.join(exempt)}"
     )
     # An invariant some step reduces and no step claims to finish. Driven to none, naming a settler as one is earned.
     print(f"    {len(normalize.unsettled_invariants())} invariant(s) reduced by a step and settled by none")

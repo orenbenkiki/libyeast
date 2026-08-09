@@ -1898,8 +1898,8 @@ _VALUE_KINDS = (
 
 # What an item may be: something the machine does where it stands — a call, an action, a guard, a character taken, or
 # nothing at all. A guard's question is the guard's own business and no item of the way, which is what lets a peek hold
-# a set and an exclusion a bounded literal; `every-peek-is-a-character-set` and `every-exclusion-is-bounded` are what
-# answer for those. In alphabetical order after the families.
+# a set and an exclusion a question a bounded run of steps answers; `every-peek-is-a-character-set` and
+# `every-exclusion-is-bounded` are what answer for those. In alphabetical order after the families.
 _LEAF_ITEMS = (
     *_ACTIONS,
     *_GUARDS,
@@ -2007,37 +2007,48 @@ EVERY_RECOVERY_IS_A_PRODUCTION = Invariant(
 # The last: a binding is a match and the write that follows it, which the vocabulary already spells as two things.
 NO_BIND_NODES = _absent("no-bind-nodes", ir.Bind)
 
-# What a bounded question is made of: a character class, a bounded run of characters the input must begin, the
-# zero-width conditions, and the choices and sequences holding them. A name is not among them — what a call asks costs
-# whatever the callee reads, which is the whole difference between a guard the machine can test where it stands and one
-# it would have to run a parse to answer.
-_BOUNDED_LEAVES = (ir.CharSet, ir.EndOfStream, ir.LiteralPeek, ir.StartOfLine)
+# What costs the machine a turn per character rather than one step: a way it repeats until the input stops it. A span is
+# not among them — a run taken whole is a value the input decides, judged once, so what it costs does not grow with what
+# it takes. A counted repetition is here too, its turns being as many as the count says and the count a value the parse
+# works out.
+_REPETITIONS = (ir.LongestRun, ir.Plus, ir.Rep, ir.Star)
 
 
-def _is_bounded_question(node):
-    """Whether `node` asks what a bounded run of characters answers — a leaf that is one, or a choice or run of them."""
-    if isinstance(node, _BOUNDED_LEAVES):
-        return True  # a literal peek is a leaf here: what it holds is its own run and its follow test, not a match
-    if isinstance(node, (ir.Alt, ir.Seq)):
-        return all(_is_bounded_question(item) for item in node.items)
-    return False
+def _is_bounded_question(node, grammar, entered=frozenset()):
+    """
+    Whether `node` asks what a bounded number of the machine's steps answers.
+
+    Repetition and recursion are the whole of what makes a question unbounded. A call costs what its callee costs, and
+    one that reaches itself costs without bound; everything else is a fixed run of steps, a span among them — a run of
+    spaces measured against the indentation is one scan and a comparison, where a loop over the same characters is a
+    turn each.
+    """
+    if isinstance(node, _REPETITIONS):
+        return False
+    if isinstance(node, ir.Ref):
+        if node.name in entered or node.name not in grammar:
+            return False
+        return _is_bounded_question(grammar[node.name].body, grammar, entered | {node.name})
+    held = []
+    ir.rebuilt(node, lambda child: (held.append(child), child)[1])
+    return all(_is_bounded_question(child, grammar, entered) for child in held)
 
 
 def _every_exclusion_is_bounded(grammar):
     """
-    Check that every `(exclude)` asks what a bounded run of characters answers.
+    Check that every `(exclude)` asks what a bounded number of the machine's steps answers.
 
     An `(exclude)` is a guard the parse carries, tested at every start of line while it stands, so what it asks has to
     be answerable where it is asked: `c-forbidden` is a line beginning `---` or `...` and then a break, a space or the
-    end, which is four characters and no more. The line-at-this-indentation test is not — an indentation is a run of
-    spaces with no bound — and it is a condition on a line start rather than a question about what follows, so it lands
-    where the block-structure work makes a line start a decision the grammar spells.
+    end, which is a handful of steps. The line-at-this-indentation test is another — the run of spaces is one scan,
+    judged against the indentation once — where a loop over those spaces would cost a turn each and never be answerable
+    where it stands.
     """
     return [
-        f"{name}: an `(exclude)` asks what no bounded run of characters answers"
+        f"{name}: an `(exclude)` asks what no bounded run of steps answers"
         for name, production in grammar.items()
         for node in _held(production.body)
-        if isinstance(node, ir.ExcludeAt) and not _is_bounded_question(node.item)
+        if isinstance(node, ir.ExcludeAt) and not _is_bounded_question(node.item, grammar)
     ]
 
 
@@ -2802,91 +2813,6 @@ EVERY_RUN_TURNS_ON_A_CALL = Invariant(
         if isinstance(production.body, ir.LongestRun) and not isinstance(production.body.item, ir.Ref)
     ],
 )
-
-
-def _asked_parts(node, grammar):
-    """
-    What a question asks, in order — names read through, codes read off, sequences flattened into one run.
-
-    The same reading `_peeked_question` makes of a peek, said of a question with more than one part in it: a probe emits
-    nothing and gives back what it read, so the run's code around a character is no part of what is asked, and a name
-    carrying arguments is the caller's hold rather than a question the machine can put to the input.
-    """
-    return _ASKED_PARTS(node, grammar)
-
-
-_ASKED_PARTS = ir.Reading(
-    "the parts a question asks of the input, in the order it asks them",
-    {
-        # A name with arguments is the caller's hold rather than a question the machine can put to the input.
-        ir.Ref: lambda node, grammar: _asked_parts(grammar[node.name].body, grammar) if not node.args else (node,),
-        ir.Seq: lambda node, grammar: tuple(part for item in node.items for part in _asked_parts(item, grammar)),
-        # The run's code shapes the output rather than the question, so it is no part of what is asked.
-        (ir.PopCode, ir.PushCode): (),
-        (
-            ir.Alt,
-            ir.CharSet,
-            ir.ConsumeSpan,
-            ir.Le,
-            ir.Look,
-            ir.NegLook,
-            ir.StartOfLine,
-        ): lambda node, grammar: (node,),
-    },
-)
-
-
-def _literal_text(node, grammar):
-    """The fixed run of codepoints `node` asks the input to begin with, or `None` where what it asks is not one."""
-    text = []
-    for part in _asked_parts(node, grammar):
-        spans = _peek_spans(part, grammar)
-        if spans is None or len(spans) != 1 or spans[0][0] != spans[0][1] or spans[0][0] < 0:
-            return None
-        text.append(spans[0][0])
-    return tuple(text) or None
-
-
-def _follow_class(node, grammar):
-    """
-    `node` as the one class a literal peek's follow test names, or `None` where it is not a class.
-
-    An end-of-stream way is dropped rather than denoted: a follow test is what the character after the run must be *if
-    there is one*, the end of the input passing it either way, so a question that admits the end says nothing this has
-    to carry.
-    """
-    spans = []
-    for way in node.items if isinstance(node, ir.Alt) else (node,):
-        if isinstance(way, ir.EndOfStream):
-            continue
-        admitted = _peek_spans(way, grammar)
-        if admitted is None:
-            return None
-        spans += admitted
-    return _spans_node(_merged_spans(spans)) if spans else None
-
-
-def _as_literal_question(node, grammar):
-    """
-    `node` as the literal peeks it denotes — guards, then a choice of fixed runs each with its follow test — or `None`
-    where it is not of that shape.
-
-    What makes the rewrite an identity is that a question is probed and given back: the follow test is one class for
-    every run, so distributing it over them duplicates a test rather than a match, and reading a name through costs
-    nothing that was ever emitted.
-    """
-    parts = _asked_parts(node, grammar)
-    if len(parts) < 2:
-        return None
-    guards, runs, follow = parts[:-2], parts[-2], parts[-1]
-    if not all(isinstance(guard, ir.StartOfLine) for guard in guards):
-        return None
-    texts = [_literal_text(way, grammar) for way in (runs.items if isinstance(runs, ir.Alt) else (runs,))]
-    then = _follow_class(follow, grammar)
-    if then is None or any(text is None for text in texts):
-        return None
-    peeks = tuple(ir.LiteralPeek(text=text, then=then, barrier=None) for text in texts)
-    return ir.Seq(items=(*guards, peeks[0] if len(peeks) == 1 else ir.Alt(items=peeks)))
 
 
 def mint_continuations(grammar, namer):
@@ -3966,33 +3892,6 @@ def _flattened_calls(grammar, kind, does_flatten_last=True):
         grammar = settled
 
 
-def bound_exclusions(grammar, namer):
-    """
-    Write what an exclusion asks as the bounded run of characters it is: `c-forbidden` becomes the two literal peeks a
-    line beginning `---` or `...` and then a break, a space or the end denotes.
-
-    An `(exclude)` is a guard the parse carries and tests at every start of line while it stands, so what it asks has to
-    be answerable where it is asked — four characters here, and the machine's own fill already guarantees them. Named
-    instead, it is a call the guard would have to run a parse to answer.
-
-    What it does not reach is the line at this indentation, which is a run of spaces with no bound and a condition on a
-    line start rather than a question about what follows it. That one waits for the line start to be a decision the
-    grammar spells.
-    """
-
-    def bounded(node):
-        node = ir.rebuilt(node, bounded)
-        if not isinstance(node, ir.ExcludeAt):
-            return node
-        ways = node.item.items if isinstance(node.item, ir.Alt) else (node.item,)
-        asked = tuple(_as_literal_question(way, grammar) or way for way in ways)
-        return dataclasses.replace(node, item=asked[0] if len(asked) == 1 else ir.Alt(items=asked))
-
-    return {
-        name: dataclasses.replace(production, body=bounded(production.body)) for name, production in grammar.items()
-    }
-
-
 def _with_inner_ways(node, rebuilt):
     """`node` with each match it holds replaced by `rebuilt` of it — the transform's mirror of `_inner_ways`."""
     if isinstance(node, ir.Alt):
@@ -4990,7 +4889,7 @@ STEPS = [
     Step(
         "span-consumes",
         span_consumes,
-        (EVERY_CHARACTER_RUN_IS_A_SPAN, NO_STAR_OR_PLUS_NODES),
+        (EVERY_CHARACTER_RUN_IS_A_SPAN, EVERY_EXCLUSION_IS_BOUNDED, NO_STAR_OR_PLUS_NODES),
         reduces=NO_STAR_OR_PLUS_NODES,
     ),
     Step("lower-runs", lower_runs, NO_STAR_OR_PLUS_NODES),
@@ -5049,7 +4948,6 @@ STEPS = [
         reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
     ),
     Step("lower-bind", lower_bind, (EVERY_SUB_ITEM_IS_ONE_STEP, NO_BIND_NODES)),
-    Step("bound-exclusions", bound_exclusions, EVERY_EXCLUSION_IS_BOUNDED, reduces=EVERY_EXCLUSION_IS_BOUNDED),
     # Phase 8 flattens what a call hides: a choice among the ways of a choice, and a run of items among the items of a
     # way. It runs before the way is split into a call and a continuation, since a choice written out here is one every
     # phase behind this sees whole — every way of it standing where a gate can be put on it rather than one call below.
@@ -5207,10 +5105,5 @@ STEPS = [
         lift_gates_to_callers,
         EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
         reduces=EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
-        lapses={
-            "every-exclusion-is-bounded": "the ungated form of a production is that production again under a name of "
-            "its own, so what it holds it holds twice: the count follows the copies rather than anything new, and the "
-            "gate each caller now carries is what they buy"
-        },
     ),
 ]

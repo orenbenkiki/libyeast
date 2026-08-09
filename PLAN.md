@@ -319,13 +319,14 @@ rest. The re-encode is late rather than first so that every step above it stays 
 interpreter and the corpus already speak — by the time it runs, a body already *is* a choice of ways that are actions, a
 call and a continuation, and the step changes spelling rather than meaning.
 
-**What phase 7 leaves owed**, and it is the lookarounds' only remaining share. 64 of the 74 are a question about one
+**What phase 7 leaves owed**, and it is the lookarounds' only remaining share. 68 of the 76 are a question about one
 character, held to a `CharSet` by `every-peek-is-a-character-set`, and a peek of a set *is* the zero-width guard the
 canonical gate carries — one bit tested against the key the decoder already made, and for the two look-behinds one
-register holding the last one, which is what `is_sol` already is. Of the exclusions, `bound-exclusions` took the four
-asking for `c-forbidden` and left **3** asking `s-indent-le-line` as well — "a line at this indentation with content", a
-run of spaces with no bound. That is a condition on a line start rather than a question about what follows one, and it
-lands where the block-structure work makes a line start a decision the grammar spells.
+register holding the last one, which is what `is_sol` already is. The **8** exclusions ask for `c-forbidden`, and four
+of them for `s-indent-le-line` as well — "a line at this indentation with content". Both are bounded in the machine's
+own steps, the run of spaces being one scan, which is what `every-exclusion-is-bounded` holds them to from
+`span-consumes` onward. What is left owed is that a condition on a line start is not a question about what follows one,
+and it lands where the block-structure work makes a line start a decision the grammar spells.
 
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:
