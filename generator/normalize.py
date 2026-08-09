@@ -419,32 +419,34 @@ class Step:
     lands; what every step before it buys is a property the rest may lean on, which is how the grammar comes to be
     simple enough for common-prefix factoring and gate disjointness to decide it.
 
-    An invariant is a count and not a yes-or-no. `invariants` says which ones this step is about and how to count where
-    each is broken — a step often makes more than one thing true, and `lower-star` leaves both no complex `Star` and
-    every repetition a character-set run. A step naming an invariant is taken to **finish** it, that being what a step
-    is for; `reduces` names the ones among them it only lowers the count of, for a count several steps share — the gate
-    hoists do, and no one of them leaves none. An `Invariant` and a `transform` are both shared where two steps do the
-    same work on different grounds.
+    An invariant is a count and not a yes-or-no, and a step says outright which of the two it does to each. `settles`
+    names the invariants it takes to none — a step often makes more than one thing true, and `span-consumes` leaves both
+    every character run a span and every exclusion bounded. `reduces` names the ones it only lowers the count of, for a
+    count several steps share: the gate hoists do, and no one of them leaves none. Neither is read off the other, so a
+    declaration says exactly what the step does rather than what is left over. An `Invariant` and a `transform` are both
+    shared where two steps do the same work on different grounds.
 
     `lapses` is what this step is allowed to break: `{invariant: reason}`, empty for nearly every step, holding a
     written reason where a step undoes something an earlier one settled. `invariant_faults` holds the pipeline to the
     law — a count never rises, a settling step leaves none, and none stays none — and reads a lapse as the one licence
-    to break it.
+    to break it. It also holds every one of those three declarations to what the counts say happened, so a step claiming
+    to settle what it only lowers, to lower what it settles, or to break what it leaves alone is a fault where it
+    stands.
 
-    An invariant goes by its name, so two steps naming the same one are reducing a single count and the set of them is
-    collected by name rather than by how many steps mention it. `invariants` and `reduces` are both given the invariant
+    An invariant goes by its name, so two steps naming the same one are working a single count and the set of them is
+    collected by name rather than by how many steps mention it. `settles` and `reduces` are both given the invariant
     itself for that reason: the name is what they are compared by, and a name written out here instead would be a second
     spelling of it that nothing resolves — a misspelt one would read as a step that reduces nothing, which is to say as
     one that settles what it does not.
 
-    **An empty `invariants` is temporary, and `untestable` says why one is empty for good.** A step with neither
+    **Naming neither is temporary, and `untestable` says why one names neither for good.** A step with neither
     transforms the grammar and promises something nothing checks, which is the shape every hard day here has started
     from, and `untested_steps` counts those. Some steps genuinely have nothing standing to test — what they make true is
     momentary, or is a property of a run rather than of a shape — and each says so in a sentence rather than sitting in
     a count that can never reach none. Naming both is a fault: a step either has an invariant or a reason.
 
     A `transform` of `None` makes the step a **claim**: it does nothing to the grammar and only says that where it
-    stands, its invariants read none. That is how a property the pipeline is handed rather than makes is written down —
+    stands, what it names reads none. That is how a property the pipeline is handed rather than makes is written down —
     tying it to whichever step happens to run next would read as that step establishing it, and the first step to break
     it would then be blamed on the wrong side of the line. A claim settles what it names, so every step behind it is
     held to it.
@@ -452,25 +454,34 @@ class Step:
 
     name: str
     transform: object = None
-    invariants: object = ()
-    reduces: tuple = ()
+    settles: object = ()
+    reduces: object = ()
     lapses: dict = dataclasses.field(default_factory=dict)
     untestable: str = ""
 
     def __post_init__(self):
-        for field in ("invariants", "reduces"):
+        for field in ("settles", "reduces"):
             named = getattr(self, field)
             held = (named,) if isinstance(named, Invariant) else tuple(named)
             object.__setattr__(self, field, held)
 
     def does_settle(self, invariant):
-        """Whether this step is the one that takes `invariant`'s count to none."""
-        return invariant.name in self.carries and invariant.name not in {held.name for held in self.reduces}
+        """Whether this step says it takes `invariant`'s count to none."""
+        return invariant.name in {held.name for held in self.settles}
+
+    def does_reduce(self, invariant):
+        """Whether this step says it lowers `invariant`'s count without finishing it."""
+        return invariant.name in {held.name for held in self.reduces}
 
     @property
     def is_a_claim(self):
-        """Whether the step only says its invariants hold where it stands, leaving the grammar as it found it."""
+        """Whether the step only says what it names holds where it stands, leaving the grammar as it found it."""
         return self.transform is None
+
+    @property
+    def invariants(self):
+        """Every invariant this step names, settled and only lowered alike."""
+        return (*self.settles, *self.reduces)
 
     @property
     def carries(self):
@@ -610,8 +621,25 @@ def invariant_faults(stages, points=None):
                 faults.append(f"[{label}] `{named}` is settled and stands at {count}, and the step declares no lapse")
             if step.does_settle(test) and count and not is_licensed:
                 faults.append(f"[{label}] settles `{named}` and leaves {count} standing")
+            # `reduces` says a step lowers a count without finishing it. A stage it leaves at none is a step that
+            # settled what it said it would not, and the declaration is then a second thing to read beside the code
+            # rather than the same thing said once.
+            if step.does_reduce(test) and not count:
+                faults.append(f"[{label}] says it only lowers `{named}` and leaves none standing")
             is_settled = (is_settled or step.does_settle(test)) and not count
             standing = count
+    # Taking a count to none is a claim about the grammar and is said outright, wherever it happens. Read over every
+    # step rather than from the first that names the invariant, since a step settling one it never mentions is exactly
+    # what no other reading here can see — `build-alternatives` took `no-sequence-of-sequences` to none in silence while
+    # the step that named it was left claiming a settle it does not make. Lowering a count without finishing it is not
+    # this: an invariant is measured from the first step that names it, so what a step does to a shape the pipeline has
+    # not built yet is construction rather than work on the property.
+    for index, step in enumerate(STEPS):
+        for named, test in by_name.items():
+            before = _counted(test, stages[index][1], points)
+            after = _counted(test, stages[index + 1][1], points)
+            if before and after == 0 and not step.does_settle(test):
+                faults.append(f"[{step.name}] takes `{named}` to none and does not say it settles it")
     # A lapse is a reason for something that happens. One nothing happens under is a claim the grammar has outgrown, and
     # it goes rather than standing as a licence nobody needs — the same net the declared tables answer to.
     for step in STEPS:
@@ -631,30 +659,18 @@ def invariant_faults(stages, points=None):
     return faults
 
 
-def standing_invariants(grammar, points=None):
+def unsettled_invariants(grammar, points=None):
     """
     Every invariant the pipeline names that `grammar` still breaks, as `[(name, count)]` worst first.
 
     What the steps settle between them is not the same question as what is true at the end: an invariant settled early
-    and broken later under a declared lapse stands here all the same, and a lapse is a reason rather than an excuse.
+    and broken later under a declared lapse is unsettled all the same, and a lapse is a reason rather than an excuse.
     Each one standing is work still owed — a step that has not been written — so this is the list Phase 03 finishes by
     emptying, and it says so mechanically instead of leaving it to be noticed.
     """
     named = {held.name: held for step in STEPS for held in step.invariants}
     standing = [(name, len(test(grammar, points))) for name, test in sorted(named.items())]
     return sorted(((name, count) for name, count in standing if count), key=lambda held: -held[1])
-
-
-def unsettled_invariants():
-    """
-    The invariants some step reduces and no step settles — a count driven down, with nothing yet claiming to finish it.
-
-    Not a fault: a step that only reduces a count is doing its job, and naming a settler before one exists would be a
-    claim rather than a check. Counted so the gap is read rather than assumed away.
-    """
-    return sorted(
-        {held.name for step in STEPS for held in step.invariants if not any(other.does_settle(held) for other in STEPS)}
-    )
 
 
 def entered_by_name(grammar):
@@ -4831,88 +4847,79 @@ STEPS = [
     # ends part company.
     Step(
         "holds-at-the-door",
-        invariants=(EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL, EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT),
+        settles=(EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL, EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT),
     ),
     # Phase 0 establishes `NO_I_T_PARAMETERS`: nothing declares, passes or reads the chomping or the block scalar's
     # indentation mode. Each is data-dependent until this runs, so neither can be specialized: the setters become
     # switches first.
-    Step(
-        "lift-setters",
-        lift_setters,
-        FINITE_PARAMETERS_ARE_ALWAYS_LITERAL,
-        reduces=FINITE_PARAMETERS_ARE_ALWAYS_LITERAL,
-    ),
+    Step("lift-setters", lift_setters, reduces=FINITE_PARAMETERS_ARE_ALWAYS_LITERAL),
     Step(
         "monomorphize",
         monomorphize,
-        (_absent("no-context-case", ir.Case, ir.Flip), FINITE_PARAMETERS_ARE_ALWAYS_LITERAL, NO_I_T_PARAMETERS),
+        settles=(
+            _absent("no-context-case", ir.Case, ir.Flip),
+            FINITE_PARAMETERS_ARE_ALWAYS_LITERAL,
+            NO_I_T_PARAMETERS,
+            # None once the specialization has run and no earlier: a context that picks between shapes is not a grammar
+            # the readings of a way can be asked about, and the copies are where a way a caller cannot reach goes.
+            EVERY_OPTION_IS_REACHABLE,
+        ),
     ),
-    # `every-option-is-reachable` is none once the specialization has run, and no earlier: a context that picks between
-    # shapes is not a grammar the readings of a way can be asked about. Every step behind this is held to it.
-    Step("holds-once-specialized", invariants=EVERY_OPTION_IS_REACHABLE),
     # Phase 1 establishes `EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET`: a question about a character is a `CharSet`. A
     # set the context picks denotes nothing until the specialization has bound the context, so this follows Phase 0. The
     # difference is taken into the ways it subtracts from first, since a subtraction says a set only where both of its
     # sides do.
-    Step("distribute-differences", distribute_differences, EVERY_DIFFERENCE_IS_BETWEEN_CHARACTER_SETS),
+    Step("distribute-differences", distribute_differences, settles=EVERY_DIFFERENCE_IS_BETWEEN_CHARACTER_SETS),
     Step(
         "lower-char-sets",
         lower_char_sets,
-        (EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET, NO_DIFF_NODES, EVERY_PEEK_IS_A_CHARACTER_SET),
+        settles=(EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET, NO_DIFF_NODES, EVERY_PEEK_IS_A_CHARACTER_SET),
     ),
     # Phase 2 establishes `NO_F_PARAMETER`: the block scalar's leading-empty floor is the parse's one value rather than
     # one a call carries. The value is given an end first, a single slot answering for a parameter only where a read
     # past the region it was measured in is refused rather than answered from what the last construct left.
-    Step("clear-f", _clear_reads("f"), _every_read_is_bounded("f")),
-    Step("read-global-f", _read_off("f", ir.Global(name="f")), NO_F_PARAMETER),
+    Step("clear-f", _clear_reads("f"), settles=_every_read_is_bounded("f")),
+    Step("read-global-f", _read_off("f", ir.Global(name="f")), settles=NO_F_PARAMETER),
     # Phase 3 establishes `NO_M_PARAMETER`: the detected indent is the parse's one value. Nothing reads it twice over a
     # region something else can write in — the block header measures it and the scalar that asked reads it, one
     # construct at a time — so a clear and a drop are the whole of it.
-    Step("clear-m", _clear_reads("m"), _every_read_is_bounded("m")),
-    Step("read-global-m", _read_off("m", ir.Global(name="m")), NO_M_PARAMETER),
+    Step("clear-m", _clear_reads("m"), settles=_every_read_is_bounded("m")),
+    Step("read-global-m", _read_off("m", ir.Global(name="m")), settles=NO_M_PARAMETER),
     # Phase 4 establishes `NO_N_PARAMETER`: the indentation is on the parse's own stack rather than carried by a call.
     # The pushes go in first and the parameter stays beside them, so what says they stand where they should is every
     # read comparing the two over the corpus; dropping the parameter is what leaves the stack the one place it is.
-    Step("hold-established-indents", hold_established_indents, NO_PRODUCTION_WRITES_THE_INDENTATION),
-    Step("push-indents", push_indents, EVERY_INDENTATION_CHANGE_IS_PUSHED),
-    Step("read-indents", _read_off("n", ir.Indent()), NO_N_PARAMETER),
+    Step("hold-established-indents", hold_established_indents, settles=NO_PRODUCTION_WRITES_THE_INDENTATION),
+    Step("push-indents", push_indents, settles=EVERY_INDENTATION_CHANGE_IS_PUSHED),
+    Step("read-indents", _read_off("n", ir.Indent()), settles=NO_N_PARAMETER),
     # Phase 5 is the empties, and what it is finished by is no production matching empty but the ones a parse enters by
     # name. This step is the first of it: an empty match is a way beside the one that reads, not a node hiding one.
-    Step(
-        "lower-optionals",
-        lower_optionals,
-        NO_OPT_NODES,
-    ),
+    Step("lower-optionals", lower_optionals, settles=NO_OPT_NODES),
     # `no-production-reaches-itself-unconsumed` is none from here, and is not a question an earlier grammar answers: a
     # cycle is read off the ways a production offers, which the optionals are the last thing to be spelled outside of.
-    Step("holds-once-optionals-are-ways", invariants=NO_PRODUCTION_REACHES_ITSELF_UNCONSUMED),
+    Step("holds-once-optionals-are-ways", settles=NO_PRODUCTION_REACHES_ITSELF_UNCONSUMED),
     Step(
         "span-consumes",
         span_consumes,
-        (EVERY_CHARACTER_RUN_IS_A_SPAN, EVERY_EXCLUSION_IS_BOUNDED, NO_STAR_OR_PLUS_NODES),
+        settles=(EVERY_CHARACTER_RUN_IS_A_SPAN, EVERY_EXCLUSION_IS_BOUNDED),
         reduces=NO_STAR_OR_PLUS_NODES,
     ),
-    Step("lower-runs", lower_runs, NO_STAR_OR_PLUS_NODES),
-    Step(
-        "mint-consuming-and-residue",
-        mint_consuming_and_residue,
-        EVERY_WAY_IS_EITHER_EMPTY_OR_CONSUMES,
-    ),
-    Step("distribute-residues", distribute_residues, EVERY_PRODUCTION_IS_EITHER_EMPTY_OR_CONSUMES),
-    Step("dissolve-residues", dissolve_residues, NO_NESTED_PRODUCTION_MATCHES_EMPTY),
+    Step("lower-runs", lower_runs, settles=NO_STAR_OR_PLUS_NODES),
+    Step("mint-consuming-and-residue", mint_consuming_and_residue, settles=EVERY_WAY_IS_EITHER_EMPTY_OR_CONSUMES),
+    Step("distribute-residues", distribute_residues, settles=EVERY_PRODUCTION_IS_EITHER_EMPTY_OR_CONSUMES),
+    Step("dissolve-residues", dissolve_residues, settles=NO_NESTED_PRODUCTION_MATCHES_EMPTY),
     # Phase 6 takes the scopes off what they cover, each step one kind, and every one of them is held to the pairs it
     # leaves closing where they open — the guarantee a wrapper gave by construction, now a count.
-    Step("lower-wraps", lower_wraps, NO_WRAP_NODES),
-    Step("lower-windows", lower_windows, NO_MAX_NODES),
-    Step("lower-commits", lower_commits, NO_COMMIT_NODES),
-    Step("lower-tokens", lower_tokens, NO_TOKEN_NODES),
+    Step("lower-wraps", lower_wraps, settles=NO_WRAP_NODES),
+    Step("lower-windows", lower_windows, settles=NO_MAX_NODES),
+    Step("lower-commits", lower_commits, settles=NO_COMMIT_NODES),
+    Step("lower-tokens", lower_tokens, settles=NO_TOKEN_NODES),
     # Phase 7 takes the tree apart: an item standing in a way is something the machine does where it stands, and every
     # shape holding a match inside it becomes a production of its own. The steps reduce `every-sub-item-is-one-step`
     # between them, each settling its own share of it.
     Step(
         "lift-choices",
         _lifting(ir.Alt),
-        (EVERY_SUB_ITEM_IS_ONE_STEP, EVERY_CHOICE_IS_A_PRODUCTION),
+        settles=(EVERY_CHOICE_IS_A_PRODUCTION, EVERY_RUN_TURNS_ON_A_CALL),
         reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
         lapses=dict.fromkeys(
             (
@@ -4928,7 +4935,7 @@ STEPS = [
     Step(
         "lift-runs",
         _lifting(ir.LongestRun),
-        (EVERY_SUB_ITEM_IS_ONE_STEP, EVERY_RUN_IS_A_PRODUCTION),
+        settles=EVERY_RUN_IS_A_PRODUCTION,
         reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
         lapses=dict.fromkeys(
             (
@@ -4939,35 +4946,31 @@ STEPS = [
             "a run of none or more is the same choice under another name — take a turn or take none — and naming it "
             "puts that choice behind a call, where the loop state is; the turn is a character's to decide and the "
             "gates are what decide it",
-        ),
+        )
+        | {
+            "every-run-turns-on-a-call": "a run given a production of its own is a body that is a run, and what it "
+            "repeats is whatever stood inside it rather than a name: naming the turn is the step behind this, and "
+            "these are the runs it is there to reach"
+        },
     ),
     Step(
         "lift-recoveries",
         _lifting(ir.Recover),
-        (EVERY_SUB_ITEM_IS_ONE_STEP, EVERY_RECOVERY_IS_A_PRODUCTION),
+        settles=EVERY_RECOVERY_IS_A_PRODUCTION,
         reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
     ),
-    Step("lower-bind", lower_bind, (EVERY_SUB_ITEM_IS_ONE_STEP, NO_BIND_NODES)),
+    Step("lower-bind", lower_bind, settles=(EVERY_SUB_ITEM_IS_ONE_STEP, NO_BIND_NODES)),
     # Phase 8 flattens what a call hides: a choice among the ways of a choice, and a run of items among the items of a
     # way. It runs before the way is split into a call and a continuation, since a choice written out here is one every
     # phase behind this sees whole — every way of it standing where a gate can be put on it rather than one call below.
-    Step(
-        "flatten-called-alternations",
-        flatten_called_alternations,
-        NO_CHOICE_OF_CHOICES,
-    ),
-    Step(
-        "flatten-called-sequences",
-        flatten_called_sequences,
-        NO_SEQUENCE_OF_SEQUENCES,
-        reduces=NO_SEQUENCE_OF_SEQUENCES,
-    ),
+    Step("flatten-called-alternations", flatten_called_alternations, settles=NO_CHOICE_OF_CHOICES),
+    Step("flatten-called-sequences", flatten_called_sequences, reduces=NO_SEQUENCE_OF_SEQUENCES),
     # Phase 9 is the call: a way does its actions, hands control to one production, and says where to carry on when it
     # comes back. What stood past the call is what carries on.
     Step(
         "mint-continuations",
         mint_continuations,
-        A_WAY_IS_ACTIONS_A_CALL_AND_A_CONTINUATION,
+        settles=A_WAY_IS_ACTIONS_A_CALL_AND_A_CONTINUATION,
         lapses=dict.fromkeys(
             (
                 "every-way-is-either-empty-or-consumes",
@@ -4981,11 +4984,11 @@ STEPS = [
     ),
     # Phase 10 says every body in the machine's own words: a set of characters, a run over the state it repeats, or the
     # ordered list of alternatives one of which the parse takes.
-    Step("call-run-turns", call_run_turns, EVERY_RUN_TURNS_ON_A_CALL),
+    Step("call-run-turns", call_run_turns, settles=EVERY_RUN_TURNS_ON_A_CALL),
     Step(
         "build-alternatives",
         build_alternatives,
-        EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET,
+        settles=(EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET, NO_SEQUENCE_OF_SEQUENCES),
         lapses={
             "every-choice-of-one-is-unconditional": "a body said as a choice is the first shape the question can be "
             "put to: the guards these count stood among the actions of a way before, where nothing asked whether the "
@@ -4995,7 +4998,7 @@ STEPS = [
     Step(
         "lower-recoveries",
         lower_recoveries,
-        NO_WAY_CARRIES_A_RECOVERY,
+        settles=NO_WAY_CARRIES_A_RECOVERY,
         lapses={
             "no-nested-production-matches-empty": "where a way ends at the call it covers, what it carries on to is "
             "nothing — so the production minted to name where the unwind resumes matches empty. Naming it is the "
@@ -5008,13 +5011,11 @@ STEPS = [
     Step(
         "gate-hoist",
         gate_hoist,
-        (EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
         reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
     ),
     Step(
         "gate-hoist-call",
         gate_hoist_call,
-        (EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
         reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
         lapses={
             "every-choice-of-one-is-unconditional": "a hoist gates every way it can, the only way of a body included — "
@@ -5025,7 +5026,6 @@ STEPS = [
     Step(
         "hoist-past-actions",
         hoist_past_actions,
-        (EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
         reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_CHOICE_IS_DETERMINISTIC),
         lapses={
             "every-choice-of-one-is-unconditional": "a hoist gates every way it can, the only way of a body included — "
@@ -5033,16 +5033,10 @@ STEPS = [
             "the callers can discharge, which is what `lift-gates-to-callers` behind this moves it up to be"
         },
     ),
-    Step(
-        "hoist-guards",
-        hoist_guards,
-        EVERY_WAY_CARRIES_A_TEST,
-        reduces=EVERY_WAY_CARRIES_A_TEST,
-    ),
+    Step("hoist-guards", hoist_guards, reduces=EVERY_WAY_CARRIES_A_TEST),
     Step(
         "splice-conflicts",
         splice_conflicts,
-        EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW,
         reduces=EVERY_CONFLICT_IS_REACHED_WITH_SAME_FOLLOW,
         lapses=dict.fromkeys(
             (
@@ -5061,8 +5055,7 @@ STEPS = [
     Step(
         "hoist-past-actions-3",
         hoist_past_actions,
-        EVERY_WAY_CARRIES_A_TEST,
-        reduces=EVERY_WAY_CARRIES_A_TEST,
+        reduces=(EVERY_WAY_CARRIES_A_TEST, EVERY_OPTION_IS_REACHABLE),
         lapses={
             "every-choice-of-one-is-unconditional": "a hoist gates every way it can, the only way of a body included — "
             "there it decides nothing, there being nothing to select between. What it is there is an assertion "
@@ -5075,13 +5068,13 @@ STEPS = [
     Step(
         "inline-shared-heads",
         inline_shared_heads,
-        NO_CONFLICT_SHARES_A_CALLED_HEAD,
+        settles=EVERY_OPTION_IS_REACHABLE,
         reduces=NO_CONFLICT_SHARES_A_CALLED_HEAD,
     ),
     Step(
         "split-gates",
         split_gates,
-        NO_GATE_PARTLY_OVERLAPS_ANOTHER,
+        settles=NO_GATE_PARTLY_OVERLAPS_ANOTHER,
         lapses={
             "no-conflict-shares-a-called-head": "a way cut along the characters its gate treats alike is that way over "
             "again, so a beginning one shared with another way is shared by its copies too: the count follows the "
@@ -5095,15 +5088,10 @@ STEPS = [
     Step(
         "hoist-askable-guards",
         hoist_askable_guards,
-        (NO_GUARD_LEFT_AMONG_THE_ACTIONS, EVERY_WAY_CARRIES_A_TEST),
+        settles=NO_GUARD_LEFT_AMONG_THE_ACTIONS,
         reduces=EVERY_WAY_CARRIES_A_TEST,
     ),
     # A gate on a body offering one way decides nothing where it stands: moved into the ways that call it, it tells them
     # apart, and what is left below consumes what a gate above has already found.
-    Step(
-        "lift-gates-to-callers",
-        lift_gates_to_callers,
-        EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
-        reduces=EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL,
-    ),
+    Step("lift-gates-to-callers", lift_gates_to_callers, reduces=EVERY_CHOICE_OF_ONE_IS_UNCONDITIONAL),
 ]

@@ -209,8 +209,6 @@ def _check(does_bisect=False, hint=None):
         f"    {len(exempt)} of {len(normalize.STEPS)} step(s) have no invariant to carry and say why: "
         f"{', '.join(exempt)}"
     )
-    # An invariant some step reduces and no step claims to finish. Driven to none, naming a settler as one is earned.
-    print(f"    {len(normalize.unsettled_invariants())} invariant(s) reduced by a step and settled by none")
     # A reading's handler nothing reached. Read here and nowhere else: a kind is exercised by the inputs that reach it,
     # so only a run over the whole corpus can say a handler is dead — and a dead one is a guess about the grammar that
     # held, either a kind that cannot occur where the reading is asked or a shape the corpus does not reach.
@@ -222,10 +220,10 @@ def _check(does_bisect=False, hint=None):
     # What the final grammar still breaks, whatever the steps settle between them — each one a step not yet written, and
     # the list Phase 03 finishes by emptying. Every structural count the phase watches is in here, the meter among them,
     # so what follows says only what the list cannot: where those counts fall and what they are made of.
-    standing = normalize.standing_invariants(final, points)
+    unsettled = normalize.unsettled_invariants(final, points)
     print(
-        f"    {len(standing)} invariant(s) the final grammar still breaks: "
-        + ", ".join(f"{name} {count}" for name, count in standing)
+        f"    {len(unsettled)} invariant(s) the final grammar still breaks: "
+        + ", ".join(f"{name} {count}" for name, count in unsettled)
     )
     print(f"    {len(final)} production(s) in the grammar the phase hands on")
     # The committed net, and the other half of what determinizing owes. The productions a character decides are entered
