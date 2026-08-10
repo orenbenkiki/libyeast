@@ -1452,21 +1452,31 @@ def _scope_signature(grammar):
 
     A least fixpoint, since what a way leaves includes what it carries on at: every production starts at "nothing either
     way" and the walk runs until the answers stop moving, so a continuation that reaches itself settles at nothing. It
-    moves along the carrying-on calls alone — a call a way comes back from is held to level rather than followed — which
-    is what makes it settle at all: read through both, a pair of productions calling each other has no least answer and
-    the rounds swap two of them for ever.
+    moves along the carrying-on calls alone — a call a way comes back from is held to level rather than followed.
+
+    Carrying on in a circle has no least answer and the rounds swap two of them for ever, so what is still moving once
+    the rounds are spent is pinned at nothing — which is what a continuation reaching itself already settles at — and
+    the rest settles around it. Each pinning fixes at least one more name, so this ends.
     """
     signature = {name: ((), ()) for name in grammar}
-    for _round in range(len(grammar) + 1):
-        did_move = False
-        for name, production in grammar.items():
-            answers = _scope_answers(grammar, name, production, signature, [])
-            answer = answers[0] if answers else ((), ())
-            if signature[name] != answer:
-                signature[name], did_move = answer, True
-        if not did_move:
-            return signature
-    raise AssertionError("what the productions leave on the stack never settled")
+    pinned = set()
+    while True:
+        moving = set()
+        for _round in range(len(grammar) + 1 - len(pinned)):
+            moving = set()
+            for name, production in grammar.items():
+                if name in pinned:
+                    continue
+                answers = _scope_answers(grammar, name, production, signature, [])
+                answer = answers[0] if answers else ((), ())
+                if signature[name] != answer:
+                    signature[name] = answer
+                    moving.add(name)
+            if not moving:
+                return signature
+        pinned |= moving
+        for name in moving:
+            signature[name] = ((), ())
 
 
 def _scope_answers(grammar, name, production, signature, faults):
@@ -3903,9 +3913,21 @@ def _flattened_calls(grammar, kind, does_flatten_last=True):
             parts = []
             for at, held in enumerate(node.items):
                 called = grammar[held.name] if isinstance(held, ir.Ref) and not held.args else None
-                is_reachable = called is not None and (held.name == owner or owner in reaches[held.name])
+                # Writing out a callee that can reach itself unrolls its cycle one turn and spells the way back in, so
+                # the next pass has the same call to write out again. The cycle need not run through the body being
+                # rewritten: the stream and the recovery reach each other, and a production minted between them is on
+                # neither's path while standing squarely in the middle of it.
+                does_unroll_a_cycle = called is not None and (
+                    held.name == owner or owner in reaches[held.name] or held.name in reaches[held.name]
+                )
                 is_kept = not does_flatten_last and at == len(node.items) - 1
-                if called is None or called.params or not isinstance(called.body, kind) or is_reachable or is_kept:
+                if (
+                    called is None
+                    or called.params
+                    or not isinstance(called.body, kind)
+                    or does_unroll_a_cycle
+                    or is_kept
+                ):
                     parts.append(held)
                 else:
                     parts += list(called.body.items)
