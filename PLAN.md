@@ -233,7 +233,7 @@ The phases, each established and then enforced:
 | 8     | `no-choice-of-choices`                        | a decision spelled one call below the choice that offers it                                     |
 | 9     | `a-way-is-actions-a-call-and-a-continuation`  | everything a way holds past its first call                                                      |
 | 10    | `every-body-is-a-choice-a-run-or-a-set`       | the tree's own spelling, for the machine's                                                      |
-| 11    | `every-way-carries-a-test`                    | every way entered on nothing the machine can test, and the meter arrives to say what is left    |
+| 11    | `every-way-is-gated`                          | every way entered on what its gate says, and the meter arrives to say what is left              |
 | later | `every-choice-is-deterministic`               | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
@@ -244,9 +244,9 @@ exactly where the one in front of it is handed back, so a way no input refuses i
 everything behind it is unreachable. Claimed once the specialization has run, which is the first grammar the reading of
 a way can be asked about, and **none** from there through every step — no lapse, nothing copied, nothing owed.
 
-**The two questions, in order.** A machine that never backtracks needs each way of a choice to carry a test it can make
-before entering it, and then it needs the tests to be exclusive. They are separate problems and the first comes close to
-whole: `every-way-carries-a-test` stands at **8**, and the standing ones are a way handing control to a production that
+**The two questions, in order.** A machine that never backtracks needs each way of a choice to carry a gate it can ask
+before entering it, and then it needs the gates to be exclusive. They are separate problems and the first comes close to
+whole: `every-way-is-gated` stands at **8**, and the standing ones are a way handing control to a production that
 answers a character it cannot start on with an error rather than a refusal, so gating the way out would turn a parse
 that stops into one that takes another way. No hoist reaches them; each is guarded by a `NegLook` rather than by a
 count, and they are the auto-detected-indent copies of the block scalar's content.
@@ -259,10 +259,11 @@ what the copies cost, every written-out run adding ways to be undecided about. W
 it is real has not been measured.
 
 **What the gate lift leaves owed.** `every-choice-of-one-is-unconditional` stands at **207** — a body offering one way
-that is entered on a test, by a gate or by a guard among its actions, where there is nothing to choose between. Those
-are reached from ways that act before the call or call them in tail position, where what the caller was entered on says
-nothing about the character at that point. Moving them wants the caller split too: the actions before the call into a
-continuation of their own, the tail call into its own way. Which is the same mint-don't-mutate move, one level out.
+that is entered on something it asks, by its gate or by a guard among its actions, where there is nothing to choose
+between. Those are reached from ways that act before the call or call them in tail position, where what the caller was
+entered on says nothing about the character at that point. Moving them wants the caller split too: the actions before
+the call into a continuation of their own, the tail call into its own way. Which is the same mint-don't-mutate move, one
+level out.
 
 What follows it is `every-choice-is-deterministic` at **111**, which is the exclusivity question and splits in two:
 **8** choices offering a way in front of the catch-all that nothing enters it on, and **103** whose ways admit the same
@@ -327,6 +328,20 @@ of them for `s-indent-le-line` as well — "a line at this indentation with cont
 own steps, the run of spaces being one scan, which is what `every-exclusion-is-bounded` holds them to from
 `span-consumes` onward. What is left owed is that a condition on a line start is not a question about what follows one,
 and it lands where the block-structure work makes a line start a decision the grammar spells.
+
+**Three words, used strictly, because two of them were doing three jobs.**
+
+- A **gate** is the *field* of an alternative on which the choice is made. It holds at most one peek and zero or more
+  guards, and an alternative fires only where every part of it holds. A gate is asked where the alternative is entered,
+  which is what makes it the only place a decision can stand.
+- A **peek** is the question about the character in front of the parse: a `CharSet`, or a
+  `LiteralPeek(text, then, barrier)`. It is the one question the generated parser answers by indexing the decoder's key.
+- A **guard** is a zero-width node that decides — `Look`, `NegLook`, `LookBehind`, `StartOfLine`, `EndOfStream`, `Le`,
+  `Lt`. A guard belongs in a gate; one reached among a way's actions is a decision asked a step too late.
+
+**"Test" is not one of these words and is not used for any of them.** It has meant the gate, the guards, and a probe
+that is matched and thrown away, in different sentences, and every one of those has its own name above. Where a name in
+the code still says "test", it is owed a rename to the word it means.
 
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:
@@ -454,7 +469,7 @@ each phase inherits when it arrives, the meter the first line of them:
 | -------- | ---------------------------------------------------------------------------------------------------------------- |
 | **469**  | `every-choice-is-deterministic` — the meter, reduced by `speculate-folds` and settled by nobody                  |
 | **92**   | `proper` — the ε-elimination debt, the blind choices no call site holds                                          |
-| **70**   | `every-way-carries-a-test` — ways in a multi-way choice with no character to go on                               |
+| **70**   | `every-way-is-gated` — ways in a multi-way choice with no character to go on                                     |
 | 14       | `no-call-deciding-nothing` · 13 `no-standing-pop-holder` · 6 `no-factorable-prefix` · 4 `no-shared-leading-push` |
 | 1        | `nothing-carries-on-over-a-pop`                                                                                  |
 
@@ -466,9 +481,9 @@ the elimination creates nothing new — which it does: `distribute-empties` boug
 meter.
 
 And a lapse must be *taken*: one naming an invariant no step carries, or one the step does not actually break, is a
-stale declaration and a fault. That net retired four lapses at once — three left behind when `every-way-carries-a-test`
-was narrowed to multi-way choices, and one on `read-globals` which turned out to mark a mis-defined invariant rather
-than a special step, `every-binding-declared` having counted a global as an undeclared binding when a global *has* no
+stale declaration and a fault. That net retired four lapses at once — three left behind when `every-way-is-gated` was
+narrowed to multi-way choices, and one on `read-globals` which turned out to mark a mis-defined invariant rather than a
+special step, `every-binding-declared` having counted a global as an undeclared binding when a global *has* no
 declaration.
 
 **The meter is an invariant and nothing more.** It was reported beside the system for as long as it existed, which meant
@@ -484,7 +499,7 @@ the worst read `is_one_char(node) and _peek_spans(node) is not None`, whose seco
 gone wrong.
 
 A count reduced and settled by nobody is work owed rather than oversight, and the old order left two such:
-`every-way-carries-a-test`, the 46 ways in a multi-way choice with no character to go on, which the gate hoists reduced
+`every-way-is-gated`, the 46 ways in a multi-way choice with no character to go on, which the gate hoists reduced
 between them; and `no-call-deciding-nothing`, 298 calls brought to 9 by `inline-single-way` and standing at 8, each one
 a splice it refused because the callee is load-bearing somewhere.
 

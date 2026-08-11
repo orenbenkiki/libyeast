@@ -165,12 +165,19 @@ handed back, so a way no input refuses leaves nothing for the ways behind it to 
 the way matches, the continuation fails, the parse returns and tries the next — and a machine that never returns simply
 loses them. It reads none from the claim through the whole pipeline.
 
+**Gate, peek, guard — three words, each for one thing.** A **gate** is the field of an alternative on which the choice
+is made, asked where the alternative is entered. A **peek** is the question in it about the character in front of the
+parse, a `CharSet` or a `LiteralPeek`. A **guard** is a zero-width node that decides — `Look`, `NegLook`, `LookBehind`,
+`StartOfLine`, `EndOfStream`, `Le`, `Lt` — and belongs in a gate, one among a way's actions being a decision asked a
+step too late. "Test" is none of these and names nothing: it has stood for all three and for a probe besides. PLAN.md
+carries the same three definitions, and a name in the code still saying "test" is owed a rename to what it means.
+
 A way is refused where a character it needs is not there, where a guard it asks declines, or where its gate turns it
 away. It is not refused past a `(cut)`, nor inside a committed region, a failure there being the message that region
 names rather than a way handed back. That is one question — whether *some* input refuses the way — and not the narrower
 one of what happens on a character the way cannot start with, which is what a gate hoist needs and what `_does_refuse`
-answers for it. What a machine could tell the ways apart by is `every-way-carries-a-test`, asked where the gates exist.
-One reading answers each — `_can_be_refused` for the first, `_entry_of` for the second.
+answers for it. What a machine could tell the ways apart by is `every-way-is-gated`, asked where the gates exist. One
+reading answers each — `_can_be_refused` for the first, `_entry_of` for the second.
 
 **Every question about a node is asked through `ir.Reading`**, a table from node kind to what to do about it, because
 the alternative — a chain of `isinstance` tests ending in a fallthrough — answers permissively for whatever spelling its
@@ -329,7 +336,7 @@ line's column. `<column>` says that directly, and the `max(1, …)` clamp the of
 always meant — the run must leave the parse deeper than the indentation in force, or this way does not apply.
 
 **One span, then a gate on what it measured.** A line's indentation is taken as a single run and the checks are made on
-the result: `s-indent-le` has always been `(***) s-space` followed by a test on `(len) (match)`, and the delayed
+the result: `s-indent-le` has always been `(***) s-space` followed by a guard on `(len) (match)`, and the delayed
 detections are written the same way. The indentation is never split into two consumes, and never consumed twice.
 
 This is sound because **a run over a character class is possessive** and gives nothing back, so peeking a length and

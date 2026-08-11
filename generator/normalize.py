@@ -1606,7 +1606,7 @@ def _pushed_level(grammar, node):
 
 def span_consumes(grammar, namer):
     """
-    Write a run over a character class as the one scan it is, entered on the class: `x+` is the test that the class is
+    Write a run over a character class as the one scan it is, entered on the class: `x+` is the guard that the class is
     in front and the span behind it, and `x*` is that same way beside the way the class is not in front of.
 
     What such a run takes is a value the input decides rather than a way the parse chooses, and saying it as a scan is
@@ -1619,7 +1619,7 @@ def span_consumes(grammar, namer):
     afterwards, and one too long would fail the judgement, fall back to no spaces at all and pass it. Told apart on the
     character, neither way is reachable where the other was taken, and the alternation is the scan.
 
-    The test rather than the class itself, though either admits the same text. A match of the class is a call, and a
+    The guard rather than the class itself, though either admits the same text. A match of the class is a call, and a
     call is where `mint-continuations` ends a way — so the span would land in a continuation entered after it returned,
     and what says the run takes a character would be a production away from the run. A guard is no call: it stays among
     the actions beside the span, which is both where a hoist can lift it into the gate and where `_split_seq` can read
@@ -1764,7 +1764,7 @@ def lower_commits(grammar, namer):
     }
 
 
-def mint_forbidden_tests(grammar, namer):
+def mint_forbidden_probes(grammar, namer):
     """
     Give what an exclusion forbids a copy of its own, holding only what matches and asks.
 
@@ -2222,7 +2222,7 @@ def _every_exclusion_is_bounded(grammar):
 
     An `(exclude)` is a guard the parse carries, tested at every start of line while it stands, so what it asks has to
     be answerable where it is asked: `c-forbidden` is a line beginning `---` or `...` and then a break, a space or the
-    end, which is a handful of steps. The line-at-this-indentation test is another — the run of spaces is one scan,
+    end, which is a handful of steps. The line-at-this-indentation question is another — the run of spaces is one scan,
     judged against the indentation once — where a loop over those spaces would cost a turn each and never be answerable
     where it stands.
     """
@@ -2288,7 +2288,7 @@ def _forbidden_productions(grammar):
     return seen
 
 
-def _every_forbidden_is_a_pure_test(grammar):
+def _every_forbidden_only_matches_and_asks(grammar):
     """
     Check that what an exclusion forbids only matches characters and asks questions.
 
@@ -2306,7 +2306,9 @@ def _every_forbidden_is_a_pure_test(grammar):
     ]
 
 
-EVERY_FORBIDDEN_IS_A_PURE_TEST = Invariant("every-forbidden-is-a-pure-test", _every_forbidden_is_a_pure_test)
+EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS = Invariant(
+    "every-forbidden-only-matches-and-asks", _every_forbidden_only_matches_and_asks
+)
 
 
 def _no_choice_of_choices(grammar):
@@ -2465,15 +2467,15 @@ EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET = Invariant(
 )
 
 
-def _every_way_carries_a_test(grammar):
+def _every_way_is_gated(grammar):
     """
-    Check that every way a choice offers, bar the last, carries a gate the machine can test before entering it.
+    Check that every way a choice offers, bar the last, carries something in its gate.
 
-    A machine takes a way by testing something before it enters it, so a way its gate says nothing about is one it would
-    have to try and give back — which is the backtracking the whole shape is for getting rid of. What the test is comes
-    second: a character set is the usual one and not the only one, a guard being a question the machine can put where it
+    A machine takes a way by asking its gate before entering it, so a way its gate says nothing about is one it would
+    have to try and give back — which is the backtracking the whole shape is for getting rid of. What the gate holds
+    comes second: a peek is the usual answer and not the only one, a guard being a question the machine can put where it
     stands too — where the parse is in the line, whether any character is left, how the indentation compares. Whether
-    the tests of a choice are exclusive is a later question and not this one; this asks only that each way has one.
+    the gates of a choice are exclusive is a later question and not this one; this asks only that each way has one.
 
     The last way of a choice is exempt: an empty gate is the unconditional fallthrough, and something has to be what
     happens where nothing else fires. A body with one way is no decision at all and is asked nothing.
@@ -2487,7 +2489,45 @@ def _every_way_carries_a_test(grammar):
     ]
 
 
-EVERY_WAY_CARRIES_A_TEST = Invariant("every-way-carries-a-test", _every_way_carries_a_test)
+EVERY_WAY_IS_GATED = Invariant("every-way-is-gated", _every_way_is_gated)
+
+
+def _guard_past_an_action_at(actions):
+    """Where a guard first stands past an action among `actions`, or `None` where none does."""
+    acted = False
+    for index, action in enumerate(actions):
+        if isinstance(action, _ASKING_GUARDS):
+            if acted:
+                return index
+        else:
+            acted = True
+    return None
+
+
+def _no_guard_stands_past_an_action(grammar):
+    """
+    Check that no guard stands past an action, so a way is the guards it asks, then what it performs, then the call it
+    makes and where it carries on.
+
+    A guard is what decides, and one reached past an action decides nothing that can be acted on: the action has already
+    happened, so failing there is the parse dying rather than another way being tried. Standing in front, every guard a
+    way holds is one its gate could carry, and what is behind them is a straight run of things that always happen. A way
+    holding no guard at all is the shape this is working towards, and holds trivially.
+
+    It is what lets a way be split into what it takes and what it does not. Such a split walks the parts in order and
+    hands each half the parts that belong to it; a guard sitting behind an action belongs to neither half without the
+    action being performed twice or not at all.
+    """
+    return [
+        f"{name}: a guard stands past an action the way already performed"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice)
+        for way in production.body.alternatives
+        if _guard_past_an_action_at(way.actions) is not None
+    ]
+
+
+NO_GUARD_STANDS_PAST_AN_ACTION = Invariant("no-guard-stands-past-an-action", _no_guard_stands_past_an_action)
 
 
 def _every_choice_of_one_is_unconditional(grammar):
@@ -2636,7 +2676,7 @@ _GATE_REGION = ir.Reading(
         ir.NegLook: _looked_away,
         ir.LookBehind: _looked_behind,
         (ir.Le, ir.Lt): _compared,
-        # A commit rather than a test: it says nothing about where the parse stands, so it narrows no axis.
+        # A commit rather than a guard: it says nothing about where the parse stands, so it narrows no axis.
         ir.Cut: lambda _guard, region, _grammar: region,
     },
 )
@@ -2966,8 +3006,8 @@ def _does_a_gate_decide(way):
     """
     Whether a gate stands in front of a way, so that the way is entered only where the gate holds.
 
-    A character question or a guard, either being a test the machine makes before the way runs: a wrong input turns the
-    way away and the choice goes on to the next, whatever the way itself would have done had it been entered.
+    A character question or a guard, either being a question the machine asks before the way runs: a wrong input turns
+    the way away and the choice goes on to the next, whatever the way itself would have done had it been entered.
     """
     return isinstance(way, ir.Alternative) and (way.gate.peek is not None or bool(way.gate.guards))
 
@@ -3047,7 +3087,7 @@ def _every_option_is_reachable(grammar):
     them is worse than undecidable: the second is unreachable, and nothing about the grammar says which of the two was
     meant.
 
-    What the gates *leave* undecided is a different question, and `every-way-carries-a-test` asks it of `_entry_of`.
+    What the gates *leave* undecided is a different question, and `every-way-is-gated` asks it of `_entry_of`.
     """
     faults = []
     for name, production in grammar.items():
@@ -3367,6 +3407,66 @@ def mint_call_states(grammar, namer):
     return {**cut, **minted}
 
 
+def mint_guard_states(grammar, namer):
+    """
+    Give what a way does from its first late guard onward a state of its own: the way keeps its gate and what it did up
+    to there and hands control on, and the guard and everything behind it are the minted state's one way.
+
+    A cut and not a reordering, which is the whole of why it is safe. A way's parts run in order, so making the tail a
+    production entered where the way left off is the same run, and the guard is asked exactly where it was asked before.
+    Moved instead, a guard standing past a consume would be asked of another character — so nothing here has to know
+    what an action takes or what it writes, and there are no conditions on which guards may go.
+
+    What the way keeps is its gate, what it did, and a tail call, which is no push, so the scopes meet where they met.
+    The call it made and the recovery riding it go with the tail.
+
+    Run until nothing moves: a minted state holds the guard at its head and whatever followed, which may ask late again.
+    """
+
+    def told(name, way):
+        at = _guard_past_an_action_at(way.actions)
+        if at is None:
+            return way, {}
+        held = namer.fresh(name)
+        minted = {
+            held: ir.Prod(
+                grammar[name].number,
+                held,
+                (),
+                ir.Choice(
+                    alternatives=(
+                        ir.Alternative(
+                            gate=ir.Gate(),
+                            actions=way.actions[at:],
+                            first=way.first,
+                            second=way.second,
+                            recover=way.recover,
+                        ),
+                    )
+                ),
+            )
+        }
+        return ir.Alternative(gate=way.gate, actions=way.actions[:at], second=ir.Ref(name=held, args=())), minted
+
+    while True:
+        cut, minted = {}, {}
+        for name, production in grammar.items():
+            body = production.body
+            if not isinstance(body, ir.Choice):
+                cut[name] = production
+                continue
+            ways = []
+            for way in body.alternatives:
+                held, made = told(name, way)
+                ways.append(held)
+                minted.update(made)
+            cut[name] = dataclasses.replace(production, body=ir.Choice(alternatives=tuple(ways)))
+        settled = {**cut, **minted}
+        if settled == grammar:
+            return grammar
+        grammar = settled
+
+
 NO_WAY_CARRIES_A_RECOVERY = Invariant(
     "no-way-carries-a-recovery",
     lambda grammar: [
@@ -3674,8 +3774,8 @@ def hoist_past_actions(grammar, namer):
 
     A gate is tested before the way is entered and an action touches no input, so what the machine looks at to choose
     this way is the same character either way. The peek moves and the actions stay where they are: the interpreter runs
-    the peek as a lookahead and then the actions, and a way that fails at the character test rewinds whatever its
-    actions did, so testing before performing them is the same parse token for token.
+    the peek as a lookahead and then the actions, and a way that fails at the peek rewinds whatever its actions did, so
+    testing before performing them is the same parse token for token.
 
     A call the way can pass through — one whose production can take nothing — does not end the walk either: what enters
     the way is then what that call can start on *and* what stands behind it, which is the union the walk accumulates. A
@@ -3734,7 +3834,7 @@ def lift_gates_to_callers(grammar, namer):
 
     It moves only where every way that calls the production can carry it: the call must be the first thing the way does,
     so the callee is entered exactly where the way is and the two gates ask about the same character. One caller that
-    cannot leaves the gate where it is — the callee is shared, and a test taken out for one caller's sake would be gone
+    cannot leaves the gate where it is — the callee is shared, and a gate taken out for one caller's sake would be gone
     for the rest.
 
     Met rather than replaced: a way already gated is entered on what both admit, and where they admit nothing in common
@@ -3749,10 +3849,10 @@ def lift_gates_to_callers(grammar, namer):
 
 def _asked_only_as_a_call(grammar):
     """
-    The names nothing reaches but a way's own call — what a caller can take the test out of.
+    The names nothing reaches but a way's own call — what a caller can take the gate out of.
 
     A production named anywhere else is named where no way stands: the item of a lookaround, what an exclusion forbids,
-    the turn of a run. Those sites ask the test where they are, and there is no gate of theirs to move it to.
+    the turn of a run. Those sites ask the question where they are, and there is no gate of theirs to move it to.
     """
     beside = set()
     for production in grammar.values():
@@ -3768,12 +3868,12 @@ def _asked_only_as_a_call(grammar):
     return set(grammar) - beside - entered_by_name(grammar)
 
 
-def _tests_of_a_predicate(production):
+def _gate_of_a_predicate(production):
     """
     `(peek, guards)` — what a production asks, where asking is the whole of what it does, else `None`.
 
     One way, nothing called, and every action a guard that can refuse: such a production matches where its questions
-    hold and takes no character doing it. It is a test wearing a name, and a state machine has no state to give it —
+    hold and takes no character doing it. It is a gate wearing a name, and a state machine has no state to give it —
     entering one decides nothing, and failing there is the parse dying rather than another way being tried.
     """
     body = production.body
@@ -3789,13 +3889,13 @@ def _tests_of_a_predicate(production):
     return way.gate.peek, (*way.gate.guards, *way.actions)
 
 
-def _tests_lifted_once(grammar, namer):
-    """One round of `lift_tests_to_callers`: every test that can move up this time does."""
+def _predicate_gates_lifted_once(grammar, namer):
+    """One round of `lift_predicate_gates_to_callers`: every gate that can move up this time does."""
     asked = {}
     for name in _asked_only_as_a_call(grammar):
-        tests = _tests_of_a_predicate(grammar[name])
-        if tests is not None:
-            asked[name] = tests
+        gate = _gate_of_a_predicate(grammar[name])
+        if gate is not None:
+            asked[name] = gate
     if not asked:
         return grammar
 
@@ -3827,19 +3927,19 @@ def _tests_lifted_once(grammar, namer):
     return {name: rewritten(name, production) for name, production in grammar.items()}
 
 
-def lift_tests_to_callers(grammar, namer):
+def lift_predicate_gates_to_callers(grammar, namer):
     """
-    Take the test out of a production that only asks one, into the ways that call it.
+    Take the gate out of a production that only asks one, into the ways that call it.
 
     A body offering one way decides nothing where it stands: the machine is there because something else chose, so a
-    test it carries can only refuse, and a machine that commits to the first gate that holds has nowhere to go when it
-    does. Asked at the call instead, the same question tells the caller's ways apart, which is what a test is for.
+    gate it carries can only refuse, and a machine that commits to the first gate that holds has nowhere to go when it
+    does. Asked at the call instead, the same question tells the caller's ways apart, which is what a gate is for.
 
     Run until nothing more moves: a caller left offering one way and holding what it took is one its own callers can
-    take it from, so the tests climb until they reach a body with more than one way.
+    take it from, so the gates climb until they reach a body with more than one way.
     """
     while True:
-        settled = cleaned(_tests_lifted_once(grammar, namer))[0]
+        settled = cleaned(_predicate_gates_lifted_once(grammar, namer))[0]
         if settled == grammar:
             return grammar
         grammar = settled
@@ -4462,36 +4562,42 @@ _IS_ONLY_ACTIONS = ir.Reading(
 )
 
 
-def _does_empty_leave_nothing(node, grammar, ways, seen=frozenset()):
+def _has_no_side_effect(node, grammar, ways, seen=frozenset()):
     """
-    Whether every way of `node` that takes no character leaves nothing behind — it reads the input and answers, and a
-    rewind past it undoes all of it.
+    Whether every way of `node` that takes no character has no side effect — nothing it did outlives it, so the parse is
+    the same whether or not the way was taken.
 
     What lets a run over an item that may take nothing drop the zero-width turn `_repeat` keeps: the turn is taken
-    either way, and where it leaves nothing the two runs are the same match. Something with no empty way has none to
+    either way, and where it has no side effect the two runs are the same match. Something with no empty way has none to
     answer for; a `(token)` over one that takes no character cuts a run of no characters, which is no token, and a
     `(wrap)`'s markers are tokens whether or not anything is between them.
     """
     if _split(node, grammar, ways)[1] is None:
-        return True  # it has no empty way at all, so none of them leaves anything
-    return _DOES_EMPTY_LEAVE_NOTHING(node, grammar, ways, seen)
+        return True  # it has no empty way at all, so none of them has an effect to answer for
+    return _HAS_NO_SIDE_EFFECT(node, grammar, ways, seen)
 
 
 # Asked only of what a run repeats, and only where that turn can take nothing — so what reaches it is the handful of
 # shapes such a turn is made of.
-_DOES_EMPTY_LEAVE_NOTHING = ir.Reading(
-    "whether every way of a match that takes no character leaves nothing behind",
+_HAS_NO_SIDE_EFFECT = ir.Reading(
+    "whether every way of a match that takes no character has no side effect",
     {
-        # A guard reads the input and answers, leaving the parse where it found it.
-        (ir.Empty, ir.EndOfStream, ir.StartOfLine): True,
-        (ir.Alt, ir.Seq): lambda node, grammar, ways, seen: all(
-            _does_empty_leave_nothing(item, grammar, ways, seen) for item in node.items
+        # A guard reads the input and answers, leaving the parse where it found it; an empty match does neither. Nor
+        # does either end of a scope pair: `every-scope-closes-on-the-path-that-opens-it` is none, so what one opens is
+        # closed on the path that opened it, and a turn holding both ends took the stack back where it found it.
+        (ir.Empty, *_ASKING_GUARDS, *(kind for pair in _SCOPES for kind in pair)): True,
+        # Every other action is the thing with a side effect, and a cut commits the parse, which outlives it too.
+        (*(kind for kind in _ACTIONS if not any(kind in pair for pair in _SCOPES)), ir.Cut): False,
+        # A shape offering ways or performing parts has no side effect where every one of them has none. A part that
+        # cannot take nothing is not among them, which is what asking each through the wrapper settles.
+        (ir.Alt, ir.Alternative, ir.Choice, ir.Seq): lambda node, grammar, ways, seen: all(
+            _has_no_side_effect(item, grammar, ways, seen) for item in _ways_or_items(node)
         ),
         (ir.LongestRun, ir.Token): lambda node, grammar, ways, seen: (
-            node.item is None or _does_empty_leave_nothing(node.item, grammar, ways, seen)
+            node.item is None or _has_no_side_effect(node.item, grammar, ways, seen)
         ),
         ir.Ref: lambda node, grammar, ways, seen: node.name in seen
-        or _does_empty_leave_nothing(grammar[node.name].body, grammar, ways, seen | {node.name}),
+        or _has_no_side_effect(grammar[node.name].body, grammar, ways, seen | {node.name}),
     },
 )
 
@@ -4564,14 +4670,14 @@ _IS_NULLABLE = ir.Reading(
 
 def _unsplittable_runs(grammar, ways):
     """
-    Runs this cannot say as two ways: one over an item that may take nothing, whose zero-width turn leaves something
-    behind. The reading way drops that turn, which is the same match only where the turn left nothing.
+    Runs this cannot say as two ways: one over an item that may take nothing, whose zero-width turn has a side effect.
+    The reading way drops that turn, which is the same match only where dropping it changes nothing.
     """
     return [
-        f"{name}: a run takes a turn that takes nothing and leaves something behind"
+        f"{name}: a run takes a turn that takes nothing and has a side effect"
         for name, production in grammar.items()
         for node in _held(production.body)
-        if isinstance(node, _RUNS) and not _does_empty_leave_nothing(node.item, grammar, ways)
+        if isinstance(node, _RUNS) and not _has_no_side_effect(node.item, grammar, ways)
     ]
 
 
@@ -4653,27 +4759,59 @@ def _split_holder(node, grammar, ways):
     )
 
 
+def _ways_of(node):
+    """The ways `node` offers as a tuple, a choice contributing its own and a way standing for itself."""
+    return node.alternatives if isinstance(node, ir.Choice) else (node,)
+
+
+def _way_of_parts(way, parts):
+    """
+    `way` with its parts replaced by `parts`, which stand in the order `_items_of_way` gives them — the actions first,
+    then the call, then where it carries on.
+    """
+    actions, rest = tuple(parts[: len(way.actions)]), list(parts[len(way.actions) :])
+    first = rest.pop(0) if way.first is not None else None
+    second = rest.pop(0) if way.second is not None else None
+    return dataclasses.replace(way, actions=actions, first=first, second=second)
+
+
+def _split_way(node, grammar, ways):
+    """
+    A way's `(reads, empty)` in the canonical form. It reads where any one of its parts does, so the reading ways are
+    one per part that can — that part reading and everything before it taking nothing — and the empty way is every part
+    taking none. A way splits into several ways that way, so what comes back reading is a choice of them.
+
+    The parts are read in order, since what the lookaheads among them admit is what says a scan behind one takes a
+    character.
+    """
+    parts = list(_items_of_way(node))
+    reads, taken, ahead = [], [], _EVERY_CHARACTER
+    for position, part in enumerate(parts):
+        way, none = (part, None) if _does_scan_read(part, ahead, grammar) else _split(part, grammar, ways)
+        if way is not None:
+            reads.append(_way_of_parts(node, taken + [way] + parts[position + 1 :]))
+        if none is None:
+            return (ir.Choice(tuple(reads)) if reads else None), None  # this part always reads: no empty way past it
+        taken.append(none)
+        ahead = _narrowed_ahead(ahead, part, grammar)
+    return (ir.Choice(tuple(reads)) if reads else None), _way_of_parts(node, taken)
+
+
 def _split_canonical(node, grammar, ways):
     """
-    A choice's or a way's `(reads, empty)` in the canonical form, which is not split into a reading copy and an empty
-    one — the steps that rewrote by such copies ran before that form existed. What is asked here is only which of the
-    two it can do, which is what `_split_ways` keeps, so the node stands for whichever it can and nothing rewrites by
-    the answer. A choice reads where any way does and takes nothing where any way does; a way needs every part to.
+    A choice's or a way's `(reads, empty)` in the canonical form: the ways of it that take a character and the ways that
+    take none, either `None` where it has none of them.
 
-    A way's parts are read in order, since what the lookaheads among them admit is what says a scan behind one takes a
-    character. A choice's ways are not: they stand beside one another, and nothing one of them tests holds in the next.
+    A choice's ways stand beside one another, so each splits on its own and the two halves are the ways that came back
+    from each — flattened, a way splitting into a choice of several. Nothing a way tests holds in the next, which is why
+    they are not read in order the way a way's own parts are.
     """
-    is_a_choice = isinstance(node, ir.Choice)
-    answers, ahead = [], _EVERY_CHARACTER
-    for part in _ways_or_items(node):
-        answers.append(
-            (part, None) if not is_a_choice and _does_scan_read(part, ahead, grammar) else _split(part, grammar, ways)
-        )
-        if not is_a_choice:
-            ahead = _narrowed_ahead(ahead, part, grammar)
-    does_read = any(part is not None for part, _empty in answers)
-    held = any if is_a_choice else all
-    return (node if does_read else None, node if held(part is not None for _reads, part in answers) else None)
+    if not isinstance(node, ir.Choice):
+        return _split_way(node, grammar, ways)
+    halves = [_split(way, grammar, ways) for way in node.alternatives]
+    reads = tuple(one for half, _none in halves if half is not None for one in _ways_of(half))
+    empty = tuple(one for _half, none in halves if none is not None for one in _ways_of(none))
+    return (ir.Choice(reads) if reads else None), (ir.Choice(empty) if empty else None)
 
 
 def _split_switch(node, grammar, ways):
@@ -4831,6 +4969,9 @@ def mint_consuming_and_residue(grammar, namer):
     The production keeps its name and becomes the choice of the two, which is the same match said in the same order. One
     whose ways all take nothing is left whole — there is no choice in it to name — and it is what the phase dissolves
     into its call sites rather than what this step splits.
+
+    What is left standing under the old name is still both things, since it offers a way into each. That is the next
+    step's to take away: the choice belongs where the caller is, and here it only gets somewhere to go.
     """
     ways = _split_ways(grammar)
     unsplittable = _unsplittable_runs(grammar, ways)
@@ -4842,16 +4983,33 @@ def mint_consuming_and_residue(grammar, namer):
         if not ways[name][2]:
             result[name] = production
             continue
-        choice = []
+        offered = []
         for form, body in (("reads", reads), ("empty", empty)):
             held = f"{name}_{form}"
-            result[held] = ir.Prod(production.number, held, production.params, body)
-            choice.append(ir.Ref(held, tuple(ir.Param(carried) for carried in production.params)))
-        body = ir.Alt(items=tuple(choice))
+            result[held] = ir.Prod(production.number, held, production.params, _as_canonical_body(body))
+            called = ir.Ref(held, tuple(ir.Param(carried) for carried in production.params))
+            offered.append(ir.Alternative(gate=ir.Gate(), second=called))
+        body = ir.Choice(alternatives=tuple(offered))
         result[name] = dataclasses.replace(
             production, body=body if message is None else ir.Commit(message=message, item=body)
         )
     return result
+
+
+def _as_canonical_body(node):
+    """
+    A split half as a body the machine has a state for: a choice of ways, or the run or the set it already is.
+
+    A half of a way is one way, and a half that matches nothing at all is the way that does nothing — neither is a body
+    where it stands, and a production is what this has to hand back.
+    """
+    if isinstance(node, (ir.CharSet, ir.Choice, ir.LongestRun)):
+        return node
+    if isinstance(node, ir.Alternative):
+        return ir.Choice(alternatives=(node,))
+    if isinstance(node, ir.Empty):
+        return ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate()),))
+    return ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), actions=(node,)),))
 
 
 def _every_way_is_either_empty_or_consumes(grammar):
@@ -5421,10 +5579,10 @@ STEPS = [
         reduces=NO_STAR_OR_PLUS_NODES,
     ),
     Step("lower-runs", lower_runs, settles=NO_STAR_OR_PLUS_NODES),
-    # `EVERY_FORBIDDEN_IS_A_PURE_TEST`: what an exclusion forbids is matched to be thrown away, so it is given a copy
-    # holding only what matches and asks. It runs while a `(token)` is still the one node saying what code characters
-    # carry, which is the whole of what such a copy has to drop.
-    Step("mint-forbidden-tests", mint_forbidden_tests, settles=EVERY_FORBIDDEN_IS_A_PURE_TEST),
+    # `EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS`: what an exclusion forbids is matched to be thrown away, so it is given a
+    # copy holding only what matches and asks. It runs while a `(token)` is still the one node saying what code
+    # characters carry, which is the whole of what such a copy has to drop.
+    Step("mint-forbidden-probes", mint_forbidden_probes, settles=EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS),
     # Phase 6 establishes `NO_WRAP_NODES`, `NO_MAX_NODES`, `NO_COMMIT_NODES`, `NO_TOKEN_NODES` and
     # `NO_EXCLUDE_AT_NODES`: nothing holds what it covers, a scope being the pair of writes that bound it. Each step
     # takes one kind, and `every-scope-closes-on-the-path-that-opens-it` stays none across all five — the guarantee a
@@ -5501,4 +5659,19 @@ STEPS = [
     # the call a state of its own, the two gates stand at one position — which is what every step that writes a callee's
     # ways into the way calling it rests on.
     Step("mint-call-states", mint_call_states, settles=EVERY_WAY_HAS_ACTIONS_OR_A_CALL),
+    # Phase 11 establishes `NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY`: nothing something decides to enter matches empty,
+    # entering one being a decision with no character to go on. The way is given the shape a split of it can walk first
+    # — the guards it asks, then what it performs, then the call — and on that shape a production that may take nothing
+    # is said as the two things it is, the choice between them is put where the caller stands, and what is left taking
+    # no character is written into the ways that enter it.
+    Step(
+        "mint-guard-states",
+        mint_guard_states,
+        settles=NO_GUARD_STANDS_PAST_AN_ACTION,
+        lapses={
+            "every-choice-of-one-is-unconditional": "a guard cut into a state of its own is a body of one way holding "
+            "it, and that is the shape a gate can be put on: the guard stands at the head of a state entered exactly "
+            "where the guard is asked, where before it stood past an action no caller could speak of"
+        },
+    ),
 ]
