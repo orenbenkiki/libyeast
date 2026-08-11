@@ -1606,13 +1606,18 @@ def _pushed_level(grammar, node):
 
 def span_consumes(grammar, namer):
     """
-    Write a run over a character class as the one scan it is: `x*` becomes a `ConsumeSpan` and `x+` the test that the
-    class is in front and that same span.
+    Write a run over a character class as the one scan it is, entered on the class: `x+` is the test that the class is
+    in front and the span behind it, and `x*` is that same way beside the way the class is not in front of.
 
     What such a run takes is a value the input decides rather than a way the parse chooses, and saying it as a scan is
-    what lets the codegen make one repeated-char-set call of it. Both are the same match said differently: a
-    `ConsumeSpan` is the maximal run a `Star` already takes, and a span the class is known to stand in front of takes
+    what lets the codegen make one repeated-char-set call of it. A span the class is known to stand in front of takes
     what a `Plus` does, at least one character of it.
+
+    A `Star`'s second way asks that the class is *not* there rather than matching empty beside it. The scan it replaces
+    is possessive: where the class is in front it takes the run and there is no shorter match to be given back for. An
+    empty way would be exactly that shorter match — `s-indent-le` is a run of spaces judged against the indentation
+    afterwards, and one too long would fail the judgement, fall back to no spaces at all and pass it. Told apart on the
+    character, neither way is reachable where the other was taken, and the alternation is the scan.
 
     The test rather than the class itself, though either admits the same text. A match of the class is a call, and a
     call is where `mint-continuations` ends a way — so the span would land in a continuation entered after it returned,
@@ -1632,11 +1637,10 @@ def span_consumes(grammar, namer):
         node = ir.rebuilt(node, lowered)
         if isinstance(node, ir.Rep) and ir.is_one_char(node.item, grammar):
             return ir.ConsumeCountedSpan(count=node.count, set=node.item)
-        if isinstance(node, ir.Star) and ir.is_one_char(node.item, grammar):
-            return ir.ConsumeSpan(set=node.item)
-        if isinstance(node, ir.Plus) and ir.is_one_char(node.item, grammar):
+        if isinstance(node, (ir.Star, ir.Plus)) and ir.is_one_char(node.item, grammar):
             asked = as_char_set(_peeked_question(node.item, grammar), grammar)
-            return ir.Seq(items=(ir.Look(item=asked), ir.ConsumeSpan(set=node.item)))
+            taken = ir.Seq(items=(ir.Look(item=asked), ir.ConsumeSpan(set=node.item)))
+            return taken if isinstance(node, ir.Plus) else ir.Alt(items=(taken, ir.NegLook(item=asked)))
         return node
 
     return {
@@ -2247,8 +2251,8 @@ _ONLY_MATCHES_AND_ASKS = ir.Reading(
     {
         # A match takes characters and says whether they were there, which is the whole of what the probe wants.
         (ir.Char, ir.CharSet, ir.ConsumeSpan, ir.Range): True,
-        # A guard reads where the parse stands and leaves it there.
-        (ir.EndOfStream, ir.Le, ir.StartOfLine): True,
+        # A guard reads where the parse stands and leaves it there, and an empty match does neither.
+        (ir.Empty, ir.EndOfStream, ir.Le, ir.StartOfLine): True,
         ir.Ref: True,
         # A shape that holds parts is what its parts are — a difference and a lookaround among them, each asking about a
         # match of its own.
