@@ -1606,12 +1606,19 @@ def _pushed_level(grammar, node):
 
 def span_consumes(grammar, namer):
     """
-    Write a run over a character class as the one scan it is: `x*` becomes a `ConsumeSpan` and `x+` the character and
-    the span behind it.
+    Write a run over a character class as the one scan it is: `x*` becomes a `ConsumeSpan` and `x+` the test that the
+    class is in front and that same span.
 
     What such a run takes is a value the input decides rather than a way the parse chooses, and saying it as a scan is
     what lets the codegen make one repeated-char-set call of it. Both are the same match said differently: a
-    `ConsumeSpan` is the maximal run a `Star` already takes, and a `Plus` is its item once and then that same run.
+    `ConsumeSpan` is the maximal run a `Star` already takes, and a span the class is known to stand in front of takes
+    what a `Plus` does, at least one character of it.
+
+    The test rather than the class itself, though either admits the same text. A match of the class is a call, and a
+    call is where `mint-continuations` ends a way — so the span would land in a continuation entered after it returned,
+    and what says the run takes a character would be a production away from the run. A guard is no call: it stays among
+    the actions beside the span, which is both where a hoist can lift it into the gate and where `_split_seq` can read
+    it as the reason the scan is not empty.
 
     A counted repetition of one is the same value said with a count rather than an end: `x{n}` is the `n` characters of
     the set, all of them or none, which is what a `ConsumeCountedSpan` takes — a count the parse works out included,
@@ -1628,7 +1635,8 @@ def span_consumes(grammar, namer):
         if isinstance(node, ir.Star) and ir.is_one_char(node.item, grammar):
             return ir.ConsumeSpan(set=node.item)
         if isinstance(node, ir.Plus) and ir.is_one_char(node.item, grammar):
-            return ir.Seq(items=(node.item, ir.ConsumeSpan(set=node.item)))
+            asked = as_char_set(_peeked_question(node.item, grammar), grammar)
+            return ir.Seq(items=(ir.Look(item=asked), ir.ConsumeSpan(set=node.item)))
         return node
 
     return {
@@ -2516,6 +2524,32 @@ _END_OF_STREAM = (-2, -2)
 
 # Everything that character can be: the end of the stream, the invalid byte, and the codepoints.
 _EVERY_CHARACTER = ((_END_OF_STREAM[0], 0x10FFFF),)
+
+
+def _narrowed_ahead(ahead, item, grammar):
+    """
+    What the character in front of a way can still be, once `item` has been passed over — the spans it admitted, met
+    with what a lookahead among the parts before said of it. Anything else narrows nothing.
+    """
+    if not isinstance(item, ir.Look):
+        return ahead
+    return tuple(_spans_meeting(ahead, _peek_spans(item.item, grammar) or []))
+
+
+def _does_scan_read(item, ahead, grammar):
+    """
+    Whether `item` is a scan whose own class is known to stand in front of it, so it takes at least one character.
+
+    A `ConsumeSpan` is a run of none or more and takes none exactly where its set is not there. Where the lookaheads
+    before it leave nothing the set does not hold, it is there — which is what a `Plus` over a class is written as, and
+    a walk reading the pair as if the scan could be empty would report an empty way the input never offers.
+    """
+    if not isinstance(item, ir.ConsumeSpan):
+        return False
+    spans = _peek_spans(item.set, grammar)
+    if not ahead or spans is None:
+        return False
+    return all(any(low >= at and high <= to for at, to in spans) for low, high in ahead)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -4475,15 +4509,28 @@ def _counted_span_is_nullable(node, grammar, ways):
     return not isinstance(node.count, ir.Lit) or node.count.value <= 0 or _is_nullable(node.set, grammar, ways)
 
 
+def _is_way_nullable(node, grammar, ways):
+    """
+    Whether a way takes no character — every part of it taking none, the parts read in order so that a scan its own
+    class is known to stand in front of is one that reads.
+    """
+    ahead = _EVERY_CHARACTER
+    for item in _items_of_way(node):
+        if _does_scan_read(item, ahead, grammar):
+            return False
+        if not _is_nullable(item, grammar, ways):
+            return False
+        ahead = _narrowed_ahead(ahead, item, grammar)
+    return True
+
+
 _IS_NULLABLE = ir.Reading(
     "whether a match can take no character",
     {
         _ALWAYS_READS: False,
         (*_TAKES_NOTHING, ir.ConsumeSpan): True,
         ir.Ref: lambda node, grammar, ways: ways[node.name][1],
-        (ir.Alternative, ir.Seq): lambda node, grammar, ways: all(
-            _is_nullable(item, grammar, ways) for item in _items_of_way(node)
-        ),
+        (ir.Alternative, ir.Seq): lambda node, grammar, ways: _is_way_nullable(node, grammar, ways),
         ir.Alt: lambda node, grammar, ways: any(_is_nullable(way, grammar, ways) for way in node.items),
         # A run of none or more takes nothing by taking no turn; one of at least a turn takes nothing only where the
         # turn does.
@@ -4608,10 +4655,20 @@ def _split_canonical(node, grammar, ways):
     one — the steps that rewrote by such copies ran before that form existed. What is asked here is only which of the
     two it can do, which is what `_split_ways` keeps, so the node stands for whichever it can and nothing rewrites by
     the answer. A choice reads where any way does and takes nothing where any way does; a way needs every part to.
+
+    A way's parts are read in order, since what the lookaheads among them admit is what says a scan behind one takes a
+    character. A choice's ways are not: they stand beside one another, and nothing one of them tests holds in the next.
     """
-    answers = [_split(part, grammar, ways) for part in _ways_or_items(node)]
+    is_a_choice = isinstance(node, ir.Choice)
+    answers, ahead = [], _EVERY_CHARACTER
+    for part in _ways_or_items(node):
+        answers.append(
+            (part, None) if not is_a_choice and _does_scan_read(part, ahead, grammar) else _split(part, grammar, ways)
+        )
+        if not is_a_choice:
+            ahead = _narrowed_ahead(ahead, part, grammar)
     does_read = any(part is not None for part, _empty in answers)
-    held = any if isinstance(node, ir.Choice) else all
+    held = any if is_a_choice else all
     return (node if does_read else None, node if held(part is not None for _reads, part in answers) else None)
 
 
@@ -4629,15 +4686,21 @@ def _split_seq(node, grammar, ways):
     """
     A sequence's `(reads, empty)`. It reads where any one part does, so the reading ways are one per part that can —
     that part reading and everything before it taking nothing — and the empty way is every part taking none.
+
+    A scan reached with its own class known to stand in front of it is not one of the parts that can take none: the
+    lookaheads before it narrow what the character can be, and where nothing they admit is off the scan's set the scan
+    takes at least one. That is what a `Plus` over a class is written as, and reading the pair as if either half could
+    be empty would report an empty way the parse has no input for.
     """
-    reads, taken = [], []
+    reads, taken, ahead = [], [], _EVERY_CHARACTER
     for position, item in enumerate(node.items):
-        way, none = _split(item, grammar, ways)
+        way, none = (item, None) if _does_scan_read(item, ahead, grammar) else _split(item, grammar, ways)
         if way is not None:
             reads.append(ir.Seq(items=tuple(taken) + (way,) + node.items[position + 1 :]))
         if none is None:
             return (ir.Alt(items=tuple(reads)) if reads else None), None  # this part always reads: no empty way past it
         taken.append(none)
+        ahead = _narrowed_ahead(ahead, item, grammar)
     return (ir.Alt(items=tuple(reads)) if reads else None), ir.Seq(items=tuple(taken))
 
 
@@ -5013,13 +5076,17 @@ def _entered_unconsumed(node, grammar, ways):
     if isinstance(node, (ir.Alt, ir.Choice)):
         return {name for item in _ways_or_items(node) for name in _entered_unconsumed(item, grammar, ways)}
     if isinstance(node, (ir.Alternative, ir.Seq)):
-        reached = set()
+        reached, ahead = set(), _EVERY_CHARACTER
         for item in _items_of_way(node) if isinstance(node, ir.Alternative) else node.items:
             reached |= _entered_unconsumed(item, grammar, ways)
             # This part always reads, or takes nothing only where the input has ended: either way nothing behind it is
-            # entered where the parse still stands and can go on.
+            # entered where the parse still stands and can go on. A scan its own class stands in front of always reads,
+            # which the lookaheads passed over are what say.
+            if _does_scan_read(item, ahead, grammar):
+                break
             if not _is_nullable(item, grammar, ways) or _takes_none_only_at_the_end(item, grammar, ways):
                 break
+            ahead = _narrowed_ahead(ahead, item, grammar)
         return reached
     if isinstance(node, ir.Bind):
         return _entered_unconsumed(node.cond, grammar, ways)
