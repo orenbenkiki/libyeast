@@ -4294,13 +4294,18 @@ nb-unparsed:
 #   ( <empty>
 #   | <excluding_c-forbidden_content>
 #   | <excluding_c-forbidden_or_s-indent-le-line(n)_content> )
-#   ( nb-unparsed+ | <invalid>+ | b-break )*
+#   ( ( nb-unparsed+ | <invalid>+ | b-break )+
+#   | <end_of_file> )
 #
 # The run of input the parser could not parse, bounded by the resume policy: everything that is left when nothing is to
 # be resumed; only as far as the next document marker when the parse carries on there; and, when it carries on at the
 # next line no more indented than n, as far as whichever of the two comes first. Each policy adds a place the run
 # stops, so none of them gives up more input than the one before it. The guards are in scope until this rule returns
 # and no further, so they stop the run without forbidding the line to whatever resumes at it.
+#
+# The turns between them take every character there is, and a run is possessive, so the one place none of them can be
+# taken is past the last character: a run of none or more here is a run of at least one or the end of the input, and
+# saying so is what keeps l-recover and l-yeast-stream from reaching each other with nothing taken.
 #
 # c-forbidden is not redundant in the third: s-indent-le-line cannot hold below an indentation of 0, so a run bounded
 # by nothing would go straight past a document marker.
@@ -4318,11 +4323,13 @@ l-unparsed:
       "n": <empty>
       "d": { (exclude): c-forbidden }
       "i": { (exclude): { (any): [ c-forbidden, { s-indent-le-line: n } ] } }
-  - (***):
-      (any):
-      - (token): [ unparsed-text, { (+++): nb-unparsed } ]
-      - (token): [ unparsed-invalid, { (+++): <invalid> } ]
-      - (token): [ unparsed-break, b-break ]
+  - (any):
+    - (+++):
+        (any):
+        - (token): [ unparsed-text, { (+++): nb-unparsed } ]
+        - (token): [ unparsed-invalid, { (+++): <invalid> } ]
+        - (token): [ unparsed-break, b-break ]
+    - <end-of-stream>
 
 
 

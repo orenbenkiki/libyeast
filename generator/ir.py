@@ -1171,6 +1171,28 @@ class PopIndent:
 
 
 @dataclass(frozen=True)
+class SetForbidden:
+    """
+    A zero-width action that sets what may not match at a start of line to `item`, `None` where nothing may not.
+
+    What an `(exclude)` becomes, at each end of what it covers: the set is one value for the parse rather than one per
+    call, so this writes a slot and the write that ends a scope names what stands after it rather than taking back what
+    the opening write displaced. Nothing has to be taken back — the only exclusion that opens inside another is the
+    entry recovery's inside a document's, and it forbids everything the document's does and one thing more, so the inner
+    value already says the outer one.
+    """
+
+    item: object = None
+
+    def references(self):
+        return _refs(self.item)
+
+    def renamed(self, names):
+        (item,) = _renamed(names, self.item)
+        return replace(self, item=item)
+
+
+@dataclass(frozen=True)
 class PushCode:
     """
     A zero-width action that cuts the run and sets the code its following characters carry to `code` — what a `(token)`
@@ -1569,6 +1591,7 @@ NOT_ONE_CHAR = (
     Rep,
     RetypeProvisional,
     Seq,
+    SetForbidden,
     SetVar,
     Star,
     StartOfLine,
@@ -1643,6 +1666,7 @@ _IS_ONE_CHAR = Reading(
             Recover,
             Rep,
             Seq,
+            SetForbidden,
             SetVar,
             Star,
             StartOfLine,

@@ -942,6 +942,14 @@ def match(node, emitter, grammar, k):
         if node.default is not None:
             return match(node.default, emitter, grammar, k)
         return False
+    if isinstance(node, ir.SetForbidden):
+        # A slot rather than a stack: the write that ends a scope names what stands after it, so nothing is taken back.
+        checkpoint = emitter.checkpoint()
+        emitter.forbidden = () if node.item is None else (node.item,)
+        if k():
+            return True
+        emitter.rewind(checkpoint)
+        return False
     if isinstance(node, ir.SetVar):
         checkpoint = emitter.checkpoint()
         value = evaluate(node.value, emitter, grammar)
