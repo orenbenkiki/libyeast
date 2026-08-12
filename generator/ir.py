@@ -16,6 +16,7 @@ Each class spells its own fields out, so which fields can hold a production — 
 is written where the node is defined, and reachability is read off the nodes themselves.
 """
 
+import time
 from dataclasses import dataclass, fields, is_dataclass, replace
 
 # The production the whole grammar hangs off: a YAML stream, and then the end of the input.
@@ -167,6 +168,49 @@ class Reading:
         return sorted(
             kind.__name__ for kind, handler in self._by_kind.items() if handler is not NEVER and kind not in self._used
         )
+
+
+# What no fixpoint over a grammar should need. Every one of them settles in a handful of rounds — each drops a call or
+# moves a question, and there are finitely many of both — so a loop still going here is one that has stopped settling,
+# and a run that says so beats one that never returns. The deepest measured is the sweep's refinement of duplicate
+# bodies at 25, which `deepest_rounds` reports so this stays a number somebody measured rather than one somebody
+# guessed.
+ROUNDS = 100
+
+# The most rounds each fixpoint has ever taken, by name. The cap above is a backstop picked to be far out of reach; what
+# says how far is this, reported once a whole run has been made, so a number nobody measured can be replaced by one
+# somebody did.
+_DEEPEST = {}
+
+
+_STARTED = time.time()
+
+
+def say(message):
+    """
+    Say where a run has got to, stamped with the clock and with how long it has been going, and flushed.
+
+    Flushed because stdout is a pipe wherever anyone is watching — under `tee`, under a log — and Python buffers a pipe
+    by the block, so an unflushed line arrives once the run is over and has nothing left to report.
+    """
+    print(f"[{time.strftime('%H:%M:%S')} {time.time() - _STARTED:6.1f}s] {message}", flush=True)
+
+
+def rounds(what):
+    """The rounds of a fixpoint, counted and said, raising where `what` has plainly stopped settling."""
+    for round in range(ROUNDS):
+        _DEEPEST[what] = max(_DEEPEST.get(what, 0), round + 1)
+        if round % 10 == 0:  # the first, and every tenth after it: the deepest fixpoint measured takes 25 rounds, so a
+            say(
+                f"        {what}: round {round + 1}"
+            )  # settling one says so two or three times and a stuck one keeps on
+        yield round
+    raise AssertionError(f"`{what}` did not settle in {ROUNDS} rounds")
+
+
+def deepest_rounds():
+    """`{what: the most rounds it took}` — meaningful once a whole run has been made, as `unexercised` is."""
+    return dict(sorted(_DEEPEST.items(), key=lambda held: -held[1]))
 
 
 def unexercised():

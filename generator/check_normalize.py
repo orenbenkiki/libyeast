@@ -51,6 +51,11 @@ STACK_BYTES = 256 * 1024 * 1024
 RECURSION_LIMIT = 200000
 
 
+def _say(message):
+    """Say where the run has got to — `ir.say`, so a step's progress and the check's are stamped the same way."""
+    ir.say(message)
+
+
 def _corpus_errors(label, grammar, fixtures, suite):
     """
     The cases `grammar` does not reproduce, named for the step that produced it — the fixtures filtered to the ones
@@ -120,41 +125,55 @@ def _first_broken(stages, fixtures, suite, hint=None, bound=None):
     labels = [label for label, _grammar in stages]
     low = 0  # the stage at `low` is taken to hold; the one at `high` is known not to
     high = len(stages) - 1 if bound is None else bound
+
+    def probed(index):
+        """The corpus at one stage, said before and after so a search that is running says where it has got to."""
+        _say(f"    probing [{labels[index]}] ({index} of {len(stages) - 1})")
+        errors = _corpus_errors(*stages[index], fixtures, suite)
+        _say(f"    [{labels[index]}] {'breaks' if errors else 'holds'}, {high - low} stage(s) still in range")
+        return errors
+
     if hint is not None and hint in labels:
         index = labels.index(hint)
         if 0 < index <= high:
-            if _corpus_errors(*stages[index - 1], fixtures, suite):
+            _say(f"suspecting [{hint}] first")
+            if probed(index - 1):
                 high = index - 1
             else:
-                errors = _corpus_errors(*stages[index], fixtures, suite)
+                errors = probed(index)
                 if errors:
                     return stages[index][0], errors
                 low = index
-    if not _corpus_errors(*stages[high], fixtures, suite):
+    if not probed(high):
         return None
-    first = _corpus_errors(*stages[low], fixtures, suite)
+    first = probed(low)
     if first:
         return stages[low][0], first
     while high - low > 1:
         middle = (low + high) // 2
-        if _corpus_errors(*stages[middle], fixtures, suite):
+        if probed(middle):
             high = middle
         else:
             low = middle
-    return stages[high][0], _corpus_errors(*stages[high], fixtures, suite)
+    return stages[high][0], probed(high)
 
 
 def _check(does_bisect=False, hint=None):
+    _say("loading the fixtures and the suite")
     fixtures = spec_tests.load()
     suite = check_star.cases()
+    _say(f"{len(fixtures)} fixture(s), {len(suite)} suite case(s); running {len(normalize.STEPS)} step(s)")
     stages, points = normalize.stages(annotated2ir.load())
     final_label, final = stages[-1]
+    _say(f"{len(stages) - 1} stage(s) built, {len(final)} production(s) at [{final_label}]; pinning the fixtures")
     groups, errors = _pinned(stages, fixtures)
 
     corpus = []
     for (label, grammar), pinned in zip(stages, groups):
         if pinned:
+            _say(f"[{label}] {len(pinned)} pinned fixture(s)")
             corpus += [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, pinned)]
+    _say(f"[{final_label}] {len(suite)} suite case(s)")
     corpus += [f"[{final_label}] star {error}" for error in check_star.disagreements(final, suite)]
     if corpus:  # something broke the stream; say so at once, whether or not the step behind it is asked for
         print(f"FAILING: {len(corpus)} corpus divergence(s)", flush=True)
@@ -189,6 +208,14 @@ def _check(does_bisect=False, hint=None):
     asked = interpreter.ASKED["flattened"]
     if asked:
         errors.append(f"[global] {asked} read(s) answered from a stack a single slot could not have stood for")
+
+    # The rounds each fixpoint took, deepest first — said before the gate reports, which exits where anything failed and
+    # would take this with it. `ir.ROUNDS` is a backstop, and this is what says how far out of reach it is.
+    deepest = ir.deepest_rounds()
+    _say(
+        f"deepest fixpoint {max(deepest.values(), default=0)} round(s) against a cap of {ir.ROUNDS}: "
+        + ("; ".join(f"{what} {took}" for what, took in deepest.items()) or "none")
+    )
 
     gate.report(
         errors,
