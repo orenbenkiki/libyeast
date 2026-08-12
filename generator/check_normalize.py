@@ -190,8 +190,10 @@ def _check(does_bisect=False, hint=None):
             print("    re-run with `--bisect [step]` to name the step behind it", flush=True)
     errors += corpus
     exercisers = [(grammar, pinned) for (_label, grammar), pinned in zip(stages, groups) if pinned]
+    _say(f"coverage of [{final_label}] against {sum(len(pinned) for _grammar, pinned in exercisers)} exerciser(s)")
     for error in check_grammar_coverage.gaps(final, exercisers):
         errors.append(f"[final] coverage {error}")
+    _say("holding the pipeline to its own law")
     # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
     # stays none after — a step breaking one saying so in its `lapses` and why, and a step naming one doing something
     # about it. Every structural property the pipeline claims is judged here, so nothing else below repeats one.
@@ -217,6 +219,7 @@ def _check(does_bisect=False, hint=None):
         + ("; ".join(f"{what} {took}" for what, took in deepest.items()) or "none")
     )
 
+    _say("done, results:")
     gate.report(
         errors,
         "normalization fault(s) — a step that changes the grammar's meaning, or an invariant broken with no reason "
@@ -260,6 +263,7 @@ def _check(does_bisect=False, hint=None):
     # an error fires risks it. It is a count and not yet a gate: none of it is refused until it reads none, at which
     # point the two modes agreeing becomes the law the way the corpus already is.
     committed = normalize.deterministic_productions(final)
+    _say(f"running the corpus again over {len(committed)} choice(s) entered committed")
     unsafe = check_interpreter.reproduced(final, groups[-1], deterministic=committed)
     unsafe += check_star.disagreements(final, suite, deterministic=committed)
     choices = sum(1 for production in final.values() if isinstance(production.body, ir.Choice))

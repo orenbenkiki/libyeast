@@ -17,6 +17,7 @@ import os
 
 import annotated2ir
 import gate
+import ir
 import star
 
 # The suite cases libyeast folds differently from the suite, each by its `<ID>` and the reason the difference is the
@@ -72,7 +73,9 @@ def disagreements(grammar, suite=None, deterministic=frozenset()):
     if suite is None:
         suite = cases()
     errors = []
-    for case in suite:
+    for at, case in enumerate(suite):
+        if at and not at % 25:  # a case takes milliseconds and the whole suite takes seconds, so it says so as it goes
+            ir.say(f"        {at} of {len(suite)} suite case(s)")
         disagreement = _disagreement(grammar, os.path.join(star.SUITE, case), deterministic=deterministic)
         if case in DIVERGENCES:
             if disagreement is None:

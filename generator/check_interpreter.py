@@ -13,6 +13,7 @@ import os
 import annotated2ir
 import gate
 import interpreter
+import ir
 import spec_tests
 import wire
 
@@ -29,7 +30,9 @@ def reproduced(grammar, fixtures=None, deterministic=frozenset()):
     if fixtures is None:
         fixtures = spec_tests.load()
     errors = []
-    for fixture in fixtures:
+    for at, fixture in enumerate(fixtures):
+        if at and not at % 100:  # a group can be hundreds of fixtures, and a silent minute reads like a hang
+            ir.say(f"        {at} of {len(fixtures)} fixture(s)")
         try:
             arguments = spec_tests.arguments(fixture, grammar)
             tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments, deterministic=deterministic)

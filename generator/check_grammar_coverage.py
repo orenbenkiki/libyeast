@@ -197,7 +197,10 @@ def exercised(grammar, fixtures=None):
 
     interpreter.match, interpreter.evaluate = match, evaluate
     try:
-        for fixture in spec_tests.load() if fixtures is None else fixtures:
+        exercisers = spec_tests.load() if fixtures is None else fixtures
+        for at, fixture in enumerate(exercisers):
+            if at and not at % 100:  # the run is instrumented and slower than a plain one, so it says where it is
+                ir.say(f"            {at} of {len(exercisers)} fixture(s) exercised")
             # a crashing fixture simply leaves its productions unexercised, for the gate to report
             try:
                 interpreter.run(grammar, fixture.production, fixture.input, spec_tests.arguments(fixture, grammar))
@@ -292,7 +295,9 @@ def gaps(grammar, exercisers=None):
     — would be asking the corpus for a refusal the untransformed grammar had nowhere to show.
     """
     reached_bases, rejected_bases = set(), set()
-    for stage, fixtures in [(grammar, None)] if exercisers is None else exercisers:
+    pairs = [(grammar, None)] if exercisers is None else exercisers
+    for at, (stage, fixtures) in enumerate(pairs):
+        ir.say(f"        exerciser {at + 1} of {len(pairs)}, {len(fixtures or ())} fixture(s)")
         reached, rejected = exercised(stage, fixtures)
         reached_bases |= {_base(name) for name in reached}
         rejected_bases |= {_base(name) for name in rejected}

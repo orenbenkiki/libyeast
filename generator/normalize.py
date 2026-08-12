@@ -159,18 +159,32 @@ class Namer:
     next `foo_2`, and one minted while a later step processes `foo_3` is `foo_4` — never `foo_3_1`, since the base is
     `foo` with any `_<N>` suffix stripped. Two steps minting for the same base do not collide. It carries the pipeline's
     `Points` too — the points of interest tracked across the steps it names.
+
+    A name is never handed out twice, and never one a grammar it has been shown already holds. The count alone was not
+    enough for that: a namer that had not been told about a grammar would hand back `foo_1` over the `foo_1` standing in
+    it, and the minting would replace a production rather than add one — silently, since a step writes what it mints
+    into the same dict. Every grammar the namer is shown is taken into `_taken`, so the count skips what is there.
     """
 
     def __init__(self):
         self._counts = {}
+        self._taken = set()
         self.points = Points()
+
+    def sees(self, grammar):
+        """Take `grammar`'s names as ones never to hand out — what keeps a fresh name from replacing a production."""
+        self._taken.update(grammar)
 
     def fresh(self, owner):
         """A fresh `<base>_<N>` name for a helper of `owner`, the base being `owner` without its `_<N>` suffix."""
         head, _underscore, tail = owner.rpartition("_")
         base = head if tail.isdigit() and head else owner
-        self._counts[base] = self._counts.get(base, 0) + 1
-        return f"{base}_{self._counts[base]}"
+        while True:
+            self._counts[base] = self._counts.get(base, 0) + 1
+            minted = f"{base}_{self._counts[base]}"
+            if minted not in self._taken:
+                self._taken.add(minted)
+                return minted
 
 
 def _branch(node, value):
@@ -908,6 +922,7 @@ def stages(grammar):
     the sweep did after it.
     """
     namer = Namer()
+    namer.sees(grammar)
     namer.points.settle("base", grammar)
     result = [("base", grammar)]
     for step in STEPS:
@@ -921,6 +936,7 @@ def stages(grammar):
         if produced == grammar:
             raise AssertionError(f"the `{step.name}` step changed nothing — what it looks for no longer reaches it")
         grammar, renames = cleaned(produced)
+        namer.sees(grammar)
         namer.points.follow(renames)
         namer.points.settle(step.name, grammar)
         result.append((step.name, grammar))
@@ -1985,6 +2001,65 @@ def lower_optionals(grammar, namer):
 # the same thing and is not this — its lowering is no identity, the run being possessive where an alternation's empty
 # way is a fallback the continuation can reach.
 NO_OPT_NODES = _absent("no-opt-nodes", ir.Opt)
+
+
+def _every_run_takes_a_turn(grammar):
+    """
+    Check that no run hides an empty match — every one takes a turn, the no-turn case standing as a way of its own.
+
+    A run of none or more matches empty by taking no turn, and nothing about the shape says so: a caller reading the
+    body sees a run and has to know what `least` means to know an empty match is in there. Said as the run that takes a
+    turn beside the way that takes none, the empty match is a way like any other, which is where a gate can go on it.
+    """
+    return [
+        f"{name}: a run of none or more, hiding the match that takes no turn"
+        for name, production in grammar.items()
+        for node in _held(production.body)
+        if isinstance(node, ir.LongestRun) and node.least == 0
+    ]
+
+
+EVERY_RUN_TAKES_A_TURN = Invariant("every-run-takes-a-turn", _every_run_takes_a_turn)
+
+
+def split_runs_of_none(grammar, namer):
+    """
+    Write each run of none or more as the two matches it is: the run that takes a turn, and the way that takes none.
+
+    `A = (x)*` becomes `A = |→A′| | ||` with `A′ = (x)+`, which is the same pair of matches in the same order — the run
+    tried first and the empty way behind it, as a run of none or more already does.
+
+    A run whose turn no input refuses needs no way beside it: the run of at least one always takes its first turn, so it
+    matches everything the run of none or more did and a way behind it would be one no input reaches. Refusing is the
+    question, not taking nothing — a turn that can match empty may still decline, and there the run of at least one
+    refuses where the run of none or more took no turns and matched.
+
+    What is not carried over is that the run is possessive. `LongestRun` never hands back a turn, so where it took some
+    and the continuation failed, the whole match failed; the empty way behind an alternation is a fallback the
+    continuation can reach. The corpus is what says whether the grammar's runs tell the two apart, and it says they do
+    not.
+    """
+    minted, written = {}, {}
+    for name, production in grammar.items():
+        body = production.body
+        if not isinstance(body, ir.LongestRun) or body.least != 0:
+            written[name] = production
+            continue
+        if not _can_be_refused(body.item, grammar):  # noqa: SIM102 — the two conditions answer different questions
+            written[name] = dataclasses.replace(production, body=dataclasses.replace(body, least=1))
+            continue
+        held = namer.fresh(name)
+        minted[held] = ir.Prod(production.number, held, (), dataclasses.replace(body, least=1))
+        written[name] = dataclasses.replace(
+            production,
+            body=ir.Choice(
+                alternatives=(
+                    ir.Alternative(gate=ir.Gate(), second=ir.Ref(name=held, args=())),
+                    ir.Alternative(gate=ir.Gate()),
+                )
+            ),
+        )
+    return {**written, **minted}
 
 
 # What a match takes. A kind that always takes at least one character, and the kinds that never take any — the latter
@@ -5249,6 +5324,25 @@ def _split_ways(grammar):
         ways = settled
 
 
+def dissolve_empty_calls(grammar, namer):
+    """
+    Offer a mixing callee's ways where its call stands, then take the calls that can only take none out of the ways that
+    make them — both again and again, until neither finds anything.
+
+    The two feed each other, which is why neither settles anything alone. Offering a callee's ways leaves each call
+    definitely-reading or definitely-empty, which is what gives the fusion something to take; and taking an empty call
+    out of a way leaves that way's production reading where it mixed before, which is a callee the offering could not
+    tell apart the round before. One pass of either reaches only what mixes at the moment it runs, and the empty match
+    climbs one call per round.
+
+    What is left when it settles is what the two decline: a call the way makes with a committed region still open, and a
+    continuation reached past a call of the way's own. Neither can be moved without changing which parse the grammar
+    takes, and both wait on the decision being made on a character instead.
+    """
+    grammar = cleaned(mint_called_ways(grammar, namer))[0]
+    return fuse_empty_calls(grammar, namer)
+
+
 def fuse_empty_calls(grammar, namer):
     """
     Take a call that can only take no character out of the way that makes it, into where that way carries on: `A = |gate
@@ -5318,6 +5412,27 @@ def _do_ways_differ(body, grammar, ways):
     )
 
 
+def _does_way_hold_a_region_open_at_its_call(way):
+    """
+    Whether `way` still has a committed region open where it makes its call, so a failure there is the error the region
+    names rather than a way handed back.
+
+    Read off what the interpreter does: `PushMessage` records the region, runs its continuation, and where that fails
+    with the region unclosed it raises rather than returning. So everything between the push and its close is one
+    continuation, and a choice inside it goes on to its next way where a choice outside it never gets the chance. A
+    `(cut)` says the same thing outright and needs no pairing to say it.
+    """
+    open_regions = 0
+    for action in way.actions:
+        if isinstance(action, ir.PushMessage):
+            open_regions += 1
+        elif isinstance(action, ir.PopMessage):
+            open_regions -= 1
+        elif isinstance(action, ir.Cut):
+            return True
+    return open_regions > 0
+
+
 def mint_called_ways(grammar, namer):
     """
     Give each way of a called production that both reads and takes none a name of its own, and offer them where the call
@@ -5331,10 +5446,26 @@ def mint_called_ways(grammar, namer):
     and only what it calls changes. So nothing is merged, nothing needs a slot it has not got, and the ways come out in
     the order `B` offered them — which is the order the parse tried them in.
 
-    One pass and no fixpoint. Offering `B`'s ways where its call stood leaves the caller's own ways differing about
-    taking a character where they did not before, so a second round would expand every caller of the caller, and a third
-    every caller of those — the split climbing the call graph and multiplying the sites by the ways at each level. What
-    is expanded here is what mixes now.
+    One pass, and running it twice is known to break the corpus — 212 divergences where one pass is green. So what it
+    reaches is what mixes now, and the rest of `no-conditional-production-matches-empty` waits on the precondition below
+    being written down and checked rather than on more rounds.
+
+    **What is known about why, and what is not.** The step's soundness rests on the callee's ways being alternatives at
+    the call site in the same sense they were inside the callee — the parse falling from one to the next. Two of the
+    ways that can fail are guarded against: a continuation past a call of the way's own is refused, since it is entered
+    wherever that call left off and its ways would interleave with the call's rather than nest inside them.
+
+    That is not the whole precondition, and the rest is unwritten because it is not understood. Copying the ways of
+    `c-l-block-map-explicit-entry_3` into its caller — `NegLook`, `PushMessage`, then the call — turns a parse that
+    succeeded into an error token, `A mapping key is required after '?'`, with the rest of the input unparsed. So the
+    four ways are alternatives the parse falls between where they stand, and are not after the copy. Several structural
+    explanations were tried against that example and none held; what would settle it is a trace of the interpreter
+    across the two, not another reading of the shapes.
+
+    `_can_be_refused` below is not the missing clause and answers a different question — a way carrying a gate is
+    refused wherever its gate declines, which says nothing about what becomes of a failure once the gate has held. It
+    went in to quiet an `every-option-is-reachable` fault, which asks whether the *caller's* later ways are reachable.
+    It stays only because removing it has not been measured.
     """
     ways = _split_ways(grammar)
     mixing = {
@@ -5360,10 +5491,19 @@ def mint_called_ways(grammar, namer):
         a different parse.
 
         And never at a site no input refuses. The ways are offered in turn, each tried where the one in front was handed
-        back — so where the way cannot be handed back at all, past a `(cut)` or inside a committed region, only the
-        first of them is ever reached and the rest are a fallthrough the callee had and the caller has not.
+        And never where the way still has a committed region open when it makes its call. `PushMessage` runs its
+        continuation and, where that fails with the region never closed, raises the error rather than handing a failure
+        back — so the callee's choice must stand *inside* that continuation. It does where the call is one: the whole of
+        the callee, ways and all, is tried within the `k()` the region opened, and the region sees a failure only once
+        every way has failed. Copied out, each way is its own continuation, the first to fail raises, and the ways
+        behind it are never reached.
+
+        And never where no input refuses the way. That is a different question with a different answer — not what
+        becomes of a failure but whether there is one — and it matters because the copies stand in order: where the
+        first can never be refused, every copy behind it is a way no input reaches, which is what
+        `every-option-is-reachable` counts.
         """
-        if not _can_be_refused(way, grammar):
+        if _does_way_hold_a_region_open_at_its_call(way) or not _can_be_refused(way, grammar):
             return [way]
         for slot in ("first", "second"):
             if slot == "second" and _does_way_carry_on_past_a_call(way):
@@ -5476,32 +5616,6 @@ EVERY_PRODUCTION_IS_EITHER_EMPTY_OR_CONSUMES = Invariant(
 )
 
 
-def _every_empty_production_is_entered_by_name(grammar):
-    """
-    Check that a production which can match empty is one the parse enters by name.
-
-    Everything else is reached by something — a call the machine chose to make, a way carrying on past one, a run's
-    turn, a pattern an exclusion forbids. Reaching any of those and taking no character leaves the parse exactly where
-    it was, having spent a state to learn nothing, and a machine that decided to go there decided on nothing. Written
-    into whatever reaches it, the same match is the caller's own way and no state is entered at all.
-
-    A production entered by name is where a parse begins rather than somewhere it went, so there is nothing that could
-    have declined to go there and nothing for the empty match to have cost.
-    """
-    entered = entered_by_name(grammar)
-    ways = _split_ways(grammar)
-    return [
-        f"{name}: can match empty, and something reaches it"
-        for name in grammar
-        if ways[name][1] and name not in entered
-    ]
-
-
-EVERY_EMPTY_PRODUCTION_IS_ENTERED_BY_NAME = Invariant(
-    "every-empty-production-is-entered-by-name", _every_empty_production_is_entered_by_name
-)
-
-
 def dissolve_residues(grammar, namer):
     """
     Write every production that takes no character into the call sites that enter it, so nothing is reached by a name
@@ -5588,10 +5702,40 @@ def _conditional_empties(grammar):
     A parse enters the root and the recovery by name rather than by a call, and reaches a continuation because the way
     holding it was taken; an empty match at either is no decision. Everything else that can match empty belongs among
     the ways of whoever enters it, where a gate can be put on it.
+
+    Nor is an empty match a decision where it is the **fallthrough** of its own choice: the last way, its gate saying
+    nothing, every way in front of it gated. A machine takes the first way whose gate holds and this one where none
+    does, which is a decision made on the character like any other — an empty way admits every character, so it can
+    never be told from a reading way by a peek, and last-and-ungated is the one place that does not have to be.
     """
     ways = _split_ways(grammar)
     unasked = entered_by_name(grammar) | _entered_unconditionally(grammar)
-    return {name for name in grammar if name not in unasked and ways[name][1]}
+    return {
+        name
+        for name in grammar
+        if name not in unasked and ways[name][1] and not _is_the_empty_a_fallthrough(grammar[name], grammar, ways)
+    }
+
+
+def _is_the_empty_a_fallthrough(production, grammar, ways):
+    """
+    Whether what `production` matches empty by is the last way of its choice, ungated, with every way in front of it
+    carrying a gate.
+
+    The shape a machine can take without a character to go on: it asks each gate in turn and arrives here when none
+    held. A way in front that says nothing is a way it would have taken already, so the empty one behind it is never
+    reached on its own terms; a gate on the empty way itself is a question asked where there is nothing to choose.
+    """
+    body = production.body
+    if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
+        return False
+    last = body.alternatives[-1]
+    if last.gate.peek is not None or last.gate.guards or _split(last, grammar, ways)[1] is None:
+        return False
+    return all(
+        _split(way, grammar, ways)[1] is None and (way.gate.peek is not None or way.gate.guards)
+        for way in body.alternatives[:-1]
+    )
 
 
 NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY = Invariant(
@@ -6111,12 +6255,10 @@ STEPS = [
         settles=NO_GUARD_STANDS_PAST_AN_ACTION,
     ),
     Step("hoist-guards-to-gates", hoist_guards_to_gates, settles=EVERY_GUARD_IS_IN_A_GATE),
-    # Phase 12 establishes `EVERY_EMPTY_PRODUCTION_IS_ENTERED_BY_NAME`: a production that can match empty is one the
-    # parse begins at, never one something reached.
-    Step(
-        "mint-called-ways",
-        mint_called_ways,
-        reduces=NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY,
-    ),
-    Step("fuse-empty-calls", fuse_empty_calls, reduces=NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY),
+    # Phase 12 establishes `NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY`: nothing something decides to enter matches empty,
+    # entering one being a decision with no character to go on. What nothing decides to enter is no business of it — the
+    # root and the recovery, where a parse begins and where an empty document is the whole match, and the continuations
+    # a way carries on to, which pop what it opened and return.
+    Step("split-runs-of-none", split_runs_of_none, settles=EVERY_RUN_TAKES_A_TURN),
+    Step("dissolve-empty-calls", dissolve_empty_calls, reduces=NO_CONDITIONAL_PRODUCTION_MATCHES_EMPTY),
 ]
