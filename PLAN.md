@@ -220,21 +220,24 @@ tree form the pop is the next item in a sequence.
 
 The phases, each established and then enforced:
 
-| phase | invariant                                     | what it removes                                                                                 |
-| ----- | --------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| 0     | `no-i-t-parameters`                           | the chomping and the indentation mode, made lexical then specialized                            |
-| 1     | `every-character-question-is-a-character-set` | every way of asking about a character but the set of its codepoints, the subtraction among them |
-| 2     | `no-f-parameter`                              | the block scalar's leading-empty floor, one value for the parse                                 |
-| 3     | `no-m-parameter`                              | the auto-detected indent, one value for the parse                                               |
-| 4     | `no-n-parameter`                              | the indentation, moved off the calls and onto the parse's own stack                             |
-| 5     | `no-nested-production-matches-empty`          | every empty match but the ones a parse enters by name                                           |
-| 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`  | every scope that holds what it covers, for the pair that brackets it                            |
-| 7     | `every-sub-item-is-one-step`                  | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
-| 8     | `no-choice-of-choices`                        | a decision spelled one call below the choice that offers it                                     |
-| 9     | `a-way-is-actions-a-call-and-a-continuation`  | everything a way holds past its first call                                                      |
-| 10    | `every-body-is-a-choice-a-run-or-a-set`       | the tree's own spelling, for the machine's                                                      |
-| 11    | `every-way-is-gated`                          | every way entered on what its gate says, and the meter arrives to say what is left              |
-| later | `every-choice-is-deterministic`               | the backtracking, and the calls written out behind it                                           |
+| phase | invariant                                                     | what it removes                                                                                 |
+| ----- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| 0     | `no-i-t-parameters`                                           | the chomping and the indentation mode, made lexical then specialized                            |
+| 1     | `every-character-question-is-a-character-set`                 | every way of asking about a character but the set of its codepoints, the subtraction among them |
+| 2     | `no-f-parameter`                                              | the block scalar's leading-empty floor, one value for the parse                                 |
+| 3     | `no-m-parameter`                                              | the auto-detected indent, one value for the parse                                               |
+| 4     | `no-n-parameter`                                              | the indentation, moved off the calls and onto the parse's own stack                             |
+| 5     | `no-opt-nodes` / `no-star-or-plus-nodes`                      | every node that hid a match which may take none — an optional, a repetition                     |
+| 6     | `no-wrap-`/`-max-`/`-commit-`/`-token-nodes`                  | every scope that holds what it covers, for the pair that brackets it                            |
+| 7     | `every-sub-item-is-one-step`                                  | the tree under a way — the choices, the runs, the recoveries, the one binding                   |
+| 8     | `no-choice-of-choices`                                        | a decision spelled one call below the choice that offers it                                     |
+| 9     | `a-way-is-actions-a-call-and-a-continuation`                  | everything a way holds past its first call                                                      |
+| 10    | `every-body-is-a-choice-a-run-or-a-set`                       | the tree's own spelling, for the machine's                                                      |
+| 11    | `no-guard-stands-past-an-action` / `every-guard-is-in-a-gate` | every question a way asks, in its gate and in front of what it performs                         |
+| 12    | `no-conditional-production-matches-empty`                     | every empty match but the ones nothing decides to enter                                         |
+| later | `every-called-alternative-is-unconditional`                   | the questions a callee asks where its caller's gate stood, taken to the caller                  |
+| later | `every-way-is-gated`                                          | every way entered on what its gate says, and the meter arrives to say what is left              |
+| later | `every-choice-is-deterministic`                               | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
 its place in the new one, and the ones between the phases' goals are re-derived when their phase arrives.
@@ -258,12 +261,19 @@ that measures the goal. The meter stands at **111** and `every-conflict-is-reach
 what the copies cost, every written-out run adding ways to be undecided about. Whether all of that is copies or some of
 it is real has not been measured.
 
-**What the gate lift leaves owed.** `every-choice-of-one-is-unconditional` stands at **207** — a body offering one way
-that is entered on something it asks, by its gate or by a guard among its actions, where there is nothing to choose
-between. Those are reached from ways that act before the call or call them in tail position, where what the caller was
-entered on says nothing about the character at that point. Moving them wants the caller split too: the actions before
-the call into a continuation of their own, the tail call into its own way. Which is the same mint-don't-mutate move, one
-level out.
+**Why the gate lift is not phase 11's.** `every-called-alternative-is-unconditional` stands at **27** — a way calling,
+where its own gate stood, a production that offers one way and asks something of its own. The caller was already
+admitted on that character, so the callee's question can only refuse where the caller was let through, and it belongs at
+the caller. It is asked only where the callee begins where the gate stood: the `first` call, and a tail call the way
+performs nothing before. A way carrying on past a call of its own resumes wherever that call left off, and a tail call
+past a character the way took begins past it — neither is a position any gate above spoke of.
+
+Nothing can be lifted yet, and the reason is measured rather than argued. A guard reaching the caller's gate has to pass
+what the caller performs before the call, and on the path the guard refuses those actions never happened — a `PushCode`
+that did not cut the token run, a `PopMessage` that did not leave the committed region. Every one of the 27 call sites
+performs something: 14 one action, 9 two, 4 three, and none of them none. So the lift moves nothing until the gate and
+the call are made adjacent, which wants the caller's actions given a state of their own. That belongs with
+determinization rather than here.
 
 What follows it is `every-choice-is-deterministic` at **111**, which is the exclusivity question and splits in two:
 **8** choices offering a way in front of the catch-all that nothing enters it on, and **103** whose ways admit the same
