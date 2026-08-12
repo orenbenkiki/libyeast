@@ -2369,15 +2369,37 @@ NO_SEQUENCE_OF_SEQUENCES = Invariant("no-sequence-of-sequences", _no_sequence_of
 
 def _items_of_way(way):
     """
-    The items a way is made of, whichever way it is spelt.
+    The items a way *performs*, whichever way it is spelt — and **not** its gate.
 
     An alternative says its parts by name — what it does, what it calls, where it carries on — where a sequence says
     them in a row; a reading that walks a way wants them in the order the parse performs them either way. What a
     recovery rides is not among them: it answers for a cut rather than standing in the way's own run.
+
+    Leaving the gate out is right for a rewrite, which keeps it untouched, and wrong for nearly every question. Three
+    readings have answered about a way through this and been wrong for the same reason — the gate is what decides
+    whether the way is entered at all, so a walk that cannot see it reports what a way would do if it were always taken.
+    `_parts_of_way` is the one to ask instead; this is for callers that mean the performing parts alone.
     """
     if isinstance(way, ir.Alternative):
         return (*way.actions, *(held for held in (way.first, way.second) if held is not None))
     return way.items if isinstance(way, ir.Seq) else (way,)
+
+
+def _parts_of_way(way):
+    """
+    What a question about a way should walk: the guards its gate asks, then what it performs, in the order the parse
+    meets them.
+
+    A gate is asked before the way is entered, so a reading that leaves it out answers about a way the parse may never
+    take — which is how the same defect reached `_split_way`, `_takes_none_only_at_the_end` and `_entered_unconsumed` in
+    turn. Its guards are zero-width and stand among a way's parts as readily as one of its actions would, so a walk over
+    these asks each of them the question it already asks of the rest.
+
+    The peek is not among them. It is the question about the character in front rather than something the way does, and
+    a walk that took it for a part would read a peeked way as one that must take a character — which is what a peek says
+    about the input, not about the way. `_ahead_of_gate` is what reads it.
+    """
+    return (*way.gate.guards, *_items_of_way(way)) if isinstance(way, ir.Alternative) else _items_of_way(way)
 
 
 def _ways_or_items(node):
@@ -4896,7 +4918,7 @@ def _is_way_nullable(node, grammar, ways):
     class is known to stand in front of is one that reads.
     """
     ahead = _ahead_of_gate(node, grammar)
-    for item in _items_of_way(node):
+    for item in _parts_of_way(node):
         if _does_scan_read(item, ahead, grammar):
             return False
         if not _is_nullable(item, grammar, ways):
@@ -5367,62 +5389,6 @@ def mint_called_ways(grammar, namer):
     return {**written, **minted}
 
 
-def split_consuming_and_residue(grammar, namer):
-    """
-    Give every production that may match empty a name for each of the two things it is: `<name>_reads`, the ways that
-    take a character, and `<name>_empty`, the ways that take none.
-
-    A caller choosing whether to enter such a production is choosing blind — entering it may take nothing at all — and
-    the choice cannot be put on a character while both answers live under one name. Each form is a local rewrite of the
-    production's own body, and the residue gets a name rather than being spelled inline, so nothing has to be worked out
-    bottom-up: a body's parts are split by what their own names already say.
-
-    The production keeps its name and becomes the choice of the two, which is the same match said in the same order. One
-    whose ways all take nothing is left whole — there is no choice in it to name — and it is what the phase dissolves
-    into its call sites rather than what this step splits.
-
-    What is left standing under the old name is still both things, since it offers a way into each. That is the next
-    step's to take away: the choice belongs where the caller is, and here it only gets somewhere to go.
-    """
-    ways = _split_ways(grammar)
-    unsplittable = _unsplittable_runs(grammar, ways)
-    if unsplittable:
-        raise AssertionError(f"the empties cannot be named: {'; '.join(unsplittable)}")
-    result = {}
-    for name, production in grammar.items():
-        message, reads, empty = _production_split(production, grammar, ways)
-        if not ways[name][2]:
-            result[name] = production
-            continue
-        offered = []
-        for form, body in (("reads", reads), ("empty", empty)):
-            held = f"{name}_{form}"
-            result[held] = ir.Prod(production.number, held, production.params, _as_canonical_body(body))
-            called = ir.Ref(held, tuple(ir.Param(carried) for carried in production.params))
-            offered.append(ir.Alternative(gate=ir.Gate(), second=called))
-        body = ir.Choice(alternatives=tuple(offered))
-        result[name] = dataclasses.replace(
-            production, body=body if message is None else ir.Commit(message=message, item=body)
-        )
-    return result
-
-
-def _as_canonical_body(node):
-    """
-    A split half as a body the machine has a state for: a choice of ways, or the run or the set it already is.
-
-    A half of a way is one way, and a half that matches nothing at all is the way that does nothing — neither is a body
-    where it stands, and a production is what this has to hand back.
-    """
-    if isinstance(node, (ir.CharSet, ir.Choice, ir.LongestRun)):
-        return node
-    if isinstance(node, ir.Alternative):
-        return ir.Choice(alternatives=(node,))
-    if isinstance(node, ir.Empty):
-        return ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate()),))
-    return ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), actions=(node,)),))
-
-
 def _every_way_is_either_empty_or_consumes(grammar):
     """
     Check that no way both takes a character and takes none, so which way was taken says whether input was consumed.
@@ -5533,43 +5499,6 @@ def _every_empty_production_is_entered_by_name(grammar):
 
 EVERY_EMPTY_PRODUCTION_IS_ENTERED_BY_NAME = Invariant(
     "every-empty-production-is-entered-by-name", _every_empty_production_is_entered_by_name
-)
-
-
-def _no_empty_way_stands_ahead_of_a_reading_one(grammar):
-    """
-    Check that no way of a choice which can take no character stands ahead of one that can read.
-
-    The ways are tried in order and the first that matches is the one taken, so a way taking none ahead of one that
-    reads is a way the parse prefers to reading. Telling the two apart — every reading way, and then every empty one —
-    is the same choice said in the same order only where none of them is arranged that way; where one is, the split
-    moves a reading way in front of an empty way that used to win, and the parse takes the other one.
-
-    A way that takes none only where the input has ended is not one of them. Nothing behind it reads there — there is
-    nothing left to read — so which of the two stands first decides nothing, and moving it is the same match.
-
-    Asked of both spellings, since it is what any step separating a match's two halves rests on and those run either
-    side of the re-encode.
-    """
-    ways = _split_ways(grammar)
-    faults = []
-    for name, production in grammar.items():
-        for node in _held(production.body):
-            if not isinstance(node, (ir.Alt, ir.Choice)):
-                continue
-            offered = [(way, *_split(way, grammar, ways)) for way in _ways_or_items(node)]
-            if any(
-                empty is not None
-                and not _takes_none_only_at_the_end(way, grammar, ways)
-                and any(reads is not None for _way, reads, _none in offered[index + 1 :])
-                for index, (way, _reads, empty) in enumerate(offered)
-            ):
-                faults.append(f"{name}: a way that can take no character stands ahead of one that reads")
-    return faults
-
-
-NO_EMPTY_WAY_STANDS_AHEAD_OF_A_READING_ONE = Invariant(
-    "no-empty-way-stands-ahead-of-a-reading-one", _no_empty_way_stands_ahead_of_a_reading_one
 )
 
 
@@ -5698,7 +5627,7 @@ def _empty_ways_end_the_input(node, grammar, ways, seen):
 
 def _a_part_ends_the_input(node, grammar, ways, seen):
     """A way's answer: some part of it says the input has ended, its gate read with what it performs."""
-    parts = (*node.gate.guards, *_items_of_way(node)) if isinstance(node, ir.Alternative) else node.items
+    parts = _parts_of_way(node) if isinstance(node, ir.Alternative) else node.items
     return any(_takes_none_only_at_the_end(part, grammar, ways, seen) for part in parts)
 
 
@@ -5740,19 +5669,17 @@ def _entered_unconsumed(node, grammar, ways):
     same position. A recovery is not: it is entered where an abandoned parse stopped rather than where its rule began,
     so a `(recover)` contributes what its item does and nothing more.
 
-    A way's gate is read before its parts. One admitting only the end of the input is a way a parse with input left
-    never enters, so it reaches nothing where the question is asked — this walk is for what a parse can arrive at and
-    not go on from, and past the last character there is nowhere to go on to.
+    A way's gate is walked with its parts, so what the gate asks is asked here too. One admitting only the end of the
+    input stops the walk where its `EndOfStream` stands — a parse with input left never enters that way, and this walk
+    is for what a parse can arrive at and not go on from.
     """
     if isinstance(node, ir.Ref):
         return {node.name}
     if isinstance(node, (ir.Alt, ir.Choice)):
         return {name for item in _ways_or_items(node) for name in _entered_unconsumed(item, grammar, ways)}
     if isinstance(node, (ir.Alternative, ir.Seq)):
-        if isinstance(node, ir.Alternative) and any(isinstance(guard, ir.EndOfStream) for guard in node.gate.guards):
-            return set()
         reached, ahead = set(), _ahead_of_gate(node, grammar)
-        for item in _items_of_way(node) if isinstance(node, ir.Alternative) else node.items:
+        for item in _parts_of_way(node) if isinstance(node, ir.Alternative) else node.items:
             reached |= _entered_unconsumed(item, grammar, ways)
             # This part always reads, or takes nothing only where the input has ended: either way nothing behind it is
             # entered where the parse still stands and can go on. A scan its own class stands in front of always reads,

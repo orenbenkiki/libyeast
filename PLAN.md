@@ -234,7 +234,7 @@ The phases, each established and then enforced:
 | 9     | `a-way-is-actions-a-call-and-a-continuation`                  | everything a way holds past its first call                                                      |
 | 10    | `every-body-is-a-choice-a-run-or-a-set`                       | the tree's own spelling, for the machine's                                                      |
 | 11    | `no-guard-stands-past-an-action` / `every-guard-is-in-a-gate` | every question a way asks, in its gate and in front of what it performs                         |
-| 12    | `no-conditional-production-matches-empty`                     | every empty match but the ones nothing decides to enter                                         |
+| 12    | `every-empty-production-is-entered-by-name`                   | every empty match but the ones a parse begins at                                                |
 | later | `every-called-alternative-is-unconditional`                   | the questions a callee asks where its caller's gate stood, taken to the caller                  |
 | later | `every-way-is-gated`                                          | every way entered on what its gate says, and the meter arrives to say what is left              |
 | later | `every-choice-is-deterministic`                               | the backtracking, and the calls written out behind it                                           |

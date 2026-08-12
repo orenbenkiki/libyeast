@@ -190,6 +190,24 @@ of it that cannot arrive — checked rather than believed, since reaching one ra
 build: the groups overlap — `Error` and `PushMessage` are actions and commits both — and a chain of tests settles that
 by its order with nothing saying which order was meant.
 
+**So a question about the grammar is decided, never recognised.** A reading that matches shapes and answers for whatever
+it did not match is wrong in a way that hides: every step which rewrites a shape silently changes its answer.
+`_takes_none_only_at_the_end` admitted as much in its own docstring — *"recognised rather than decided"* — and the
+`l-recover` circuit it reported read none, then twenty, then none again, each number saying something about the reading
+rather than about the grammar. The permissive polarity is worse still: a walk answering "yes, this may move" for a shape
+nobody classified is a transformation nobody checked. What tells a recognizer from an honest conclusion is where the
+decision is made — a recognizer decides per node with an untyped tail, a conclusion decides every node through a total
+dispatch and returns what the loop found, so a trailing `return False` is not itself the smell.
+
+**And a question about a way reads the way's gate.** `_items_of_way` gives what a way *performs* and deliberately not
+its gate, which is right for a rewrite — a rewrite keeps the gate untouched — and wrong for nearly every question, since
+the gate is what decides whether the way is entered at all. A walk without it reports what a way would do if it were
+always taken. That defect reached three readings in one sitting: a span's `Look` moved into the gate and the scan read
+as empty again, a hoisted `EndOfStream` went invisible and a recovery circuit appeared from nowhere, and
+`_entered_unconsumed` walked through an end-of-stream gate as though a parse with input left could enter it.
+`_parts_of_way` is the accessor for a question — the gate's peek and guards, then what the way performs, in the order
+the parse meets them. Either rule may be broken with a written reason at the site; neither may be broken silently.
+
 Three of the readings answer with a `Verdict` rather than a value, which is what lets a walk over a way's items be a
 table too: whether to take the item, step over it, stop there, follow the call it makes, or treat it as the commit past
 which failing is an error rather than a refusal.
