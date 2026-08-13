@@ -3257,6 +3257,36 @@ def _run_of_one_character_sets(actions):
     return (at, len(actions) - at) if at is not None and len(actions) - at > 1 else None
 
 
+def _one_character_called(node, grammar):
+    """The set a call names, where what it calls is one character and nothing else — else `None`."""
+    if not isinstance(node, ir.Ref) or node.name not in grammar:
+        return None
+    body = grammar[node.name].body
+    return (
+        body if isinstance(body, ir.CharSet) and len(body.spans) == 1 and body.spans[0][0] == body.spans[0][1] else None
+    )
+
+
+def _characters_pulled_in(way, grammar):
+    """
+    `way` with a call to a one-character production standing where the character does, or `way` unchanged.
+
+    The base grammar mirrors the official one, which gives some characters a rule of their own: `b-break` is `CR LF`
+    said as two calls, where `c-directives-end` is `---` said as three characters. The two spell the same kind of thing,
+    and a literal is what the machine wants of either — so the calls are pulled in first and the run is looked for once.
+
+    Only where the way performs nothing of its own. What a way does comes before what it calls, so a call pulled in
+    ahead of an action would be taken before the action rather than after it.
+    """
+    if way.actions or way.recover is not None:
+        return way
+    held = [one for one in (way.first, way.second) if one is not None]
+    taken = [_one_character_called(one, grammar) for one in held]
+    if len(held) < 2 or any(one is None for one in taken):
+        return way
+    return dataclasses.replace(way, actions=tuple(taken), first=None, second=None)
+
+
 def fold_literals_into_gates(grammar, namer):
     """
     Say a run of single characters as the literal it is: `A = |g '-' '-' '-' rest|` becomes `A = |g <"---">
@@ -3274,6 +3304,7 @@ def fold_literals_into_gates(grammar, namer):
     """
 
     def told(way):
+        way = _characters_pulled_in(way, grammar)
         found = _run_of_one_character_sets(way.actions)
         if found is None:
             return way
