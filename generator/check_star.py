@@ -56,6 +56,12 @@ def _disagreement(grammar, directory, deterministic=frozenset()):
     return None if folded == wanted else "folds to events the suite does not expect"
 
 
+def _one_case(held, case):
+    """How `grammar` folds one case against what the suite says of it, or `None` where they agree."""
+    grammar, deterministic = held
+    return _disagreement(grammar, os.path.join(star.SUITE, case), deterministic=deterministic)
+
+
 def cases():
     """The suite's case ids, `<ID>` or `<ID>/<part>`, sorted."""
     return sorted(
@@ -72,11 +78,10 @@ def disagreements(grammar, suite=None, deterministic=frozenset()):
     """
     if suite is None:
         suite = cases()
+    ir.say(f"        {len(suite)} suite case(s), spread over the cores")
+    found = gate.spread(_one_case, (grammar, deterministic), suite)
     errors = []
-    for at, case in enumerate(suite):
-        if at and not at % 25:  # a case takes milliseconds and the whole suite takes seconds, so it says so as it goes
-            ir.say(f"        {at} of {len(suite)} suite case(s)")
-        disagreement = _disagreement(grammar, os.path.join(star.SUITE, case), deterministic=deterministic)
+    for case, disagreement in zip(suite, found):
         if case in DIVERGENCES:
             if disagreement is None:
                 errors.append(f"{case}: declared as a divergence, but now agrees with the suite")

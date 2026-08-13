@@ -56,9 +56,11 @@ that moves where nothing about the grammar did.
 
 import dataclasses
 import inspect
+import os
 
 import annotated2ir
 import chars
+import gate
 import ir
 
 
@@ -560,6 +562,28 @@ def untested_steps():
     return [step.name for step in STEPS if not step.invariants and not step.untestable]
 
 
+def _one_count(held, asked):
+    """The count for one `(stage, invariant)` pair, run in a worker."""
+    stages, by_name, points = held
+    at, named = asked
+    return _counted(by_name[named], stages[at][1], points)
+
+
+def _counted_over(stages, by_name, points):
+    """
+    `{(stage, invariant): count}` — every invariant asked of every stage, the asks shared out over the cores.
+
+    Each ask is a pure question about a grammar already built, so they are independent and there are some eighteen
+    hundred of them, which is half of what this check spends.
+    """
+    asked = [(at, named) for at in range(len(stages)) for named in by_name]
+    ir.say(f"    counting {len(by_name)} invariant(s) over {len(stages)} stage(s), {os.cpu_count()} at a time")
+    counts = gate.spread(
+        _one_count, (stages, by_name, points), asked, named=lambda pair: f"[{stages[pair[0]][0]}] {pair[1]}"
+    )
+    return dict(zip(asked, counts))
+
+
 def _counted(invariant, grammar, points):
     """
     How many places `grammar` breaks `invariant`, or `None` where it is not a question this grammar answers.
@@ -596,11 +620,7 @@ def invariant_faults(stages, points=None):
     """
     faults, taken = [], set()
     by_name = {held.name: held for step in STEPS for held in step.invariants}
-    standing = {}
-    for index, (label, grammar) in enumerate(stages):
-        ir.say(f"    counting {len(by_name)} invariant(s) over [{label}]")
-        for named, test in by_name.items():
-            standing[index, named] = _counted(test, grammar, points)
+    standing = _counted_over(stages, by_name, points)
     for index, step in enumerate(STEPS):
         if step.invariants and step.untestable:
             faults.append(f"[{step.name}] names an invariant and says it has none — one or the other")
@@ -4639,9 +4659,13 @@ def hold_established_indents(grammar, namer):
     the same `n`.
     """
 
+    # Which productions hand an indentation back is a property of the grammar this step was given, and the step does not
+    # change it as it goes: worked out once, rather than again for every node it looks at.
+    establishing = _establishing(grammar)
+
     def does_establish(node):
         """Whether `node` is a call whose production hands an indentation back to this one."""
-        return isinstance(node, ir.Ref) and node.name in _establishing(grammar) and _is_by_reference(grammar, node)
+        return isinstance(node, ir.Ref) and node.name in establishing and _is_by_reference(grammar, node)
 
     def spliced(items):
         """

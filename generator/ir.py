@@ -186,14 +186,29 @@ _DEEPEST = {}
 _STARTED = time.time()
 
 
+# What this process is working on, said in a line it prints. Empty in the one that shares the work out, and the item in
+# each that took a share of it — a check with a dozen workers writes them all to the one stream, interleaved.
+_WORKING = ""
+
+
+def working(what):
+    """Say what this process is working on, so the lines it prints say which work they belong to."""
+    global _WORKING  # noqa: PLW0603 — there is one of these per process, which is the point of it
+    _WORKING = what
+
+
 def say(message):
     """
     Say where a run has got to, stamped with the clock and with how long it has been going, and flushed.
 
     Flushed because stdout is a pipe wherever anyone is watching — under `tee`, under a log — and Python buffers a pipe
     by the block, so an unflushed line arrives once the run is over and has nothing left to report.
+
+    A line from a worker names the work rather than the worker: which of a dozen processes wrote it answers nothing, and
+    what it was answering about is what makes the interleaved lines readable.
     """
-    print(f"[{time.strftime('%H:%M:%S')} {time.time() - _STARTED:6.1f}s] {message}", flush=True)
+    where = f" {_WORKING}" if _WORKING else ""
+    print(f"[{time.strftime('%H:%M:%S')} {time.time() - _STARTED:6.1f}s{where}] {message}", flush=True)
 
 
 def rounds(what):
@@ -219,6 +234,31 @@ def unexercised():
     run, since a kind is exercised by the inputs that reach it and a partial run says nothing about the rest.
     """
     return {reading.what: reading.unused() for reading in Reading._all if reading.unused()}
+
+
+def what_was_reached():
+    """
+    What this process has reached: the kinds each reading answered for, and how deep each fixpoint went.
+
+    A check that shares its work out over the cores does it in forked children, and a child marks what it reached in its
+    own copy of these. What it reached is still reached, so it comes back with the answers and is folded in here —
+    otherwise `unexercised` would report every handler only a worker ever met.
+    """
+    return (
+        {reading.what: {kind.__name__ for kind in reading._used} for reading in Reading._all},
+        dict(_DEEPEST),
+    )
+
+
+def also_reached(held):
+    """Fold what another process reached into this one's, as `what_was_reached` gave it."""
+    used, deepest = held
+    for reading in Reading._all:
+        for kind in KINDS:
+            if kind.__name__ in used.get(reading.what, ()):
+                reading._used.add(kind)
+    for what, rounds in deepest.items():
+        _DEEPEST[what] = max(_DEEPEST.get(what, 0), rounds)
 
 
 def _refs(*values):

@@ -29,20 +29,24 @@ def reproduced(grammar, fixtures=None, deterministic=frozenset()):
     """
     if fixtures is None:
         fixtures = spec_tests.load()
-    errors = []
-    for at, fixture in enumerate(fixtures):
-        if at and not at % 100:  # a group can be hundreds of fixtures, and a silent minute reads like a hang
-            ir.say(f"        {at} of {len(fixtures)} fixture(s)")
-        try:
-            arguments = spec_tests.arguments(fixture, grammar)
-            tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments, deterministic=deterministic)
-            actual = wire.serialize(tokens)
-        except Exception as error:  # noqa: BLE001 — a crash is a divergence to report, not to abort the gate on
-            actual = f"(crash: {type(error).__name__}: {error})"
-        if actual != fixture.expected:
-            reason = actual if actual.startswith("(") else "output differs from the fixture"
-            errors.append(f"{os.path.basename(fixture.input_path)}: {reason}")
-    return errors
+    ir.say(f"        {len(fixtures)} fixture(s), spread over the cores")
+    held = gate.spread(_run_one, (grammar, deterministic), fixtures)
+    return [error for error in held if error is not None]
+
+
+def _run_one(held, fixture):
+    """How `fixture` differs from what it froze, or `None` where it does not."""
+    grammar, deterministic = held
+    try:
+        arguments = spec_tests.arguments(fixture, grammar)
+        tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments, deterministic=deterministic)
+        actual = wire.serialize(tokens)
+    except Exception as error:  # noqa: BLE001 — a crash is a divergence to report, not to abort the gate on
+        actual = f"(crash: {type(error).__name__}: {error})"
+    if actual == fixture.expected:
+        return None
+    reason = actual if actual.startswith("(") else "output differs from the fixture"
+    return f"{os.path.basename(fixture.input_path)}: {reason}"
 
 
 def main():
