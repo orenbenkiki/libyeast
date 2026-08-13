@@ -878,7 +878,7 @@ def _flattened(node):
     return node
 
 
-def cleaned(grammar):
+def cleaned(grammar, namer=None):
     """
     `grammar` with what a transformation leaves behind swept up, and the renames the sweep made — `{gone: standing}`, so
     what tracks a production by name follows its content to where it went. Every body is flattened to the shape it
@@ -913,7 +913,7 @@ def cleaned(grammar):
     for _round in ir.rounds("the splice of do-nothing productions"):
         flat = {name: dataclasses.replace(p, body=_flattened(p.body)) for name, p in grammar.items()}
         spliced, _splices = _spliced(flat, keep)
-        swept, merges = _merged(_inlined_called_ways(spliced), keep)
+        swept, merges = _merged(_inlined_called_ways(spliced, namer), keep)
         if swept == grammar:
             return purged(grammar), {gone: landed(gone) for gone in renames}
         renames.update(merges)
@@ -954,7 +954,7 @@ def stages(grammar):
         produced = step.transform(grammar, namer)
         if produced == grammar:
             raise AssertionError(f"the `{step.name}` step changed nothing — what it looks for no longer reaches it")
-        grammar, renames = cleaned(produced)
+        grammar, renames = cleaned(produced, namer)
         namer.sees(grammar)
         namer.points.follow(renames)
         namer.points.settle(step.name, grammar)
@@ -3705,7 +3705,7 @@ def lower_gated_continuations(grammar, namer):
     return {**written, **minted}
 
 
-def _inlined_called_ways(grammar):
+def _inlined_called_ways(grammar, namer=None):
     """
     Put a production offering one way where the call to it stands: `A = |gA actA →B sA|` with `B = |actB fB sB|` becomes
     `A = |gA actA actB fB sA|`.
@@ -3725,11 +3725,15 @@ def _inlined_called_ways(grammar):
     Only where neither way carries a recovery. A recovery rides the push its call makes, and the call it rides changes
     here.
 
-    And only where what comes out fits. A way holds a call and a continuation, and inlining leaves the callee's call,
-    the callee's continuation and the caller's own to place in the two — three things where the caller carries on and
-    the callee does too. It never mints a state to make room: a state minted here is the state the inlining removed, and
-    the way to make more of these fit is to rotate them, not to pay for them.
+    A way holds a call and a continuation, and inlining leaves the callee's call, the callee's continuation and the
+    caller's own to place in the two. Where all three are there they are re-associated rather than refused: `(D E) C` is
+    `D (E C)`, so the way calls `D` and carries on to a state holding `E` and then `C`. That is the right-oriented shape
+    — a call and a tail — and it is why the state minted for the tail is not the state the inlining removed: the call to
+    `B` goes, `B` goes with it where nothing else calls it, and what is left is one call fewer at every site.
+
+    Where there is no namer to mint with, such a way is left alone. The sweep runs in places that have none.
     """
+    minted = {}
 
     def inlined(way):
         held = way.first if isinstance(way.first, ir.Ref) else None
@@ -3741,12 +3745,21 @@ def _inlined_called_ways(grammar):
         [only] = body.alternatives
         if only.gate.guards or only.recover is not None:
             return way
-        if way.second is not None and only.second is not None:
-            return way
         actions = (*way.actions, *only.actions)
         if way.second is None:
             return dataclasses.replace(way, actions=actions, first=only.first, second=only.second)
-        return dataclasses.replace(way, actions=actions, first=only.first, second=way.second)
+        if only.second is None:
+            return dataclasses.replace(way, actions=actions, first=only.first, second=way.second)
+        if namer is None:
+            return way
+        tail = namer.fresh(held.name)
+        minted[tail] = ir.Prod(
+            grammar[held.name].number,
+            tail,
+            (),
+            ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), first=only.second, second=way.second),)),
+        )
+        return dataclasses.replace(way, actions=actions, first=only.first, second=ir.Ref(name=tail, args=()))
 
     written = {
         name: (
@@ -3759,7 +3772,7 @@ def _inlined_called_ways(grammar):
         )
         for name, production in grammar.items()
     }
-    return written
+    return {**written, **minted}
 
 
 def hoist_guards_to_callers(grammar, namer):
