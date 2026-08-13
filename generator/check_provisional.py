@@ -18,9 +18,7 @@ import normalize
 
 def _root(actions):
     """A one-production grammar whose only alternative performs `actions` — a root, since nothing references it."""
-    alternative = ir.Alternative(
-        gate=ir.Gate(peek=None, guards=()), actions=tuple(actions), first=None, second=None, recover=None
-    )
+    alternative = ir.Alternative(gate=ir.Gate(guards=()), actions=tuple(actions), first=None, second=None, recover=None)
     production = ir.Prod(number=0, name="p", params=(), body=ir.Choice(alternatives=(alternative,)))
     return {"p": production}
 

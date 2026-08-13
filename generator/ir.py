@@ -775,21 +775,20 @@ class ConsumePeeked:
 @dataclass(frozen=True)
 class Gate:
     """
-    What an alternative is entered on, tested without consuming: `peek`, the character class the next character must
-    belong to — or a `LiteralPeek`, the bounded run the input must begin — or `None` where the alternative is not
-    decided by one; and `guards`, the zero-width conditions that must hold with it. A gate with neither is the
-    unconditional fallthrough, which only the last alternative may carry.
+    What an alternative is entered on, tested without consuming: the `guards` that must all hold where the parse stands.
+    They are a set and not a sequence — each is a question about the same position, so no order between them means
+    anything, and a gate holding none is the unconditional fallthrough, which only the last alternative may carry. The
+    question about the character in front is a `Look` over its class, one guard among the rest.
     """
 
-    peek: object = None
     guards: tuple = ()
 
     def references(self):
-        return _refs(self.peek, self.guards)
+        return _refs(self.guards)
 
     def renamed(self, names):
-        peek, guards = _renamed(names, self.peek, self.guards)
-        return replace(self, peek=peek, guards=guards)
+        (guards,) = _renamed(names, self.guards)
+        return replace(self, guards=guards)
 
 
 @dataclass(frozen=True)

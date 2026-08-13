@@ -555,9 +555,7 @@ def _probe(pattern, emitter, grammar):
 
 
 def _does_gate_hold(gate, emitter, grammar):
-    """Whether `gate` holds at the position — the peeked character found, and every zero-width guard true."""
-    if gate.peek is not None and not _probe(gate.peek, emitter, grammar):
-        return False
+    """Whether `gate` holds at the position — every guard it asks true, in any order, none of them taking anything."""
     return all(_probe(guard, emitter, grammar) for guard in gate.guards)
 
 
@@ -837,12 +835,11 @@ def match(node, emitter, grammar, k):
                 return True
         return False
     if isinstance(node, ir.Alternative):
-        # The gate is a test and nothing more, so the peek is matched as a lookahead and the character it found is taken
-        # by the `ConsumeChar` among the actions. Backtracking makes trying the parts in order the same as testing the
-        # gate first and committing to it; what a gate means to a parser that does not backtrack is determinize's to
-        # say.
-        parts = () if node.gate.peek is None else (ir.Look(node.gate.peek),)
-        parts += tuple(node.gate.guards) + tuple(node.actions)
+        # The gate is a set of questions and nothing more, each about the position the way is entered at, so they are
+        # asked in the order held and the order does not matter. Backtracking makes trying the parts in order the same
+        # as asking the gate first and committing to it; what a gate means to a parser that does not backtrack is
+        # determinize's to say.
+        parts = tuple(node.gate.guards) + tuple(node.actions)
         # A recovery riding the edge is the `(recover)` scope over the call it protects — the same handler, its resume
         # point where the call returns, which is exactly the continuation the call already has here.
         first = node.first if node.recover is None else ir.Recover(node.recover, node.first)

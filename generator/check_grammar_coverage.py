@@ -138,9 +138,9 @@ def is_total(node, grammar, seen=frozenset()):
     if isinstance(node, ir.Choice):
         return any(is_total(alternative, grammar, seen) for alternative in node.alternatives)
     if isinstance(node, ir.Alternative):
-        # An alternative is entered on its gate, so one that peeks a character or holds a guard may say no; one that
-        # holds neither is entered always, and then what may say no is its actions and the productions it hands to.
-        if node.gate.peek is not None or node.gate.guards:
+        # An alternative is entered on its gate, so one holding a guard may say no; one holding none is entered always,
+        # and then what may say no is its actions and the productions it hands to.
+        if node.gate.guards:
             return False
         parts = node.actions + tuple(item for item in (node.first, node.second) if item is not None)
         return all(is_total(part, grammar, seen) for part in parts)
@@ -179,11 +179,11 @@ def exercised(grammar, fixtures=None):
             if not matched:
                 rejected.add(name)
             return matched
-        if isinstance(node, ir.Alternative) and node.gate.peek is not None:
-            # A hoisted gate makes the decision the production it calls used to make: where the character is not one
-            # that call can begin with, the gate refuses and the call never happens. So the gate saying no counts as
-            # that production saying no — otherwise gating a rule correctly would make it look untested.
-            if not interpreter._probe(node.gate.peek, emitter, grammar_arg):
+        if isinstance(node, ir.Alternative) and node.gate.guards:
+            # A hoisted gate makes the decision the production it calls used to make: where the gate is not one that
+            # call can begin with, the gate refuses and the call never happens. So the gate saying no counts as that
+            # production saying no — otherwise gating a rule correctly would make it look untested.
+            if not all(interpreter._probe(guard, emitter, grammar_arg) for guard in node.gate.guards):
                 for reference in (node.first, node.second):
                     if isinstance(reference, ir.Ref) and reference.name in grammar_arg:
                         rejected.add(reference.name)
@@ -274,7 +274,7 @@ def _decided_by_callers(grammar, wanted):
             continue
         for way in body.alternatives:
             for held in (way.first, way.second):
-                if isinstance(held, ir.Ref) and held.name in gated and way.gate.peek is None:
+                if isinstance(held, ir.Ref) and held.name in gated and not way.gate.guards:
                     gated[held.name] = False
     called = {name for production in grammar.values() for name in production.references()}
     return {_base(name) for name, is_gated in gated.items() if is_gated and name in called}

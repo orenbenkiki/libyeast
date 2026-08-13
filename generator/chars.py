@@ -61,9 +61,10 @@ def denote(grammar, node, seen=()):
         # grammar holds no `Choice`, so the decoder's own tables never read this branch.
         parts = []
         for alternative in node.alternatives:
+            looked = [guard for guard in alternative.gate.guards if isinstance(guard, ir.Look)]
             if (
-                alternative.gate.peek is None
-                or alternative.gate.guards
+                len(looked) != len(alternative.gate.guards)
+                or len(looked) != 1
                 or alternative.first is not None
                 or alternative.second is not None
                 or not any(isinstance(action, ir.ConsumeChar) for action in alternative.actions)
@@ -73,7 +74,7 @@ def denote(grammar, node, seen=()):
                 )
             ):
                 return None
-            part = denote(grammar, alternative.gate.peek, seen)
+            part = denote(grammar, looked[0].item, seen)
             if part is None:
                 return None
             parts.append(part)

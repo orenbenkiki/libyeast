@@ -205,8 +205,8 @@ the gate is what decides whether the way is entered at all. A walk without it re
 always taken. That defect reached three readings in one sitting: a span's `Look` moved into the gate and the scan read
 as empty again, a hoisted `EndOfStream` went invisible and a recovery circuit appeared from nowhere, and
 `_entered_unconsumed` walked through an end-of-stream gate as though a parse with input left could enter it.
-`_parts_of_way` is the accessor for a question — the gate's peek and guards, then what the way performs, in the order
-the parse meets them. Either rule may be broken with a written reason at the site; neither may be broken silently.
+`_parts_of_way` is the accessor for a question — the gate's guards, then what the way performs, in the order the parse
+meets them. Either rule may be broken with a written reason at the site; neither may be broken silently.
 
 Three of the readings answer with a `Verdict` rather than a value, which is what lets a walk over a way's items be a
 table too: whether to take the item, step over it, stop there, follow the call it makes, or treat it as the commit past

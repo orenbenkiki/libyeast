@@ -238,6 +238,7 @@ The phases, each established and then enforced:
 | later | `no-conditional-production-matches-empty`                     | every empty match something decides to enter                                                    |
 | later | `every-called-alternative-is-unconditional`                   | the questions a callee asks where its caller's gate stood, taken to the caller                  |
 | later | `every-way-is-gated`                                          | every way entered on what its gate says, and the meter arrives to say what is left              |
+| later | `every-consume-is-gated-by-peek`                              | the question and the taking said as one step, where the machine needs them apart                |
 | later | `every-choice-is-deterministic`                               | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns
@@ -342,13 +343,17 @@ and it lands where the block-structure work makes a line start a decision the gr
 
 **Three words, used strictly, because two of them were doing three jobs.**
 
-- A **gate** is the *field* of an alternative on which the choice is made. It holds at most one peek and zero or more
-  guards, and an alternative fires only where every part of it holds. A gate is asked where the alternative is entered,
-  which is what makes it the only place a decision can stand.
-- A **peek** is the question about the character in front of the parse: a `CharSet`, or a
-  `LiteralPeek(text, then, barrier)`. It is the one question the generated parser answers by indexing the decoder's key.
-- A **guard** is a zero-width node that decides — `Look`, `NegLook`, `LookBehind`, `StartOfLine`, `EndOfStream`, `Le`,
-  `Lt`. A guard belongs in a gate; one reached among a way's actions is a decision asked a step too late.
+- A **gate** is the *field* of an alternative on which the choice is made. It is a set of guards — no order between
+  them, each a question about the one position the alternative is entered at — and the alternative fires only where
+  every one holds. A gate is asked where the alternative is entered, which is what makes it the only place a decision
+  can stand. A gate holding nothing is the unconditional fallthrough, which only the last alternative may carry.
+- A **peek** is the question about the character in front of the parse: a `Look` over a `CharSet`. It is one guard among
+  the rest rather than a field of its own, and the one question the generated parser answers by indexing the decoder's
+  key.
+- A **guard** is a node that decides and takes nothing — `Look`, `NegLook`, `LookBehind`, `StartOfLine`, `EndOfStream`,
+  `Le`, `Lt`. A guard belongs in a gate; one reached among a way's actions is a decision asked a step too late. A
+  `(cut)` is not one of these: it takes nothing either, but it commits the parse rather than asking it anything, and it
+  stands with the actions.
 
 **"Test" is not one of these words and is not used for any of them.** It has meant the gate, the guards, and a probe
 that is matched and thrown away, in different sentences, and every one of those has its own name above. Where a name in
@@ -357,11 +362,10 @@ the code still says "test", it is owed a rename to the word it means.
 **The canonical form.** A **terminal production** is a set of characters, nothing more. A **nonterminal production** is
 an ordered list of alternatives. An alternative is `gate  actions…  [P1  actions…]  [P2]`:
 
-- The **gate** is a conjunction, tested without consuming: an optional peek — a character set, or a literal
-  `LiteralPeek(text, then, barrier)`: the bounded run the input must begin, its follow test one class the character
-  after it, if any, must match (`then`) or must not (`barrier`), the end of the input passing either — and zero or more
-  zero-width guards. The alternative fires only if every part holds. An **empty** gate is the unconditional fallthrough,
-  allowed only as the last alternative.
+- The **gate** is a conjunction, tested without consuming: a set of guards, each a question about the one position the
+  alternative is entered at, with no order between them. The question about the character in front is a `Look` over a
+  character set, one guard among the rest. The alternative fires only if every one holds. An **empty** gate is the
+  unconditional fallthrough, allowed only as the last alternative.
 - **actions** operate on the parser's own state (below). Consuming the peeked character is itself an action, not part of
   the gate — `ConsumePeeked` likewise takes a peeked literal on the gate's word, the bytes never scanned twice.
 - **P1, P2** are zero, one, or two production invocations. Two means *run P1 then P2*: push P2 as where to carry on, go
