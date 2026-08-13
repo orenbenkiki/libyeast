@@ -893,7 +893,7 @@ def cleaned(grammar):
     for _round in ir.rounds("the splice of do-nothing productions"):
         flat = {name: dataclasses.replace(p, body=_flattened(p.body)) for name, p in grammar.items()}
         spliced, _splices = _spliced(flat, keep)
-        swept, merges = _merged(spliced, keep)
+        swept, merges = _merged(_inlined_called_ways(spliced), keep)
         if swept == grammar:
             return purged(grammar), {gone: landed(gone) for gone in renames}
         renames.update(merges)
@@ -3579,12 +3579,167 @@ def _asked_by_every_way(name, grammar):
     A production offering one way is the plain case, its only way's gate being all of them. Where it offers several, a
     guard in all of them is asked before any of them is chosen, so taking it out of each and asking it at the call is
     the same question in the same place. A guard in some of them is not: it is what tells those ways from the rest.
+
+    A body that is not a choice offers no ways, and so asks nothing a caller could ask instead.
     """
-    ways = grammar[name].body.alternatives
+    body = grammar[name].body
+    if not isinstance(body, ir.Choice):
+        return set()
+    ways = body.alternatives
     shared = set(ways[0].gate.guards)
     for way in ways[1:]:
         shared &= set(way.gate.guards)
     return shared
+
+
+def _carrying_on_to(way, tail, owner, grammar, namer, minted):
+    """
+    `way` with `tail` behind everything it already does — the one place the slots are dealt with.
+
+    A way holds a call and a continuation and no more, so where to put `tail` depends on what is already there. Nothing
+    where it carries on: `tail` becomes that. A continuation and no call: what it carried on to becomes the call and
+    `tail` what follows it, the same two matches in the same order. Both: there is no slot left, so what it carried on
+    to and then `tail` are given a state of their own and the way carries on to that.
+
+    The middle case is left alone where the way holds a recovery. A recovery rides the push its call makes, and making a
+    call of what was a continuation would have it ride a push that was not there before.
+    """
+    if way.second is None:
+        return dataclasses.replace(way, second=tail)
+    if way.first is None and way.recover is None:
+        return dataclasses.replace(way, first=way.second, second=tail)
+    held = namer.fresh(owner)
+    minted[held] = ir.Prod(
+        grammar[owner].number,
+        held,
+        (),
+        ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), first=way.second, second=tail),)),
+    )
+    return dataclasses.replace(way, second=ir.Ref(name=held, args=()))
+
+
+def _has_an_ungated_decision(name, grammar):
+    """Whether `name` offers ways something decides between and one of them, bar the last, carries no gate."""
+    body = grammar[name].body
+    ways = body.alternatives if isinstance(body, ir.Choice) else ()
+    return len(ways) > 1 and any(not way.gate.guards for way in ways[:-1])
+
+
+def lower_gated_continuations(grammar, namer):
+    """
+    Put what a call carries on to inside the callee, where the callee has a way nothing can be entered on: `D = |gD actD
+    →A →cont|` becomes `D = |gD actD →A′|`, with `A′` the ways of `A` each carrying on to `cont`.
+
+    The same matches in the same order — `A` was tried a way at a time with `cont` behind whichever matched, and `A′` is
+    that written out. What it buys is where `cont` stands: a way of `A` that asks nothing now *enters* `cont`, and
+    `hoist-guards-to-callers` takes a question from what a way enters. Lowering asks nothing of the input and gates
+    nothing by itself; the hoist reaches nothing without it.
+
+    Only where `cont` has something to give — a guard every one of its ways asks, which is what the hoist can take.
+    Lowering one that has none moves a call for nothing.
+
+    `cont`'s own guards go nowhere. They are asked where `cont` is entered, which is where the parse stands once `A` has
+    returned, and that is the same position in `A′` as it was in `D`: what `D`'s gate asked spoke for where `D` was
+    entered, and `A` may have taken characters since.
+    """
+    minted, named = {}, {}
+
+    def lowered(name, tail):
+        """The name of `name`'s ways each carrying on to `tail`, minted where that pair is first wanted."""
+        key = (name, tail.name, tail.args)
+        if key not in named:
+            held = namer.fresh(name)
+            named[key] = held
+            minted[held] = dataclasses.replace(
+                grammar[name],
+                name=held,
+                body=ir.Choice(
+                    alternatives=tuple(
+                        _carrying_on_to(way, tail, name, grammar, namer, minted)
+                        for way in grammar[name].body.alternatives
+                    )
+                ),
+            )
+        return named[key]
+
+    def told(way):
+        if not isinstance(way.first, ir.Ref) or not isinstance(way.second, ir.Ref):
+            return way
+        if not _has_an_ungated_decision(way.first.name, grammar):
+            return way
+        if not _asked_by_every_way(way.second.name, grammar):
+            return way
+        held = lowered(way.first.name, way.second)
+        return dataclasses.replace(way, first=ir.Ref(name=held, args=way.first.args), second=None)
+
+    written = {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production, body=ir.Choice(alternatives=tuple(told(way) for way in production.body.alternatives))
+            )
+        )
+        for name, production in grammar.items()
+    }
+    return {**written, **minted}
+
+
+def _inlined_called_ways(grammar):
+    """
+    Put a production offering one way where the call to it stands: `A = |gA actA →B sA|` with `B = |actB fB sB|` becomes
+    `A = |gA actA actB fB sA|`.
+
+    A call to a production offering one way is unconditional — entering it is running that way — so what it does can
+    stand where the call did. What it buys is that the question `B` would have been entered on is now a question this
+    way enters on, which is what a hoist can reach; a call in between is what has been keeping them apart.
+
+    Every site, not only a lone one. A callee reached from two ways is written into both, which is a copy of what it
+    does rather than a second answer, and a callee every site inlines is one nothing calls and the sweep takes away.
+
+    Only where `B` asks nothing. Its gate is asked where `B` is entered, which is past what the caller performs, so
+    moving it up is the hoist's business and subject to the table; a gate left in the middle of a way is a question
+    asked after the way was entered, which `every-guard-is-in-a-gate` is there to forbid. Where `B` asks something the
+    hoist takes it first, and `B` is inlined on a later round with nothing left to ask.
+
+    Only where neither way carries a recovery. A recovery rides the push its call makes, and the call it rides changes
+    here.
+
+    And only where what comes out fits. A way holds a call and a continuation, and inlining leaves the callee's call,
+    the callee's continuation and the caller's own to place in the two — three things where the caller carries on and
+    the callee does too. It never mints a state to make room: a state minted here is the state the inlining removed, and
+    the way to make more of these fit is to rotate them, not to pay for them.
+    """
+
+    def inlined(way):
+        held = way.first if isinstance(way.first, ir.Ref) else None
+        if held is None or way.recover is not None:
+            return way
+        body = grammar[held.name].body
+        if not isinstance(body, ir.Choice) or len(body.alternatives) != 1:
+            return way
+        [only] = body.alternatives
+        if only.gate.guards or only.recover is not None:
+            return way
+        if way.second is not None and only.second is not None:
+            return way
+        actions = (*way.actions, *only.actions)
+        if way.second is None:
+            return dataclasses.replace(way, actions=actions, first=only.first, second=only.second)
+        return dataclasses.replace(way, actions=actions, first=only.first, second=way.second)
+
+    written = {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production,
+                body=ir.Choice(alternatives=tuple(inlined(way) for way in production.body.alternatives)),
+            )
+        )
+        for name, production in grammar.items()
+    }
+    return written
 
 
 def hoist_guards_to_callers(grammar, namer):
@@ -3604,7 +3759,21 @@ def hoist_guards_to_callers(grammar, namer):
     `B′` rather than `B`. The callee is shared, and a guard taken out of it for one caller's sake is a guard the other
     callers no longer ask. Minted per callee and set of guards taken, it is called only from the sites that took them,
     and the sites that could not go on calling `B` as it stands.
+
+    Run until nothing moves: a caller that has taken a guard is a callee its own callers can take it from, so the
+    questions climb until they reach a way that performs something no guard may cross, or a choice whose ways ask
+    different things.
     """
+    for _round in ir.rounds("hoist-guards-to-callers"):
+        settled = cleaned(_hoisted_once(grammar, namer))[0]
+        namer.sees(settled)
+        if settled == grammar:
+            return grammar
+        grammar = settled
+
+
+def _hoisted_once(grammar, namer):
+    """One pass of `hoist-guards-to-callers`: every guard a caller may take from what it enters, taken."""
     minted, named = {}, {}
 
     def without(name, taken):
