@@ -1677,6 +1677,7 @@ _IS_ONE_CHAR = Reading(
             Commit,
             ConsumeChar,
             ConsumeCountedSpan,
+            ConsumePeeked,
             ConsumeSpan,
             Cut,
             Emit,

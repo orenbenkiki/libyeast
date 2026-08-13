@@ -235,10 +235,11 @@ The phases, each established and then enforced:
 | 10    | `every-body-is-a-choice-a-run-or-a-set`                       | the tree's own spelling, for the machine's                                                      |
 | 11    | `no-guard-stands-past-an-action` / `every-guard-is-in-a-gate` | every question a way asks, in its gate and in front of what it performs                         |
 | 11    | `every-end-of-stream-gates-a-leaf-way`                        | every end of the input reached as a match rather than offered as a way                          |
+| 12    | `no-char-set-is-an-item`                                      | the character set standing where the machine performs things, asking and taking in one step     |
+| 12    | `every-consume-is-protected-by-a-gate`                        | every take nothing vouched for, the parse having to try it and give it back                     |
+| 13    | `every-conditional-way-is-gated`                              | every way something decides to enter with no character to decide on                             |
 | later | `no-conditional-production-matches-empty`                     | every empty match something decides to enter                                                    |
 | later | `every-called-alternative-is-unconditional`                   | the questions a callee asks where its caller's gate stood, taken to the caller                  |
-| later | `every-way-is-gated`                                          | every way entered on what its gate says, and the meter arrives to say what is left              |
-| later | `every-consume-is-gated-by-peek`                              | the question and the taking said as one step, where the machine needs them apart                |
 | later | `every-choice-is-deterministic`                               | the backtracking, and the calls written out behind it                                           |
 
 Each phase re-implements what it needs rather than inheriting it. A step from the old order is kept only where it earns

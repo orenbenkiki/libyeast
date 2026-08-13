@@ -2016,7 +2016,6 @@ _ALWAYS_READS = (
     ir.ConsumePeeked,
     ir.Diff,
     ir.Invalid,
-    ir.LiteralPeek,
     ir.Range,
 )
 _ACTIONS = (
@@ -2047,7 +2046,7 @@ _ACTIONS = (
 # A question the parse answers where it stands, taking nothing: what the input holds around it, and how the count it
 # carries compares. A `(cut)` is not one of these — it takes nothing either, but it commits the parse rather than asking
 # it anything, and it stands with the actions and the other commits.
-_GUARDS = (ir.EndOfStream, ir.Le, ir.Look, ir.LookBehind, ir.Lt, ir.NegLook, ir.StartOfLine)
+_GUARDS = (ir.EndOfStream, ir.Le, ir.LiteralPeek, ir.Look, ir.LookBehind, ir.Lt, ir.NegLook, ir.StartOfLine)
 
 # What takes no character at all, the counterpart of `_ALWAYS_READS`: an action leaves something behind, a guard asks a
 # question, an empty match does neither. What stands behind one of these is what a match begins on.
@@ -2095,6 +2094,7 @@ _LEAF_ITEMS = (
     ir.CharSet,
     ir.ConsumeChar,
     ir.ConsumeCountedSpan,
+    ir.ConsumePeeked,
     ir.ConsumeSpan,
     ir.Empty,
     ir.Invalid,
@@ -2255,10 +2255,12 @@ def _parts_only_match_and_ask(node):
 _ONLY_MATCHES_AND_ASKS = ir.Reading(
     "whether what an exclusion forbids only matches and asks",
     {
-        # A match takes characters and says whether they were there, which is the whole of what the probe wants.
-        (ir.Char, ir.CharSet, ir.ConsumeSpan, ir.Range): True,
-        # A guard reads where the parse stands and leaves it there, and an empty match does neither.
-        (ir.Empty, ir.EndOfStream, ir.Le, ir.StartOfLine): True,
+        # A match takes characters and says whether they were there, which is the whole of what the probe wants. A
+        # literal taken on the gate's word is one of them, its characters found before it ran.
+        (ir.Char, ir.CharSet, ir.ConsumePeeked, ir.ConsumeSpan, ir.Range): True,
+        # A guard reads where the parse stands and leaves it there, and an empty match does neither. A literal peek is
+        # one of them: it asks whether the input begins with its text and takes nothing either way.
+        (ir.Empty, ir.EndOfStream, ir.Le, ir.LiteralPeek, ir.StartOfLine): True,
         ir.Ref: True,
         # A shape that holds parts is what its parts are — a difference and a lookaround among them, each asking about a
         # match of its own.
@@ -2547,21 +2549,89 @@ _END_OF_STREAM = (-2, -2)
 _EVERY_CHARACTER = ((_END_OF_STREAM[0], 0x10FFFF),)
 
 
-def _ahead_of_gate(node, grammar):
+def _guards_in_force(parts, at, entering=()):
     """
-    What the character in front of a way can be once its gate has admitted it — everything, narrowed by what the gate
-    asks. Anything that is not a way has no gate and narrows nothing.
+    The guards that hold where `parts[at]` stands — the one accessor for "what has been asked about this position".
+
+    Three things say it and they say the same thing. What every way that enters this production asked where it entered
+    it, which `_asked_where_entered` works out and a caller passes in; what the way's own gate asks, which stands among
+    the parts `_parts_of_way` gives; and what a guard already passed over asked. A question that moved from any of those
+    places to any other is the same question, which is why one walk reads all three.
+
+    A part that takes characters clears them. Past a take the parse is somewhere else, and every question asked before
+    it was about where it no longer is.
+    """
+    held = list(entering)
+    for item in parts[:at]:
+        if isinstance(item, _TAKES_CHARACTERS):
+            held = []
+        elif isinstance(item, _GUARDS):
+            held.append(item)
+    return tuple(held)
+
+
+def _ahead_of(guards, grammar):
+    """What the character in front can be, given `guards` hold — everything, narrowed by each of them in turn."""
+    ahead = _EVERY_CHARACTER
+    for guard in guards:
+        ahead = _narrowed_ahead(ahead, guard, grammar)
+    return ahead
+
+
+def _ahead_of_any(parts, at, paths, grammar):
+    """
+    What the character in front of `parts[at]` can be, over every path that enters the way — their union, since any of
+    them may be the one the parse took and the answer has to hold for all of them.
+    """
+    spans = [span for path in paths or ({},) for span in _ahead_of(_guards_in_force(parts, at, path), grammar)]
+    return tuple(_merged_spans(spans))
+
+
+def _entering_guards(grammar):
+    """
+    `{id(way): guards}` — what holds where each way is entered, worked out once for a grammar and kept.
+
+    Every walk that asks what the character in front can be needs it, and none of them knows which production the way it
+    holds belongs to. Rather than thread the answer through each of them — `_is_nullable`, `_split`, the walk for where
+    the input ends, all of them readings other readings call — it is looked up here by the way itself.
+
+    Kept against the grammar it was worked out for, and the grammar is held with it: the pipeline builds a new one per
+    step and each is asked about many times over.
+    """
+    held = _ENTERING.get(id(grammar))
+    if held is None or held[0] is not grammar:
+        asked = _asked_where_entered(grammar)
+        by_way = {
+            id(way): asked[name]
+            for name, production in grammar.items()
+            if isinstance(production.body, ir.Choice)
+            for way in production.body.alternatives
+        }
+        _ENTERING[id(grammar)] = held = (grammar, by_way)
+    return held[1]
+
+
+# What `_entering_guards` keeps, per grammar it has been asked about: the grammar itself, so the key cannot be reused
+# under it, and the answer.
+_ENTERING = {}
+
+
+def _ahead_of_gate(node, grammar, entering=None):
+    """
+    What the character in front of a way can be once its gate has admitted it. Anything that is not a way has no gate
+    and narrows nothing.
 
     A guard hoisted into a gate says what a guard among the actions said, so a walk over what a way does has to read the
     gate to see it: `hoist-guards-to-gates` moves the very lookaheads that say a scan behind them takes a character, and
-    a walk that read only the actions would call the scan empty again.
+    a walk that read only the actions would call the scan empty again. The same holds one call up — a question hoisted
+    out to the ways that enter this one still holds where they enter it — which is what `_entering_guards` says and what
+    a caller may override.
     """
-    ahead = _EVERY_CHARACTER
     if not isinstance(node, ir.Alternative):
-        return ahead
-    for guard in node.gate.guards:
-        ahead = _narrowed_ahead(ahead, guard, grammar)
-    return ahead
+        return _EVERY_CHARACTER
+    if entering is None:
+        entering = _entering_guards(grammar).get(id(node), ())
+    return _ahead_of_any(_parts_of_way(node), len(node.gate.guards), entering, grammar)
 
 
 def _narrowed_ahead(ahead, item, grammar):
@@ -2670,8 +2740,9 @@ _GATE_REGION = ir.Reading(
         ir.NegLook: _looked_away,
         ir.LookBehind: _looked_behind,
         (ir.Le, ir.Lt): _compared,
-        # A commit rather than a guard: it says nothing about where the parse stands, so it narrows no axis.
-        ir.Cut: lambda _guard, region, _grammar: region,
+        # A literal says the whole of what the input must begin with; on the axis of the character in front, what it
+        # admits is its first one, which is all this asks about.
+        ir.LiteralPeek: lambda guard, region, _grammar: _admitting_ahead(region, ((guard.text[0], guard.text[0]),)),
     },
 )
 
@@ -3179,6 +3250,631 @@ def hoist_guards_to_gates(grammar, namer):
     }
 
 
+def _every_conditional_way_is_gated(grammar):
+    """
+    Check that every way something decides to enter carries a gate.
+
+    A machine takes a way by asking its gate before entering it, so a way its gate says nothing about is one it would
+    have to try and give back — which is the backtracking the whole shape is for getting rid of. What the gate holds
+    comes second: each guard is a question the machine can put where it stands — the character in front, the one behind,
+    whether any is left, where the parse is in the line, how the indentation compares. That the question is one it can
+    answer at all is `every-peek-is-a-character-set`, which holds of every lookaround wherever it stands, a gate
+    included.
+
+    Two kinds of way are not a decision and are not asked. One nothing chooses to enter: a body offering a single way,
+    which a caller reaches by calling it and not by picking it — the continuation that pops what a consuming production
+    opened, the root, the recovery. And the last way of a choice, which is that choice's else: an empty gate there is
+    the fallthrough, and something has to be what happens where nothing else fired.
+
+    Whether the gates of a choice tell its ways apart is a later question and not this one; this asks only that each way
+    something decides between has one.
+    """
+    return [
+        f"{name}: a way its gate says nothing about, where another way stands behind it"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice) and len(production.body.alternatives) > 1
+        for way in production.body.alternatives[:-1]
+        if not way.gate.guards
+    ]
+
+
+EVERY_CONDITIONAL_WAY_IS_GATED = Invariant("every-conditional-way-is-gated", _every_conditional_way_is_gated)
+
+
+class Crossing:
+    """
+    Whether a guard may be asked before an action that stood in front of it, one answer per pair of kinds.
+
+    Three values and not two. A pair the table names is `True` where asking early is the same question and `False` where
+    it is not; a pair it does not name is one nobody has worked out, and the difference between "no" and "not yet" is
+    the whole point — a walk that took an unnamed pair for `False` would look settled while it was only ignorant. So an
+    unnamed pair refuses the move *and* is recorded, and both of these are faults the gate reports:
+
+    - **a pair consulted with nothing recorded**, which says the table is behind what the grammar holds;
+    - **a pair recorded that nothing consulted**, which says the table claims to know something it was never asked —
+      a guess about the grammar, exactly as an `ir.Reading` handler nothing reaches is.
+
+    Between them the table is pinned to the pairs that occur: what is missing is reported and what is spare is reported,
+    so it never quietly grows a claim.
+    """
+
+    def __init__(self, told):
+        self._told = dict(told)
+        self._asked = set()
+        self._unnamed = set()
+
+    def may_cross(self, guard, action):
+        """Whether `guard` may be asked before `action`, recording the pair either way."""
+        pair = (type(guard).__name__, type(action).__name__)
+        if pair not in self._told:
+            self._unnamed.add(pair)
+            return False
+        self._asked.add(pair)
+        return self._told[pair]
+
+    def unnamed(self):
+        """The pairs something consulted and the table does not name."""
+        return sorted(self._unnamed)
+
+    def unconsulted(self):
+        """The pairs the table names and nothing consulted."""
+        return sorted(set(self._told) - self._asked)
+
+
+# What a guard may be asked in front of: each entry is `(guard, action)` to whether asking the guard there is the same
+# question. A pair not here is one nobody has worked out, and consulting it is a fault rather than a no.
+GUARD_CROSSES_ACTION = Crossing(
+    {
+        # Taking a character moves the parse: a lookaround asked in front of one asks about a different character, and a
+        # comparison of a length about a different length.
+        ("Look", "CharSet"): False,
+        ("NegLook", "CharSet"): False,
+        # A variable is the parse's own working. A lookaround reads the input and not a variable, so the question is the
+        # same either side. A comparison does read one, and no way asks a comparison in front of a write.
+        ("Look", "ClearVar"): True,
+        ("Le", "ConsumeCountedSpan"): False,
+        ("Look", "ConsumeChar"): False,
+        ("Look", "ConsumeCountedSpan"): False,
+        ("Look", "ConsumeSpan"): False,
+        ("NegLook", "ConsumeSpan"): False,
+        # A committed region is a scope and not a point: inside it, failing is the error it names rather than a refusal
+        # handed back. `PushMessage` and `PopMessage` are its two ends and a `Cut` says the same at a point, so a guard
+        # crossing any of them is asked on the other side of that line — before the region opened, or while it is still
+        # open — and its refusal changes from the one to the other.
+        ("Look", "Cut"): False,
+        # What the parse hands back, which nothing asked of the input or of a count reads.
+        ("LiteralPeek", "Emit"): True,
+        ("Look", "Emit"): True,
+        ("NegLook", "Emit"): True,
+        # A code is the token being built. It is neither the input nor a count, so every guard passes it.
+        ("Le", "PopCode"): True,
+        ("Look", "PopCode"): True,
+        ("Lt", "PopCode"): True,
+        ("NegLook", "PopCode"): True,
+        ("Look", "PopMessage"): False,
+        ("Le", "PushCode"): True,
+        ("LiteralPeek", "PushCode"): True,
+        ("Look", "PushCode"): True,
+        ("Lt", "PushCode"): True,
+        ("NegLook", "PushCode"): True,
+        # The indentation a comparison would read — but the only guard asked in front of one reads the input instead.
+        ("Look", "PushIndent"): True,
+        ("Le", "PushMessage"): False,
+        ("Look", "PushMessage"): False,
+        ("Look", "SetVar"): True,
+        ("NegLook", "SetVar"): True,
+    }
+)
+
+
+def _run_of_one_character_sets(actions):
+    """
+    Where a run of two or more sets each holding one codepoint begins among `actions`, and how long it is — or `None`.
+
+    Adjacent and nothing between them: characters taken one after another with no action in the middle are one literal
+    the input either begins with or does not. Where an action stands between two of them they belong to different
+    tokens, and folding them would make one token of two.
+    """
+    at = None
+    for index, action in enumerate(actions):
+        is_one = isinstance(action, ir.CharSet) and len(action.spans) == 1 and action.spans[0][0] == action.spans[0][1]
+        if not is_one:
+            if at is not None and index - at > 1:
+                return at, index - at
+            at = None
+        elif at is None:
+            at = index
+    return (at, len(actions) - at) if at is not None and len(actions) - at > 1 else None
+
+
+def fold_literals_into_gates(grammar, namer):
+    """
+    Say a run of single characters as the literal it is: `A = |g '-' '-' '-' rest|` becomes `A = |g <"---">
+    ConsumePeeked("---") rest|`.
+
+    Three sets taken one after another are three decisions where the input offers one: either it begins with `---` or it
+    does not. Asked as a literal the gate holds the whole of it, and the generated parser answers with a single
+    comparison where a per-character split would spend a state on each — which is what `LiteralPeek` was written for.
+
+    Only where the sets are adjacent. An action between two of them means they are taken into different tokens, and one
+    literal in their place would make one token of two.
+
+    Where the run is not the first thing the way does, the question moves in front of whatever stood before it, and
+    `GUARD_CROSSES_ACTION` says whether it may.
+    """
+
+    def told(way):
+        found = _run_of_one_character_sets(way.actions)
+        if found is None:
+            return way
+        at, length = found
+        text = tuple(action.spans[0][0] for action in way.actions[at : at + length])
+        asked = ir.LiteralPeek(text=text, then=None, barrier=None)
+        if not all([GUARD_CROSSES_ACTION.may_cross(asked, action) for action in way.actions[:at]]):
+            return way
+        return dataclasses.replace(
+            way,
+            gate=ir.Gate(guards=(*way.gate.guards, asked)),
+            actions=(*way.actions[:at], ir.ConsumePeeked(text=text), *way.actions[at + length :]),
+        )
+
+    return {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production, body=ir.Choice(alternatives=tuple(told(way) for way in production.body.alternatives))
+            )
+        )
+        for name, production in grammar.items()
+    }
+
+
+def split_counted_spans_on_the_count(grammar, namer):
+    """
+    Give a run of a set counted by the parse the two ways it is: `A = |g … span(n, S) …|` becomes `A = |g 0<n <S> …
+    span(n, S) …| |g n<=0 … …|`.
+
+    A counted run takes `n` characters, and `n` is what the parse worked out rather than what the grammar wrote — so
+    where it is none the run takes nothing and the way matches empty, and where it is more the way is entered on a
+    character of `S`. Both are questions the machine answers where it stands: the comparison against the count it
+    carries, and the character in front of it. Said as two ways, each is one thing and each says which.
+
+    The order is the run first and the empty way behind it, which is the order a counted run already tries them in.
+
+    Both gates ask in front of whatever the way performs before the run, so `GUARD_CROSSES_ACTION` says whether they may
+    — and where any of them may not, the way is left whole.
+    """
+
+    def told(way):
+        at = next(
+            (index for index, action in enumerate(way.actions) if isinstance(action, ir.ConsumeCountedSpan)),
+            None,
+        )
+        if at is None:
+            return (way,)
+        span = way.actions[at]
+        asked = ir.Look(item=as_char_set(span.set, grammar))
+        if isinstance(span.count, ir.Lit):
+            # The count is the grammar's own and positive, so the run always takes: there is no second way to say, and
+            # what the gate owes is only that a character of the set is there.
+            if not all([GUARD_CROSSES_ACTION.may_cross(asked, action) for action in way.actions[:at]]):
+                return (way,)
+            return (dataclasses.replace(way, gate=ir.Gate(guards=(*way.gate.guards, asked))),)
+        taking = ir.Lt(a=ir.Lit(value=0), b=span.count)
+        none = ir.Le(a=span.count, b=ir.Lit(value=0))
+        if not all(
+            [
+                GUARD_CROSSES_ACTION.may_cross(guard, action)
+                for guard in (taking, asked, none)
+                for action in way.actions[:at]
+            ]
+        ):
+            return (way,)
+        return (
+            dataclasses.replace(way, gate=ir.Gate(guards=(*way.gate.guards, taking, asked))),
+            dataclasses.replace(
+                way,
+                gate=ir.Gate(guards=(*way.gate.guards, none)),
+                actions=(*way.actions[:at], *way.actions[at + 1 :]),
+            ),
+        )
+
+    return {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production,
+                body=ir.Choice(alternatives=tuple(one for way in production.body.alternatives for one in told(way))),
+            )
+        )
+        for name, production in grammar.items()
+    }
+
+
+def mint_consume_states(grammar, namer):
+    """
+    Cut a way where it would take a second character on the strength of the first: `A = |g … take … CharSet rest|`
+    becomes `A = |g … take →A′|` with `A′ = |— … CharSet rest|`.
+
+    A gate speaks for the position the way is entered at. Past a take the parse stands somewhere else, so a set behind
+    one is a question the way's gate cannot ask however the table answers — the way holds two entries and has one gate.
+    Given the rest of it a state of its own, the second take is entered where its own gate can be asked, and
+    `split-consumes-into-gates` puts the question there.
+    """
+    minted = {}
+
+    def told(name, way):
+        taken = False
+        for at, action in enumerate(way.actions):
+            if isinstance(action, _TAKES_CHARACTERS) and taken:
+                break
+            taken = taken or isinstance(action, _TAKES_CHARACTERS)
+        else:
+            return way
+        held = namer.fresh(name)
+        minted[held] = ir.Prod(
+            grammar[name].number,
+            held,
+            (),
+            ir.Choice(
+                alternatives=(
+                    ir.Alternative(
+                        gate=ir.Gate(),
+                        actions=way.actions[at:],
+                        first=way.first,
+                        second=way.second,
+                        recover=way.recover,
+                    ),
+                )
+            ),
+        )
+        return dataclasses.replace(
+            way, actions=way.actions[:at], first=None, second=ir.Ref(name=held, args=()), recover=None
+        )
+
+    written = {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production,
+                body=ir.Choice(alternatives=tuple(told(name, way) for way in production.body.alternatives)),
+            )
+        )
+        for name, production in grammar.items()
+    }
+    return {**written, **minted}
+
+
+# What moves the parse on, so a question asked in front of it no longer speaks for where the parse now stands. The
+# counterpart of the actions, which leave the position where they found it.
+_TAKES_CHARACTERS = (
+    ir.CharSet,
+    ir.ConsumeChar,
+    ir.ConsumeCountedSpan,
+    ir.ConsumeLiteral,
+    ir.ConsumePeeked,
+    ir.ConsumeSpan,
+    ir.ConsumeTrimmedSpan,
+)
+
+
+def _asked_where_entered(grammar):
+    """
+    `{name: paths}` — a set holding, per way that enters the production, the set of guards asked where it enters it.
+
+    A gate speaks for the position the way is entered at, and a call made before the way performs anything is made at
+    that same position. So a question the caller asked holds where the callee begins, and it holds however many calls
+    deep — which is what lets a guard move up to the choice that needs it without the question being lost to whatever it
+    protected.
+
+    One entry per path rather than the guards they share, because two questions are asked of this and they differ.
+    Whether every path asked about the character at all is a yes-or-no, and seventeen escapes reaching one shared tail
+    each ask about a different character while every one of them asks. What that character can be is a set, and the
+    answer is the union over the paths, any of them being the one taken. Handing the paths back lets each site say which
+    it wants — `_ahead_of_any` unions them, `_guards_in_force` reads one.
+
+    Each path is a set: a gate has no order between its guards, so two paths asking the same questions are one path.
+
+    A path that has moved contributes nothing, a caller taking a character before the call being one that asks about
+    somewhere else. A production entered by name has no caller to ask and neither has one nothing calls; both come back
+    as the single empty path, nothing being known where they begin. A least fixed point, since what is known at a call
+    site includes what was known where the caller itself began.
+    """
+    entered = entered_by_name(grammar)
+    nothing = frozenset({frozenset()})
+    known = {name: frozenset() for name in grammar}
+    for _round in ir.rounds("what is asked where each production is entered"):
+        settled = {}
+        for name in grammar:
+            if name in entered:
+                settled[name] = nothing
+                continue
+            paths = set()
+            for holder, production in grammar.items():
+                if not isinstance(production.body, ir.Choice):
+                    continue
+                for way in production.body.alternatives:
+                    held = way.first if way.first is not None else way.second
+                    if not isinstance(held, ir.Ref) or held.name != name:
+                        continue
+                    if any(isinstance(action, _TAKES_CHARACTERS) for action in way.actions):
+                        paths.add(frozenset())
+                    else:
+                        paths |= {above | frozenset(way.gate.guards) for above in known[holder] or nothing}
+            settled[name] = frozenset(paths) or nothing
+        if settled == known:
+            return settled
+        known = settled
+
+
+def _no_char_set_is_an_item(grammar):
+    """
+    Check that no way holds a character set among what it performs.
+
+    A question and a taking are two things. A `CharSet` standing where the machine performs things is both at once: it
+    asks whether the character belongs to the set and takes it in the same breath, so the answer is reached only by
+    entering the way — when the answer is what entering the way should have been decided by. Split, the set is the
+    question a gate holds and `ConsumeChar` is the taking.
+
+    The set itself does not go. It stays as the question, inside the `Look` of a gate and as the class a scan runs over;
+    what goes is its standing among the actions as a match of its own.
+    """
+    return [
+        f"{name}: a way asks a character set and takes the character in one step"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice)
+        for way in production.body.alternatives
+        for item in _items_of_way(way)
+        if isinstance(item, ir.CharSet)
+    ]
+
+
+NO_CHAR_SET_IS_AN_ITEM = Invariant("no-char-set-is-an-item", _no_char_set_is_an_item)
+
+
+def _every_consume_is_protected_by_a_gate(grammar):
+    """
+    Check that every take is protected by a gate that found what it takes — a `Look` or a `LiteralPeek`, in the way's
+    own gate or in one asked wherever the way is entered.
+
+    A take that nothing vouched for is a match the parse has to try and give back, which is the backtracking the shape
+    is for removing. The gate is where the input is asked, and what it found is what the take is entitled to.
+
+    Not only the way's own gate. A question asked by every way that enters this one, at the position it enters it, holds
+    here too — `_asked_where_entered` is what says so, and it is what lets a guard move up to the choice that needs it
+    without the take it protected losing its warrant.
+    """
+    faults = []
+    entering = _asked_where_entered(grammar)
+    for name, production in grammar.items():
+        if not isinstance(production.body, ir.Choice):
+            continue
+        for way in production.body.alternatives:
+            parts = _parts_of_way(way)
+            # Every path into the way must have asked, and they need not have asked the same thing: seventeen escapes
+            # reaching one shared tail each look at a different character, and every one of them looks.
+            faults += [f"{name}: a way takes what no gate found"] * sum(
+                isinstance(item, _TAKES_CHARACTERS)
+                and not isinstance(item, ir.CharSet)
+                and not all(
+                    any(isinstance(guard, (ir.Look, ir.LiteralPeek)) for guard in _guards_in_force(parts, at, path))
+                    for path in entering[name] or ({},)
+                )
+                for at, item in enumerate(parts)
+            )
+    return faults
+
+
+EVERY_CONSUME_IS_PROTECTED_BY_A_GATE = Invariant(
+    "every-consume-is-protected-by-a-gate", _every_consume_is_protected_by_a_gate
+)
+
+
+def split_consumes_into_gates(grammar, namer):
+    """
+    Say the asking and the taking as two things: `A = |g CharSet(S) rest|` becomes `A = |g Look(S) ConsumeChar rest|`.
+
+    A character set standing among what a way performs asks whether the character belongs to it and takes it in the same
+    breath, so the answer is reached only by entering the way — when the answer is what entering the way should have
+    been decided by. Split, the question is in the gate where a caller can see it, and `ConsumeChar` takes the character
+    the gate has already found.
+
+    This is where the gates come from. A hoist moves a question that exists; nothing before this makes one, which is why
+    the ways that decide nothing outnumber the ones that do until it has run.
+
+    Where the set is not the first thing the way does, the question moves in front of whatever stood before it, and
+    `GUARD_CROSSES_ACTION` says whether it may. One set per way per pass: a second would have to cross the take the
+    first left behind, and a character already taken is a different position.
+    """
+
+    def told(way):
+        at = next((index for index, action in enumerate(way.actions) if isinstance(action, ir.CharSet)), None)
+        if at is None:
+            return way
+        asked = ir.Look(item=way.actions[at])
+        if not all([GUARD_CROSSES_ACTION.may_cross(asked, action) for action in way.actions[:at]]):
+            return way
+        return dataclasses.replace(
+            way,
+            gate=ir.Gate(guards=(*way.gate.guards, asked)),
+            actions=(*way.actions[:at], ir.ConsumeChar(), *way.actions[at + 1 :]),
+        )
+
+    return {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production, body=ir.Choice(alternatives=tuple(told(way) for way in production.body.alternatives))
+            )
+        )
+        for name, production in grammar.items()
+    }
+
+
+def _does_offer_an_ungated_decision(name, grammar):
+    """Whether `name` offers ways something decides between and one of them, bar the last, carries no gate."""
+    body = grammar[name].body
+    if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
+        return False
+    return any(not way.gate.guards for way in body.alternatives[:-1])
+
+
+def _are_all_ways_gated(name, grammar):
+    """Whether every way `name` offers carries a gate, so nothing enters it without the input having said so."""
+    body = grammar[name].body
+    return isinstance(body, ir.Choice) and all(way.gate.guards for way in body.alternatives)
+
+
+def lower_gated_continuations(grammar, namer):
+    """
+    Put what a call carries on to inside the callee, where the callee has a way nothing can be entered on: `D = |gD actD
+    →A →cont|` becomes `D = |gD actD →A′|`, with `A′` the ways of `A` each carrying on to `cont` where it ended.
+
+    The same matches in the same order — `A` was tried a way at a time with `cont` behind whichever matched, and `A′` is
+    that written out. What it buys is where `cont` stands: an ungated way of `A` now *enters* `cont`, which is the one
+    position `hoist-guards-to-callers` can take a gate from. Lowering gates nothing by itself and the hoist reaches
+    nothing without it.
+
+    Only where `cont` is entered on something itself. Lowering one whose own ways can be entered on nothing carries that
+    emptiness into `A′` and leaves the hoist with nothing to take there either.
+
+    A way of `A` already making a call and carrying on from it has no slot left for `cont`, and gets a state of its own
+    holding what it carried on to and then `cont`.
+    """
+    minted, named = {}, {}
+
+    def carried(way, cont, owner):
+        """`way` with `cont` behind it, given a state of its own where the way has no slot left to hold it."""
+        if way.second is None:
+            return dataclasses.replace(way, second=cont)
+        held = namer.fresh(owner)
+        minted[held] = ir.Prod(
+            grammar[owner].number,
+            held,
+            (),
+            ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), first=way.second, second=cont),)),
+        )
+        return dataclasses.replace(way, second=ir.Ref(name=held, args=()))
+
+    def lowered(name, cont):
+        """The name of `name`'s ways each carrying on to `cont`, minted where that pair is first wanted."""
+        key = (name, cont.name, cont.args)
+        if key not in named:
+            held = namer.fresh(name)
+            named[key] = held
+            minted[held] = dataclasses.replace(
+                grammar[name],
+                name=held,
+                body=ir.Choice(alternatives=tuple(carried(way, cont, name) for way in grammar[name].body.alternatives)),
+            )
+        return named[key]
+
+    def told(way):
+        if not isinstance(way.first, ir.Ref) or not isinstance(way.second, ir.Ref):
+            return way
+        if not _does_offer_an_ungated_decision(way.first.name, grammar):
+            return way
+        if not _are_all_ways_gated(way.second.name, grammar):
+            return way
+        held = lowered(way.first.name, way.second)
+        return dataclasses.replace(way, first=ir.Ref(name=held, args=way.first.args), second=None)
+
+    written = {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production, body=ir.Choice(alternatives=tuple(told(way) for way in production.body.alternatives))
+            )
+        )
+        for name, production in grammar.items()
+    }
+    return {**written, **minted}
+
+
+def _one_way_called_first(way, grammar):
+    """
+    The name of what `way` enters first, where that is a production offering one way — else `None`.
+
+    `first` is the call and `second` where the way carries on from it, so what a way enters first is its `first`, or its
+    `second` where it makes no call of its own. A callee offering more than one way has no single gate to take: its ways
+    are a choice, and lifting a choice is not this.
+    """
+    held = way.first if isinstance(way.first, ir.Ref) else (way.second if way.first is None else None)
+    if not isinstance(held, ir.Ref) or held.name not in grammar:
+        return None
+    body = grammar[held.name].body
+    return held.name if isinstance(body, ir.Choice) and len(body.alternatives) == 1 else None
+
+
+def hoist_guards_to_callers(grammar, namer):
+    """
+    Ask a callee's guards where its caller is entered rather than where the call is made: `A = |gA actA →B|` with `B =
+    |gB actB …|` becomes `A = |gA gB actA →B′|`, `B′` being `B` with the guards it no longer asks.
+
+    A guard takes nothing, so where it is asked changes what is decided and not what is matched — provided nothing
+    between the two positions changes the answer. What stands between is `actA`, and `GUARD_CROSSES_ACTION` is what says
+    whether a guard may be asked in front of an action rather than behind it. A guard moves only where every action it
+    would cross admits it; one that cannot stays where it is, and the rest still move.
+
+    `B′` rather than `B`. The callee is shared, and a guard taken out of it for one caller's sake is a guard the other
+    callers no longer ask. Minted per callee and set of guards taken, it is called only from the sites that took them,
+    and the sites that could not go on calling `B` as it stands.
+    """
+    minted, named = {}, {}
+
+    def without(name, taken):
+        """The name of `name` with `taken` no longer asked, minted where that pair is first wanted."""
+        key = (name, tuple(id(guard) for guard in taken))
+        if key not in named:
+            held = namer.fresh(name)
+            named[key] = held
+            [only] = grammar[name].body.alternatives
+            left = tuple(guard for guard in only.gate.guards if not any(guard is one for one in taken))
+            minted[held] = dataclasses.replace(
+                grammar[name],
+                name=held,
+                body=ir.Choice(alternatives=(dataclasses.replace(only, gate=ir.Gate(guards=left)),)),
+            )
+        return named[key]
+
+    def told(way):
+        called = _one_way_called_first(way, grammar)
+        if called is None:
+            return way
+        [only] = grammar[called].body.alternatives
+        # Every action is asked about, and the answers taken together afterwards: stopping at the first refusal would
+        # leave the pairs behind it unconsulted, and what the table is missing is what its faults are for saying.
+        taken = [
+            guard
+            for guard in only.gate.guards
+            if all([GUARD_CROSSES_ACTION.may_cross(guard, action) for action in way.actions])
+        ]
+        if not taken:
+            return way
+        held = ir.Ref(name=without(called, taken), args=getattr(way.first or way.second, "args", ()))
+        moved = dataclasses.replace(way, gate=ir.Gate(guards=(*way.gate.guards, *taken)))
+        return (
+            dataclasses.replace(moved, first=held) if way.first is not None else dataclasses.replace(moved, second=held)
+        )
+
+    written = {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production, body=ir.Choice(alternatives=tuple(told(way) for way in production.body.alternatives))
+            )
+        )
+        for name, production in grammar.items()
+    }
+    return {**written, **minted}
+
+
 def _unheld(node):
     """
     `node` with the scopes written around it stripped — what it does, whatever is spelled about it.
@@ -3489,7 +4185,6 @@ _IS_NULLABLE = ir.Reading(
         (
             ir.CommitProvisional,
             ir.ConsumeLiteral,
-            ir.ConsumePeeked,
             ir.Choice,
             ir.InjectBefore,
             ir.MarkProvisional,
@@ -3735,9 +4430,7 @@ _SPLIT = ir.Reading(
         (
             ir.CommitProvisional,
             ir.ConsumeLiteral,
-            ir.ConsumePeeked,
             ir.InjectBefore,
-            ir.LiteralPeek,
             ir.MarkProvisional,
             ir.OpenProvisional,
             ir.RetypeProvisional,
@@ -3882,7 +4575,7 @@ EVERY_END_OF_STREAM_GATES_A_LEAF_WAY = Invariant(
 )
 
 
-def _entered_unconsumed(node, grammar, ways):
+def _entered_unconsumed(node, grammar, ways, entering=()):
     """
     The productions `node` can enter with nothing taken — its left corner, as names.
 
@@ -3890,26 +4583,28 @@ def _entered_unconsumed(node, grammar, ways):
     same position. A recovery is not: it is entered where an abandoned parse stopped rather than where its rule began,
     so a `(recover)` contributes what its item does and nothing more.
 
-    A way's gate is walked with its parts, so what the gate asks is asked here too. One admitting only the end of the
-    input stops the walk where its `EndOfStream` stands — a parse with input left never enters that way, and this walk
-    is for what a parse can arrive at and not go on from.
+    A way's gate is walked with its parts, so what the gate asks is asked here too, and `entering` carries what every
+    way that enters this production asked where it entered it — a question that moved up to a caller still holds here,
+    and a scan it vouched for still reads. One gate admitting only the end of the input stops the walk where its
+    `EndOfStream` stands: a parse with input left never enters that way, and this walk is for what a parse can arrive at
+    and not go on from.
     """
     if isinstance(node, ir.Ref):
         return {node.name}
     if isinstance(node, (ir.Alt, ir.Choice)):
-        return {name for item in _ways_or_items(node) for name in _entered_unconsumed(item, grammar, ways)}
+        return {name for item in _ways_or_items(node) for name in _entered_unconsumed(item, grammar, ways, entering)}
     if isinstance(node, (ir.Alternative, ir.Seq)):
-        reached, ahead = set(), _ahead_of_gate(node, grammar)
-        for item in _parts_of_way(node) if isinstance(node, ir.Alternative) else node.items:
+        reached = set()
+        parts = _parts_of_way(node) if isinstance(node, ir.Alternative) else node.items
+        for at, item in enumerate(parts):
             reached |= _entered_unconsumed(item, grammar, ways)
             # This part always reads, or takes nothing only where the input has ended: either way nothing behind it is
             # entered where the parse still stands and can go on. A scan its own class stands in front of always reads,
-            # which the lookaheads passed over are what say.
-            if _does_scan_read(item, ahead, grammar):
+            # which the guards in force where it stands are what say.
+            if _does_scan_read(item, _ahead_of_any(parts, at, entering, grammar), grammar):
                 break
             if not _is_nullable(item, grammar, ways) or _takes_none_only_at_the_end(item, grammar, ways):
                 break
-            ahead = _narrowed_ahead(ahead, item, grammar)
         return reached
     if isinstance(node, ir.Bind):
         return _entered_unconsumed(node.cond, grammar, ways)
@@ -3955,7 +4650,11 @@ def _no_production_reaches_itself_unconsumed(grammar):
     exempted — every edge is followed, a start state being a production like any other once a call reaches it.
     """
     ways = _split_ways(grammar)
-    edges = {name: _entered_unconsumed(production.body, grammar, ways) for name, production in grammar.items()}
+    entering = _asked_where_entered(grammar)
+    edges = {
+        name: _entered_unconsumed(production.body, grammar, ways, entering[name])
+        for name, production in grammar.items()
+    }
     reach = dict(edges)
     for _round in ir.rounds("the transitive reach of the unconsumed edges"):
         grown = {name: held | {far for near in held for far in edges.get(near, ())} for name, held in reach.items()}
@@ -4335,4 +5034,25 @@ STEPS = [
         hoist_guards_to_gates,
         settles=(EVERY_GUARD_IS_IN_A_GATE, EVERY_END_OF_STREAM_GATES_A_LEAF_WAY),
     ),
+    # Phase 12 establishes `NO_CHAR_SET_IS_AN_ITEM` and `EVERY_CONSUME_IS_PROTECTED_BY_A_GATE`: the asking and the
+    # taking are two things, the question in the gate where a caller can see it and the taking on the gate's word. This
+    # is where the gates come from — a hoist moves a question that exists, and until this has run there are barely any
+    # to move. Four steps: a run of single characters is the literal it is, a counted run says the two ways its count
+    # makes it, a way that would take a second character on the strength of the first is cut, and what is left is one
+    # set each.
+    Step("fold-literals-into-gates", fold_literals_into_gates, reduces=NO_CHAR_SET_IS_AN_ITEM),
+    Step("mint-consume-states", mint_consume_states, reduces=NO_CHAR_SET_IS_AN_ITEM),
+    Step("split-consumes-into-gates", split_consumes_into_gates, settles=NO_CHAR_SET_IS_AN_ITEM),
+    # Last of the four, because it says one way as two: a set still standing among the actions would be copied into
+    # both, and `no-char-set-is-an-item` would rise where nothing had gone wrong.
+    Step(
+        "split-counted-spans-on-the-count",
+        split_counted_spans_on_the_count,
+        settles=EVERY_CONSUME_IS_PROTECTED_BY_A_GATE,
+    ),
+    # Phase 13 establishes `EVERY_CONDITIONAL_WAY_IS_GATED`: every way something decides to enter is entered on what the
+    # input says. The questions exist now, and this is where they move — out of a callee that offers one way and into
+    # the choice that has to tell its ways apart. What the callee gave up it is still entered under, which is what
+    # `_asked_where_entered` says and what keeps the take it protected still protected.
+    Step("hoist-guards-to-callers", hoist_guards_to_callers, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
 ]
