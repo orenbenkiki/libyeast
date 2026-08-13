@@ -256,21 +256,6 @@ def _check(does_bisect=False, hint=None):
         + ", ".join(f"{name} {count}" for name, count in unsettled)
     )
     print(f"    {len(final)} production(s) in the grammar the phase hands on")
-    # The committed net, and the other half of what determinizing owes. The productions a character decides are entered
-    # committed — the first way whose gate holds is the parse, no other tried — and everything else backtracks; a case
-    # the two modes read differently is a gate that is disjoint and still wrong, its way failing further on where
-    # backtracking would have taken the next. No static count sees that, and every step that moves a gate or moves where
-    # an error fires risks it. It is a count and not yet a gate: none of it is refused until it reads none, at which
-    # point the two modes agreeing becomes the law the way the corpus already is.
-    committed = normalize.deterministic_productions(final)
-    _say(f"running the corpus again over {len(committed)} choice(s) entered committed")
-    unsafe = check_interpreter.reproduced(final, groups[-1], deterministic=committed)
-    unsafe += check_star.disagreements(final, suite, deterministic=committed)
-    choices = sum(1 for production in final.values() if isinstance(production.body, ir.Choice))
-    print(
-        f"    {len(committed)} of {choices} choice(s) a character decides, entered committed — "
-        f"{len(unsafe)} case(s) the two modes read differently"
-    )
     # The globals the grammar has come to hold, and what the runs asked of them that one slot could not have answered.
     # At none the slot is the stack, which is what says the value does not nest.
     held = [name for name in ir.GLOBAL_PARAMS if not any(name in final[production].params for production in final)]

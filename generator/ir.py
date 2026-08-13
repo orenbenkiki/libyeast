@@ -772,6 +772,11 @@ class ConsumePeeked:
         return self
 
 
+def _asked_in_order(guard):
+    """What orders a gate's guards: the kind, then the whole of the question. Total, and the same from run to run."""
+    return type(guard).__name__, repr(guard)
+
+
 @dataclass(frozen=True)
 class Gate:
     """
@@ -779,9 +784,17 @@ class Gate:
     They are a set and not a sequence — each is a question about the same position, so no order between them means
     anything, and a gate holding none is the unconditional fallthrough, which only the last alternative may carry. The
     question about the character in front is a `Look` over its class, one guard among the rest.
+
+    Held as a tuple in one canonical order rather than as a set, so that two gates asking the same questions are the
+    same gate — which is what lets the sweep merge the productions that carry them — while what the pipeline emits stays
+    the same from one run to the next. A set would order its members by hash, and a guard reading a named parameter
+    hashes through a string, whose hash a process picks afresh.
     """
 
     guards: tuple = ()
+
+    def __post_init__(self):
+        object.__setattr__(self, "guards", tuple(sorted(self.guards, key=_asked_in_order)))
 
     def references(self):
         return _refs(self.guards)

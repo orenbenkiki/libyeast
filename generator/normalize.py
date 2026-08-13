@@ -2535,11 +2535,6 @@ def _no_guard_stands_past_an_action(grammar):
 NO_GUARD_STANDS_PAST_AN_ACTION = Invariant("no-guard-stands-past-an-action", _no_guard_stands_past_an_action)
 
 
-def _do_spans_overlap(one, other):
-    """Whether two runs of codepoint intervals admit a character in common."""
-    return any(not (left[1] < right[0] or right[1] < left[0]) for left in one for right in other)
-
-
 # The end of the stream as a value the character in front of the parse takes: a unit no character class holds, the way
 # the invalid byte's `(-1, -1)` is one, so a gate wanting a character and a gate wanting the end are told apart by the
 # same span algebra as any two classes.
@@ -2660,140 +2655,6 @@ def _does_scan_read(item, ahead, grammar):
     return all(any(low >= at and high <= to for at, to in spans) for low, high in ahead)
 
 
-@dataclasses.dataclass(frozen=True)
-class _Region:
-    """
-    What a gate admits, one field per axis a choice can tell its ways apart on: the character in front of the parse, the
-    character behind it, whether the parse stands at the start of a line, and the indentation it stands under.
-
-    An axis a gate says nothing about admits the whole of itself, so two gates are told apart exactly where some axis
-    admits nothing in common — and a gate whose question this cannot place narrows nothing, which proves no way apart
-    from any other. `indentation` is an inclusive `(low, high)`, `high` being `None` where nothing bounds it above.
-    """
-
-    ahead: tuple = _EVERY_CHARACTER
-    behind: tuple = _EVERY_CHARACTER
-    line_starts: frozenset = frozenset((True, False))
-    indentation: tuple = (0, None)
-
-
-def _admitting_ahead(region, spans):
-    """`region` narrowed to the characters `spans` admits in front of the parse."""
-    return dataclasses.replace(region, ahead=tuple(_spans_meeting(region.ahead, spans)))
-
-
-def _looked_ahead(guard, region, grammar):
-    """`region` narrowed to what the parse must find in front of it."""
-    spans = _peek_spans(guard.item, grammar)
-    return region if spans is None else _admitting_ahead(region, spans)
-
-
-def _looked_away(guard, region, grammar):
-    """`region` narrowed to what the parse must not find in front of it."""
-    spans = _peek_spans(guard.item, grammar)
-    return (
-        region
-        if spans is None
-        else dataclasses.replace(region, ahead=tuple(_merged_spans(_subtracted_spans(list(region.ahead), spans))))
-    )
-
-
-def _looked_behind(guard, region, grammar):
-    """`region` narrowed to what the parse must have taken to stand here."""
-    spans = _peek_spans(guard.item, grammar)
-    return region if spans is None else dataclasses.replace(region, behind=tuple(_spans_meeting(region.behind, spans)))
-
-
-def _compared(guard, region, _grammar):
-    """
-    `region` narrowed to the indentations a comparison admits.
-
-    Only a comparison between the indentation in force and a written number lands on the axis. One against the length of
-    a match is a question about what was taken rather than about where the parse stands, and narrows nothing.
-    """
-    low, high = region.indentation
-    is_below = isinstance(guard, ir.Lt)
-    if isinstance(guard.a, ir.Indent) and isinstance(guard.b, ir.Lit):
-        high = guard.b.value - 1 if is_below else guard.b.value
-    elif isinstance(guard.a, ir.Lit) and isinstance(guard.b, ir.Indent):
-        low = guard.a.value + 1 if is_below else guard.a.value
-    else:
-        return region
-    return dataclasses.replace(
-        region, indentation=(max(region.indentation[0], low), _lower(region.indentation[1], high))
-    )
-
-
-def _lower(one, other):
-    """The lower of two upper bounds, `None` being no bound at all."""
-    return other if one is None else one if other is None else min(one, other)
-
-
-_GATE_REGION = ir.Reading(
-    "what a guard admits on the axes a choice tells its ways apart on",
-    {
-        ir.StartOfLine: lambda _guard, region, _grammar: dataclasses.replace(
-            region, line_starts=region.line_starts & frozenset((True,))
-        ),
-        ir.EndOfStream: lambda _guard, region, _grammar: _admitting_ahead(region, (_END_OF_STREAM,)),
-        ir.Look: _looked_ahead,
-        ir.NegLook: _looked_away,
-        ir.LookBehind: _looked_behind,
-        (ir.Le, ir.Lt): _compared,
-        # A literal says the whole of what the input must begin with; on the axis of the character in front, what it
-        # admits is its first one, which is all this asks about.
-        ir.LiteralPeek: lambda guard, region, _grammar: _admitting_ahead(region, ((guard.text[0], guard.text[0]),)),
-    },
-)
-
-
-def _gate_region(gate, grammar):
-    """What `gate` admits on every axis — the region of the input a way behind it is entered on."""
-    region = _Region()
-    for guard in gate.guards:
-        region = _GATE_REGION(guard, region, grammar)
-    return region
-
-
-def _are_regions_apart(one, other):
-    """Whether no input at all falls in both regions, which is what tells two ways apart."""
-    low, high = max(one.indentation[0], other.indentation[0]), _lower(one.indentation[1], other.indentation[1])
-    return (
-        not _do_spans_overlap(one.ahead, other.ahead)
-        or not _do_spans_overlap(one.behind, other.behind)
-        or not one.line_starts & other.line_starts
-        or (high is not None and high < low)
-    )
-
-
-def _undecided_reasons(grammar):
-    """
-    `{name: reason}` per choice whose ways are not told apart — the meter's own reading, said once for all its readers.
-
-    The last way is the catch-all and no part of the disjointness, whatever its gate says: it is reached only where
-    nothing in front of it fired, so what it admits is what the ways before it leave — and where its own gate then
-    refuses, the choice refuses and a recovery is what answers. Every way in front of it carries a gate and admits
-    nothing another one admits, which is what leaves the order carrying no weight.
-    """
-    reasons = {}
-    for name, production in grammar.items():
-        body = production.body
-        deciding = body.alternatives[:-1] if isinstance(body, ir.Choice) else ()
-        if not deciding:
-            continue
-        if any(not way.gate.guards for way in deciding):
-            reasons[name] = "a choice offering a catch-all with ways standing behind it"
-            continue
-        regions = [_gate_region(way.gate, grammar) for way in deciding]
-        if any(
-            not _are_regions_apart(regions[before], regions[after])
-            for before in range(len(regions))
-            for after in range(before + 1, len(regions))
-        ):
-            reasons[name] = "a choice whose ways admit the same input, and order is what tells them apart"
-    return reasons
-
-
 def _can_be_refused(node, grammar, seen=frozenset()):
     """
     Whether some input makes `node` fail and be handed back, rather than matching or raising.
@@ -2912,24 +2773,6 @@ def _every_option_is_reachable(grammar):
 
 
 EVERY_OPTION_IS_REACHABLE = Invariant("every-option-is-reachable", _every_option_is_reachable)
-
-
-def deterministic_productions(grammar):
-    """
-    The productions a parse may enter committed: the ones whose ways a character tells apart.
-
-    What the interpreter's committed mode takes. Entering one, the first way whose gate holds is the parse and no other
-    is tried, which is the machine's own behaviour — so running the corpus with these committed and everything else
-    backtracking asks the question no static count can. The meter says whether a character *picks* a way; this says
-    whether the way it picks goes on to match, and a gate can be perfectly disjoint and still be wrong, the way it
-    admits failing three characters later where a backtracking parse would have taken the next one.
-
-    A body with one way is in it: there is nothing to choose, so committing to it is what backtracking does anyway.
-    """
-    undecided = _undecided_reasons(grammar)
-    return frozenset(
-        name for name, production in grammar.items() if isinstance(production.body, ir.Choice) and name not in undecided
-    )
 
 
 # What a loop repeats is a state it jumps to, so a run's turn is a call. Its own count rather than a share of the
@@ -3713,87 +3556,6 @@ def split_consumes_into_gates(grammar, namer):
         )
         for name, production in grammar.items()
     }
-
-
-def _does_offer_an_ungated_decision(name, grammar):
-    """Whether `name` offers ways something decides between and one of them, bar the last, carries no gate."""
-    body = grammar[name].body
-    if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
-        return False
-    return any(not way.gate.guards for way in body.alternatives[:-1])
-
-
-def _are_all_ways_gated(name, grammar):
-    """Whether every way `name` offers carries a gate, so nothing enters it without the input having said so."""
-    body = grammar[name].body
-    return isinstance(body, ir.Choice) and all(way.gate.guards for way in body.alternatives)
-
-
-def lower_gated_continuations(grammar, namer):
-    """
-    Put what a call carries on to inside the callee, where the callee has a way nothing can be entered on: `D = |gD actD
-    →A →cont|` becomes `D = |gD actD →A′|`, with `A′` the ways of `A` each carrying on to `cont` where it ended.
-
-    The same matches in the same order — `A` was tried a way at a time with `cont` behind whichever matched, and `A′` is
-    that written out. What it buys is where `cont` stands: an ungated way of `A` now *enters* `cont`, which is the one
-    position `hoist-guards-to-callers` can take a gate from. Lowering gates nothing by itself and the hoist reaches
-    nothing without it.
-
-    Only where `cont` is entered on something itself. Lowering one whose own ways can be entered on nothing carries that
-    emptiness into `A′` and leaves the hoist with nothing to take there either.
-
-    A way of `A` already making a call and carrying on from it has no slot left for `cont`, and gets a state of its own
-    holding what it carried on to and then `cont`.
-    """
-    minted, named = {}, {}
-
-    def carried(way, cont, owner):
-        """`way` with `cont` behind it, given a state of its own where the way has no slot left to hold it."""
-        if way.second is None:
-            return dataclasses.replace(way, second=cont)
-        held = namer.fresh(owner)
-        minted[held] = ir.Prod(
-            grammar[owner].number,
-            held,
-            (),
-            ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), first=way.second, second=cont),)),
-        )
-        return dataclasses.replace(way, second=ir.Ref(name=held, args=()))
-
-    def lowered(name, cont):
-        """The name of `name`'s ways each carrying on to `cont`, minted where that pair is first wanted."""
-        key = (name, cont.name, cont.args)
-        if key not in named:
-            held = namer.fresh(name)
-            named[key] = held
-            minted[held] = dataclasses.replace(
-                grammar[name],
-                name=held,
-                body=ir.Choice(alternatives=tuple(carried(way, cont, name) for way in grammar[name].body.alternatives)),
-            )
-        return named[key]
-
-    def told(way):
-        if not isinstance(way.first, ir.Ref) or not isinstance(way.second, ir.Ref):
-            return way
-        if not _does_offer_an_ungated_decision(way.first.name, grammar):
-            return way
-        if not _are_all_ways_gated(way.second.name, grammar):
-            return way
-        held = lowered(way.first.name, way.second)
-        return dataclasses.replace(way, first=ir.Ref(name=held, args=way.first.args), second=None)
-
-    written = {
-        name: (
-            production
-            if not isinstance(production.body, ir.Choice)
-            else dataclasses.replace(
-                production, body=ir.Choice(alternatives=tuple(told(way) for way in production.body.alternatives))
-            )
-        )
-        for name, production in grammar.items()
-    }
-    return {**written, **minted}
 
 
 def _one_way_called_first(way, grammar):
