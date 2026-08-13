@@ -3558,19 +3558,33 @@ def split_consumes_into_gates(grammar, namer):
     }
 
 
-def _one_way_called_first(way, grammar):
+def _called_first(way, grammar):
     """
-    The name of what `way` enters first, where that is a production offering one way — else `None`.
+    The name of what `way` enters first, where that is a production offering ways — else `None`.
 
     `first` is the call and `second` where the way carries on from it, so what a way enters first is its `first`, or its
-    `second` where it makes no call of its own. A callee offering more than one way has no single gate to take: its ways
-    are a choice, and lifting a choice is not this.
+    `second` where it makes no call of its own.
     """
     held = way.first if isinstance(way.first, ir.Ref) else (way.second if way.first is None else None)
     if not isinstance(held, ir.Ref) or held.name not in grammar:
         return None
-    body = grammar[held.name].body
-    return held.name if isinstance(body, ir.Choice) and len(body.alternatives) == 1 else None
+    return held.name if isinstance(grammar[held.name].body, ir.Choice) else None
+
+
+def _asked_by_every_way(name, grammar):
+    """
+    The guards every way of `name` asks — what entering it asks whichever way it goes, and so what a caller could ask
+    instead.
+
+    A production offering one way is the plain case, its only way's gate being all of them. Where it offers several, a
+    guard in all of them is asked before any of them is chosen, so taking it out of each and asking it at the call is
+    the same question in the same place. A guard in some of them is not: it is what tells those ways from the rest.
+    """
+    ways = grammar[name].body.alternatives
+    shared = set(ways[0].gate.guards)
+    for way in ways[1:]:
+        shared &= set(way.gate.guards)
+    return shared
 
 
 def hoist_guards_to_callers(grammar, namer):
@@ -3583,6 +3597,10 @@ def hoist_guards_to_callers(grammar, namer):
     whether a guard may be asked in front of an action rather than behind it. A guard moves only where every action it
     would cross admits it; one that cannot stays where it is, and the rest still move.
 
+    What moves is what `_asked_by_every_way` says: a callee offering one way gives its gate, and one offering several
+    gives the guards all of them ask, which are asked before any of them is chosen. A guard only some ways ask stays —
+    that is what tells those ways from the rest.
+
     `B′` rather than `B`. The callee is shared, and a guard taken out of it for one caller's sake is a guard the other
     callers no longer ask. Minted per callee and set of guards taken, it is called only from the sites that took them,
     and the sites that could not go on calling `B` as it stands.
@@ -3590,32 +3608,34 @@ def hoist_guards_to_callers(grammar, namer):
     minted, named = {}, {}
 
     def without(name, taken):
-        """The name of `name` with `taken` no longer asked, minted where that pair is first wanted."""
-        key = (name, tuple(id(guard) for guard in taken))
+        """The name of `name` with `taken` no longer asked by any of its ways, minted where first wanted."""
+        key = (name, taken)
         if key not in named:
             held = namer.fresh(name)
             named[key] = held
-            [only] = grammar[name].body.alternatives
-            left = tuple(guard for guard in only.gate.guards if not any(guard is one for one in taken))
             minted[held] = dataclasses.replace(
                 grammar[name],
                 name=held,
-                body=ir.Choice(alternatives=(dataclasses.replace(only, gate=ir.Gate(guards=left)),)),
+                body=ir.Choice(
+                    alternatives=tuple(
+                        dataclasses.replace(way, gate=ir.Gate(guards=tuple(set(way.gate.guards) - set(taken))))
+                        for way in grammar[name].body.alternatives
+                    )
+                ),
             )
         return named[key]
 
     def told(way):
-        called = _one_way_called_first(way, grammar)
+        called = _called_first(way, grammar)
         if called is None:
             return way
-        [only] = grammar[called].body.alternatives
         # Every action is asked about, and the answers taken together afterwards: stopping at the first refusal would
         # leave the pairs behind it unconsulted, and what the table is missing is what its faults are for saying.
-        taken = [
+        taken = frozenset(
             guard
-            for guard in only.gate.guards
+            for guard in _asked_by_every_way(called, grammar)
             if all([GUARD_CROSSES_ACTION.may_cross(guard, action) for action in way.actions])
-        ]
+        )
         if not taken:
             return way
         held = ir.Ref(name=without(called, taken), args=getattr(way.first or way.second, "args", ()))
