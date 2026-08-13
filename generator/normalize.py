@@ -3192,12 +3192,18 @@ GUARD_CROSSES_ACTION = Crossing(
         # comparison of a length about a different length.
         ("Look", "CharSet"): False,
         ("NegLook", "CharSet"): False,
+        # A window bounds what a committed consume may take and nothing else: a lookaround reads past its edge freely,
+        # which the interpreter says outright where it counts a probe, so closing one changes no answer.
+        ("Look", "CloseWindow"): True,
+        ("NegLook", "CloseWindow"): True,
         # A variable is the parse's own working. A lookaround reads the input and not a variable, so the question is the
         # same either side. A comparison does read one, and no way asks a comparison in front of a write.
         ("Look", "ClearVar"): True,
         ("Le", "ConsumeCountedSpan"): False,
         ("Look", "ConsumeChar"): False,
+        ("NegLook", "ConsumeChar"): False,
         ("Look", "ConsumeCountedSpan"): False,
+        ("NegLook", "ConsumeCountedSpan"): False,
         ("Look", "ConsumeSpan"): False,
         ("NegLook", "ConsumeSpan"): False,
         # A committed region is a scope and not a point: inside it, failing is the error it names rather than a refusal
@@ -3220,8 +3226,9 @@ GUARD_CROSSES_ACTION = Crossing(
         ("Look", "PushCode"): True,
         ("Lt", "PushCode"): True,
         ("NegLook", "PushCode"): True,
-        # The indentation a comparison would read — but the only guard asked in front of one reads the input instead.
+        # The indentation a comparison would read — but the guards asked in front of one read the input instead.
         ("Look", "PushIndent"): True,
+        ("NegLook", "PushIndent"): True,
         ("Le", "PushMessage"): False,
         ("Look", "PushMessage"): False,
         ("Look", "SetVar"): True,
@@ -3354,6 +3361,26 @@ def split_counted_spans_on_the_count(grammar, namer):
         )
         for name, production in grammar.items()
     }
+
+
+def _every_way_takes_at_most_once(grammar):
+    """
+    Check that a way takes characters at most once, so that what it takes is what its own gate found.
+
+    A gate speaks for the position the way is entered at. Past a take the parse stands somewhere else, so a second take
+    in the same way is one no gate of that way can vouch for, however the questions are moved about. Given a way of its
+    own it is entered where its own gate can be asked.
+    """
+    return [
+        f"{name}: a way takes twice, and its gate can speak for only the first"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice)
+        for way in production.body.alternatives
+        if sum(isinstance(item, _TAKES_CHARACTERS) for item in _items_of_way(way)) > 1
+    ]
+
+
+EVERY_WAY_TAKES_AT_MOST_ONCE = Invariant("every-way-takes-at-most-once", _every_way_takes_at_most_once)
 
 
 def mint_consume_states(grammar, namer):
@@ -3736,8 +3763,10 @@ def _inlined_called_ways(grammar, namer=None):
     minted = {}
 
     def inlined(way):
-        held = way.first if isinstance(way.first, ir.Ref) else None
-        if held is None or way.recover is not None:
+        # The call is `first`, or `second` where the way makes none of its own — a tail call is a call like any other,
+        # and one whose callee is written in has nothing left to carry on to, so it always fits.
+        held = way.first if isinstance(way.first, ir.Ref) else (way.second if way.first is None else None)
+        if not isinstance(held, ir.Ref) or way.recover is not None:
             return way
         body = grammar[held.name].body
         if not isinstance(body, ir.Choice) or len(body.alternatives) != 1:
@@ -3745,11 +3774,26 @@ def _inlined_called_ways(grammar, namer=None):
         [only] = body.alternatives
         if only.gate.guards or only.recover is not None:
             return way
+        # A guard among what the callee performs would land past what the caller performs, which is a question asked
+        # after the way was entered. Until `no-guard-stands-past-an-action` has run there are such guards, and this
+        # sweep runs at every stage.
+        if any(isinstance(action, _GUARDS) for action in only.actions):
+            return way
         actions = (*way.actions, *only.actions)
-        if way.second is None:
+        if not actions and only.first is None and only.second is None:
+            return way  # what is left would be a way that performs nothing and calls nothing
+        if actions and only.first is not None:
+            return way  # a way acts or calls and never both, so that it is entered where it calls
+        if sum(isinstance(action, _TAKES_CHARACTERS) for action in actions) > 1:
+            # A way takes once, so that what it takes is what its own gate found. `mint-consume-states` cuts a way that
+            # would take twice, and writing that cut back in would undo it — the two would trade the same way forever.
+            return way
+        # What the way carries on to once the callee has run — nothing, where the callee was the tail call itself.
+        carries = None if way.first is None else way.second
+        if carries is None:
             return dataclasses.replace(way, actions=actions, first=only.first, second=only.second)
         if only.second is None:
-            return dataclasses.replace(way, actions=actions, first=only.first, second=way.second)
+            return dataclasses.replace(way, actions=actions, first=only.first, second=carries)
         if namer is None:
             return way
         tail = namer.fresh(held.name)
@@ -3757,7 +3801,7 @@ def _inlined_called_ways(grammar, namer=None):
             grammar[held.name].number,
             tail,
             (),
-            ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), first=only.second, second=way.second),)),
+            ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), first=only.second, second=carries),)),
         )
         return dataclasses.replace(way, actions=actions, first=only.first, second=ir.Ref(name=tail, args=()))
 
@@ -5029,7 +5073,7 @@ STEPS = [
     # makes it, a way that would take a second character on the strength of the first is cut, and what is left is one
     # set each.
     Step("fold-literals-into-gates", fold_literals_into_gates, reduces=NO_CHAR_SET_IS_AN_ITEM),
-    Step("mint-consume-states", mint_consume_states, reduces=NO_CHAR_SET_IS_AN_ITEM),
+    Step("mint-consume-states", mint_consume_states, settles=EVERY_WAY_TAKES_AT_MOST_ONCE),
     Step("split-consumes-into-gates", split_consumes_into_gates, settles=NO_CHAR_SET_IS_AN_ITEM),
     # Last of the four, because it says one way as two: a set still standing among the actions would be copied into
     # both, and `no-char-set-is-an-item` would rise where nothing had gone wrong.
