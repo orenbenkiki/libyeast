@@ -18,7 +18,7 @@ import spec_tests
 import wire
 
 
-def reproduced(grammar, fixtures=None, deterministic=frozenset()):
+def reproduced(grammar, fixtures=None, deterministic=frozenset(), holding=frozenset()):
     """
     The fixtures `grammar` does not reproduce token for token, as error strings — empty when it reproduces them all.
 
@@ -30,16 +30,18 @@ def reproduced(grammar, fixtures=None, deterministic=frozenset()):
     if fixtures is None:
         fixtures = spec_tests.load()
     ir.say(f"        {len(fixtures)} fixture(s), spread over the cores")
-    held = gate.spread(_run_one, (grammar, deterministic), fixtures)
+    held = gate.spread(_run_one, (grammar, deterministic, holding), fixtures)
     return [error for error in held if error is not None]
 
 
 def _run_one(held, fixture):
     """How `fixture` differs from what it froze, or `None` where it does not."""
-    grammar, deterministic = held
+    grammar, deterministic, holding = held
     try:
         arguments = spec_tests.arguments(fixture, grammar)
-        tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments, deterministic=deterministic)
+        tokens = interpreter.run(
+            grammar, fixture.production, fixture.input, arguments, deterministic=deterministic, holding=holding
+        )
         actual = wire.serialize(tokens)
     except Exception as error:  # noqa: BLE001 — a crash is a divergence to report, not to abort the gate on
         actual = f"(crash: {type(error).__name__}: {error})"

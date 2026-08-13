@@ -200,6 +200,9 @@ class Emitter:
             frozenset()
         )  # the productions entered committed — first holding gate, no second try — which
         # `run` sets from `normalize.deterministic_productions`; empty runs the whole grammar backtracking
+        self.holding = frozenset()  # the invariants the caller says this grammar establishes, by name. A run asserts
+        # what they promise rather than reading the promise off the grammar, which would only say the shape again — an
+        # independent check is one the pipeline tells and the parse tries
         self.holds_indent = False  # whether the grammar says where the indentation changes, which `run` reads off it.
         # While it is both a parameter and the stack's, only a grammar carrying the pushes can be held to the two
         # agreeing; this goes when the parameter does
@@ -884,6 +887,15 @@ def match(node, emitter, grammar, k):
         # matches nothing at all rather than leaving what it took. A non-positive count matches nothing, as a
         # zero-length indent does.
         count = evaluate(node.count, emitter, grammar)
+        # A run the parse asked for takes its first character or the gate that admitted it lied. Falling short of the
+        # count afterwards is a refusal like any other — a gate speaks for the character in front and not for `n` of
+        # them — but not being there at all is a gate that let through what it should have refused.
+        if (
+            "every-consume-is-protected-by-a-gate" in emitter.holding
+            and count > 0
+            and not _probe(node.set, emitter, grammar)
+        ):
+            raise AssertionError("a gated counted run begins nowhere: the gate let through what it should have refused")
         checkpoint = emitter.checkpoint()
         for _ in range(max(count, 0)):
             if not match(node.set, emitter, grammar, _accept):
@@ -894,6 +906,8 @@ def match(node, emitter, grammar, k):
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.ConsumeSpan):  # a `Star` over a character class, as the canonical form spells it
+        if "every-consume-is-protected-by-a-gate" in emitter.holding and not _probe(node.set, emitter, grammar):
+            raise AssertionError("a gated run is not there: the gate let through what it should have refused")
         return _repeat(node.set, emitter, grammar, k)
     if isinstance(node, ir.ConsumeTrimmedSpan):  # a `TrimStar`, as the canonical form spells it
         return match(ir.TrimStar(node.full, node.trim), emitter, grammar, k)
@@ -1356,12 +1370,17 @@ def _recover(entry, failure, emitter, grammar):
     raise failure
 
 
-def run(grammar, production, data, parameters=None, deterministic=frozenset()):
+def run(grammar, production, data, parameters=None, deterministic=frozenset(), holding=frozenset()):
     """
     Run `production` on the UTF-8 `data`, returning the yeast tokens it emits — a rejection among them if it rejects.
 
     `deterministic` names the productions entered committed — the first alternative whose gate holds, no second try — so
     a grammar runs hybrid: committed where its decisions are proved, backtracking everywhere else. Empty backtracks all.
+
+    `holding` names the invariants the caller says this grammar establishes. A run then asserts what they promise
+    instead of taking the promise back off the grammar — where `every-consume-is-protected-by-a-gate` is named, a run of
+    a class that finds none is a gate that lied rather than a match that declined, and it says so at once. Read off the
+    shape it would only repeat the static count; told, it is the parse checking what the count claims.
 
     `parameters` binds the production's parameters from the fixture's filename — `n`/`m` are integers, `c`/`t`/`r`
     strings. A production that declares `r` and is run without one resumes the way a zeroed `ys_options` does.
@@ -1386,6 +1405,11 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset()):
     emitter.holds_indent = any(
         isinstance(node, ir.PushIndent) for name in grammar for node in _nodes(grammar[name].body)
     )
+    # Whether every run of a class is entered under a gate that found that class — which a grammar says by having no way
+    # holding a `ConsumeSpan` without a `Look` in its gate. Once a run of none or more has been said as the two ways it
+    # is, what is left takes at least one, and a run that finds none is a gate that lied rather than a match that
+    # declined. Before that step a span is a run of none or more and taking none is what it is for.
+    emitter.holding = holding
     emitter.globals = tuple(
         name for name in ir.GLOBAL_PARAMS if not any(name in grammar[held].params for held in grammar)
     )

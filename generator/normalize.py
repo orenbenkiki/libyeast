@@ -2277,7 +2277,7 @@ _ONLY_MATCHES_AND_ASKS = ir.Reading(
     {
         # A match takes characters and says whether they were there, which is the whole of what the probe wants. A
         # literal taken on the gate's word is one of them, its characters found before it ran.
-        (ir.Char, ir.CharSet, ir.ConsumePeeked, ir.ConsumeSpan, ir.Range): True,
+        (ir.Char, ir.CharSet, ir.ConsumeChar, ir.ConsumePeeked, ir.ConsumeSpan, ir.Range): True,
         # A guard reads where the parse stands and leaves it there, and an empty match does neither. A literal peek is
         # one of them: it asks whether the input begins with its text and takes nothing either way.
         (ir.Empty, ir.EndOfStream, ir.Le, ir.LiteralPeek, ir.StartOfLine): True,
@@ -3543,7 +3543,18 @@ def _no_char_set_is_an_item(grammar):
     The set itself does not go. It stays as the question, inside the `Look` of a gate and as the class a scan runs over;
     what goes is its standing among the actions as a match of its own.
     """
-    return [
+    # A production that *is* a character set is the class itself — a scan names it as what it runs over, an exclusion as
+    # what it forbids, and `every-character-question-is-a-character-set` holds it to being one. Calling it is what asks
+    # and takes in one step, so the call is the fault and the production is not.
+    faults = [
+        f"{name}: a way calls a character set, asking and taking in one step"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice)
+        for way in production.body.alternatives
+        for item in _items_of_way(way)
+        if isinstance(item, ir.Ref) and item.name in grammar and isinstance(grammar[item.name].body, ir.CharSet)
+    ]
+    return faults + [
         f"{name}: a way asks a character set and takes the character in one step"
         for name, production in grammar.items()
         if isinstance(production.body, ir.Choice)
@@ -3571,9 +3582,16 @@ def _every_consume_is_protected_by_a_gate(grammar):
     faults = []
     entering = _asked_where_entered(grammar)
     for name, production in grammar.items():
-        if not isinstance(production.body, ir.Choice):
-            continue
-        for way in production.body.alternatives:
+        body = production.body
+        # A body that is not a choice offers no way to read a gate off, so what holds where it begins is only what the
+        # ways that enter it asked. A take in there is a take like any other: `b-carriage-return` is one character and
+        # nothing else, and the character it takes wants finding before it is taken as much as any.
+        ways = (
+            body.alternatives
+            if isinstance(body, ir.Choice)
+            else (ir.Alternative(gate=ir.Gate(), actions=tuple(_held(body))),)
+        )
+        for way in ways:
             parts = _parts_of_way(way)
             # Every path into the way must have asked, and they need not have asked the same thing: seventeen escapes
             # reaching one shared tail each look at a different character, and every one of them looks.
@@ -3609,7 +3627,57 @@ def split_consumes_into_gates(grammar, namer):
     Where the set is not the first thing the way does, the question moves in front of whatever stood before it, and
     `GUARD_CROSSES_ACTION` says whether it may. One set per way per pass: a second would have to cross the take the
     first left behind, and a character already taken is a different position.
+
+    A call to a production that is a character set is the same thing said one call away — `b-break`'s second way is
+    `b-carriage-return`, which is `CR` and nothing else. The set stands where the call did and is then split like any
+    other. The production stays as it is: a scan names it as what it runs over and an exclusion as what it forbids, and
+    there it is the class rather than a match.
     """
+
+    wrapped = {}
+
+    def gated(name, body):
+        """The name of a way that asks for `body` and takes it, minted where a call to that class first needs one."""
+        if name not in wrapped:
+            held = namer.fresh(name)
+            wrapped[name] = held
+            wrapped[held] = ir.Prod(
+                grammar[name].number,
+                held,
+                (),
+                ir.Choice(
+                    alternatives=(
+                        ir.Alternative(gate=ir.Gate(guards=(ir.Look(item=body),)), actions=(ir.ConsumeChar(),)),
+                    )
+                ),
+            )
+        return wrapped[name]
+
+    def pulled(way):
+        """`way` with every call to a character set standing as that set, or aimed at a way that asks for it."""
+        for _round in ir.rounds("the classes a way calls"):
+            settled = _pulled_once(way)
+            if settled == way:
+                return way
+            way = settled
+
+    def _pulled_once(way):
+        """One such call moved — the first the way makes, since moving it changes what the next one may do."""
+        for slot in ("first", "second"):
+            held = getattr(way, slot)
+            if not isinstance(held, ir.Ref) or held.name not in grammar or way.recover is not None:
+                continue
+            body = grammar[held.name].body
+            if not isinstance(body, ir.CharSet):
+                continue
+            # A way takes at most once. Where it already takes, the class cannot come in beside it and the call is aimed
+            # at a way that asks for it instead — the class itself stays, a scan naming it as what it runs over.
+            if any(isinstance(action, _TAKES_CHARACTERS) for action in way.actions):
+                return dataclasses.replace(way, **{slot: ir.Ref(name=gated(held.name, body), args=held.args)})
+            if slot == "first" and way.second is not None:
+                return dataclasses.replace(way, actions=(*way.actions, body), first=None)
+            return dataclasses.replace(way, actions=(*way.actions, body), **{slot: None})
+        return way
 
     def told(way):
         at = next((index for index, action in enumerate(way.actions) if isinstance(action, ir.CharSet)), None)
@@ -3624,16 +3692,18 @@ def split_consumes_into_gates(grammar, namer):
             actions=(*way.actions[:at], ir.ConsumeChar(), *way.actions[at + 1 :]),
         )
 
-    return {
+    written = {
         name: (
             production
             if not isinstance(production.body, ir.Choice)
             else dataclasses.replace(
-                production, body=ir.Choice(alternatives=tuple(told(way) for way in production.body.alternatives))
+                production,
+                body=ir.Choice(alternatives=tuple(told(pulled(way)) for way in production.body.alternatives)),
             )
         )
         for name, production in grammar.items()
     }
+    return {**written, **{name: held for name, held in wrapped.items() if isinstance(held, ir.Prod)}}
 
 
 def _called_first(way, grammar):

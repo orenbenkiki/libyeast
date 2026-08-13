@@ -48,6 +48,7 @@ READ_ONLY = (  # in alphabetical order
     "chars",
     "deterministic",
     "globals",
+    "holding",
     "holds_indent",
     "offset",
     "passing_arguments",

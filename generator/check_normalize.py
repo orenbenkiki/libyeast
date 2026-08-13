@@ -56,6 +56,23 @@ def _say(message):
     ir.say(message)
 
 
+def _held_by(label):
+    """
+    The invariants the pipeline says hold once the step named `label` has run — what a run of that stage is entitled to
+    assert rather than infer.
+
+    Read off the step table, so what the interpreter checks at run time is what the pipeline claims and not what the
+    grammar's shape happens to say. Reading it off the shape would only repeat the static count; told, the parse is an
+    independent witness to it — a gate that is present and *wrong* is a thing no static count can see.
+    """
+    held = set()
+    for step in normalize.STEPS:
+        held |= {one.name for one in step.settles}
+        if step.name == label:
+            return frozenset(held)
+    return frozenset(held)
+
+
 def _corpus_errors(label, grammar, fixtures, suite):
     """
     The cases `grammar` does not reproduce, named for the step that produced it — the fixtures filtered to the ones
@@ -172,7 +189,10 @@ def _check(does_bisect=False, hint=None):
     for (label, grammar), pinned in zip(stages, groups):
         if pinned:
             _say(f"[{label}] {len(pinned)} pinned fixture(s)")
-            corpus += [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, pinned)]
+            corpus += [
+                f"[{label}] fixture {error}"
+                for error in check_interpreter.reproduced(grammar, pinned, holding=_held_by(label))
+            ]
     _say(f"[{final_label}] {len(suite)} suite case(s)")
     corpus += [f"[{final_label}] star {error}" for error in check_star.disagreements(final, suite)]
     if corpus:  # something broke the stream; say so at once, whether or not the step behind it is asked for
