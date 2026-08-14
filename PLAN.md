@@ -233,6 +233,7 @@ The phases, each established and then enforced:
 | 8     | `no-choice-of-choices`                                        | a decision spelled one call below the choice that offers it                                     |
 | 9     | `a-way-is-actions-a-call-and-a-continuation`                  | everything a way holds past its first call                                                      |
 | 10    | `every-body-is-a-choice-a-run-or-a-set`                       | the tree's own spelling, for the machine's                                                      |
+| 10    | `every-gate-looks-ahead-at-most-once`                         | every gate asking twice about the character it reads once                                       |
 | 11    | `no-guard-stands-past-an-action` / `every-guard-is-in-a-gate` | every question a way asks, in its gate and in front of what it performs                         |
 | 11    | `every-end-of-stream-stands-in-a-gate`                        | every end of the input reached as a match rather than offered as a way                          |
 | 12    | `no-char-set-is-an-item`                                      | the character set standing where the machine performs things, asking and taking in one step     |

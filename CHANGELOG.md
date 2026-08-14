@@ -1100,6 +1100,41 @@ All notable changes to this project are documented here. The format follows
   again; over 736 productions that is half a million walks and it does not finish. The pipeline's own check runs in
   twenty seconds.
 
+- A step says which of three things it does to an invariant, `establishes` being the third: what reads none of the
+  grammar it hands on and was no question in front of it, the shape it is about being what that step builds. `settles`
+  is then only what it says — a count handed over broken and taken to none — and a step naming one that was already none
+  is the fault it always was. A **claim** is a step that transforms nothing and establishes what it names, which is what
+  `holds-at-the-door` and `holds-once-optionals-are-ways` were saying with the wrong word.
+
+  What that buys is a hard fault where there was a silence. An invariant used to be asked of every stage, and a reading
+  that met a shape the pipeline had not built yet raised, and the raise was caught and read as "not a question here" —
+  so a reading broken outright and a reading asked too early were the same answer. Each invariant is asked from its own
+  step onward now, and a reading that cannot answer there is a fault.
+
+- Every gate reads what stands in front of it at most once. Two peeks in one gate are one question said twice — two
+  `Look`s are the set they both admit, a `Look` beside a `NegLook` the set the first admits and the second does not —
+  and the hoists are what bring them together, one moving a question to where another already stands. So
+  `every-gate-looks-ahead-at-most-once` is established where ways with gates are built, each hoist declares its lapse of
+  it, and a `merge-gate-peeks` behind each says the sets as one. A gate mixing kinds that cannot fold into one set — an
+  `EndOfStream`, which holds no set, or a `LiteralPeek`, which holds a run — raises rather than being stepped over.
+
+- Writing a callee's ways into the way that calls it takes one level at a time, and a step is one level. It cannot be
+  run to a standstill: a callee way that asks nothing comes out here asking nothing, carrying on at a state holding that
+  way's continuation and then this one's, and that tail is composed afresh every time round — so each pass has a new
+  state to write out, and it descends rather than settling. Neither naming the states by what they hold nor refusing to
+  unroll a circle reaches that, the state being genuinely new each time. So the phase is a sequence of passes and the
+  pipeline's own law says where it ends, a pass that lowers nothing being a step that does not stand: two expansions, a
+  hoist to the callers, a third expansion and a second hoist, each hoist with its merge behind it. A sixth pass raises
+  the count rather than lowering it. `every-conditional-way-is-gated` reads 71 over 748 productions.
+
+- The crossing table's three values are read by the gate, which is what they were for. `GUARD_CROSSES_ACTION` answers
+  `True`, `False`, or nothing at all, an unnamed pair refusing the move *and* being recorded — so that "no" and "not
+  yet" cannot be mistaken for each other. Nothing called `unnamed()` or `unconsulted()`, so the difference existed and
+  was never reported: a walk took an unnamed pair for a worked-out refusal and looked settled while it was only
+  ignorant. Wired to the gate, it named `Look` in front of `OpenWindow` at once — the pair that was holding a flow
+  mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
+  consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
+
 ### Changed
 
 - `ys_options.max_token_bytes` becomes `max_bytes`, and caps the memory the parser allocates rather than the bytes it

@@ -447,12 +447,14 @@ class Step:
     lands; what every step before it buys is a property the rest may lean on, which is how the grammar comes to be
     simple enough for common-prefix factoring and gate disjointness to decide it.
 
-    An invariant is a count and not a yes-or-no, and a step says outright which of the two it does to each. `settles`
-    names the invariants it takes to none — a step often makes more than one thing true, and `span-consumes` leaves both
-    every character run a span and every exclusion bounded. `reduces` names the ones it only lowers the count of, for a
-    count several steps share: the gate hoists do, and no one of them leaves none. Neither is read off the other, so a
-    declaration says exactly what the step does rather than what is left over. An `Invariant` and a `transform` are both
-    shared where two steps do the same work on different grounds.
+    An invariant is a count and not a yes-or-no, and a step says outright which of the three it does to each. `settles`
+    names the invariants it takes to none, having been handed them broken — a step often makes more than one thing true,
+    and `span-consumes` leaves both every character run a span and every exclusion bounded. `reduces` names the ones it
+    only lowers the count of, for a count several steps share: the gate hoists do, and no one of them leaves none.
+    `establishes` names the ones that read none of what it hands on and were no question before it: the shape they are
+    about is what this step builds, so what stood in front of it is not a grammar they could have been asked of. None of
+    the three is read off the others, so a declaration says exactly what the step does rather than what is left over. An
+    `Invariant` and a `transform` are both shared where two steps do the same work on different grounds.
 
     `lapses` is what this step is allowed to break: `{invariant: reason}`, empty for nearly every step, holding a
     written reason where a step undoes something an earlier one settled. `invariant_faults` holds the pipeline to the
@@ -476,19 +478,20 @@ class Step:
     A `transform` of `None` makes the step a **claim**: it does nothing to the grammar and only says that where it
     stands, what it names reads none. That is how a property the pipeline is handed rather than makes is written down —
     tying it to whichever step happens to run next would read as that step establishing it, and the first step to break
-    it would then be blamed on the wrong side of the line. A claim settles what it names, so every step behind it is
-    held to it.
+    it would then be blamed on the wrong side of the line. A claim `establishes` what it names, being a step that
+    changes nothing and so can only be saying where a question starts being asked.
     """
 
     name: str
     transform: object = None
     settles: object = ()
     reduces: object = ()
+    establishes: object = ()
     lapses: dict = dataclasses.field(default_factory=dict)
     untestable: str = ""
 
     def __post_init__(self):
-        for field in ("settles", "reduces"):
+        for field in ("settles", "reduces", "establishes"):
             named = getattr(self, field)
             held = (named,) if isinstance(named, Invariant) else tuple(named)
             object.__setattr__(self, field, held)
@@ -496,6 +499,14 @@ class Step:
     def does_settle(self, invariant):
         """Whether this step says it takes `invariant`'s count to none."""
         return invariant.name in {held.name for held in self.settles}
+
+    def does_establish(self, invariant):
+        """Whether this step says `invariant` holds of what it hands on, and was no question before it."""
+        return invariant.name in {held.name for held in self.establishes}
+
+    def does_finish(self, invariant):
+        """Whether this step says `invariant` reads none of what it hands on, however it came to."""
+        return self.does_settle(invariant) or self.does_establish(invariant)
 
     def does_reduce(self, invariant):
         """Whether this step says it lowers `invariant`'s count without finishing it."""
@@ -508,8 +519,8 @@ class Step:
 
     @property
     def invariants(self):
-        """Every invariant this step names, settled and only lowered alike."""
-        return (*self.settles, *self.reduces)
+        """Every invariant this step names — settled, established and only lowered alike."""
+        return (*self.settles, *self.reduces, *self.establishes)
 
     @property
     def carries(self):
@@ -581,14 +592,17 @@ def _one_count(held, asked):
     return _counted(by_name[named], stages[at][1], points)
 
 
-def _counted_over(stages, by_name, points):
+def _counted_over(stages, by_name, points, asked=None):
     """
-    `{(stage, invariant): count}` — every invariant asked of every stage, the asks shared out over the cores.
+    `{(stage, invariant): count}` — each invariant asked of the stages it is a question of, shared out over the cores.
 
     Each ask is a pure question about a grammar already built, so they are independent and there are some eighteen
-    hundred of them, which is half of what this check spends.
+    hundred of them, which is half of what this check spends. `asked` names the `(stage, invariant)` pairs to put; the
+    whole cross-product where nothing says otherwise, which only a caller that knows every invariant answers of every
+    stage may want.
     """
-    asked = [(at, named) for at in range(len(stages)) for named in by_name]
+    if asked is None:
+        asked = [(at, named) for at in range(len(stages)) for named in by_name]
     ir.say(f"    counting {len(by_name)} invariant(s) over {len(stages)} stage(s), {os.cpu_count()} at a time")
     counts = gate.spread(
         _one_count, (stages, by_name, points), asked, named=lambda pair: f"[{stages[pair[0]][0]}] {pair[1]}"
@@ -598,16 +612,14 @@ def _counted_over(stages, by_name, points):
 
 def _counted(invariant, grammar, points):
     """
-    How many places `grammar` breaks `invariant`, or `None` where it is not a question this grammar answers.
+    How many places `grammar` breaks `invariant`.
 
-    A reading raises on a shape it was never told about, and a grammar the step behind has not yet reshaped holds
-    plenty: a context that still picks between shapes, a match that still holds another. That is not a count of none —
-    it is the question not yet being askable, which is itself what makes the step behind the one that establishes it.
+    Asked only of the stages the invariant is a question of, which is from the step that carries it onward. A reading
+    raises on a shape it was never told about, and a grammar the step behind has not yet reshaped holds plenty — so an
+    invariant asked in front of its own step raises here rather than answering, and what says where to start asking is
+    the step's own `establishes`.
     """
-    try:
-        return len(invariant(grammar, points))
-    except (RecursionError, TypeError, ValueError):
-        return None
+    return len(invariant(grammar, points))
 
 
 def invariant_faults(stages, points=None):
@@ -632,7 +644,16 @@ def invariant_faults(stages, points=None):
     """
     faults, taken = [], set()
     by_name = {held.name: held for step in STEPS for held in step.invariants}
-    standing = _counted_over(stages, by_name, points)
+    # Where each invariant starts being a question: the stage handed to the first step that carries it, or — where that
+    # step establishes it — the stage it hands on, the shape it is about being what that step builds. Asked in front of
+    # that, a reading meets what the pipeline has not reshaped yet and raises, which is a fault and not a count.
+    asking = {}
+    for named in by_name:
+        first = min(index for index, step in enumerate(STEPS) if named in step.carries)
+        asking[named] = first + 1 if STEPS[first].does_establish(by_name[named]) else first
+    standing = _counted_over(
+        stages, by_name, points, [(at, named) for named, first in asking.items() for at in range(first, len(stages))]
+    )
     for index, step in enumerate(STEPS):
         if step.invariants and step.untestable:
             faults.append(f"[{step.name}] names an invariant and says it has none — one or the other")
@@ -647,9 +668,11 @@ def invariant_faults(stages, points=None):
             if held.name not in step.carries:
                 faults.append(f"[{step.name}] says it only lowers `{held.name}`, which it does not carry at all")
         for held in step.invariants:
-            if step.is_a_claim or held in step.reduces:
+            # `establishes` is the one that says nothing about what stood before it, so an already-none count is what it
+            # expects rather than a sign it is claiming work it did not do.
+            if step.is_a_claim or held in step.reduces or step.does_establish(held):
                 continue
-            if standing[index, held.name] == 0:
+            if standing.get((index, held.name)) == 0:
                 faults.append(
                     f"[{step.name}] settles `{held.name}`, which was already none when it was handed the grammar — a "
                     f"claim rather than a step, and a step behind it is where the break would be blamed"
@@ -663,7 +686,7 @@ def invariant_faults(stages, points=None):
             count = standing[index + 1, named]
             is_licensed = named in step.lapses
             is_broken = (
-                (held is not None and count > held) or (is_settled and count) or (step.does_settle(test) and count)
+                (held is not None and count > held) or (is_settled and count) or (step.does_finish(test) and count)
             )
             if is_broken and is_licensed:
                 taken.add((step.name, named))
@@ -671,14 +694,14 @@ def invariant_faults(stages, points=None):
                 faults.append(f"[{label}] `{named}` rises from {held} to {count}, and the step declares no lapse")
             if is_settled and count and not is_licensed:
                 faults.append(f"[{label}] `{named}` is settled and stands at {count}, and the step declares no lapse")
-            if step.does_settle(test) and count and not is_licensed:
+            if step.does_finish(test) and count and not is_licensed:
                 faults.append(f"[{label}] settles `{named}` and leaves {count} standing")
             # `reduces` says a step lowers a count without finishing it. A stage it leaves at none is a step that
             # settled what it said it would not, and the declaration is then a second thing to read beside the code
             # rather than the same thing said once.
             if step.does_reduce(test) and not count:
                 faults.append(f"[{label}] says it only lowers `{named}` and leaves none standing")
-            is_settled = (is_settled or step.does_settle(test)) and not count
+            is_settled = (is_settled or step.does_finish(test)) and not count
             held = count
     # Taking a count to none is a claim about the grammar and is said outright, wherever it happens. Read over every
     # step rather than from the first that names the invariant, since a step settling one it never mentions is exactly
@@ -688,8 +711,8 @@ def invariant_faults(stages, points=None):
     # not built yet is construction rather than work on the property.
     for index, step in enumerate(STEPS):
         for named, test in by_name.items():
-            before, after = standing[index, named], standing[index + 1, named]
-            if before and after == 0 and not step.does_settle(test):
+            before, after = standing.get((index, named)), standing.get((index + 1, named))
+            if before and after == 0 and not step.does_finish(test):
                 faults.append(f"[{step.name}] takes `{named}` to none and does not say it settles it")
     # Once an invariant is a question the pipeline asks, every step that moves its count says so. Read from the first
     # step that names it, that being where the count starts being measured: what a step does to a shape the pipeline has
@@ -698,7 +721,7 @@ def invariant_faults(stages, points=None):
         first = min(index for index, step in enumerate(STEPS) if named in step.carries)
         for index in range(first, len(STEPS)):
             step = STEPS[index]
-            before, after = standing[index, named], standing[index + 1, named]
+            before, after = standing.get((index, named)), standing.get((index + 1, named))
             if before is not None and after is not None and after < before and named not in step.carries:
                 faults.append(f"[{step.name}] lowers `{named}` from {before} to {after} and does not name it")
     # A lapse is a reason for something that happens. One nothing happens under is a claim the grammar has outgrown, and
@@ -1132,7 +1155,7 @@ def _every_peek_is_a_character_set(grammar):
         f"{name}: a {type(node).__name__} holds a {type(node.item).__name__} rather than a character set"
         for name, production in grammar.items()
         for node in _held(production.body)
-        if isinstance(node, _LOOKAROUNDS) and not isinstance(node.item, ir.CharSet)
+        if isinstance(node, _PEEKS) and not isinstance(node.item, ir.CharSet)
     ]
 
 
@@ -1179,7 +1202,7 @@ def lower_char_sets(grammar, namer):
     """
 
     def lowered(node):
-        if isinstance(node, _LOOKAROUNDS):
+        if isinstance(node, _PEEKS):
             asked = as_char_set(_peeked_question(node.item, grammar), grammar)
             if isinstance(asked, ir.CharSet):
                 return dataclasses.replace(node, item=asked)
@@ -1209,7 +1232,7 @@ def _every_character_question_is_a_character_set(grammar):
         def walk(node, owner=name):
             if isinstance(node, ir.CharSet):
                 return  # lowered
-            if isinstance(node, _LOOKAROUNDS) and ir.is_one_char(_peeked_question(node.item, grammar), grammar):
+            if isinstance(node, _PEEKS) and ir.is_one_char(_peeked_question(node.item, grammar), grammar):
                 if not isinstance(node.item, ir.CharSet):
                     kinds = (type(node).__name__, type(node.item).__name__)
                     faults.append(f"{owner}: a {kinds[0]} asks about a character as a {kinds[1]}")
@@ -2122,8 +2145,16 @@ _GUARDS = (ir.EndOfStream, ir.Le, ir.LiteralPeek, ir.Look, ir.LookBehind, ir.Lt,
 _TAKES_NOTHING = (*_ACTIONS, *_GUARDS, ir.Empty)
 
 
-# A question about what surrounds the parse, asked without taking it: what stands in front, what stands behind.
-_LOOKAROUNDS = (ir.Look, ir.LookBehind, ir.NegLook)
+# A peek: a guard that holds its question about the input as an `item` and takes nothing, whether it asks about what
+# stands in front or what stands behind. `every-peek-is-a-character-set` is what these are held to. Not every guard that
+# reads the input is one — `EndOfStream` asks whether a character is there at all and holds no question, and a
+# `LiteralPeek` holds a run of characters rather than a set.
+_PEEKS = (ir.Look, ir.LookBehind, ir.NegLook)
+
+# The guards that read what stands in front of the parse: whether a character is there at all, whether it begins a
+# literal, whether it falls in a set, whether it falls outside one. What stands behind is not one of these, and neither
+# is where the parse is in the line or how the indentation compares.
+_LOOKS_AHEAD = (ir.EndOfStream, ir.LiteralPeek, ir.Look, ir.NegLook)
 
 # A node that holds what it covers rather than bracketing it with a pair — what the wrappers phase takes apart.
 _HOLDERS = (ir.Commit, ir.Max, ir.Recover, ir.Token, ir.Wrap)
@@ -3166,6 +3197,84 @@ def hoist_guards_to_gates(grammar, namer):
     }
 
 
+def merge_gate_peeks(grammar, _namer):
+    """
+    Say a gate's questions about the character in front of it as one.
+
+    Two peeks in a gate ask about the same character at the same position, so the sets say between them what one set
+    says: what every `Look` admits is what they all admit, what any `NegLook` refuses is refused, and a gate holding
+    both admits the first less the second. The gate keeps whatever else it holds — what stands behind, where the parse
+    is in the line, how the indentation compares — each of those being about something other than this character.
+
+    A gate reading ahead twice in a way this cannot say as one set is a fault and not a shape to leave alone: an
+    `EndOfStream` holds no set and a `LiteralPeek` holds a run rather than one character, so neither can be folded into
+    a `Look`, and neither can stand beside one — the parse would be asked twice about a character it reads once, with no
+    saying which answer the machine acts on.
+    """
+
+    def merged(way):
+        ahead = [guard for guard in way.gate.guards if isinstance(guard, _LOOKS_AHEAD)]
+        looks = [guard for guard in ahead if isinstance(guard, ir.Look)]
+        nots = [guard for guard in ahead if isinstance(guard, ir.NegLook)]
+        if len(ahead) < 2:
+            return way
+        if len(looks) + len(nots) != len(ahead):
+            kinds = ", ".join(sorted(type(guard).__name__ for guard in ahead))
+            raise AssertionError(f"a gate reads ahead as {kinds}, which is two questions about one character")
+        rest = [guard for guard in way.gate.guards if not isinstance(guard, (ir.Look, ir.NegLook))]
+        refused = _merged_spans([span for guard in nots for span in guard.item.spans])
+        if looks:
+            admitted = list(looks[0].item.spans)
+            for guard in looks[1:]:
+                admitted = _subtracted_spans(admitted, _subtracted_spans(admitted, list(guard.item.spans)))
+            asked = ir.Look(item=_spans_node(_subtracted_spans(admitted, refused)))
+        else:
+            asked = ir.NegLook(item=_spans_node(refused))
+        return dataclasses.replace(way, gate=ir.Gate(guards=(*rest, asked)))
+
+    return {
+        name: (
+            production
+            if not isinstance(production.body, ir.Choice)
+            else dataclasses.replace(
+                production,
+                body=dataclasses.replace(
+                    production.body, alternatives=tuple(merged(way) for way in production.body.alternatives)
+                ),
+            )
+        )
+        for name, production in grammar.items()
+    }
+
+
+def _every_gate_looks_ahead_at_most_once(grammar):
+    """
+    Check that a gate reads what stands in front of the parse at most once.
+
+    Every one of these is a question about the same characters at the same position, so two of them in one gate are one
+    question said twice: two `Look`s are the set they both admit, a `Look` beside a `NegLook` is the set the first
+    admits and the second does not, and two `NegLook`s are the set neither admits. A gate that keeps them apart makes
+    the machine ask twice what it can answer once, and makes every reading of what a way is entered on take the guards
+    together before it can say anything about them.
+
+    Only what reads ahead. What stands behind, where the parse is in the line, and how the indentation compares are each
+    about something else, and a gate may hold one of those beside its one lookahead.
+    """
+    return [
+        f"{name}: a gate reads what is in front of it {held} times, where once would say the same"
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.Choice)
+        for way in production.body.alternatives
+        for held in (sum(isinstance(guard, _LOOKS_AHEAD) for guard in way.gate.guards),)
+        if held > 1
+    ]
+
+
+EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE = Invariant(
+    "every-gate-looks-ahead-at-most-once", _every_gate_looks_ahead_at_most_once
+)
+
+
 def _ungated_ways(grammar):
     """
     The ways something decides to enter that carry no gate, as `(name, way)` pairs.
@@ -3262,22 +3371,19 @@ class Crossing:
 # question. A pair not here is one nobody has worked out, and consulting it is a fault rather than a no.
 GUARD_CROSSES_ACTION = Crossing(
     {
-        # Taking a character moves the parse: a lookaround asked in front of one asks about a different character, and a
-        # comparison of a length about a different length.
-        ("Look", "CharSet"): False,
-        ("NegLook", "CharSet"): False,
         # A window bounds what a committed consume may take and nothing else: a lookaround reads past its edge freely,
-        # which the interpreter says outright where it counts a probe, so closing one changes no answer.
+        # which the interpreter says outright where it counts a probe, so neither end of one changes an answer.
         ("Look", "CloseWindow"): True,
         ("NegLook", "CloseWindow"): True,
         # A variable is the parse's own working. A lookaround reads the input and not a variable, so the question is the
         # same either side. A comparison does read one, and no way asks a comparison in front of a write.
         ("Look", "ClearVar"): True,
+        # Taking a character moves the parse: a lookaround asked in front of one asks about a different character, and a
+        # comparison of a length about a different length.
         ("Le", "ConsumeCountedSpan"): False,
         ("Look", "ConsumeChar"): False,
         ("NegLook", "ConsumeChar"): False,
         ("Look", "ConsumeCountedSpan"): False,
-        ("NegLook", "ConsumeCountedSpan"): False,
         ("Le", "ConsumeSpan"): False,
         ("Look", "ConsumeSpan"): False,
         ("Lt", "ConsumeSpan"): False,
@@ -3287,8 +3393,9 @@ GUARD_CROSSES_ACTION = Crossing(
         # crossing any of them is asked on the other side of that line — before the region opened, or while it is still
         # open — and its refusal changes from the one to the other.
         ("Look", "Cut"): False,
+        ("Le", "PopMessage"): False,
+        ("Lt", "PopMessage"): False,
         # What the parse hands back, which nothing asked of the input or of a count reads.
-        ("EndOfStream", "Emit"): True,
         ("LiteralPeek", "Emit"): True,
         ("Look", "Emit"): True,
         ("Lt", "Emit"): True,
@@ -4039,15 +4146,25 @@ def expand_called_ways(grammar, namer):
     Not where a recovery rides the call, which would then ride each copy. And what a way carries on to is placed as
     `_carrying_on_to` places it — behind the callee's own continuation, in a state of its own where both are there.
 
-    Run until nothing moves: a way written out here is one its own callers can write out in turn, so the questions come
-    up a level at a time until they reach a way that performs something no guard may cross.
+    One pass, and no more. A way written out here is one its own callers can write out in turn, so the questions come up
+    a level at a time, and a step is one level. Run to a standstill it never stands still: writing out a callee way that
+    asks nothing leaves a way here that asks nothing, carrying on at a state holding that way's continuation and then
+    this one's — a tail composed afresh every time round, so the next pass has a new state to write out and the one
+    after that a newer one. It descends rather than settling, and no rule about names or circles reaches that, the state
+    being genuinely new each time. What says another pass is worth having is the count the pass behind it left, which
+    the pipeline's own law reads: a pass that lowers nothing is a step that does not stand.
     """
-    for _round in ir.rounds("expand-called-ways"):
-        settled = cleaned(_expanded_once(grammar, namer), namer)[0]
-        namer.sees(settled)
-        if settled == grammar:
-            return grammar
-        grammar = settled
+    settled = cleaned(_expanded_once(grammar, namer), namer)[0]
+    namer.sees(settled)
+    return settled
+
+
+def _is_wholly_gated(grammar, held):
+    """Whether `held` calls a production that offers ways and every one of them carries a gate."""
+    if not isinstance(held, ir.Ref) or held.name not in grammar:
+        return False
+    body = grammar[held.name].body
+    return isinstance(body, ir.Choice) and bool(body.alternatives) and all(one.gate.guards for one in body.alternatives)
 
 
 def _expanded_once(grammar, namer):
@@ -4061,8 +4178,6 @@ def _expanded_once(grammar, namer):
         body = grammar[held.name].body
         if not isinstance(body, ir.Choice) or len(body.alternatives) < 2:
             return (way,)
-        if not all(one.gate.guards for one in body.alternatives):
-            return (way,)  # a way of the callee that asks nothing would come out asking nothing here
         # A way asks its gate before it performs anything, so a callee's guard written in here is asked in front of what
         # the caller performs rather than behind it. That is the crossing the table answers, and every guard of every
         # way has to be admitted — one that is not leaves the whole call where it stands.
@@ -4076,14 +4191,23 @@ def _expanded_once(grammar, namer):
         ):
             return (way,)
         carries = way.second if way.first is not None else None
+        # A way of the callee that asks nothing comes out here asking nothing, which is worth doing only where what
+        # follows it can be asked instead: the caller's continuation is lowered into it, so where every way of that
+        # continuation carries a gate the way comes out with nothing to ask and a wholly gated one behind it — which is
+        # the shape written out below, one round later. Where it does not, this would put an unanswerable way in place
+        # of an unanswerable call and go round again for ever.
+        if not all(one.gate.guards for one in body.alternatives) and not _is_wholly_gated(grammar, carries):
+            return (way,)
         opened = []
         for one in body.alternatives:
             standing = dataclasses.replace(one, actions=(*way.actions, *one.actions))
-            if standing.actions and standing.first is not None:
-                return (way,)  # a way acts or calls and never both, and this one would do both
-            opened.append(
-                standing if carries is None else _carrying_on_to(standing, carries, owner, grammar, namer, minted)
-            )
+            if carries is not None:
+                standing = _carrying_on_to(standing, carries, owner, grammar, namer, minted)
+            # A gated way that acts and then calls is one edge the machine runs. An ungated one is a way still to be
+            # given a gate, and no guard of its callee can reach it past what it performs.
+            if not standing.gate.guards and standing.actions and standing.first is not None:
+                return (way,)
+            opened.append(standing)
         return tuple(opened)
 
     written = {
@@ -5240,7 +5364,7 @@ STEPS = [
     # would put every step from the first under its law, and no phase is pursuing it — a question the pipeline is not
     # asking yet costs a lapse on every step that touches a gate, which is noise about the declarations rather than news
     # about the grammar. It comes back when a phase takes it on.
-    Step("holds-at-the-door", settles=EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT),
+    Step("holds-at-the-door", establishes=EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT),
     # Phase 0 establishes `NO_I_T_PARAMETERS`: nothing declares, passes or reads the chomping or the block scalar's
     # indentation mode. Each is data-dependent until this runs, so neither can be specialized: the setters become
     # switches first.
@@ -5290,7 +5414,7 @@ STEPS = [
     Step("lower-optionals", lower_optionals, settles=NO_OPT_NODES),
     # `no-production-reaches-itself-unconsumed` is none from here, and is not a question an earlier grammar answers: a
     # cycle is read off the ways a production offers, which the optionals are the last thing to be spelled outside of.
-    Step("holds-once-optionals-are-ways", settles=NO_PRODUCTION_REACHES_ITSELF_UNCONSUMED),
+    Step("holds-once-optionals-are-ways", establishes=NO_PRODUCTION_REACHES_ITSELF_UNCONSUMED),
     Step(
         "span-consumes",
         span_consumes,
@@ -5366,6 +5490,9 @@ STEPS = [
         "build-alternatives",
         build_alternatives,
         settles=(EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET, NO_SEQUENCE_OF_SEQUENCES),
+        # A way with a gate is what this builds, so this is where the gate's own shape starts being asked about at all.
+        # Nothing has yet brought two questions about one character together, and a hoist is the only thing that will.
+        establishes=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE,
     ),
     # `EVERY_UNGATED_WAY_HAS_ACTIONS_OR_A_CALL`: a way with no gate is one still to be given one, and a call made past
     # the way's own actions is a call whose callee's guards nothing can bring up to where the way is entered. Given the
@@ -5391,7 +5518,12 @@ STEPS = [
         "hoist-guards-to-gates",
         hoist_guards_to_gates,
         settles=(EVERY_GUARD_IS_IN_A_GATE, EVERY_END_OF_STREAM_STANDS_IN_A_GATE),
+        lapses={
+            "every-gate-looks-ahead-at-most-once": "a guard moved into a gate stands beside whatever that gate already "
+            "asked, and two questions about the character in front are one question until they are said as one set"
+        },
     ),
+    Step("merge-gate-peeks", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
     # Phase 12 establishes `NO_CHAR_SET_IS_AN_ITEM` and `EVERY_CONSUME_IS_PROTECTED_BY_A_GATE`: the asking and the
     # taking are two things, the question in the gate where a caller can see it and the taking on the gate's word. This
     # is where the gates come from — a hoist moves a question that exists, and until this has run there are barely any
@@ -5413,6 +5545,26 @@ STEPS = [
     # the choice that has to tell its ways apart. What the callee gave up it is still entered under, which is what
     # `_asked_where_entered` says and what keeps the take it protected still protected.
     Step("expand-called-ways", expand_called_ways, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
-    Step("hoist-guards-to-callers", hoist_guards_to_callers, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
+    Step(
+        "hoist-guards-to-callers",
+        hoist_guards_to_callers,
+        reduces=EVERY_CONDITIONAL_WAY_IS_GATED,
+        lapses={
+            "every-gate-looks-ahead-at-most-once": "a guard taken up to a caller stands beside whatever that caller's "
+            "gate already asked, the same two questions about one character as when it moved into a gate below"
+        },
+    ),
+    Step("merge-gate-peeks-2", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
     Step("expand-called-ways-2", expand_called_ways, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
+    Step("expand-called-ways-3", expand_called_ways, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
+    Step(
+        "hoist-guards-to-callers-2",
+        hoist_guards_to_callers,
+        reduces=EVERY_CONDITIONAL_WAY_IS_GATED,
+        lapses={
+            "every-gate-looks-ahead-at-most-once": "a guard taken up to a caller stands beside whatever that caller's "
+            "gate already asked, the same two questions about one character as when it moved into a gate below"
+        },
+    ),
+    Step("merge-gate-peeks-3", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
 ]

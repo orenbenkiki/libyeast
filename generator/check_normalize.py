@@ -224,6 +224,14 @@ def _check(does_bisect=False, hint=None):
     # only a means to it, so what is left carrying nothing goes rather than being found a new thing to carry.
     for name in normalize.untested_steps():
         errors.append(f"[step] `{name}` names neither an invariant nor a reason for having none")
+    # What the steps asked of `GUARD_CROSSES_ACTION` that it does not answer, and what it answers that nothing asked.
+    # The table is three-valued so that "no" and "not yet" are different, and an unnamed pair refuses the move — which
+    # looks exactly like a worked-out no unless it is said here. Read after the steps have run, they being what consults
+    # it, and a pair only ever consulted in a forked worker would not come back.
+    for guard, action in normalize.GUARD_CROSSES_ACTION.unnamed():
+        errors.append(f"[crossing] `{guard}` in front of `{action}` was asked about, and the table does not say")
+    for guard, action in normalize.GUARD_CROSSES_ACTION.unconsulted():
+        errors.append(f"[crossing] the table says `{guard}` in front of `{action}`, and nothing asked")
     # What the runs asked of a global that one value for the parse could not have answered: the reads where the stack
     # beside it held something the slot did not. A global is what does not nest, and this is what says so of the grammar
     # that has just run rather than of the argument that made it one.
