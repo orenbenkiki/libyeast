@@ -1118,14 +1118,21 @@ All notable changes to this project are documented here. The format follows
   it, and a `merge-gate-peeks` behind each says the sets as one. A gate mixing kinds that cannot fold into one set — an
   `EndOfStream`, which holds no set, or a `LiteralPeek`, which holds a run — raises rather than being stepped over.
 
-- Writing a callee's ways into the way that calls it takes one level at a time, and a step is one level. It cannot be
-  run to a standstill: a callee way that asks nothing comes out here asking nothing, carrying on at a state holding that
-  way's continuation and then this one's, and that tail is composed afresh every time round — so each pass has a new
-  state to write out, and it descends rather than settling. Neither naming the states by what they hold nor refusing to
-  unroll a circle reaches that, the state being genuinely new each time. So the phase is a sequence of passes and the
-  pipeline's own law says where it ends, a pass that lowers nothing being a step that does not stand: two expansions, a
-  hoist to the callers, a third expansion and a second hoist, each hoist with its merge behind it. A sixth pass raises
-  the count rather than lowering it. `every-conditional-way-is-gated` reads 71 over 748 productions.
+- A call is written into the way that calls it where doing so pays, and the site itself is what says so. What decides is
+  what the site would leave, not what it was handed: one way nothing has gated goes, the callee's ways stand where the
+  call did, and where any of those comes out ungated the site is left alone. So every site taken lowers the count by
+  one, the walk has a floor, and it runs until nothing moves — eight rounds. Judged instead by what a site is handed, it
+  writes a way out on the promise that a later pass will gate it, and that promise is what has no floor: the state such
+  a way carries on at is composed afresh every round, so each pass finds a new one to write out and descends. Every
+  guard against that — a bound on the passes, a circle to refuse, states named by what they hold — is a guard against a
+  rule that was simply wrong. `every-conditional-way-is-gated` reads 58 over 793 productions, and the phase is three
+  steps: the expansion, the hoist to the callers with its merge, and the expansion again.
+
+- The sweep's duplicate-merge reads each body once instead of once a round. Two productions behave alike when their
+  bodies match with every reference read as the group of what it names, which is a partition refined until a round
+  splits nothing — and each round used to write every body out afresh with the group numbers substituted in. A round
+  only ever moves a name between groups, never moves where it stands, so the shape with the names taken out is built
+  once and a round compares a tuple of group numbers beside it. `check_normalize` runs in 14 seconds rather than 41.
 
 - The crossing table's three values are read by the gate, which is what they were for. `GUARD_CROSSES_ACTION` answers
   `True`, `False`, or nothing at all, an unnamed pair refusing the move *and* being recorded — so that "no" and "not

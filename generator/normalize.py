@@ -838,20 +838,30 @@ def _grouped(grammar):
     until a round splits nothing.
     """
 
-    def keyed(body, block):
+    def blanked(body):
+        """`body` with every reference's name blanked, and the names they held, in the order the walk meets them."""
+        held = []
+
         def rewrite(node):
             node = ir.rebuilt(node, rewrite)
             if isinstance(node, ir.Ref):
-                return dataclasses.replace(node, name=f"#{block.get(node.name, -1)}")
+                held.append(node.name)
+                return dataclasses.replace(node, name="#")
             return node
 
-        return rewrite(body)
+        return rewrite(body), tuple(held)
 
+    # What a body is, said once: the shape it has with the names taken out, and the names in the order they stood. A
+    # round only ever changes what group a name is in, never where it stands, so the shape is built once and each round
+    # is a tuple of group numbers beside it rather than the whole body written out again.
+    shapes = {name: blanked(production.body) for name, production in grammar.items()}
+    ordered = sorted(grammar)
     block = dict.fromkeys(grammar, 0)
     for _round in ir.rounds("the sweep's refinement of duplicate bodies"):
         signatures, refined = {}, {}
-        for name in sorted(grammar):
-            signature = (grammar[name].params, keyed(grammar[name].body, block))
+        for name in ordered:
+            shape, held = shapes[name]
+            signature = (grammar[name].params, shape, tuple(block.get(one, -1) for one in held))
             refined[name] = signatures.setdefault(signature, len(signatures))
         if refined == block:
             return block
@@ -3375,6 +3385,7 @@ GUARD_CROSSES_ACTION = Crossing(
         # which the interpreter says outright where it counts a probe, so neither end of one changes an answer.
         ("Look", "CloseWindow"): True,
         ("NegLook", "CloseWindow"): True,
+        ("Look", "OpenWindow"): True,
         # A variable is the parse's own working. A lookaround reads the input and not a variable, so the question is the
         # same either side. A comparison does read one, and no way asks a comparison in front of a write.
         ("Look", "ClearVar"): True,
@@ -3396,6 +3407,7 @@ GUARD_CROSSES_ACTION = Crossing(
         ("Le", "PopMessage"): False,
         ("Lt", "PopMessage"): False,
         # What the parse hands back, which nothing asked of the input or of a count reads.
+        ("EndOfStream", "Emit"): True,
         ("LiteralPeek", "Emit"): True,
         ("Look", "Emit"): True,
         ("Lt", "Emit"): True,
@@ -3406,6 +3418,7 @@ GUARD_CROSSES_ACTION = Crossing(
         ("Look", "PopCode"): True,
         ("Lt", "PopCode"): True,
         ("NegLook", "PopCode"): True,
+        ("StartOfLine", "PopCode"): True,
         # The indentation the parse carries: a lookaround reads the input and not that, so it passes either end of a
         # push; a comparison reads exactly what these write, so it does not.
         ("Look", "PopIndent"): True,
@@ -4146,17 +4159,17 @@ def expand_called_ways(grammar, namer):
     Not where a recovery rides the call, which would then ride each copy. And what a way carries on to is placed as
     `_carrying_on_to` places it — behind the callee's own continuation, in a state of its own where both are there.
 
-    One pass, and no more. A way written out here is one its own callers can write out in turn, so the questions come up
-    a level at a time, and a step is one level. Run to a standstill it never stands still: writing out a callee way that
-    asks nothing leaves a way here that asks nothing, carrying on at a state holding that way's continuation and then
-    this one's — a tail composed afresh every time round, so the next pass has a new state to write out and the one
-    after that a newer one. It descends rather than settling, and no rule about names or circles reaches that, the state
-    being genuinely new each time. What says another pass is worth having is the count the pass behind it left, which
-    the pipeline's own law reads: a pass that lowers nothing is a step that does not stand.
+    Run until nothing moves. A way written out here is one its own callers can write out in turn, so the questions come
+    up a level at a time until they reach a way that performs something no guard may cross. What ends it is that every
+    site taken leaves one fewer way nothing has gated: a site is judged by what it would leave, and one that leaves a
+    way still ungated is not taken at all. So the count falls with every site and the walk has a floor to reach.
     """
-    settled = cleaned(_expanded_once(grammar, namer), namer)[0]
-    namer.sees(settled)
-    return settled
+    for _round in ir.rounds("expand-called-ways"):
+        settled = cleaned(_expanded_once(grammar, namer), namer)[0]
+        namer.sees(settled)
+        if settled == grammar:
+            return grammar
+        grammar = settled
 
 
 def _is_wholly_gated(grammar, held):
@@ -4208,6 +4221,12 @@ def _expanded_once(grammar, namer):
             if not standing.gate.guards and standing.actions and standing.first is not None:
                 return (way,)
             opened.append(standing)
+        # What this site is worth, read off what it would leave rather than off what it was handed: one way nothing has
+        # gated goes, and whatever comes out ungated stands in its place. A site that leaves as many as it took has
+        # written a production out for nothing, and one that leaves more has made the grammar worse to look at the same
+        # question again. Only the ones that pay are taken, which is what lets every one of them be taken at once.
+        if any(not one.gate.guards for one in opened):
+            return (way,)
         return tuple(opened)
 
     written = {
@@ -5556,15 +5575,4 @@ STEPS = [
     ),
     Step("merge-gate-peeks-2", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
     Step("expand-called-ways-2", expand_called_ways, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
-    Step("expand-called-ways-3", expand_called_ways, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
-    Step(
-        "hoist-guards-to-callers-2",
-        hoist_guards_to_callers,
-        reduces=EVERY_CONDITIONAL_WAY_IS_GATED,
-        lapses={
-            "every-gate-looks-ahead-at-most-once": "a guard taken up to a caller stands beside whatever that caller's "
-            "gate already asked, the same two questions about one character as when it moved into a gate below"
-        },
-    ),
-    Step("merge-gate-peeks-3", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
 ]
