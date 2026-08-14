@@ -234,10 +234,11 @@ The phases, each established and then enforced:
 | 9     | `a-way-is-actions-a-call-and-a-continuation`                  | everything a way holds past its first call                                                      |
 | 10    | `every-body-is-a-choice-a-run-or-a-set`                       | the tree's own spelling, for the machine's                                                      |
 | 11    | `no-guard-stands-past-an-action` / `every-guard-is-in-a-gate` | every question a way asks, in its gate and in front of what it performs                         |
-| 11    | `every-end-of-stream-gates-a-leaf-way`                        | every end of the input reached as a match rather than offered as a way                          |
+| 11    | `every-end-of-stream-stands-in-a-gate`                        | every end of the input reached as a match rather than offered as a way                          |
 | 12    | `no-char-set-is-an-item`                                      | the character set standing where the machine performs things, asking and taking in one step     |
 | 12    | `every-consume-is-protected-by-a-gate`                        | every take nothing vouched for, the parse having to try it and give it back                     |
-| 13    | `every-conditional-way-is-gated`                              | every way something decides to enter with no character to decide on                             |
+| 13    | `every-conditional-way-is-gated`                              | every way something decides to enter that carries no gate                                       |
+| 13    | `every-ungated-way-has-actions-or-a-call`                     | every way still to be gated whose call no guard of its callee can reach                         |
 | later | `no-conditional-production-matches-empty`                     | every empty match something decides to enter                                                    |
 | later | `every-called-alternative-is-unconditional`                   | the questions a callee asks where its caller's gate stood, taken to the caller                  |
 | later | `every-choice-is-deterministic`                               | the backtracking, and the calls written out behind it                                           |

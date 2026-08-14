@@ -458,13 +458,20 @@ All notable changes to this project are documented here. The format follows
   for. So the invariant is re-derived rather than lapsed — `every-scope-closes-on-the-path-that-opens-it` — and reads
   none at every stage, before the split and after it.
 
-  Working it out took one thing, and it is what the machine runs on: a way's calls are not alike. The call it carries on
-  at is the rest of the same path, so what that production takes off is what this way left open, and what it leaves is
-  left for the caller. A call the way comes back from must come back **level**, the continuation waiting behind it
-  belonging to the caller and not to the callee — and that is the net's sharpest refusal. Read through both alike the
-  answer never settles: a pair of productions calling each other has no least one, and the rounds swap two of them for
-  ever, which is what a first cut did over 128 productions. Followed along the carrying-on calls alone it settles in
-  eight.
+  Working it out took one thing, and it is what the machine runs on: a call is a **unit**, standing for what it does
+  relative to its own entry. Both of a way's calls are on the path, the one it comes back from as much as the one it
+  carries on at, and each contributes what it takes off and what it leaves — so a push, a call, and the pop that follows
+  balance whatever depth the call reaches, which is what lets `c-flow-sequence` open a message scope, recurse the whole
+  of flow content inside it, and close it on the way out. Walked into instead of stood for, that recursion reads as a
+  circle entered one scope deeper every turn, and `[ [a] ]` becomes a fault.
+
+  Which leaves the circles, and there the reading is the whole of it: a production that reaches itself has an answer
+  only where going round leaves the scopes as it found them. The answers are read one circle of calls at a time, each
+  after the ones it calls — Tarjan's components in that order — and round each circle until they stop moving. What says
+  a circle does not come back level is the growth: an answer longer than every scope action the circle holds, and every
+  scope its outside calls leave, has been round more times than there are pairs to have opened. A round budget in place
+  of that reads "has not finished yet" as "is at fault", and which productions it blames depends on the order the walk
+  took — the same grammar answered 0, 5 and 18 across three runs before the growth was what decided it.
 
   Phase 9 says every body in the machine's own words, and `every-body-is-a-choice-a-run-or-a-set` reads 697. A terminal
   is a set of characters. A loop is a run over a call — the state it jumps back to the top of, which says nothing about
@@ -1060,6 +1067,38 @@ All notable changes to this project are documented here. The format follows
   where the spec reads end-of-input as a line break; an all-empty block scalar takes its content indentation from the
   widest of its empty lines, the spec's §8.1.1.1 fallback; and the root the parser runs, given no resume policy, takes
   the zeroed one, so trailing content it cannot parse recovers rather than the interpreter asserting the root is total.
+
+- Two invariants say what they are about. `every-end-of-stream-gates-a-leaf-way` asked two things at once: that an
+  `EndOfStream` stands in a gate, and that the way it gates calls nothing. The second is untrue — a way that reaches the
+  end still has the wrapping up to do and may hand it on, a continuation being where a callee left off and not a call
+  made where nothing is left to give it — and it fired twenty times the moment a callee's ways were written into a
+  caller that had one. What is left is `every-end-of-stream-stands-in-a-gate`, the same shape as
+  `every-consume-is-protected-by-a-gate`: whether a character is there is a question, so it belongs where a way's
+  questions are asked and nowhere else.
+
+  `every-way-has-actions-or-a-call` is now `every-ungated-way-has-actions-or-a-call`, and reads none. A way that carries
+  a gate, does its actions and then calls is one edge the machine runs; nothing forbids it. The rule has content only
+  for a way with **no** gate, which is one still to be given one — and the two ways to give it one, hoisting a guard up
+  out of its callee or writing the callee's ways in, both need those guards to reach where the way is entered, which
+  `GUARD_CROSSES_ACTION` says they cannot do past what the way performs. So it is scaffolding that empties itself: where
+  `every-conditional-way-is-gated` stands at none there are no ways left for it to be about. What "ungated" means is one
+  reading, `_ungated_ways`, that both of them ask.
+
+- Every invariant is held to changing no grammar, and every gate to finishing. A test is a question and never a change —
+  which is what lets the counting pass hand the same grammars to all of them at once, in whatever order the cores take
+  them — so `Invariant.__call__` reads the grammar before and after and refuses one that differs, in a `finally`, since
+  a grammar a reading could not answer about is one the next invariant is handed all the same. And `gate.spread` stands
+  a watchdog over each item and over its own wait for an answer: it names the item, prints where every thread stands,
+  and takes the run down. A check that spins printed its last line and then nothing, and which line that was said only
+  which worker happened to print last.
+
+  Three walks were doing quadratically what they could do once. What is asked where each production is entered scanned
+  every production for every name, every round, and every invariant re-ran it — now one index of the call sites, kept
+  per grammar. `no-production-reaches-itself-unconsumed` grew each name's whole reach, a relation the square of the
+  grammar — now one walk of Tarjan's components, which is what answers both who reaches themselves and what may be read
+  before what. And the scope signature ran the whole grammar to a standstill, pinned whatever still moved, and began
+  again; over 736 productions that is half a million walks and it does not finish. The pipeline's own check runs in
+  twenty seconds.
 
 ### Changed
 
