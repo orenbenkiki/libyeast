@@ -473,6 +473,24 @@ All notable changes to this project are documented here. The format follows
   of that reads "has not finished yet" as "is at fault", and which productions it blames depends on the order the walk
   took — the same grammar answered 0, 5 and 18 across three runs before the growth was what decided it.
 
+  That reads what a production does and not where the parse goes, and the second is its own question. A way's two calls
+  are alike to a summary and not alike to a path: what a way hands control on to is where the path carries on with
+  nothing pushed to come back to, so a loop of hand-offs is the parse genuinely back where it was. Round it once and
+  whatever it left is standing; round it again and there is one more, and nothing bounds that. So a loop must be level,
+  and only a walk of the hand-offs can say so — a summary is what a production does relative to its own entry, which is
+  no answer about what a turn round a loop leaves. One walk per circle of hand-offs, since every loop lies in one and a
+  walk from any of its productions meets every loop in it as an edge back to where it already stands: six circles hold
+  one, over 29 productions of 793, and every one comes back level.
+
+  Not what the parse can be *reached* at. Two paths may arrive at one production having opened different things and each
+  be balanced in its own right, and refusing that is a rule about where a production may be called from rather than
+  about scopes — it read 11 faults where there were none.
+
+  A recovery is walked by neither, and not because its halves pair up. The interpreter unwinds to it, reading the stack
+  it finds and taking off what the abandoned parse left standing, so what it is entered with is put back rather than
+  balanced by anything the grammar writes. Holding it to the pairs on its own path would hold it to something nothing
+  does.
+
   Phase 9 says every body in the machine's own words, and `every-body-is-a-choice-a-run-or-a-set` reads 697. A terminal
   is a set of characters. A loop is a run over a call — the state it jumps back to the top of, which says nothing about
   when it stops, that being a character's to decide — so `call-run-turns` gives the twelve turns spelt out in place a

@@ -1494,23 +1494,51 @@ _SCOPE_ACTIONS = tuple(kind for pair in _SCOPES for kind in pair)
 
 def _production_ways(grammar, name):
     """
-    The ways of a production, each as the run of items it is. A recovery answers for none of it: it runs where the
-    abandoned parse stopped, with what that parse left open already put back.
+    The ways of a production, each as it stands.
+
+    A recovery is none of them, and not because its own halves pair up. It runs where an abandoned parse stopped, and
+    the interpreter unwinds to it — reading the stack it finds and taking off what that parse had left standing — so
+    what it is entered with is put back rather than balanced by anything written here. Holding it to the pairs on its
+    own path would be holding it to something nothing does, and the pairs it does not close are closed by the unwind.
     """
     body = grammar[name].body
-    return _way_items(body.item if isinstance(body, ir.Recover) else body)
+    held = body.item if isinstance(body, ir.Recover) else body
+    return _inner_ways(held) if isinstance(held, _BODY_KINDS) else (held,)
 
 
-def _scope_walk(items, owner, signature, faults):
+def _way_parts(way):
     """
-    What one way does to the stack, as `(taken, left)` — the scopes it takes off that it did not open, and the ones it
-    opens and leaves standing for whatever the parse does next.
+    `(performed, handed on)` — what a way does before it hands control on, and the one production it hands it to.
 
-    A call is a unit, standing for what it does relative to its own entry: a push, a call, and the pop that follows
-    balance whatever depth the call reaches, which is what lets a recursion nest scopes and still read level. Every call
-    is on the path, the one it comes back from as much as the one it carries on at. A scope lives on the parse's own
-    stack rather than on the call stack, so a push before a call and its pop inside that call are the same pair meeting
-    at the same place — the parse went in, took it off, and came back with it gone.
+    The two are read differently and everything about the scopes rests on which is which. What a way performs is its
+    actions and the calls it comes back from: each of those is a unit, its own pushes and pops balanced against its own
+    entry, so it stands for what it leaves. What it hands on to is not performed here at all — nothing comes back from
+    it, and the path simply carries on there.
+
+    A way said as a sequence hands on to nothing: a call standing in a row is one the rest of the row runs after, which
+    is a call the parse comes back from. Hand-offs exist once a way says its parts by name, which is what the machine's
+    own form is for.
+    """
+    if isinstance(way, ir.Alternative):
+        return (*way.actions, *(held for held in (way.first,) if held is not None)), way.second
+    return _items_of_way(way), None
+
+
+def _scope_walk(performed, owner, signature, faults):
+    """
+    What one way does to the stack before it hands control on, as `(taken, left)` — the scopes it takes off that it did
+    not open, and the ones it opens and leaves standing.
+
+    A call the parse comes back from is a unit, standing for what it does relative to its own entry: a push, that call,
+    and the pop that follows balance whatever depth the call reaches, which is what lets a recursion nest scopes and
+    still read level. A scope lives on the parse's own stack rather than on the call stack, so a push before such a call
+    and its pop inside it are the same pair meeting at the same place — the parse went in, took it off, and came back
+    with it gone.
+
+    Given the run of parts to walk rather than the way itself, because the two readings want different runs of it. A
+    production is entered by a call that must return and its hand-off chain runs before it does, so what the *summary*
+    of a way is takes the hand-off in. What a *loop* of hand-offs carries round does not: there the hand-off is the edge
+    being followed, not something the way performs, and `_scope_loops` walks the run without it.
     """
     taken, left = [], []
 
@@ -1523,7 +1551,7 @@ def _scope_walk(items, owner, signature, faults):
             faults.append(f"{owner}: closes {kind.__name__} where {left[-1].__name__} is what stands open")
             left.pop()
 
-    for item in items:
+    for item in performed:
         for opening, closing in _SCOPES:
             if isinstance(item, opening):
                 left.append(opening)
@@ -1537,9 +1565,83 @@ def _scope_walk(items, owner, signature, faults):
     return tuple(taken), tuple(left)
 
 
+def _composed(before, after):
+    """`before` and then `after`, as one `(taken, left)` — what a path does that does the one and then the other."""
+    taken, left = list(before[0]), list(before[1])
+    for kind in after[0]:
+        if left and left[-1] is kind:
+            left.pop()
+        elif left:
+            left.pop()  # a close of the wrong scope, which the walk that met it has already said
+        else:
+            taken.append(kind)
+    return tuple(taken), (*left, *after[1])
+
+
+def _scope_loops(grammar, signature, faults):
+    """
+    Report every loop of hand-offs that does not leave the scopes as it found them.
+
+    A hand-off is where the path carries on with nothing pushed to come back to, so a loop of them is the parse
+    genuinely back where it was. Round it once and whatever it left is still standing; round it again and there is one
+    more. Nothing bounds that, so a loop must be level, and this is the only reading that says so — a summary cannot, a
+    production's summary being what it does relative to its own entry rather than what a turn round a loop leaves.
+
+    Told by following the hand-offs and looking only where one leads back to a production the path is already standing
+    in: that closes a loop, and what the path has gathered going round it must be what it stood at going in. Reaching a
+    production the walk has been to *before* is not this — two paths may arrive at one production having opened
+    different things and each be balanced in its own right, and holding those to one answer would be a rule about where
+    a production may be reached from rather than about scopes.
+
+    A call the parse comes back from is not an edge here. It is a unit the way performs, its summary already standing
+    for it, which is what keeps a recursion that nests scopes off this reading entirely.
+    """
+    edges = {}
+    for name in grammar:
+        for way in _production_ways(grammar, name):
+            performed, handed = _way_parts(way)
+            if isinstance(handed, ir.Ref) and handed.name in grammar:
+                edges.setdefault(name, []).append((_scope_walk(performed, name, signature, []), handed.name))
+    # One walk per circle of hand-offs rather than one over the whole grammar. Every loop lies inside a circle, and a
+    # walk of a circle from any of its productions meets every loop in it as an edge back to where it already stands —
+    # where a single walk of everything would enter a production once and never look at the loops closing on it after.
+    said = set()
+    for circle in _circles({name: {target for _effect, target in edges.get(name, ())} for name in grammar}):
+        within = set(circle)
+        if len(circle) == 1 and circle[0] not in {target for _effect, target in edges.get(circle[0], ())}:
+            continue  # a production standing in no loop of its own
+        root = circle[0]
+        seen, standing = {root}, {root: ((), ())}
+        walk = [(root, iter(edges.get(root, ())))]
+        while walk:
+            name, steps = walk[-1]
+            for effect, target in steps:
+                if target not in within:
+                    continue  # out of the circle, so on no loop of it
+                reached = _composed(standing[name], effect)
+                if target in standing:
+                    if standing[target] != reached and target not in said:
+                        said.add(target)
+                        faults.append(f"{target}: a loop of hand-offs that does not leave the scopes as it found them")
+                elif target not in seen:
+                    seen.add(target)
+                    standing[target] = reached
+                    walk.append((target, iter(edges.get(target, ()))))
+                    break
+            else:
+                walk.pop()
+                standing.pop(name, None)
+
+
+def _whole_way(way):
+    """Everything a way does before the production it stands in returns — what it performs, then what it hands on to."""
+    performed, handed = _way_parts(way)
+    return (*performed, *(held for held in (handed,) if held is not None))
+
+
 def _scope_answers(grammar, name, signature, faults):
     """What each way of a production does to the stack, relative to where the parse entered it."""
-    return [_scope_walk(items, name, signature, faults) for items in _production_ways(grammar, name)]
+    return [_scope_walk(_whole_way(way), name, signature, faults) for way in _production_ways(grammar, name)]
 
 
 def _scope_signature(grammar, faults):
@@ -1553,7 +1655,9 @@ def _scope_signature(grammar, faults):
     is said rather than settled for.
     """
     calls = {
-        name: {item.name for items in _production_ways(grammar, name) for item in items if isinstance(item, ir.Ref)}
+        name: {
+            item.name for way in _production_ways(grammar, name) for item in _whole_way(way) if isinstance(item, ir.Ref)
+        }
         for name in grammar
     }
     signature = {name: ((), ()) for name in grammar}
@@ -1576,8 +1680,8 @@ def _most_scopes(grammar, circle, signature):
     """
     held = 0
     for name in circle:
-        for items in _production_ways(grammar, name):
-            for item in items:
+        for way in _production_ways(grammar, name):
+            for item in _whole_way(way):
                 if isinstance(item, _SCOPE_ACTIONS):
                     held += 1
                 elif isinstance(item, ir.Ref) and item.name not in circle:
@@ -1628,6 +1732,7 @@ def _every_scope_closes_on_the_path_that_opens_it(grammar):
     """
     faults = []
     signature = _scope_signature(grammar, faults)
+    _scope_loops(grammar, signature, faults)
     for name, production in grammar.items():
         answers = _scope_answers(grammar, name, signature, faults)
         if len(set(answers)) > 1:
