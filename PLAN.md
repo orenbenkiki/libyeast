@@ -287,13 +287,14 @@ read as what it admits on each axis that is independent of the others — the ch
 character behind it, whether the parse stands at a line start, and the indentation it stands under — so a choice split
 on the indentation is told apart where one split on the character is.
 
-**What the wrappers leave owed.** `every-scope-closes-on-the-path-that-opens-it` holds the four pairs per way, which is
-the right rule for them and the wrong one for the markers: a marker pair crosses productions by design —
-`b-chomped-last` emits `end-scalar` for a `begin-scalar` opened elsewhere — so holding one to a single way would report
-dozens of faults that are not. `check_markers` proves the `begin`/`end` balance of the grammar as authored and does not
-follow the pipeline, and the first thing that can put a `begin` in one production and its `end` in another is
-**binarization** — splitting a way into a call and a continuation. So a marker net that follows the pipeline is owed by
-that phase.
+**What the wrappers leave owed.** The five pairs are held to by the parse rather than by a reading of the grammar: each
+half carries the pair it belongs to, and the interpreter refuses a close whose pair does not meet the open standing on
+its stack. That is the right shape for them and the wrong one for the markers: a marker pair crosses productions by
+design — `b-chomped-last` emits `end-scalar` for a `begin-scalar` opened elsewhere — so holding one to a single way
+would report dozens of faults that are not. `check_markers` proves the `begin`/`end` balance of the grammar as authored
+and does not follow the pipeline, and the first thing that can put a `begin` in one production and its `end` in another
+is **binarization** — splitting a way into a call and a continuation. So a marker net that follows the pipeline is owed
+by that phase.
 
 `Recover` is the other thing left standing, and deliberately: it is a handler rather than a scope — the item, and on a
 cut the recovery at wherever the abandoned parse stopped — so it has no close whose position means anything. Its home is

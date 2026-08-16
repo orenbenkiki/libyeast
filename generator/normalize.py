@@ -38,9 +38,9 @@ Phase 6 is the wrappers. A scope that holds what it covers has nowhere to stand 
 an action and none for a node enclosing a call, so each becomes the pair that brackets it: `lower-wraps` writes a
 `(wrap)` as its two markers, `lower-windows` a `(max)` as the window pair, `lower-commits` a `(commit)` as the message
 pair, and `lower-tokens` a `(token)` as the code pair. What a wrapper guaranteed by construction the pairs are held to
-instead: `every-scope-closes-on-the-path-that-opens-it` says a scope opened on a path is closed on it, the ways of a
-choice agree on what they leave open, and a run's turn leaves none. A `(recover)` is a handler rather than a scope and
-stays, its home being the edge an alternative rides.
+instead: each half carries the pair it belongs to, and the parse is what holds them to it — the interpreter refuses a
+close whose pair does not meet the open standing on its stack. A `(recover)` is a handler rather than a scope and stays,
+its home being the edge an alternative rides.
 
 **A reading that dispatches on node kinds names every kind it accepts and raises on the rest.** Never a trailing default
 — no `return None`, `return True`, `continue` or `break` catching a kind nobody thought about. A default answer for a
@@ -170,7 +170,8 @@ class Namer:
 
     One is threaded through every step, so a base's count carries across them: a helper minted for `foo` is `foo_1`, the
     next `foo_2`, and one minted while a later step processes `foo_3` is `foo_4` — never `foo_3_1`, since the base is
-    `foo` with any `_<N>` suffix stripped. Two steps minting for the same base do not collide. It carries the pipeline's
+    `foo` with any `_<N>` suffix stripped. Two steps minting for the same base do not collide. It mints the pairs the
+    scope actions carry as well, on one count for the whole pipeline rather than per base, and carries the pipeline's
     `Points` too — the points of interest tracked across the steps it names.
 
     A name is never handed out twice, and never one a grammar it has been shown already holds. The count alone was not
@@ -182,11 +183,24 @@ class Namer:
     def __init__(self):
         self._counts = {}
         self._taken = set()
+        self._pairs = 0
         self.points = Points()
 
     def sees(self, grammar):
         """Take `grammar`'s names as ones never to hand out — what keeps a fresh name from replacing a production."""
         self._taken.update(grammar)
+
+    def pair(self):
+        """
+        A fresh pair, as the single-pair set both its halves carry.
+
+        One count for every pair there is: not one per kind, not one per step, and not one per base as the names are — a
+        name has only to be unlike the names of its own base, where a pair has to be unlike every other pair. So no two
+        pairs anywhere share an identifier, and a `PushCode`'s can never be a `PushIndent`'s even by accident, which
+        leaves the kinds as a second thing to disagree on rather than the only one.
+        """
+        self._pairs += 1
+        return frozenset({self._pairs})
 
     def fresh(self, owner):
         """A fresh `<base>_<N>` name for a helper of `owner`, the base being `owner` without its `_<N>` suffix."""
@@ -829,13 +843,46 @@ def _spliced(grammar, keep):
     return swept, {name: resolved(reference).name for name, reference in passthroughs.items()}
 
 
+def _pairs_blanked(body):
+    """
+    `(body with every pair blanked, the pairs it held)`, in the order the walk meets them.
+
+    Which pair a half belongs to is not what a production does, so two that differ only there behave alike and are one.
+    Read off whether the node has a `pair` at all rather than off a list of the kinds that do, so a pair added to the IR
+    is alike-compared from the day it exists.
+    """
+    held = []
+
+    def rewrite(node):
+        node = ir.rebuilt(node, rewrite)
+        if dataclasses.is_dataclass(node) and any(field.name == "pair" for field in dataclasses.fields(node)):
+            held.append(node.pair)
+            return dataclasses.replace(node, pair=frozenset())
+        return node
+
+    return rewrite(body), tuple(held)
+
+
+def _pairs_written(body, pairs):
+    """`body` with `pairs` put back into its halves, in the order `_pairs_blanked` took them out."""
+    held = iter(pairs)
+
+    def rewrite(node):
+        node = ir.rebuilt(node, rewrite)
+        if dataclasses.is_dataclass(node) and any(field.name == "pair" for field in dataclasses.fields(node)):
+            return dataclasses.replace(node, pair=next(held))
+        return node
+
+    return rewrite(body)
+
+
 def _grouped(grammar):
     """
     `{name: group}`, productions that behave alike sharing a group: same parameters, and the same body once every
-    reference in it is read as the group of what it names rather than by the name itself — so two loops that differ only
-    in what their helpers are called come out alike, which comparing the bodies as written cannot see. The groups are
-    the coarsest partition that stays stable under that reading: everything starts alike, and a difference splits it,
-    until a round splits nothing.
+    reference in it is read as the group of what it names rather than by the name itself, and once the pairs its scope
+    actions carry are blanked — so two loops that differ only in what their helpers are called, or in which pair they
+    hold, come out alike, which comparing the bodies as written cannot see. The groups are the coarsest partition that
+    stays stable under that reading: everything starts alike, and a difference splits it, until a round splits nothing.
     """
 
     def blanked(body):
@@ -854,7 +901,7 @@ def _grouped(grammar):
     # What a body is, said once: the shape it has with the names taken out, and the names in the order they stood. A
     # round only ever changes what group a name is in, never where it stands, so the shape is built once and each round
     # is a tuple of group numbers beside it rather than the whole body written out again.
-    shapes = {name: blanked(production.body) for name, production in grammar.items()}
+    shapes = {name: blanked(_pairs_blanked(production.body)[0]) for name, production in grammar.items()}
     ordered = sorted(grammar)
     block = dict.fromkeys(grammar, 0)
     for _round in ir.rounds("the sweep's refinement of duplicate bodies"):
@@ -873,6 +920,11 @@ def _merged(grammar, keep):
     `grammar` with productions that behave alike spelled once: a call to one is a call to any other of its group, so
     every reference to a duplicate becomes a reference to the one kept. A production the parse enters by name is always
     kept, having a name a caller cannot be redirected away from — and where a group holds two of those, both stand.
+
+    The one kept stands for the ones that go, so its scope actions come to stand for their pairs as well: each half of
+    it holds every pair the halves it replaced held. That is what a close asking whether it shares a pair with the open
+    on the stack reads, and it is where a merge's cost is paid — two pairs the grammar itself stopped telling apart are
+    two a close can no longer be held to one of.
     """
     block = _grouped(grammar)
     standing = {}
@@ -881,9 +933,20 @@ def _merged(grammar, keep):
     canonical = {name: standing[block[name]] for name in grammar if name not in keep and standing[block[name]] != name}
     if not canonical:
         return grammar, {}
+    gone = {}
+    for name, landed in canonical.items():
+        gone.setdefault(landed, []).append(name)
+    united = {}
+    for landed, names in gone.items():
+        held = [_pairs_blanked(grammar[one].body)[1] for one in (landed, *names)]
+        united[landed] = tuple(frozenset().union(*(one[at] for one in held)) for at in range(len(held[0])))
+    swept = {
+        name: dataclasses.replace(p, body=_pairs_written(p.body, united[name])) if name in united else p
+        for name, p in grammar.items()
+    }
     # Each node renames what it holds, which is the same declaration reachability reads: a name is followed because the
     # class says it holds one, not because a walk recognised the node it is spelled in.
-    return {name: p.renamed(canonical) for name, p in grammar.items()}, canonical
+    return {name: p.renamed(canonical) for name, p in swept.items()}, canonical
 
 
 def _flattened(node):
@@ -1480,277 +1543,6 @@ EVERY_INDENTATION_CHANGE_IS_PUSHED = Invariant(
 )
 
 
-# The scopes a pair opens and closes: an action, and the one that takes it back. In alphabetical order by the opening
-# action.
-_SCOPES = (
-    (ir.OpenWindow, ir.CloseWindow),
-    (ir.PushCode, ir.PopCode),
-    (ir.PushIndent, ir.PopIndent),
-    (ir.PushMessage, ir.PopMessage),
-)
-# Both halves of every pair, for counting the scope actions a run of items holds whichever half each is.
-_SCOPE_ACTIONS = tuple(kind for pair in _SCOPES for kind in pair)
-
-
-def _production_ways(grammar, name):
-    """
-    The ways of a production, each as it stands.
-
-    A recovery is none of them, and not because its own halves pair up. It runs where an abandoned parse stopped, and
-    the interpreter unwinds to it — reading the stack it finds and taking off what that parse had left standing — so
-    what it is entered with is put back rather than balanced by anything written here. Holding it to the pairs on its
-    own path would be holding it to something nothing does, and the pairs it does not close are closed by the unwind.
-    """
-    body = grammar[name].body
-    held = body.item if isinstance(body, ir.Recover) else body
-    return _inner_ways(held) if isinstance(held, _BODY_KINDS) else (held,)
-
-
-def _way_parts(way):
-    """
-    `(performed, handed on)` — what a way does before it hands control on, and the one production it hands it to.
-
-    The two are read differently and everything about the scopes rests on which is which. What a way performs is its
-    actions and the calls it comes back from: each of those is a unit, its own pushes and pops balanced against its own
-    entry, so it stands for what it leaves. What it hands on to is not performed here at all — nothing comes back from
-    it, and the path simply carries on there.
-
-    A way said as a sequence hands on to nothing: a call standing in a row is one the rest of the row runs after, which
-    is a call the parse comes back from. Hand-offs exist once a way says its parts by name, which is what the machine's
-    own form is for.
-    """
-    if isinstance(way, ir.Alternative):
-        return (*way.actions, *(held for held in (way.first,) if held is not None)), way.second
-    return _items_of_way(way), None
-
-
-def _scope_walk(performed, owner, signature, faults):
-    """
-    What one way does to the stack before it hands control on, as `(taken, left)` — the scopes it takes off that it did
-    not open, and the ones it opens and leaves standing.
-
-    A call the parse comes back from is a unit, standing for what it does relative to its own entry: a push, that call,
-    and the pop that follows balance whatever depth the call reaches, which is what lets a recursion nest scopes and
-    still read level. A scope lives on the parse's own stack rather than on the call stack, so a push before such a call
-    and its pop inside it are the same pair meeting at the same place — the parse went in, took it off, and came back
-    with it gone.
-
-    Given the run of parts to walk rather than the way itself, because the two readings want different runs of it. A
-    production is entered by a call that must return and its hand-off chain runs before it does, so what the *summary*
-    of a way is takes the hand-off in. What a *loop* of hand-offs carries round does not: there the hand-off is the edge
-    being followed, not something the way performs, and `_scope_loops` walks the run without it.
-    """
-    taken, left = [], []
-
-    def close(kind):
-        if not left:
-            taken.append(kind)  # what the parse that reached here left open, which this takes off
-        elif left[-1] is kind:
-            left.pop()
-        else:
-            faults.append(f"{owner}: closes {kind.__name__} where {left[-1].__name__} is what stands open")
-            left.pop()
-
-    for item in performed:
-        for opening, closing in _SCOPES:
-            if isinstance(item, opening):
-                left.append(opening)
-            elif isinstance(item, closing):
-                close(opening)
-        if isinstance(item, ir.Ref):
-            called_taken, called_left = signature[item.name]
-            for kind in called_taken:
-                close(kind)
-            left.extend(called_left)
-    return tuple(taken), tuple(left)
-
-
-def _composed(before, after):
-    """`before` and then `after`, as one `(taken, left)` — what a path does that does the one and then the other."""
-    taken, left = list(before[0]), list(before[1])
-    for kind in after[0]:
-        if left and left[-1] is kind:
-            left.pop()
-        elif left:
-            left.pop()  # a close of the wrong scope, which the walk that met it has already said
-        else:
-            taken.append(kind)
-    return tuple(taken), (*left, *after[1])
-
-
-def _scope_loops(grammar, signature, faults):
-    """
-    Report every loop of hand-offs that does not leave the scopes as it found them.
-
-    A hand-off is where the path carries on with nothing pushed to come back to, so a loop of them is the parse
-    genuinely back where it was. Round it once and whatever it left is still standing; round it again and there is one
-    more. Nothing bounds that, so a loop must be level, and this is the only reading that says so — a summary cannot, a
-    production's summary being what it does relative to its own entry rather than what a turn round a loop leaves.
-
-    Told by following the hand-offs and looking only where one leads back to a production the path is already standing
-    in: that closes a loop, and what the path has gathered going round it must be what it stood at going in. Reaching a
-    production the walk has been to *before* is not this — two paths may arrive at one production having opened
-    different things and each be balanced in its own right, and holding those to one answer would be a rule about where
-    a production may be reached from rather than about scopes.
-
-    A call the parse comes back from is not an edge here. It is a unit the way performs, its summary already standing
-    for it, which is what keeps a recursion that nests scopes off this reading entirely.
-    """
-    edges = {}
-    for name in grammar:
-        for way in _production_ways(grammar, name):
-            performed, handed = _way_parts(way)
-            if isinstance(handed, ir.Ref) and handed.name in grammar:
-                edges.setdefault(name, []).append((_scope_walk(performed, name, signature, []), handed.name))
-    # One walk per circle of hand-offs rather than one over the whole grammar. Every loop lies inside a circle, and a
-    # walk of a circle from any of its productions meets every loop in it as an edge back to where it already stands —
-    # where a single walk of everything would enter a production once and never look at the loops closing on it after.
-    said = set()
-    for circle in _circles({name: {target for _effect, target in edges.get(name, ())} for name in grammar}):
-        within = set(circle)
-        if len(circle) == 1 and circle[0] not in {target for _effect, target in edges.get(circle[0], ())}:
-            continue  # a production standing in no loop of its own
-        root = circle[0]
-        seen, standing = {root}, {root: ((), ())}
-        walk = [(root, iter(edges.get(root, ())))]
-        while walk:
-            name, steps = walk[-1]
-            for effect, target in steps:
-                if target not in within:
-                    continue  # out of the circle, so on no loop of it
-                reached = _composed(standing[name], effect)
-                if target in standing:
-                    if standing[target] != reached and target not in said:
-                        said.add(target)
-                        faults.append(f"{target}: a loop of hand-offs that does not leave the scopes as it found them")
-                elif target not in seen:
-                    seen.add(target)
-                    standing[target] = reached
-                    walk.append((target, iter(edges.get(target, ()))))
-                    break
-            else:
-                walk.pop()
-                standing.pop(name, None)
-
-
-def _whole_way(way):
-    """Everything a way does before the production it stands in returns — what it performs, then what it hands on to."""
-    performed, handed = _way_parts(way)
-    return (*performed, *(held for held in (handed,) if held is not None))
-
-
-def _scope_answers(grammar, name, signature, faults):
-    """What each way of a production does to the stack, relative to where the parse entered it."""
-    return [_scope_walk(_whole_way(way), name, signature, faults) for way in _production_ways(grammar, name)]
-
-
-def _scope_signature(grammar, faults):
-    """
-    What each production does to the stack relative to its own entry, as `{name: (taken, left)}`.
-
-    Read one circle of calls at a time, each after the ones it calls, so a production that calls nothing circular is
-    answered once. Within a circle the answers are walked round until they stop moving, which they do once each
-    production in it stands level: the circle is a loop the parse comes back to, and coming back to it with a scope that
-    was not there before would open one more every time round. A circle whose answers never stop moving is that, and it
-    is said rather than settled for.
-    """
-    calls = {
-        name: {
-            item.name for way in _production_ways(grammar, name) for item in _whole_way(way) if isinstance(item, ir.Ref)
-        }
-        for name in grammar
-    }
-    signature = {name: ((), ()) for name in grammar}
-    for circle in _circles(calls):
-        if not _circle_settles(grammar, circle, signature):
-            # The whole circle, not whichever name moved last: which one that is says how the walk went round rather
-            # than which production is at fault, and every one of them stands on the circle that does not come back.
-            for name in circle:
-                faults.append(f"{name}: a circle that does not leave the scopes as it found them")
-                signature[name] = ((), ())
-    return signature
-
-
-def _most_scopes(grammar, circle, signature):
-    """
-    The most scopes an answer for a production in `circle` can stand at without having been round it.
-
-    Everything one turn round can put on the stack: the scope actions the circle's own productions hold, and what the
-    productions they call outside it leave — those being answered already, a circle standing after the ones it calls.
-    """
-    held = 0
-    for name in circle:
-        for way in _production_ways(grammar, name):
-            for item in _whole_way(way):
-                if isinstance(item, _SCOPE_ACTIONS):
-                    held += 1
-                elif isinstance(item, ir.Ref) and item.name not in circle:
-                    taken, left = signature.get(item.name, ((), ()))
-                    held += len(taken) + len(left)
-    return held
-
-
-def _circle_settles(grammar, circle, signature):
-    """
-    Walk one circle's answers round until they stop moving, and say whether they did, writing them into `signature`.
-
-    A circle that leaves the scopes as it found them settles: what a production does relative to its own entry stops
-    changing once what it calls has. One that does not come back level never settles, each turn round carrying what the
-    last turn left, so what says so is the growth rather than a count of turns — an answer longer than all the scope
-    actions the circle even holds is one that has been round more times than there are pairs to have opened.
-    """
-    most = _most_scopes(grammar, circle, signature)
-    for _round in ir.rounds("the scopes a circle of calls leaves"):
-        is_settled = True
-        for name in circle:
-            answers = _scope_answers(grammar, name, signature, [])
-            taken, left = answers[0] if answers else ((), ())
-            if len(taken) + len(left) > most:
-                return False
-            if signature[name] != (taken, left):
-                signature[name] = (taken, left)
-                is_settled = False
-        if is_settled:
-            return True
-    return False
-
-
-def _every_scope_closes_on_the_path_that_opens_it(grammar):
-    """
-    Check that every scope a path opens is closed on that same path, and that every close takes the scope standing open.
-
-    What a wrapper guarantees by holding what it covers, a pair has to be held to instead: `ir.Wrap` is a node rather
-    than the two markers it stands for precisely so a `begin` cannot lose its `end`. The pair is held to closing on the
-    *path* rather than on the way, a way that hands control on being half of one — a `PushCode` before the call and its
-    `PopCode` in the continuation are the same pair, meeting on the parse's own stack, which is what phase 6 moved them
-    there for.
-
-    What is refused: a circle of calls that does not leave the scopes as it found them, a run whose turn leaves a scope
-    open that another turn would open again, ways of one choice that leave different scopes open where a caller cannot
-    tell which was taken, a close of a scope other than the one standing open, and a production a parse enters by name
-    that leaves one open or takes one off that nothing opened.
-    """
-    faults = []
-    signature = _scope_signature(grammar, faults)
-    _scope_loops(grammar, signature, faults)
-    for name, production in grammar.items():
-        answers = _scope_answers(grammar, name, signature, faults)
-        if len(set(answers)) > 1:
-            faults.append(f"{name}: ways that leave different scopes open, and a caller cannot tell which")
-        if isinstance(production.body, ir.LongestRun) and answers and answers[0] != ((), ()):
-            faults.append(f"{name}: a run whose turn leaves a scope open, which another turn would open again")
-    for name in entered_by_name(grammar):
-        taken, left = signature[name]
-        faults += [f"{name}: opens {kind.__name__} and no path closes it" for kind in left]
-        faults += [f"{name}: closes {kind.__name__} where nothing opened one" for kind in taken]
-    return faults
-
-
-EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT = Invariant(
-    "every-scope-closes-on-the-path-that-opens-it", _every_scope_closes_on_the_path_that_opens_it
-)
-
-
 def _replaced(node, swap):
     """
     `node` with `swap` applied to it and to everything it holds, the fields walked themselves.
@@ -1902,8 +1694,8 @@ NO_STAR_OR_PLUS_NODES = _absent("no-star-or-plus-nodes", ir.Star, ir.Plus)
 
 # Phase 6's first: a scope that holds what it covers is the pair that brackets it instead. A `(wrap)` is the one that
 # says so outright — a node rather than the two markers so that a `begin` cannot lose its `end`, which is a guarantee
-# `every-scope-closes-on-the-path-that-opens-it` takes over for the pairs and `check_markers` still owes for the
-# markers.
+# the pair carries instead, the parse holding a close to the open it shares a pair with, and `check_markers` still owes
+# for the markers.
 NO_WRAP_NODES = _absent("no-wrap-nodes", ir.Wrap)
 
 
@@ -1954,7 +1746,14 @@ def lower_windows(grammar, namer):
         if isinstance(node, ir.Max):
             if node.item is None:
                 raise ValueError("a `(max)` with nothing in it is a length note, and the pipeline places none")
-            return ir.Seq(items=(ir.OpenWindow(limit=node.limit, message=node.message), node.item, ir.CloseWindow()))
+            pair = namer.pair()
+            return ir.Seq(
+                items=(
+                    ir.OpenWindow(limit=node.limit, message=node.message, pair=pair),
+                    node.item,
+                    ir.CloseWindow(pair=pair),
+                )
+            )
         return node
 
     return {
@@ -1983,7 +1782,14 @@ def lower_commits(grammar, namer):
     def lowered(node):
         node = ir.rebuilt(node, lowered)
         if isinstance(node, ir.Commit):
-            return ir.Seq(items=(ir.PushMessage(message=node.message), node.item, ir.PopMessage()))
+            pair = namer.pair()
+            return ir.Seq(
+                items=(
+                    ir.PushMessage(message=node.message, pair=pair),
+                    node.item,
+                    ir.PopMessage(pair=pair),
+                )
+            )
         return node
 
     return {
@@ -2041,14 +1847,15 @@ def lower_tokens(grammar, namer):
     What changes is where the displaced code waits. The wrapper keeps it in a Python local, which is to say in the frame
     of the match that is running; the pair puts it on the parse's own stack, which is what lets the two halves end up in
     different productions once a way is split into a call and a continuation. That is the whole reason for the step, and
-    the reason `every-scope-closes-on-the-path-that-opens-it` has to hold while it happens: a pop takes back whatever is
-    on top, so a pair cut apart carelessly would take back what another way had put there.
+    the reason each half carries its pair: a pop takes back whatever is on top, so a pair cut apart carelessly would
+    take back what another way had put there, and the pair is what says so where it happens.
     """
 
     def lowered(node):
         node = ir.rebuilt(node, lowered)
         if isinstance(node, ir.Token):
-            return ir.Seq(items=(ir.PushCode(code=node.code), node.item, ir.PopCode()))
+            pair = namer.pair()
+            return ir.Seq(items=(ir.PushCode(code=node.code, pair=pair), node.item, ir.PopCode(pair=pair)))
         return node
 
     return {
@@ -4064,7 +3871,7 @@ def _asked_by_every_way(name, grammar):
     return shared
 
 
-def _carrying_on_to(way, tail, owner, grammar, namer, minted):
+def _carrying_on_to(way, tail, owner, grammar, namer, minted, named=None):
     """
     `way` with `tail` behind everything it already does — the one place the slots are dealt with.
 
@@ -4080,13 +3887,13 @@ def _carrying_on_to(way, tail, owner, grammar, namer, minted):
         return dataclasses.replace(way, second=tail)
     if way.first is None and way.recover is None:
         return dataclasses.replace(way, first=way.second, second=tail)
-    held = namer.fresh(owner)
-    minted[held] = ir.Prod(
-        grammar[owner].number,
-        held,
-        (),
-        ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), first=way.second, second=tail),)),
-    )
+    body = ir.Choice(alternatives=(ir.Alternative(gate=ir.Gate(), first=way.second, second=tail),))
+    named = {} if named is None else named
+    held = named.get((owner, body))
+    if held is None or held not in grammar:
+        held = held or namer.fresh(owner)
+        named[owner, body] = held
+        minted[held] = ir.Prod(grammar[owner].number, held, (), body)
     return dataclasses.replace(way, second=ir.Ref(name=held, args=()))
 
 
@@ -4269,8 +4076,9 @@ def expand_called_ways(grammar, namer):
     site taken leaves one fewer way nothing has gated: a site is judged by what it would leave, and one that leaves a
     way still ungated is not taken at all. So the count falls with every site and the walk has a floor to reach.
     """
+    named = {}  # kept across the rounds, so a site taken twice names what it needs the same both times
     for _round in ir.rounds("expand-called-ways"):
-        settled = cleaned(_expanded_once(grammar, namer), namer)[0]
+        settled = cleaned(_expanded_once(grammar, namer, named), namer)[0]
         namer.sees(settled)
         if settled == grammar:
             return grammar
@@ -4285,9 +4093,10 @@ def _is_wholly_gated(grammar, held):
     return isinstance(body, ir.Choice) and bool(body.alternatives) and all(one.gate.guards for one in body.alternatives)
 
 
-def _expanded_once(grammar, namer):
+def _expanded_once(grammar, namer, named=None):
     """One pass of `expand-called-ways`: every call whose callee's ways may stand where it does, written out."""
     minted = {}
+    named = {} if named is None else named
 
     def told(owner, way):
         held = way.first if isinstance(way.first, ir.Ref) else (way.second if way.first is None else None)
@@ -4309,30 +4118,37 @@ def _expanded_once(grammar, namer):
         ):
             return (way,)
         carries = way.second if way.first is not None else None
-        # A way of the callee that asks nothing comes out here asking nothing, which is worth doing only where what
-        # follows it can be asked instead: the caller's continuation is lowered into it, so where every way of that
-        # continuation carries a gate the way comes out with nothing to ask and a wholly gated one behind it — which is
-        # the shape written out below, one round later. Where it does not, this would put an unanswerable way in place
-        # of an unanswerable call and go round again for ever.
-        if not all(one.gate.guards for one in body.alternatives) and not _is_wholly_gated(grammar, carries):
-            return (way,)
         opened = []
         for one in body.alternatives:
             standing = dataclasses.replace(one, actions=(*way.actions, *one.actions))
             if carries is not None:
-                standing = _carrying_on_to(standing, carries, owner, grammar, namer, minted)
+                standing = _carrying_on_to(standing, carries, owner, grammar, namer, minted, named)
             # A gated way that acts and then calls is one edge the machine runs. An ungated one is a way still to be
             # given a gate, and no guard of its callee can reach it past what it performs.
             if not standing.gate.guards and standing.actions and standing.first is not None:
                 return (way,)
             opened.append(standing)
         # What this site is worth, read off what it would leave rather than off what it was handed: one way nothing has
-        # gated goes, and whatever comes out ungated stands in its place. A site that leaves as many as it took has
-        # written a production out for nothing, and one that leaves more has made the grammar worse to look at the same
-        # question again. Only the ones that pay are taken, which is what lets every one of them be taken at once.
-        if any(not one.gate.guards for one in opened):
+        # gated goes, and whatever comes out ungated stands in its place. Where they all come out gated the site pays
+        # and the ways stand here, which is what lets every paying site be taken at once.
+        if not all(one.gate.guards for one in opened):
             return (way,)
         return tuple(opened)
+        # ruff: noqa — the lowering below is held out of the way while the reading is settled
+
+        # Where one does not, the same ways are worth having somewhere else. Standing in a production of their own, the
+        # one that asks nothing carries on at what this way carried on at, and a guard of *that* is what admits it — a
+        # question this way could not ask, since what follows the call is not what follows the callee's own way. So the
+        # tail goes down into the callee and this way hands control on to it: nothing is decided and nothing is copied
+        # out, and there is no coming back from it, what followed the call now being the end of every way it offers.
+        if carries is None or way.actions:
+            return (way,)
+        standing = named.get((held.name, carries))
+        if standing is None or standing not in grammar:
+            standing = standing or namer.fresh(held.name)
+            named[held.name, carries] = standing
+            minted[standing] = ir.Prod(grammar[held.name].number, standing, (), ir.Choice(alternatives=tuple(opened)))
+        return (dataclasses.replace(way, first=None, second=ir.Ref(name=standing, args=())),)
 
     written = {
         name: (
@@ -5318,8 +5134,13 @@ def hold_established_indents(grammar, namer):
         """`items` with a write of the indentation made the push its way takes back."""
         for position, item in enumerate(items):
             if isinstance(item, ir.SetVar) and item.param == "n":
-                rest = bounded(items[position + 1 :])
-                return items[:position] + (ir.PushIndent(level=item.value),) + rest + (ir.PopIndent(level=None),)
+                rest, pair = bounded(items[position + 1 :]), namer.pair()
+                return (
+                    items[:position]
+                    + (ir.PushIndent(level=item.value, pair=pair),)
+                    + rest
+                    + (ir.PopIndent(level=None, pair=pair),)
+                )
         return items
 
     def held(node):
@@ -5366,7 +5187,10 @@ def push_indents(grammar, namer):
     def pushed(node):
         node = ir.rebuilt(node, pushed)
         level = _pushed_level(grammar, node)
-        return node if level is None else ir.Seq(items=(ir.PushIndent(level=level), node, ir.PopIndent(level=None)))
+        if level is None:
+            return node
+        pair = namer.pair()
+        return ir.Seq(items=(ir.PushIndent(level=level, pair=pair), node, ir.PopIndent(level=None, pair=pair)))
 
     return {name: dataclasses.replace(production, body=pushed(production.body)) for name, production in grammar.items()}
 
@@ -5480,15 +5304,16 @@ def _every_read_is_bounded(param):
 
 
 STEPS = [
-    # `EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT` is what the grammar arrives already holding, so that no step is
-    # read as having established it: there are no scope pairs at all until the holders are taken apart, and the count is
-    # none here. Whichever step first raises it is the one leaving a scope whose ends part company.
+    # `every-called-alternative-is-unconditional` is claimed by no step. Settled at the door it would put every step
+    # from the first under its law, and no phase is pursuing it — a question the pipeline is not asking yet costs a
+    # lapse on every step that touches a gate, which is noise about the declarations rather than news about the grammar.
+    # It comes back when a phase takes it on.
     #
-    # `every-called-alternative-is-unconditional` is not claimed here and is carried by no step. Settled at the door it
-    # would put every step from the first under its law, and no phase is pursuing it — a question the pipeline is not
-    # asking yet costs a lapse on every step that touches a gate, which is noise about the declarations rather than news
-    # about the grammar. It comes back when a phase takes it on.
-    Step("holds-at-the-door", establishes=EVERY_SCOPE_CLOSES_ON_THE_PATH_THAT_OPENS_IT),
+    # `EVERY_CONDITIONAL_WAY_IS_GATED` is what the grammar arrives already holding, so that no step is read as having
+    # established it: there are no ways for anything to decide between until `build-alternatives` says a way by its
+    # parts, and the count is none the whole way here. Whichever step first raises it is the one leaving a way nothing
+    # can be entered on, which is `build-alternatives` itself and is where the phase's work starts.
+    Step("holds-at-the-door", establishes=EVERY_CONDITIONAL_WAY_IS_GATED),
     # Phase 0 establishes `NO_I_T_PARAMETERS`: nothing declares, passes or reads the chomping or the block scalar's
     # indentation mode. Each is data-dependent until this runs, so neither can be specialized: the setters become
     # switches first.
@@ -5552,8 +5377,8 @@ STEPS = [
     Step("mint-forbidden-probes", mint_forbidden_probes, settles=EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS),
     # Phase 6 establishes `NO_WRAP_NODES`, `NO_MAX_NODES`, `NO_COMMIT_NODES`, `NO_TOKEN_NODES` and
     # `NO_EXCLUDE_AT_NODES`: nothing holds what it covers, a scope being the pair of writes that bound it. Each step
-    # takes one kind, and `every-scope-closes-on-the-path-that-opens-it` stays none across all five — the guarantee a
-    # wrapper gave by construction, now a count.
+    # takes one kind, and each of the five writes both halves carrying the pair they belong to — the guarantee a wrapper
+    # gave by construction, now something the parse is held to.
     Step("lower-wraps", lower_wraps, settles=NO_WRAP_NODES),
     Step("lower-windows", lower_windows, settles=NO_MAX_NODES),
     Step("lower-commits", lower_commits, settles=NO_COMMIT_NODES),
@@ -5614,6 +5439,12 @@ STEPS = [
         "build-alternatives",
         build_alternatives,
         settles=(EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET, NO_SEQUENCE_OF_SEQUENCES),
+        lapses={
+            "every-conditional-way-is-gated": "this is where there are ways to gate at all — a body said as the "
+            "ordered list of alternatives one of which the parse takes is the first thing anything has to be told "
+            "apart by, and none of them carries a question yet. The debt is made here and paid down by every step "
+            "that moves a question into a gate"
+        },
         # A way with a gate is what this builds, so this is where the gate's own shape starts being asked about at all.
         # Nothing has yet brought two questions about one character together, and a hoist is the only thing that will.
         establishes=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE,
@@ -5642,6 +5473,7 @@ STEPS = [
         "hoist-guards-to-gates",
         hoist_guards_to_gates,
         settles=(EVERY_GUARD_IS_IN_A_GATE, EVERY_END_OF_STREAM_STANDS_IN_A_GATE),
+        reduces=EVERY_CONDITIONAL_WAY_IS_GATED,
         lapses={
             "every-gate-looks-ahead-at-most-once": "a guard moved into a gate stands beside whatever that gate already "
             "asked, and two questions about the character in front are one question until they are said as one set"
@@ -5654,15 +5486,25 @@ STEPS = [
     # to move. Four steps: a run of single characters is the literal it is, a counted run says the two ways its count
     # makes it, a way that would take a second character on the strength of the first is cut, and what is left is one
     # set each.
-    Step("fold-literals-into-gates", fold_literals_into_gates, reduces=NO_CHAR_SET_IS_AN_ITEM),
+    Step(
+        "fold-literals-into-gates",
+        fold_literals_into_gates,
+        reduces=(NO_CHAR_SET_IS_AN_ITEM, EVERY_CONDITIONAL_WAY_IS_GATED),
+    ),
     Step("mint-consume-states", mint_consume_states, settles=EVERY_WAY_TAKES_AT_MOST_ONCE),
-    Step("split-consumes-into-gates", split_consumes_into_gates, settles=NO_CHAR_SET_IS_AN_ITEM),
+    Step(
+        "split-consumes-into-gates",
+        split_consumes_into_gates,
+        settles=NO_CHAR_SET_IS_AN_ITEM,
+        reduces=EVERY_CONDITIONAL_WAY_IS_GATED,
+    ),
     # Last of the four, because it says one way as two: a set still standing among the actions would be copied into
     # both, and `no-char-set-is-an-item` would rise where nothing had gone wrong.
     Step(
         "split-counted-spans-on-the-count",
         split_counted_spans_on_the_count,
         settles=EVERY_CONSUME_IS_PROTECTED_BY_A_GATE,
+        reduces=EVERY_CONDITIONAL_WAY_IS_GATED,
     ),
     # Phase 13 establishes `EVERY_CONDITIONAL_WAY_IS_GATED`: every way something decides to enter is entered on what the
     # input says. The questions exist now, and this is where they move — out of a callee that offers one way and into

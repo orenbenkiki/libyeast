@@ -60,6 +60,10 @@ class _Recovery(NamedTuple):
     What a `PushRecovery` leaves standing: what answers for a failed cut inside the region, where the parse carries on
     once it has, and everything the unwind has to put back before either runs.
 
+    One of these is what a `("recovery", entry, pairs)` on the parse's own stack holds, so the region stands where every
+    other scope does and its `PopRecovery` is held to taking the one open. `stack` is that stack as it was before the
+    entry went on it, which is what the unwind puts back — the region and everything opened inside it going together.
+
     `returns` is how deep the return stack stood where the region opened. Running the recovery and then the resume
     completes the way the region was pushed in, so what follows is that way's ordinary return — this is where to find
     it, not a rule of its own.
@@ -75,8 +79,6 @@ class _Recovery(NamedTuple):
     env: dict
     ceiling: object
     ceiling_message: object
-    commitments: int
-    window_depth: int
 
 
 class CommitFailure(Exception):
@@ -171,10 +173,12 @@ class Emitter:
         # that are not appends, which a rewind pops to undo what a token-count truncation cannot
         self.code = "unparsed-text"  # the token code the next character carries; a `(token)` sets it
         self.stack = ()  # the unified stack: what the parse must give back on its way out, innermost last, each entry a
-        # `(kind, value)` pair. It holds the codes the open `(token)`s displaced, each taken back by that token's own
-        # pop, and the indentation in force, taken back where the call it was pushed for returns. One stack for the
-        # parse and not one per production, so a pair a factoring split across a call closes off the same stack it
-        # opened
+        # `(kind, value, the pairs it was opened for)`. It holds the codes the open `(token)`s displaced, the
+        # indentation in force, the `(max)` window an open displaced, and a record per open committed region and per
+        # open recovery region — every scope the grammar writes as a pair, on the one stack, so a close is held to
+        # taking the scope standing open: of its kind, and one of the pairs the open stands for. One stack for the parse
+        # and not one per production, so a pair a factoring split across a call closes off the same stack it opened. The
+        # entry the run itself seeds is opened for no pair, no half of the grammar having written it
         self.env = {}  # the current production's parameters (n/m/c/t/r) and their values
         self.is_sol = True  # at the start of a line: true at the start of the input, and after every break
         self.offset = 0  # what the first line's marks are short by where a run begins mid-line, which only a rule run
@@ -183,19 +187,14 @@ class Emitter:
         self.forbidden = ()  # patterns that must not match at a start of line — the ongoing `(exclude)` guards in scope
         self.pending = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
         self.ceiling = None  # the position a `(max)` window ends at, past which committed input may not be consumed
-        self.ceiling_message = None  # the cut message a consume past the ceiling raises — the window's, held with it
-        self.window_depth = 0  # how many `(max)` opens stand. Windows do not nest, so the outermost is the one in
-        # force and an open under it only counts: the window is set at zero and cleared when the count returns to it
+        self.ceiling_message = None  # the cut message a consume past the ceiling raises — the window's, held with it.
+        # Windows do not nest, so the outermost is the one in force: an open displaces the window it finds and sets one
+        # of its own only where it displaced none, and its close puts back what it displaced
         self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
         self.entered = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
         self.returns = []  # where each entered production carries on when it matches, outermost first — the return
         # stack the generated parser keeps, held here so an unwind can carry on at a call's return point rather than
         # only where the Python call stack happens to be. Pushed and taken back with `entered`, one for one
-        self.recoveries = []  # one record per open recovery region, innermost last: what answers for a failed cut,
-        # where the parse carries on once it has, and everything the unwind puts back first. Standing on this list is
-        # what says a region is open — its pop takes the record off and puts it back where what follows fails
-        self.commitments = []  # one `[reached]` record per open committed region, innermost last — not checkpointed:
-        # the push and pop actions restore it on their own failure paths, and a region once reached stays reached
         self.deterministic = (
             frozenset()
         )  # the productions entered committed — first holding gate, no second try — which
@@ -235,7 +234,6 @@ class Emitter:
             self.pending,
             self.ceiling,
             self.ceiling_message,
-            self.window_depth,
             self.probing,
         )
 
@@ -257,7 +255,6 @@ class Emitter:
             self.pending,
             self.ceiling,
             self.ceiling_message,
-            self.window_depth,
             self.probing,
         ) = checkpoint
         # The parameters are copied out rather than adopted: an alternation rewinds to the same checkpoint once per
@@ -499,19 +496,28 @@ def _accept():
     return True
 
 
-def _popped(emitter, kind, what):
+def _popped(emitter, kind, what, pair):
     """
-    The value the stack's top entry holds and the stack without it, refusing a top that is not of `kind`.
+    `(the value the stack's top entry holds, the pairs it was opened for, the stack without it)`, refusing a top that is
+    not of `kind` or that no pair of `pair` opened.
 
     The whole of the discipline: a pop takes what its own push put there, so the top being something else means the two
-    are not the pair they read as — an action moved across one it must not cross, or a push whose pop never ran.
+    are not the pair they read as — an action moved across one it must not cross, or a push whose pop never ran. The
+    kind alone cannot say it, two `(token)`s being the same kind and different pairs, so the halves carry which pairs
+    they stand for and a close answers an open where the two share one. Sharing rather than matching, because a merge
+    leaves a half standing for every pair it replaced.
+
+    A top opened for no pair at all is the one the run itself put there, which no half of the grammar wrote and so
+    nothing is held to.
     """
     if not emitter.stack:
         raise AssertionError(f"{what} is taken off an empty stack")
-    held, value = emitter.stack[-1]
+    held, value, opened = emitter.stack[-1]
     if held != kind:
         raise AssertionError(f"{what} is taken off the stack, which holds {held} there")
-    return value, emitter.stack[:-1]
+    if opened is not None and not opened & pair:
+        raise AssertionError(f"{what} is taken off the stack, which holds one of another pair there")
+    return value, opened, emitter.stack[:-1]
 
 
 def _nodes(node):
@@ -525,7 +531,7 @@ def _nodes(node):
 
 def _indent_in_force(emitter):
     """The indentation the stack holds, or `None` where nothing has pushed one."""
-    for kind, value in reversed(emitter.stack):
+    for kind, value, _pair in reversed(emitter.stack):
         if kind == "indent":
             return value
     return None
@@ -648,17 +654,15 @@ def _fail(emitter, message):
 
     What the parser does about the input from there is not decided here: that is the grammar's `l-recover`, which the
     caller matches. The guard is cleared because an `(exclude)` the abandoned parse had in scope never got to unwind,
-    and the recovery is entitled to the guards its own rules declare and no others; the `(max)` window and the committed
-    regions go for the same reason, so the recovery reads on past the edge the abandoned parse had failed against and
-    answers for none of what it had committed to.
+    and the recovery is entitled to the guards its own rules declare and no others; every scope still standing on the
+    stack goes for the same reason, so the recovery reads on past the `(max)` edge the abandoned parse had failed
+    against, answers for none of what it had committed to, and is answered for by none of the regions it had opened.
     """
     emitter.code = "unparsed-text"  # a raise skips the tokens' cleanup; from here on the input is unparsed
-    emitter.stack = ()  # and skips their pops, so what they left on the stack goes with the codes it would restore
+    emitter.stack = ()  # and skips every close, so every scope it left open goes with what that close would restore
     emitter.forbidden = ()
     emitter.ceiling = None
     emitter.ceiling_message = None
-    emitter.window_depth = 0  # a raise skips the closes, so the count goes back with the window it bounds
-    emitter.commitments.clear()  # and the regions it left open, whose `PopMessage`s the raise skipped along with them
     emitter.error(message)
     while emitter.pending:
         emitter.marker(emitter.pending[-1])
@@ -1130,7 +1134,7 @@ def match(node, emitter, grammar, k):
         emitter.passing_arguments = True
         level = evaluate(node.level, emitter, grammar)
         emitter.passing_arguments = False
-        emitter.stack += (("indent", level),)
+        emitter.stack += (("indent", level, node.pair),)
         if k():
             return True
         emitter.rewind(checkpoint)
@@ -1142,7 +1146,7 @@ def match(node, emitter, grammar, k):
         # is checked instead, and the pairing it stands for is refused where it does not hold. It is read once the pop
         # has happened, which is the scope it was written in: the level its push computed from the indentation this
         # restores, not from the one it put there.
-        value, emitter.stack = _popped(emitter, "indent", "an indentation")
+        value, _opened, emitter.stack = _popped(emitter, "indent", "an indentation", node.pair)
         if node.level is not None:  # `strip-pop-levels` takes it off once no step reads it
             said = evaluate(node.level, emitter, grammar)
             if value != said:
@@ -1154,7 +1158,9 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.PushCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
-        emitter.stack += (("code", emitter.code),)  # the code this push displaces, for its own pop to take back
+        emitter.stack += (
+            ("code", emitter.code, node.pair),
+        )  # the code this push displaces, for its own pop to take back
         emitter.code = node.code
         if k():
             return True
@@ -1163,28 +1169,28 @@ def match(node, emitter, grammar, k):
     if isinstance(node, ir.PopCode):
         checkpoint = emitter.checkpoint()
         emitter.cut()
-        emitter.code, emitter.stack = _popped(emitter, "code", "a `(token)` code")
+        emitter.code, _opened, emitter.stack = _popped(emitter, "code", "a `(token)` code", node.pair)
         if k():
             return True
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.OpenWindow):
         checkpoint = emitter.checkpoint()
-        if emitter.window_depth == 0:  # outermost-only: an open under one is inside the budget that one already bounds
+        displaced = (emitter.ceiling, emitter.ceiling_message)
+        if emitter.ceiling is None:  # outermost-only: an open under one is inside the budget that one already bounds
             emitter.ceiling = emitter.position + evaluate(node.limit, emitter, grammar)
             emitter.ceiling_message = node.message
-        emitter.window_depth += 1
+        emitter.stack += (
+            ("window", displaced, node.pair),
+        )  # the window this open displaced, for its close to take back
         if k():
             return True
         emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.CloseWindow):
         checkpoint = emitter.checkpoint()
-        if emitter.window_depth == 0:
-            raise AssertionError("a `(max)` window is closed where none is open")
-        emitter.window_depth -= 1
-        if emitter.window_depth == 0:  # the open that set the window is the one this closes
-            emitter.ceiling, emitter.ceiling_message = None, None
+        displaced, _opened, emitter.stack = _popped(emitter, "window", "a `(max)` window", node.pair)
+        emitter.ceiling, emitter.ceiling_message = displaced
         if k():
             return True
         emitter.rewind(checkpoint)
@@ -1232,22 +1238,23 @@ def match(node, emitter, grammar, k):
         # A committed region opens: the record pairs with the `PopMessage` that closes it, which marks it reached. A
         # failure that unwinds back here with the region never closed is the error; through a closed one it backtracks
         # like any other match — the commitment does not reach past its close. A `(commit)` scope's terms exactly, the
-        # close standing where the scope's end stood.
+        # close standing where the scope's end stood. The record is what the stack entry holds and `reached` is written
+        # through it, so a rewind puts back which regions stand and never what one of them has already been.
         record = [False]
-        emitter.commitments.append(record)
+        emitter.stack += (("message", record, node.pair),)
         if k():
             return True
-        popped = emitter.commitments.pop()
+        popped, _opened, emitter.stack = _popped(emitter, "message", "a committed region", node.pair)
         assert popped is record, "a committed region closed out of order"
         if record[0]:
             return False
         raise CommitFailure(node.message)
     if isinstance(node, ir.PopMessage):
-        record = emitter.commitments.pop()
+        record, opened, emitter.stack = _popped(emitter, "message", "a committed region", node.pair)
         record[0] = True  # reached: the region's commitment is kept, whatever backtracking does after
         if k():
             return True
-        emitter.commitments.append(record)  # backtracked into the region: it is open again, though already kept
+        emitter.stack += (("message", record, opened),)  # backtracked into the region: open again, though kept
         return False
     if isinstance(node, ir.Commit):
         # A `(cut)` scoped to `item`: it is the error only where `item` never reaches its own end. `reached` is set the
@@ -1284,27 +1291,29 @@ def match(node, emitter, grammar, k):
             env=dict(emitter.env),
             ceiling=emitter.ceiling,
             ceiling_message=emitter.ceiling_message,
-            commitments=len(emitter.commitments),
-            window_depth=emitter.window_depth,
         )
-        emitter.recoveries.append(entry)
-        standing = len(emitter.recoveries)
+        emitter.stack += (("recovery", entry, node.pair),)
+        standing = len(emitter.stack)
         try:
-            return k()
+            if k():
+                return True
         except CommitFailure as failure:
-            if len(emitter.recoveries) < standing or emitter.recoveries[standing - 1] is not entry:
+            # Standing where this open put it is what says the region is still open. An unwind leaves what it skipped on
+            # the stack, so the entry is looked for where it was pushed rather than on top.
+            if len(emitter.stack) < standing or emitter.stack[standing - 1][1] is not entry:
                 raise  # the region has closed, so whatever answers for this stands further out
             return _recover(entry, failure, emitter, grammar)
-        finally:
-            del emitter.recoveries[standing - 1 :]
+        held, _opened, emitter.stack = _popped(emitter, "recovery", "a recovery region", node.pair)
+        assert held is entry, "a recovery region closed out of order"
+        return False
     if isinstance(node, ir.PopRecovery):
-        entry = emitter.recoveries.pop()
+        entry, opened, emitter.stack = _popped(emitter, "recovery", "a recovery region", node.pair)
         if k():
             return True
-        emitter.recoveries.append(entry)  # what follows failed, so the region is open again for another way inside it
+        emitter.stack += (("recovery", entry, opened),)  # what follows failed: the region is open again for a way in it
         return False
     if isinstance(node, ir.Recover):
-        depth, code, stack, forbidden, env, ceiling, ceiling_message, window_depth, commitments = (
+        depth, code, stack, forbidden, env, ceiling, ceiling_message = (
             len(emitter.pending),
             emitter.code,
             emitter.stack,
@@ -1312,8 +1321,6 @@ def match(node, emitter, grammar, k):
             dict(emitter.env),
             emitter.ceiling,
             emitter.ceiling_message,
-            emitter.window_depth,
-            len(emitter.commitments),
         )
         try:
             return match(node.item, emitter, grammar, k)
@@ -1324,13 +1331,11 @@ def match(node, emitter, grammar, k):
             # failed somewhere below it.
             stopped = emitter.checkpoint()
             emitter.code = code
-            emitter.stack = stack  # what the abandoned parse pushed and never got to take back
+            emitter.stack = stack  # every scope the abandoned parse opened and never got to take back, at once
             emitter.forbidden = forbidden
             emitter.env = env
             emitter.ceiling = ceiling
             emitter.ceiling_message = ceiling_message
-            emitter.window_depth = window_depth  # the opens it left standing, which no close of its own will take back
-            del emitter.commitments[commitments:]  # the regions the abandoned parse left open
             emitter.error(MESSAGES[failure.code])
             while len(emitter.pending) > depth:
                 emitter.marker(emitter.pending[-1])  # close what `item` opened, down to here and no further
@@ -1353,13 +1358,11 @@ def _recover(entry, failure, emitter, grammar):
     """
     stopped = emitter.checkpoint()
     emitter.code = entry.code
-    emitter.stack = entry.stack  # what the abandoned parse pushed and never got to take back
+    emitter.stack = entry.stack  # every scope the abandoned parse opened and never got to take back, at once
     emitter.forbidden = entry.forbidden
     emitter.env = dict(entry.env)
     emitter.ceiling = entry.ceiling
     emitter.ceiling_message = entry.ceiling_message
-    emitter.window_depth = entry.window_depth  # the opens it left standing, which no close of its own will take back
-    del emitter.commitments[entry.commitments :]  # the regions the abandoned parse left open
     emitter.error(MESSAGES[failure.code])
     while len(emitter.pending) > entry.pending:
         emitter.marker(emitter.pending[-1])  # close what the region covered opened, down to here and no further
@@ -1417,7 +1420,8 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
     if "r" in grammar[production].params:
         emitter.env.setdefault("r", resume)  # a production run without a resume policy takes the zeroed one, no-resume
     if "n" in emitter.env:  # the indentation the run is entered under, which no alternative pushed and none pops
-        emitter.stack = (("indent", emitter.env["n"]),)
+        emitter.stack = (("indent", emitter.env["n"], None),)
+    entered = emitter.stack  # what the run itself put there, which is what a parse that closed what it opened ends at
     entry = ir.Ref(production, tuple(ir.Lit(emitter.env.get(name)) for name in grammar[production].params))
 
     # A cut says where the unwind lands and nothing else; what to do about the input from there is `l-recover`'s, which
@@ -1433,14 +1437,17 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
         else:
             if did_match:
                 emitter.cut()
-                # A parse that has matched has closed what it opened: the scopes the grammar writes as pairs balance,
-                # and an abandoned parse's are cleared where it was abandoned. What a wrapper held in a Python frame
-                # went with the frame, where these live on the emitter until something takes them off, so a pair whose
-                # close is never reached leaves a window bounding nothing or a region answering for nothing.
-                if emitter.window_depth or emitter.commitments:
+                # A parse that has matched has closed what it opened: every pair the grammar writes balances, so the
+                # stack is back to what the run itself put there. What a wrapper held in a Python frame went with the
+                # frame, where these live on the emitter until something takes them off, so a close never reached leaves
+                # its scope standing here whichever kind it is — and an abandoned parse's are cleared where it was
+                # abandoned rather than reaching this at all.
+                if emitter.stack != entered:
                     raise AssertionError(
-                        f"the parse ends with {emitter.window_depth} window(s) and "
-                        f"{len(emitter.commitments)} committed region(s) still open"
+                        "the parse ends holding "
+                        + (", ".join(kind for kind, _value, _pair in emitter.stack) or "nothing")
+                        + " where it was entered holding "
+                        + (", ".join(kind for kind, _value, _pair in entered) or "nothing")
                     )
                 return emitter.tokens
             # A root parse is total — it recovers rather than fails — so its failing without committing is a grammar
@@ -1458,5 +1465,6 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
         # there is no indentation left to bound the recovery by. The resume policy resolves the same way the entry did —
         # into the name where the grammar is monomorphized, so recovery re-enters the right copy rather than the base.
         recover, recover_args = ir.entry(grammar, RECOVER, {"n": -1, "r": resume})
-        emitter.stack = (("indent", recover_args["n"]),)  # the stream's own level, which the recovery is entered under
+        emitter.stack = (("indent", recover_args["n"], None),)  # the stream's own level, the recovery entered under it
+        entered = emitter.stack
         node = ir.Ref(recover, tuple(ir.Lit(recover_args[parameter]) for parameter in grammar[recover].params))

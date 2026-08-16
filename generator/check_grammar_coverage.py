@@ -201,11 +201,10 @@ def exercised(grammar, fixtures=None):
         for at, fixture in enumerate(exercisers):
             if at and not at % 100:  # the run is instrumented and slower than a plain one, so it says where it is
                 ir.say(f"            {at} of {len(exercisers)} fixture(s) exercised")
-            # a crashing fixture simply leaves its productions unexercised, for the gate to report
-            try:
-                interpreter.run(grammar, fixture.production, fixture.input, spec_tests.arguments(fixture, grammar))
-            except Exception:  # noqa: BLE001
-                pass
+            # A fixture that crashes here is a fault of its own and is raised: swallowing it would leave the productions
+            # it covers unexercised and report that instead, which says the grammar has a gap where what happened is
+            # that the parse died. Every fixture runs clean today, so nothing is being made stricter.
+            interpreter.run(grammar, fixture.production, fixture.input, spec_tests.arguments(fixture, grammar))
     finally:
         interpreter.match, interpreter.evaluate = base_match, base_evaluate
     return reached, rejected

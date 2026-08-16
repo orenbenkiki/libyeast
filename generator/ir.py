@@ -1223,6 +1223,15 @@ class Emit:
         return self
 
 
+# The pairs, and what says which close answers which open. Every half carries `pair`: the pairs it can stand for, one
+# per pair as written and both halves of that pair carrying the same. A close is held to the open standing on the stack
+# by the two sharing one — the kind cannot say it, two `(token)`s being the same kind and different pairs, and a close
+# that takes the wrong open of its own kind is invisible to anything that only asks what kind stands there.
+#
+# A set of them rather than one, because a merge makes halves indistinguishable: two productions alike but for which
+# pair they hold are one production, and the half that survives stands for both. So a close answers an open where the
+# two intersect, that being where some one pair they both stand for exists — and what a merge costs is told exactly
+# there, precision falling where the grammar itself stopped telling the two apart.
 @dataclass(frozen=True)
 class PushIndent:
     """
@@ -1232,6 +1241,7 @@ class PushIndent:
     """
 
     level: object
+    pair: frozenset
 
     def references(self):
         return _refs(self.level)
@@ -1257,6 +1267,7 @@ class PopIndent:
     """
 
     level: object
+    pair: frozenset
 
     def references(self):
         return _refs(self.level)
@@ -1296,6 +1307,7 @@ class PushCode:
     """
 
     code: str
+    pair: frozenset
 
     def references(self):
         return []
@@ -1311,6 +1323,8 @@ class PopCode:
     stack — what its `PushCode` displaced. Paired with it: `Token(code, item)` lowers to `PushCode(code), item,
     PopCode`. A pop with nothing pushed is refused: the pair is what says where a code begins and ends.
     """
+
+    pair: frozenset
 
     def references(self):
         return []
@@ -1329,6 +1343,7 @@ class PushMessage:
     """
 
     message: str
+    pair: frozenset
 
     def references(self):
         return []
@@ -1346,6 +1361,8 @@ class PopMessage:
     helper: like a `(token)`'s code it pairs with its push on the parse's own stack, so where the halves stand is
     nothing the split has to know.
     """
+
+    pair: frozenset
 
     def references(self):
         return []
@@ -1370,6 +1387,7 @@ class PushRecovery:
 
     recovery: object
     resume: object
+    pair: frozenset
 
     def references(self):
         return _refs(self.recovery, self.resume)
@@ -1386,6 +1404,8 @@ class PopRecovery:
     to whatever answered before it. Paired with `PushRecovery`, and like the other pairs it holds on the parse's own
     stack rather than where it was written, so a split that cuts the two apart is nothing either half has to know.
     """
+
+    pair: frozenset
 
     def references(self):
         return []
@@ -1404,6 +1424,7 @@ class OpenWindow:
 
     limit: object
     message: str
+    pair: frozenset
 
     def references(self):
         return _refs(self.limit)  # `message` is a message key, not a production
@@ -1420,6 +1441,8 @@ class CloseWindow:
     `OpenWindow(limit, message), item, CloseWindow`. The one it closes is the outermost open — the inner ones only count
     — so the window is gone exactly when the open that set it is closed.
     """
+
+    pair: frozenset
 
     def references(self):
         return []
