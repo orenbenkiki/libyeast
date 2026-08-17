@@ -4645,11 +4645,15 @@ def _split_alt(node, grammar, ways):
 
 
 def _split_run(node, grammar, ways):
-    """A run's `(reads, empty)`, by whether it must take a turn and whether a turn can take nothing."""
-    least = 0 if isinstance(node, ir.Star) else 1 if isinstance(node, ir.Plus) else node.least
+    """
+    A run's `(reads, empty)`, by whether it must take a turn and whether a turn can take nothing.
+
+    The reading half is a run that must take one, which is what `Plus` says — the two spellings are what a run is until
+    `lower-runs` says it as ways, and this reads a grammar that still holds them.
+    """
     reads, empty = _split(node.item, grammar, ways)
-    taking = ir.LongestRun(item=reads, least=1) if reads is not None else None
-    if least == 0:
+    taking = ir.Plus(item=reads) if reads is not None else None
+    if isinstance(node, ir.Star):
         return taking, ir.Empty()  # a run of none or more takes nothing where the first turn cannot match
     if empty is None:
         return node, None  # the item always reads, so a run that must take a turn does
