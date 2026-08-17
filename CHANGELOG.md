@@ -249,13 +249,13 @@ All notable changes to this project are documented here. The format follows
   a count the parse works out included, since a non-positive one matches nothing there as it does here. Seven of those,
   and `Rep` is gone from the grammar with them.
 
-  There is one repetition of a way, `LongestRun(item, least)`, and `lower-runs` says both spellings as it: take `item`
-  again and again while it matches, stop where it does not, and match where the run took at least `least` turns. What it
-  took is the longest run and there is no shorter one — a continuation that fails fails the run rather than sending it
-  back for fewer turns. `least` is the whole of the difference between `(***)` and `(+++)`: a run of none or more falls
-  through where nothing matched, one that must take a turn refuses there. Neither is the other with something around it,
-  and the interpreter had been saying so all along — its two arms were the same code but for that last line, and are one
-  arm now. `no-star-or-plus-nodes` settles at none over 72 runs.
+  A repetition of a way is said as the ways it is, and `lower-runs` says both spellings that way: a turn, a recursion
+  taking the rest, and a settled region around the turns after the first. Every turn takes a character, a turn taking
+  none being a turn the run did not take, and what the region settles is the turns it holds — so a failure past its
+  close gives the whole run up rather than taking fewer turns. The turn never taken is a way of its own where the
+  spelling is `(***)` and no way at all where it is `(+++)`, which is the whole of the difference between them, and the
+  interpreter had been saying so all along — its two arms were the same code but for that last line, and are one arm
+  now. `no-star-or-plus-nodes` settles at none over 72 runs.
 
   That replaces writing `x*` as `x+ | <empty>`, which mapped one repetition onto the other and made a primitive look
   like an ordered choice it is not: an ordered choice can be backed out of for a shorter run, and a longest run cannot.
@@ -492,11 +492,11 @@ All notable changes to this project are documented here. The format follows
   does.
 
   Phase 9 says every body in the machine's own words, and `every-body-is-a-choice-a-run-or-a-set` reads 697. A terminal
-  is a set of characters. A loop is a run over a call — the state it jumps back to the top of, which says nothing about
-  when it stops, that being a character's to decide — so `call-run-turns` gives the twelve turns spelt out in place a
-  production to be, `every-run-turns-on-a-call` at none. Everything else is an ordered list of alternatives, each a gate
-  to enter on, the actions it performs, the call it hands control to, where it carries on when that returns, and the
-  recovery riding the push: `build-alternatives` writes the remaining 685 bodies that way, over 752 productions.
+  is a set of characters. A loop is not among them: a repetition was said as ways where it was lowered, so the state it
+  jumps back to the top of is a production like any other and what stops it is a guard like any other. Everything else
+  is an ordered list of alternatives, each a gate to enter on, the actions it performs, the call it hands control to,
+  where it carries on when that returns, and the recovery riding the push: `build-alternatives` writes the remaining 685
+  bodies that way, over 752 productions.
 
   It is a change of spelling and not of meaning, and two things say so. The interpreter already ran the canonical form —
   an alternative as the sequence the tree spelt, the gate's peek as a lookahead, the recovery as the `(recover)` scope
@@ -1143,7 +1143,7 @@ All notable changes to this project are documented here. The format follows
   writes a way out on the promise that a later pass will gate it, and that promise is what has no floor: the state such
   a way carries on at is composed afresh every round, so each pass finds a new one to write out and descends. Every
   guard against that — a bound on the passes, a circle to refuse, states named by what they hold — is a guard against a
-  rule that was simply wrong. `every-conditional-way-is-gated` reads 58 over 1027 productions, and the phase is three
+  rule that was simply wrong. `every-conditional-way-is-gated` reads 58 over 1024 productions, and the phase is three
   steps: the expansion, the hoist to the callers with its merge, and the expansion again.
 
 - The sweep's duplicate-merge reads each body once instead of once a round. Two productions behave alike when their

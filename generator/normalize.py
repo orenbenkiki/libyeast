@@ -1961,29 +1961,53 @@ NO_EXCLUDE_AT_NODES = _absent("no-exclude-at-nodes", ir.ExcludeAt)
 
 def lower_runs(grammar, namer):
     """
-    Say the two repetitions as the one operation they are: `x*` becomes `LongestRun(x, 0)` and `x+` `LongestRun(x, 1)`.
+    Say the two repetitions as the ways they are: a turn, a recursion taking the rest, and a settled region around the
+    turns after the first. `x*` offers the turn never taken beside them and `x+` does not, which is the whole of the
+    difference between the two spellings.
 
-    A run takes `x` again and again while it matches and stops where it does not, and what it took is the longest run —
-    there is no shorter one, a continuation that fails failing the run rather than sending it back for fewer turns.
-    `least` is the whole of the difference between the two spellings: a run of none or more falls through where nothing
-    matched, one that must take a turn refuses there. Neither is the other with something around it, and the interpreter
-    says so — its two arms were the same code but for that last line, and are one arm now.
+    Every turn takes a character — a turn taking none would repeat for ever, and a run ends where a turn is not taken.
+    What the region settles is the turns it holds: a failure past its close gives the whole run up rather than taking
+    fewer turns, or taking one of them another way, which is what makes the run the longest one. So the two backtrack
+    points a run has stand where the grammar says them, the first turn outside the region and every turn after it in.
+
+    The turn is a production of its own because both places take it, and the recursion one because a loop is a state the
+    machine jumps to. What stands here after that is `Alt` and `Seq` like anything else, and the phases behind this
+    shape it: the guard past the turn is what cuts the way, and the gates arrive where every gate does.
 
     A run over a character class is the same operation said as the scan a parser makes of it, which `span-consumes` has
-    already written as a `ConsumeSpan`; what is left here repeats a way.
+    already written as a `ConsumeSpan`; what is left here repeats a way, and a way repeated is said as ways.
     """
+    minted = {}
 
-    def lowered(node):
-        node = ir.rebuilt(node, lowered)
-        if isinstance(node, ir.Star):
-            return ir.LongestRun(item=node.item, least=0)
-        if isinstance(node, ir.Plus):
-            return ir.LongestRun(item=node.item, least=1)
-        return node
+    def said(name, number, node):
+        """`node`'s turn and the recursion that takes the rest of them, as the productions they are."""
+        # A loop is a state the machine jumps to, so the recursion is a production; the turn is one too where it is not
+        # already a call, both places taking it having to name the same state rather than spell the match out twice.
+        loop = namer.fresh(name)
+        if isinstance(node.item, ir.Ref):
+            turn = node.item
+        else:
+            held = namer.fresh(name)
+            minted[held] = ir.Prod(number, held, (), node.item)
+            turn = ir.Ref(name=held, args=())
+        taking, pair = namer.pair(), namer.pair()
+        takes = (ir.StartMustConsume(pair=taking), turn, ir.EndMustConsume(pair=taking))
+        minted[loop] = ir.Prod(
+            number, loop, (), ir.Alt(items=(ir.Seq(items=(*takes, ir.Ref(name=loop, args=()))), ir.Empty()))
+        )
+        rest = (ir.PushBackTrack(pair=pair), ir.Ref(name=loop, args=()), ir.PopBackTrack(pair=pair))
+        taken = ir.Seq(items=(*takes, *rest))
+        return taken if isinstance(node, ir.Plus) else ir.Alt(items=(taken, ir.Empty()))
 
-    return {
-        name: dataclasses.replace(production, body=lowered(production.body)) for name, production in grammar.items()
+    def lowered(name, number, node):
+        node = ir.rebuilt(node, lambda held: lowered(name, number, held))
+        return said(name, number, node) if isinstance(node, (ir.Star, ir.Plus)) else node
+
+    runs = {
+        name: dataclasses.replace(production, body=lowered(name, production.number, production.body))
+        for name, production in grammar.items()
     }
+    return {**runs, **minted}
 
 
 def lower_optionals(grammar, namer):
@@ -2213,14 +2237,7 @@ EVERY_CHOICE_IS_A_PRODUCTION = Invariant(
     "every-choice-is-a-production", lambda grammar: _nested_matches(grammar, ir.Alt)
 )
 
-# The second: a run is the machine's loop state, which is a production it jumps back to the top of. Naming it decides
-# nothing about the run itself — it stays the possessive scan it was, and whether a turn is taken is the gate's
-# question, asked where the gates arrive.
-EVERY_RUN_IS_A_PRODUCTION = Invariant(
-    "every-run-is-a-production", lambda grammar: _nested_matches(grammar, ir.LongestRun)
-)
-
-# The third: a recovery is a handler over a match, which an alternative carries on its own edge. It has no edge to ride
+# The second: a recovery is a handler over a match, which an alternative carries on its own edge. It has no edge to ride
 # until the alternatives are made, so it gets a production of its own meanwhile — a body the re-encode reads as the way
 # it is, its item the call and its recovery what rides the push.
 EVERY_RECOVERY_IS_A_PRODUCTION = Invariant(
@@ -2810,19 +2827,6 @@ def _every_option_is_reachable(grammar):
 EVERY_OPTION_IS_REACHABLE = Invariant("every-option-is-reachable", _every_option_is_reachable)
 
 
-# What a loop repeats is a state it jumps to, so a run's turn is a call. Its own count rather than a share of the
-# phase's: naming the turn mints a production for it, which is a body of the tree's own shape until the re-encode
-# reaches it, so what the phase counts does not move.
-EVERY_RUN_TURNS_ON_A_CALL = Invariant(
-    "every-run-turns-on-a-call",
-    lambda grammar: [
-        f"{name}: a run whose turn is not a call, where the loop has no state to jump to"
-        for name, production in grammar.items()
-        if isinstance(production.body, ir.LongestRun) and not isinstance(production.body.item, ir.Ref)
-    ],
-)
-
-
 def mint_continuations(grammar, namer):
     """
     Give what a way does past its call a production of its own, so that a way is actions, a call, and where to carry on.
@@ -2867,128 +2871,6 @@ def mint_continuations(grammar, namer):
         name: dataclasses.replace(production, body=body(production.body, name)) for name, production in grammar.items()
     }
     return {**split_ways, **minted}
-
-
-def call_run_turns(grammar, namer):
-    """
-    Give a run's turn a production of its own where it is not already a call, so that a loop is a state it jumps to.
-
-    A run repeats one thing, and what the machine repeats is a state: `LongestRun(Ref(P))` says go to `P`, come back, go
-    again. A turn spelled out in place is the same match with nowhere to jump to.
-    """
-    minted = {}
-
-    def turned(name, production):
-        body = production.body
-        if not isinstance(body, ir.LongestRun) or isinstance(body.item, ir.Ref):
-            return production
-        held = namer.fresh(name)
-        minted[held] = ir.Prod(production.number, held, (), body.item)
-        return dataclasses.replace(production, body=dataclasses.replace(body, item=ir.Ref(name=held, args=())))
-
-    turns = {name: turned(name, production) for name, production in grammar.items()}
-    return {**turns, **minted}
-
-
-def _every_run_is_a_scan(grammar):
-    """
-    Check that every run repeats a character set.
-
-    A run over a character class is a value the input decides: it is taken whole, judged whole, and there is no shorter
-    one, so the machine reads it as one scan. A run over anything else is a way the parse chooses, and choosing it again
-    once what follows has failed is the backtracking the whole shape is for getting rid of — so a run of ways is said as
-    ways: a turn, a recursion, and a settled region around the two that the parse does not re-enter.
-
-    What makes a run possessive is therefore where its region stands rather than anything about the run, which is why
-    this asks only that the runs left are scans. `every-run-turns-on-a-call` says what a run repeats is a call, and
-    `is_one_char` says which calls are character sets, so the two together make this a question about the callee.
-    """
-    return [
-        f"{name}: a run repeats {body.item.name}, which is a way the parse chooses and not a set the input decides"
-        for name, production in grammar.items()
-        for body in (production.body,)
-        if isinstance(body, ir.LongestRun) and not ir.is_one_char(body.item, grammar)
-    ]
-
-
-EVERY_RUN_IS_A_SCAN = Invariant("every-run-is-a-scan", _every_run_is_a_scan)
-
-
-def say_runs_as_ways(grammar, namer):
-    """
-    Say a run of ways as the ways it is: a turn, a recursion, and a settled region the parse does not re-enter.
-
-    `P = LongestRun(X, n)` becomes `P = |X → …|` where `n` is one and `P = |X → …| ||` where it is none — the empty way
-    being the turn never taken, which is the whole of what `n` says. `tail` opens the region, runs the recursion `loop =
-    |X → loop| ||`, and closes it: so the first turn stands outside the region and every turn after it inside, which is
-    exactly where a run's two backtrack points stand. What the region settles is the turns it holds — a failure past its
-    close gives the whole run up rather than taking fewer turns, or taking one of them another way.
-
-    Every turn takes a character, the first as much as the rest: a turn that took none is a turn the run did not take,
-    and that is what ends the run rather than a comparison of positions somewhere inside the machine.
-
-    The turn outside is what a later rule may still re-read; the turns inside are the run's own and are not offered
-    again. Runs over character sets are left alone: a scan is single-outcome by construction and has no choice to say.
-    """
-    minted = {}
-
-    def _way(guards=(), actions=(), first=None, second=None):
-        return ir.Alternative(gate=ir.Gate(guards=guards), actions=actions, first=first, second=second)
-
-    def said(name, production):
-        body = production.body
-        if not isinstance(body, ir.LongestRun) or ir.is_one_char(body.item, grammar):
-            return production
-        pair, taking = namer.pair(), namer.pair()
-        loop, tail, close, took, first = (namer.fresh(name) for _ in range(5))
-        # Every turn of the loop takes a character, which is what ends it: one taking none would repeat forever, where
-        # the run's own end is the empty way beside it. Said of every turn rather than of the ones that need it, and
-        # asked where the turn has run — the gate of what the turn carries on to, which is the one position the question
-        # has an answer at.
-        minted[took] = ir.Prod(
-            production.number,
-            took,
-            (),
-            ir.Choice(
-                alternatives=(_way(guards=(ir.EndMustConsume(pair=taking),), second=ir.Ref(name=loop, args=())),)
-            ),
-        )
-        turn = _way(actions=(ir.StartMustConsume(pair=taking),), first=body.item, second=ir.Ref(name=took, args=()))
-        minted[loop] = ir.Prod(production.number, loop, (), ir.Choice(alternatives=(turn, _way())))
-        minted[close] = ir.Prod(
-            production.number, close, (), ir.Choice(alternatives=(_way(actions=(ir.PopBackTrack(pair=pair),)),))
-        )
-        minted[tail] = ir.Prod(
-            production.number,
-            tail,
-            (),
-            ir.Choice(
-                alternatives=(
-                    _way(
-                        actions=(ir.PushBackTrack(pair=pair),),
-                        first=ir.Ref(name=loop, args=()),
-                        second=ir.Ref(name=close, args=()),
-                    ),
-                )
-            ),
-        )
-        # The turn outside the region is a turn like the turns inside it, and takes a character as they do: one that
-        # took none is a turn the run did not take, which is what the way beside it says and the whole of what ends a
-        # run of none or more. Guarding every turn but the first would leave that way one nothing enters.
-        minted[first] = ir.Prod(
-            production.number,
-            first,
-            (),
-            ir.Choice(
-                alternatives=(_way(guards=(ir.EndMustConsume(pair=taking),), second=ir.Ref(name=tail, args=())),)
-            ),
-        )
-        opens = _way(actions=(ir.StartMustConsume(pair=taking),), first=body.item, second=ir.Ref(name=first, args=()))
-        ways = (opens,) if body.least else (opens, _way())
-        return dataclasses.replace(production, body=ir.Choice(alternatives=ways))
-
-    said_as_ways = {name: said(name, production) for name, production in grammar.items()}
-    return {**said_as_ways, **minted}
 
 
 def _as_alternative(way, recovery=None):
@@ -3444,7 +3326,6 @@ GUARD_CROSSES_ACTION = Crossing(
         ("Look", "PopCode"): True,
         ("Lt", "PopCode"): True,
         ("NegLook", "PopCode"): True,
-        ("StartOfLine", "PopCode"): True,
         # The indentation the parse carries: a lookaround reads the input and not that, so it passes either end of a
         # push; a comparison reads exactly what these write, so it does not.
         ("Look", "PopIndent"): True,
@@ -3472,11 +3353,16 @@ GUARD_CROSSES_ACTION = Crossing(
         ("Lt", "StartMustConsume"): True,
         ("NegLook", "StartMustConsume"): True,
         ("StartOfLine", "StartMustConsume"): True,
+        # A settled region's close says where a later failure goes and nothing about what any guard reads.
+        ("LiteralPeek", "PopBackTrack"): True,
+        ("Look", "PopBackTrack"): True,
         # A turn that must take a character asks where the parse stands against where its own open stood. Whatever takes
         # a character moves it, so the question is a different one on the other side; a marker or a code moves nothing,
         # and it is the same one. An inner turn's open standing between the two is not passed either: asked in front of
         # one, the question is answered before that turn has run.
         ("EndMustConsume", "ConsumeChar"): False,
+        # Nor a committed region's close, which is the line a refusal changes meaning across, as it is for every guard.
+        ("EndMustConsume", "PopMessage"): False,
         ("EndMustConsume", "ConsumePeeked"): False,
         ("EndMustConsume", "ConsumeSpan"): False,
         ("EndMustConsume", "Emit"): True,
@@ -5541,12 +5427,6 @@ STEPS = [
     Step("lower-commits", lower_commits, settles=NO_COMMIT_NODES),
     Step("lower-tokens", lower_tokens, settles=NO_TOKEN_NODES),
     Step("lower-exclusions", lower_exclusions, settles=NO_EXCLUDE_AT_NODES),
-    # `EVERY_RUN_TURNS_ON_A_CALL`: a loop is a state the machine jumps to, and a turn spelt out in place is the same
-    # match with nowhere to jump. The turns are named here rather than falling out of the lifting behind this: a turn
-    # that opens with a scan taking no character is one the lifting leaves standing, so what named it was the empties
-    # phase, by inlining what stood there. Named outright, nothing between here and the machine's own shape rests on the
-    # empties at all.
-    Step("call-run-turns", call_run_turns, settles=EVERY_RUN_TURNS_ON_A_CALL),
     # Phase 7 establishes `EVERY_SUB_ITEM_IS_ONE_STEP`: an item standing in a way is one thing the machine does where it
     # stands, so every shape holding a match inside it becomes a production of its own. The three lifts each settle the
     # kind they name and lower this count between them, and `lower-bind` takes it to none.
@@ -5555,17 +5435,6 @@ STEPS = [
         _lifting(ir.Alt),
         settles=EVERY_CHOICE_IS_A_PRODUCTION,
         reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
-    ),
-    Step(
-        "lift-runs",
-        _lifting(ir.LongestRun),
-        settles=EVERY_RUN_IS_A_PRODUCTION,
-        reduces=EVERY_SUB_ITEM_IS_ONE_STEP,
-        lapses={
-            "every-run-turns-on-a-call": "a run given a production of its own is a body that is a run, and what it "
-            "repeats is whatever stood inside it rather than a name: naming the turn is the step behind this, and "
-            "these are the runs it is there to reach"
-        },
     ),
     Step(
         "lift-recoveries",
@@ -5588,10 +5457,8 @@ STEPS = [
         settles=A_WAY_IS_ACTIONS_A_CALL_AND_A_CONTINUATION,
     ),
     # Phase 10 establishes `EVERY_BODY_IS_A_CHOICE_A_RUN_OR_A_SET`: every body is said in the machine's own words — a
-    # set of characters, a run over the state it repeats, or the ordered list of alternatives one of which the parse
-    # takes. `every-run-turns-on-a-call` is settled again first, the lift of runs behind it having spelt a turn out in
-    # place, and `no-sequence-of-sequences` reaches none with the bodies that are built here.
-    Step("call-run-turns-2", call_run_turns, settles=EVERY_RUN_TURNS_ON_A_CALL),
+    # set of characters or the ordered list of alternatives one of which the parse takes, a repetition having been said
+    # as the ways it is where it was lowered. `no-sequence-of-sequences` reaches none with the bodies built here.
     Step(
         "build-alternatives",
         build_alternatives,
@@ -5605,20 +5472,6 @@ STEPS = [
         # A way with a gate is what this builds, so this is where the gate's own shape starts being asked about at all.
         # Nothing has yet brought two questions about one character together, and a hoist is the only thing that will.
         establishes=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE,
-    ),
-    # `EVERY_RUN_IS_A_SCAN`: a run of ways is said as the ways it is, now that there are ways to say it in. The turns go
-    # inside a settled region and the first stands outside it, which is where a run's two backtrack points already stand
-    # — so what the interpreter held in its own loop the grammar now says, and the machine reads a loop it may not
-    # re-enter rather than one whose possessiveness it has to be told.
-    Step(
-        "say-runs-as-ways",
-        say_runs_as_ways,
-        settles=EVERY_RUN_IS_A_SCAN,
-        lapses={
-            "every-conditional-way-is-gated": "a run said as ways is a recursion, and the way that takes another turn "
-            "is entered on what a turn begins with — a question the gating phase behind this brings up to it. The turns "
-            "are made here and gated there, as every way of every choice is"
-        },
     ),
     # `EVERY_UNGATED_WAY_HAS_ACTIONS_OR_A_CALL`: a way with no gate is one still to be given one, and a call made past
     # the way's own actions is a call whose callee's guards nothing can bring up to where the way is entered. Given the
