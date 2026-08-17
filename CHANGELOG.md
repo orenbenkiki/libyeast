@@ -1043,9 +1043,9 @@ All notable changes to this project are documented here. The format follows
   scalar-closing `end-block-scalar` is exercised by a clean fixture rather than only an error one.
 
   Reaching a rule is half of exercising it. A rule is a decision, and a fixture that only ever watches it say yes leaves
-  the other answer untested, so each must also be seen to reject an input — by failing to match, or by a `(cut)` inside
-  it raising, a rule holding a cut never returning "no". The exception is a rule that *cannot* say no, and those are
-  computed rather than listed: totality is proved from the body's shape, so nothing asks for the fixture where
+  the other answer untested, so each must also be seen to reject an input — by failing to match, which is what a `(cut)`
+  inside it does too, the failure carrying the message the cut named. The exception is a rule that *cannot* say no, and
+  those are computed rather than listed: totality is proved from the body's shape, so nothing asks for the fixture where
   `l-yaml-stream` fails, which every part of being optional makes impossible. That a rule can never say no is worth
   knowing anyway — it is exactly what let `l-yaml-stream` swallow a whole input before `l-yeast-stream` was written to
   say so. A `(cut)` is a decision too: one that never fires is a commit point nothing shows is reachable and a message

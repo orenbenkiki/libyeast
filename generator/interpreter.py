@@ -55,6 +55,34 @@ with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 RECOVER = ir.RECOVER
 
 
+class Checkpoint(NamedTuple):
+    """
+    The whole of the parse's state at a point, so what a match did can be taken back.
+
+    Named rather than positional because the two ways of taking it back want different parts of it: an ordinary failure
+    wants all of it, where a failure on its way to a recovery wants only what the parse was inside of — see `give_back`.
+    `token_count` and `trail_length` are lengths rather than the lists, which are taken back by cutting them to those.
+    """
+
+    position: int
+    mark: object
+    token_count: int
+    trail_length: int
+    run: object
+    provisional: object
+    provisional_mark: object
+    code: str
+    env: dict
+    shadow: dict
+    stack: tuple
+    is_sol: bool
+    forbidden: tuple
+    pending: tuple
+    ceiling: object
+    ceiling_message: object
+    probing: int
+
+
 class _Recovery(NamedTuple):
     """
     What a `PushRecovery` leaves standing: what answers for a failed cut inside the region, where the parse carries on
@@ -67,6 +95,11 @@ class _Recovery(NamedTuple):
     `returns` is how deep the return stack stood where the region opened. Running the recovery and then the resume
     completes the way the region was pushed in, so what follows is that way's ordinary return — this is where to find
     it, not a rule of its own.
+
+    `is_closed` is the one element `PopRecovery` writes through, and what says whether the region still stands: a cut
+    past a region's close is answered by whatever stood before it, and one inside a region reopened by a way of its own
+    is answered here again. It is a record and not a read of the stack, because an unwind gives the stack back on its
+    way out — where the entry sits says nothing about what the region has already been.
     """
 
     recovery: object
@@ -79,19 +112,7 @@ class _Recovery(NamedTuple):
     env: dict
     ceiling: object
     ceiling_message: object
-
-
-class CommitFailure(Exception):
-    """
-    Raised when the parse fails after passing a `(cut)`.
-
-    It carries the cut's message `code`, and unwinds past every choice still standing — which is what a commit is: none
-    of them gets to try another way — to the handler that turns it into an error token and the unparsed recovery.
-    """
-
-    def __init__(self, code):
-        super().__init__(code)
-        self.code = code
+    is_closed: list
 
 
 class DepthExceeded(Exception):
@@ -195,6 +216,14 @@ class Emitter:
         self.returns = []  # where each entered production carries on when it matches, outermost first — the return
         # stack the generated parser keeps, held here so an unwind can carry on at a call's return point rather than
         # only where the Python call stack happens to be. Pushed and taken back with `entered`, one for one
+        self.failing = None  # the message of the `(cut)` a failure is unwinding to a recovery for, or None where no cut
+        # stands behind it. It says the unwind gives back only the scopes: what was read stays read and what was emitted
+        # stands, which is what the recovery carries on over and where its error is stamped. No part of a checkpoint,
+        # for the same reason `unwinding` is not
+        self.unwinding = None  # the pairs of the `PopBackTrack` a failure is unwinding to, or None where the failure is
+        # an ordinary one. A settled region's ways stand between its close and its open as live choices, so while this
+        # is set no choice takes another way: the failure travels to the open, which gives the region back whole and
+        # clears it. No part of a checkpoint — it says where a failure is going, not where the parse has been
         self.deterministic = (
             frozenset()
         )  # the productions entered committed — first holding gate, no second try — which
@@ -217,7 +246,7 @@ class Emitter:
         # corpus rather than a property of any one parse, and it is what a step is judged by.
 
     def checkpoint(self):
-        return (
+        return Checkpoint(
             self.position,
             self.mark,
             len(self.tokens),
@@ -237,51 +266,76 @@ class Emitter:
             self.probing,
         )
 
-    def rewind(self, checkpoint):
-        (
-            self.position,
-            self.mark,
-            token_count,
-            trail_length,
-            self.run,
-            self.provisional,
-            self.provisional_mark,
-            self.code,
-            env,
-            shadow,
-            self.stack,
-            self.is_sol,
-            self.forbidden,
-            self.pending,
-            self.ceiling,
-            self.ceiling_message,
-            self.probing,
-        ) = checkpoint
-        # The parameters are copied out rather than adopted: an alternation rewinds to the same checkpoint once per
-        # branch, so handing a branch the checkpoint's own dictionary would let its `(set)` reach back into what the
-        # branch after it rewinds to. Everything else here is either a value or a length, and cannot be written through.
-        self.env = dict(env)
-        self.shadow = dict(shadow)  # copied out for the same reason: a branch's `(set)` must not reach back through it
+    def rewind(self, held):
+        # What `give_back` does where nothing is unwinding, and what a probe or a declining recovery does having cleared
+        # what was. Reaching it with a cut still unwinding would hand back the input the recovery carries on from, which
+        # is the one thing that unwind may not do — a wrong parse rather than a failure, so it is refused here.
+        assert self.failing is None, "the input is given back under a cut still unwinding"
+        self.position = held.position
+        self.mark = held.mark
+        self.run = held.run
+        self.provisional = held.provisional
+        self.provisional_mark = held.provisional_mark
+        self.is_sol = held.is_sol
+        self.pending = held.pending
+        self.probing = held.probing
+        self._restore_scopes(held)
         # The journal is undone before the token list is cut back: its entries are the only mutations that are not
         # appends, and popping them newest first restores every index they were recorded at. The run start and its mark
         # are values the checkpoint restored above, so a rewound trail leaves only the token surgery to reverse.
-        while len(self.trail) > trail_length:
+        while len(self.trail) > held.trail_length:
             entry = self.trail.pop()
             if entry[0] == "retype":
                 self.tokens[entry[1]] = entry[2]
             else:  # "inject": a marker inserted mid-list, deleted to undo what a truncation would miss
                 del self.tokens[entry[1]]
-        del self.tokens[token_count:]
+        del self.tokens[held.token_count :]
+
+    def _restore_scopes(self, held):
+        """Put back what the parse was inside of at `held` — the scopes, and nothing about what it read or emitted."""
+        self.code = held.code
+        self.stack = held.stack
+        self.forbidden = held.forbidden
+        self.ceiling = held.ceiling
+        self.ceiling_message = held.ceiling_message
+        # The parameters are copied out rather than adopted: an alternation rewinds to the same checkpoint once per
+        # branch, so handing a branch the checkpoint's own dictionary would let its `(set)` reach back into what the
+        # branch after it rewinds to. Everything else here is either a value or a length, and cannot be written through.
+        self.env = dict(held.env)
+        self.shadow = dict(held.shadow)  # copied out for the same reason: a `(set)` must not reach back through it
+
+    def is_unwinding(self):
+        """Whether a failure is on its way somewhere — to a settled region's open, or to whatever answers for a cut."""
+        return self.failing is not None or self.unwinding is not None
+
+    def give_back(self, held):
+        """
+        Take back to `held` what the failure passing through gives back.
+
+        An ordinary failure, and a settled region being given back, give back the whole of it. A failure on its way to a
+        recovery gives back only the scopes: what it read is read and what it emitted stands — the recovery carries on
+        from where the input got to, over the tokens already there — so the position, the marks and the tokens are left
+        as the failure left them. Each frame taking back its own scopes is what leaves the recovery's own standing where
+        the unwind stops, so no snapshot has to say what they were.
+        """
+        if self.failing is None:
+            self.rewind(held)
+        else:
+            self._restore_scopes(held)
 
     def consume(self):
         """
         Take the character or invalid byte at the position into the open run, opening one under the current code if none
-        is. An invalid byte is no break and no byte-order mark; it advances a byte and a column like any other.
+        is, and say whether it was taken. An invalid byte is no break and no byte-order mark; it advances a byte and a
+        column like any other.
+
+        The one character it declines is a committed one past a `(max)` window's edge, which exhausts the window: the
+        cut the window names stands behind that failure, which is what `failing` says. A lookahead is exempt and reads
+        on freely, and the open run is left as it is so the tokens up to here still emit.
         """
         if self.ceiling is not None and not self.probing and self.position >= self.ceiling:
-            # A committed character past a `(max)` window's edge exhausts it, failing the cut the window names. The open
-            # run is left as it is so the tokens up to here still emit; a lookahead is exempt and reads on freely.
-            raise CommitFailure(self.ceiling_message)
+            self.failing = self.ceiling_message
+            return False
         if self.run is None:
             self.run = (wire.CODE_CHAR[self.code], self.mark, self.position)
         codepoint = self.chars[self.position]
@@ -305,6 +359,7 @@ class Emitter:
             if not is_byte_order_mark:
                 self.is_sol = False
         self.position += 1
+        return True
 
     def _is_before_line_feed(self):
         """Whether a CR at the position is immediately followed by an LF, so the two are one break."""
@@ -550,14 +605,14 @@ def _probe(pattern, emitter, grammar):
     """
     Whether `pattern` matches at the position, leaving the emitter untouched — a lookahead that keeps no effect.
 
-    A `(cut)` inside a lookahead is speculative, not a commit of the whole parse, so a `CommitFailure` here is caught
-    and read as "did not match" rather than allowed to escape.
+    A `(cut)` inside a lookahead is speculative, not a commit of the whole parse, so a failure unwinding to one stops
+    here and is read as "did not match" rather than carrying on out.
     """
     checkpoint = emitter.checkpoint()
     emitter.probing += 1  # a lookahead reads past a `Limited` window's edge freely; the rewind restores the count
-    try:
-        did_match = match(pattern, emitter, grammar, _accept)
-    except CommitFailure:
+    did_match = match(pattern, emitter, grammar, _accept)
+    if emitter.failing is not None:
+        emitter.failing = None
         did_match = False
     emitter.rewind(checkpoint)
     return did_match
@@ -581,13 +636,16 @@ def _repeat(item, emitter, grammar, k):
         before = emitter.position
         step = emitter.checkpoint()
         if not match(item, emitter, grammar, _accept):
+            if emitter.is_unwinding():
+                emitter.give_back(checkpoint)  # a turn that failed under an unwind fails the run, it does not end it
+                return False
             emitter.rewind(step)
             break
         if emitter.position == before:
             break  # a zero-width match: kept once, but repeating it would never end
     if k():
         return True
-    emitter.rewind(checkpoint)
+    emitter.give_back(checkpoint)
     return False
 
 
@@ -616,6 +674,8 @@ def _longest_run(item, least, emitter, grammar, k):
 
     if match(item, emitter, grammar, after_first):
         return True
+    if emitter.is_unwinding():
+        return False  # taking no turn at all is another way, which an unwinding failure does not take
     emitter.rewind(checkpoint)
     return k() if least == 0 else False
 
@@ -682,10 +742,9 @@ def match(node, emitter, grammar, k):
             if _is_forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
-            emitter.consume()
-            if k():
+            if emitter.consume() and k():
                 return True
-            emitter.rewind(checkpoint)
+            emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.CharSet):
         # The invalid byte is the interval `(-1, -1)`, which is how a set says it holds one: the decoder gives an
@@ -696,10 +755,9 @@ def match(node, emitter, grammar, k):
             if _is_forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
-            emitter.consume()
-            if k():
+            if emitter.consume() and k():
                 return True
-            emitter.rewind(checkpoint)
+            emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.Range):
         codepoint = emitter.chars[emitter.position] if emitter.position < len(emitter.chars) else None
@@ -707,10 +765,9 @@ def match(node, emitter, grammar, k):
             if _is_forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
-            emitter.consume()
-            if k():
+            if emitter.consume() and k():
                 return True
-            emitter.rewind(checkpoint)
+            emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.Invalid):
         # A byte that begins no character. It belongs to no set, so only the recovery rules ask for it, where a run of
@@ -719,10 +776,9 @@ def match(node, emitter, grammar, k):
             if _is_forbidden_here(emitter, grammar):
                 return False
             checkpoint = emitter.checkpoint()
-            emitter.consume()
-            if k():
+            if emitter.consume() and k():
                 return True
-            emitter.rewind(checkpoint)
+            emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.Empty):
         return k()
@@ -813,6 +869,8 @@ def match(node, emitter, grammar, k):
         for item in node.items:
             if match(item, emitter, grammar, k):
                 return True
+            if emitter.is_unwinding():
+                return False  # a settled region is being given back, and taking another way here is what that forbids
             emitter.rewind(checkpoint)
         return False
     if isinstance(node, ir.Diff):
@@ -824,22 +882,26 @@ def match(node, emitter, grammar, k):
                 return False
         start = emitter.checkpoint()
         if not match(node.base, emitter, grammar, _accept):
-            emitter.rewind(start)
+            emitter.give_back(start)
             return False
         if k():
             return True
-        emitter.rewind(start)
+        emitter.give_back(start)
         return False
     if isinstance(node, ir.Opt):
         checkpoint = emitter.checkpoint()
         if match(node.item, emitter, grammar, k):  # greedy: prefer to match, fall back to the empty match
             return True
+        if emitter.is_unwinding():
+            return False  # the empty match is another way, which a region being given back does not take
         emitter.rewind(checkpoint)
         return k()
     if isinstance(node, ir.Choice):
         for alternative in node.alternatives:
             if match(alternative, emitter, grammar, k):
                 return True
+            if emitter.is_unwinding():
+                return False
         return False
     if isinstance(node, ir.Alternative):
         # The gate is a set of questions and nothing more, each about the position the way is entered at, so they are
@@ -856,10 +918,9 @@ def match(node, emitter, grammar, k):
         if emitter.position >= len(emitter.chars):
             raise AssertionError("a gated character is not there: the gate let through what it should have refused")
         checkpoint = emitter.checkpoint()
-        emitter.consume()
-        if k():
+        if emitter.consume() and k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.ConsumePeeked):
         # The gate's literal, taken on its word — though this slow oracle re-checks the word, so a gate that lies is a
@@ -869,10 +930,12 @@ def match(node, emitter, grammar, k):
                 raise AssertionError("a gated literal is not there: the gate let through what it should have refused")
         checkpoint = emitter.checkpoint()
         for _codepoint in node.text:
-            emitter.consume()
+            if not emitter.consume():
+                emitter.give_back(checkpoint)
+                return False
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.ConsumeLiteral):
         # The whole sequence or none of it: one comparison of a few characters, which either stands or leaves nothing
@@ -880,11 +943,11 @@ def match(node, emitter, grammar, k):
         checkpoint = emitter.checkpoint()
         for codepoint in node.text:
             if not match(ir.Char(codepoint), emitter, grammar, _accept):
-                emitter.rewind(checkpoint)
+                emitter.give_back(checkpoint)
                 return False
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.ConsumeCountedSpan):
         # Exactly `count` characters of the set, all or nothing: one scan that counts, and a count short of the mark
@@ -903,11 +966,11 @@ def match(node, emitter, grammar, k):
         checkpoint = emitter.checkpoint()
         for _ in range(max(count, 0)):
             if not match(node.set, emitter, grammar, _accept):
-                emitter.rewind(checkpoint)
+                emitter.give_back(checkpoint)
                 return False
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.ConsumeSpan):  # a `Star` over a character class, as the canonical form spells it
         if "every-consume-is-protected-by-a-gate" in emitter.holding and not _probe(node.set, emitter, grammar):
@@ -931,6 +994,8 @@ def match(node, emitter, grammar, k):
             before = emitter.position
             step = emitter.checkpoint()
             if not match(node.full, emitter, grammar, _accept):
+                if emitter.is_unwinding():
+                    return False  # a turn that failed under an unwind fails the run, it does not end it
                 emitter.rewind(step)
                 break
             if emitter.position == before:
@@ -963,7 +1028,7 @@ def match(node, emitter, grammar, k):
         emitter.forbidden = () if node.item is None else (node.item,)
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.SetVar):
         checkpoint = emitter.checkpoint()
@@ -973,7 +1038,7 @@ def match(node, emitter, grammar, k):
             emitter.shadow[node.param] = emitter.shadow.get(node.param, ()) + (value,)
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.ClearVar):
         checkpoint = emitter.checkpoint()
@@ -991,7 +1056,7 @@ def match(node, emitter, grammar, k):
         emitter.env[node.param] = None  # back to the state a fresh parse gives it, which reading is a fault
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.Increase):
         checkpoint = emitter.checkpoint()
@@ -1004,7 +1069,7 @@ def match(node, emitter, grammar, k):
             emitter.shadow[node.param] = (held[:-1] + (raised,)) if held else (raised,)
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.Bind):
 
@@ -1016,7 +1081,7 @@ def match(node, emitter, grammar, k):
                 emitter.shadow[node.param] = emitter.shadow.get(node.param, ()) + (value,)
             if k():
                 return True
-            emitter.rewind(checkpoint)  # undo the bound value so the condition can go on
+            emitter.give_back(checkpoint)  # undo the bound value so the condition can go on
             return False
 
         return match(node.cond, emitter, grammar, bound)
@@ -1079,6 +1144,9 @@ def match(node, emitter, grammar, k):
             emitter.probing += 1  # a look-behind reads speculatively, past any `Limited` edge; the rewind restores it
             emitter.position = start
             did_reach = match(node.item, emitter, grammar, lambda: emitter.position == target)
+            if emitter.failing is not None:
+                emitter.failing = None  # a cut behind here is speculative too, as one inside a lookahead is
+                did_reach = False
             emitter.rewind(checkpoint)
             if did_reach:
                 return k()
@@ -1096,12 +1164,12 @@ def match(node, emitter, grammar, k):
             if k():
                 return True
             emitter.code = node.code
-            emitter.rewind(middle)  # reopen the run so the wrapped item can try its next way
+            emitter.give_back(middle)  # reopen the run so the wrapped item can try its next way
             return False
 
         did_match = match(node.item, emitter, grammar, close_token)
         if not did_match:
-            emitter.rewind(entry)  # undo the leading cut and the code change
+            emitter.give_back(entry)  # undo the leading cut and the code change
         return did_match
     if isinstance(node, ir.Wrap):
         entry = emitter.checkpoint()
@@ -1112,19 +1180,19 @@ def match(node, emitter, grammar, k):
             emitter.marker(node.end)
             if k():
                 return True
-            emitter.rewind(middle)
+            emitter.give_back(middle)
             return False
 
         did_match = match(node.item, emitter, grammar, close_wrap)
         if not did_match:
-            emitter.rewind(entry)
+            emitter.give_back(entry)  # a failure on its way to a recovery leaves the `begin` for the recovery to close
         return did_match
     if isinstance(node, ir.Emit):
         checkpoint = emitter.checkpoint()
         emitter.marker(node.code)
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.PushIndent):
         checkpoint = emitter.checkpoint()
@@ -1137,7 +1205,7 @@ def match(node, emitter, grammar, k):
         emitter.stack += (("indent", level, node.pair),)
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.PopIndent):
         checkpoint = emitter.checkpoint()
@@ -1153,7 +1221,7 @@ def match(node, emitter, grammar, k):
                 raise AssertionError(f"the pop takes off an indentation of {value!r} where it says {said!r}")
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.PushCode):
         checkpoint = emitter.checkpoint()
@@ -1164,7 +1232,7 @@ def match(node, emitter, grammar, k):
         emitter.code = node.code
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.PopCode):
         checkpoint = emitter.checkpoint()
@@ -1172,7 +1240,7 @@ def match(node, emitter, grammar, k):
         emitter.code, _opened, emitter.stack = _popped(emitter, "code", "a `(token)` code", node.pair)
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.OpenWindow):
         checkpoint = emitter.checkpoint()
@@ -1185,7 +1253,7 @@ def match(node, emitter, grammar, k):
         )  # the window this open displaced, for its close to take back
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.CloseWindow):
         checkpoint = emitter.checkpoint()
@@ -1193,47 +1261,49 @@ def match(node, emitter, grammar, k):
         emitter.ceiling, emitter.ceiling_message = displaced
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.OpenProvisional):
         checkpoint = emitter.checkpoint()
         emitter.open_provisional()
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.MarkProvisional):
         checkpoint = emitter.checkpoint()
         emitter.mark_provisional()
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.RetypeProvisional):
         checkpoint = emitter.checkpoint()
         emitter.retype_provisional(node.rest, node.breaks, node.region)
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.InjectBefore):
         checkpoint = emitter.checkpoint()
         emitter.inject_before(node.codes, node.at)
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.CommitProvisional):
         checkpoint = emitter.checkpoint()
         emitter.commit_provisional()
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.Cut):
         if k():
             return True
-        raise CommitFailure(node.message)  # committed: unwind past the backtracking, this is the error
+        if emitter.failing is None:  # committed: what follows failing is this error, and nothing behind it is retried
+            emitter.failing = node.message
+        return False
     if isinstance(node, ir.PushMessage):
         # A committed region opens: the record pairs with the `PopMessage` that closes it, which marks it reached. A
         # failure that unwinds back here with the region never closed is the error; through a closed one it backtracks
@@ -1248,7 +1318,9 @@ def match(node, emitter, grammar, k):
         assert popped is record, "a committed region closed out of order"
         if record[0]:
             return False
-        raise CommitFailure(node.message)
+        if emitter.failing is None:
+            emitter.failing = node.message
+        return False
     if isinstance(node, ir.PopMessage):
         record, opened, emitter.stack = _popped(emitter, "message", "a committed region", node.pair)
         record[0] = True  # reached: the region's commitment is kept, whatever backtracking does after
@@ -1271,13 +1343,15 @@ def match(node, emitter, grammar, k):
             return True
         if reached[0]:
             return False
-        raise CommitFailure(node.message)
+        if emitter.failing is None:
+            emitter.failing = node.message
+        return False
     if isinstance(node, ir.Error):
         checkpoint = emitter.checkpoint()
         emitter.error(MESSAGES[node.message])
         if k():
             return True
-        emitter.rewind(checkpoint)
+        emitter.give_back(checkpoint)
         return False
     if isinstance(node, ir.PushRecovery):
         entry = _Recovery(
@@ -1291,86 +1365,99 @@ def match(node, emitter, grammar, k):
             env=dict(emitter.env),
             ceiling=emitter.ceiling,
             ceiling_message=emitter.ceiling_message,
+            is_closed=[False],
         )
         emitter.stack += (("recovery", entry, node.pair),)
-        standing = len(emitter.stack)
-        try:
-            if k():
-                return True
-        except CommitFailure as failure:
-            # Standing where this open put it is what says the region is still open. An unwind leaves what it skipped on
-            # the stack, so the entry is looked for where it was pushed rather than on top.
-            if len(emitter.stack) < standing or emitter.stack[standing - 1][1] is not entry:
-                raise  # the region has closed, so whatever answers for this stands further out
-            return _recover(entry, failure, emitter, grammar)
+        if k():
+            return True
+        if emitter.failing is not None:
+            if entry.is_closed[0]:
+                return False  # the region has closed, so whatever answers for this stands further out
+            return _recover(entry, emitter, grammar)
         held, _opened, emitter.stack = _popped(emitter, "recovery", "a recovery region", node.pair)
         assert held is entry, "a recovery region closed out of order"
         return False
     if isinstance(node, ir.PopRecovery):
         entry, opened, emitter.stack = _popped(emitter, "recovery", "a recovery region", node.pair)
+        entry.is_closed[0] = True  # closed: a cut from here on is answered by whatever stood before this region
         if k():
             return True
+        if emitter.failing is not None:
+            return False  # a cut past the close, which this region is no longer the one to answer for
+        entry.is_closed[0] = False
         emitter.stack += (("recovery", entry, opened),)  # what follows failed: the region is open again for a way in it
         return False
     if isinstance(node, ir.Recover):
-        depth, code, stack, forbidden, env, ceiling, ceiling_message = (
-            len(emitter.pending),
-            emitter.code,
-            emitter.stack,
-            emitter.forbidden,
-            dict(emitter.env),
-            emitter.ceiling,
-            emitter.ceiling_message,
-        )
-        try:
-            return match(node.item, emitter, grammar, k)
-        except CommitFailure as failure:
-            # The cut asks whether this rule answers for it. Undo what the abandoned parse left of the scopes it was
-            # inside — their closes never ran, including a `(max)` window it failed inside of — and put this rule's own
-            # back: the recovery is this rule's to name, so it reads this rule's parameters and not those of whatever
-            # failed somewhere below it.
-            stopped = emitter.checkpoint()
-            emitter.code = code
-            emitter.stack = stack  # every scope the abandoned parse opened and never got to take back, at once
-            emitter.forbidden = forbidden
-            emitter.env = env
-            emitter.ceiling = ceiling
-            emitter.ceiling_message = ceiling_message
-            emitter.error(MESSAGES[failure.code])
-            while len(emitter.pending) > depth:
-                emitter.marker(emitter.pending[-1])  # close what `item` opened, down to here and no further
-            if match(node.recovery, emitter, grammar, _accept):
-                return k()  # recovered: carry on as though `item` had matched, so a repetition takes its next turn
-            emitter.rewind(stopped)  # this rule does not answer for it after all: leave no trace and let it go on up
-            raise
+        depth, held = len(emitter.pending), emitter.checkpoint()
+        if match(node.item, emitter, grammar, k):
+            return True
+        if emitter.failing is None:
+            return False
+        # The cut asks whether this rule answers for it. The scopes the abandoned parse was inside are already back —
+        # each frame gave its own back on its way out — so what stands is this rule's own, and the recovery reads this
+        # rule's parameters rather than those of whatever failed somewhere below it. What `item` opened is still open,
+        # to be closed down to here.
+        stopped = emitter.checkpoint()
+        emitter.code, emitter.stack, emitter.forbidden = held.code, held.stack, held.forbidden
+        emitter.env, emitter.ceiling, emitter.ceiling_message = dict(held.env), held.ceiling, held.ceiling_message
+        code, emitter.failing = emitter.failing, None
+        emitter.error(MESSAGES[code])
+        while len(emitter.pending) > depth:
+            emitter.marker(emitter.pending[-1])  # close what `item` opened, down to here and no further
+        if match(node.recovery, emitter, grammar, _accept):
+            return k()  # recovered: carry on as though `item` had matched, so a repetition takes its next turn
+        emitter.rewind(stopped)  # this rule does not answer for it after all: leave no trace and let it go on up
+        emitter.failing = code
+        return False
+    if isinstance(node, ir.PushBackTrack):
+        # A settled region opens. Its ways stand between here and its close as live choices, and its close is what says
+        # a failure past it unwinds to here: no choice on the way takes another way, and the region is given back whole
+        # here, ordinary backtracking carrying on from in front of it.
+        checkpoint = emitter.checkpoint()
+        emitter.stack += (("backtrack", None, node.pair),)
+        if k():
+            return True
+        if emitter.unwinding is not None and emitter.unwinding & node.pair:
+            emitter.unwinding = None  # the open the close was unwinding to, so the region is given back and that is all
+        emitter.give_back(checkpoint)  # a cut unwinding through the region carries on past it, giving nothing back
+        return False
+    if isinstance(node, ir.PopBackTrack):
+        # The region closes: what follows it failing is the whole region failing, so nothing inside is taken another
+        # way. An unwind already under way is left as it stands — it is headed for an open further out than this one's.
+        _held, _opened, emitter.stack = _popped(emitter, "backtrack", "a settled region", node.pair)
+        if k():
+            return True
+        if emitter.unwinding is None:
+            emitter.unwinding = node.pair
+        return False
     raise NotImplementedError(f"interpreter does not support {type(node).__name__}")
 
 
-def _recover(entry, failure, emitter, grammar):
+def _recover(entry, emitter, grammar):
     """
-    A failed cut answered by the region `entry` opened: put back what the abandoned parse left of the scopes it was
-    inside — their closes never ran — emit the error, close the markers down to where the region began, and match what
-    answers for it. Then the resume, and then the way's ordinary return, the two together being what makes carrying on
-    the same as what the region covered having matched.
+    A failed cut answered by the region `entry` opened: emit the error, close the markers down to where the region
+    began, and match what answers for it. Then the resume, and then the way's ordinary continuation, the two together
+    being what makes carrying on the same as what the region covered having matched.
+
+    The scopes the abandoned parse was inside are already back, each frame having given its own back on its way out, so
+    the region's own stand here. What it opened is still open, which is what there is to close.
 
     A recovery that does not match is this region declining to answer, so the parse is left as it was found and the cut
     goes on unwinding.
     """
     stopped = emitter.checkpoint()
-    emitter.code = entry.code
-    emitter.stack = entry.stack  # every scope the abandoned parse opened and never got to take back, at once
-    emitter.forbidden = entry.forbidden
-    emitter.env = dict(entry.env)
-    emitter.ceiling = entry.ceiling
-    emitter.ceiling_message = entry.ceiling_message
-    emitter.error(MESSAGES[failure.code])
+    emitter.code, emitter.stack, emitter.forbidden = entry.code, entry.stack, entry.forbidden
+    emitter.env, emitter.ceiling, emitter.ceiling_message = dict(entry.env), entry.ceiling, entry.ceiling_message
+    code, emitter.failing = emitter.failing, None
+    emitter.error(MESSAGES[code])
     while len(emitter.pending) > entry.pending:
         emitter.marker(emitter.pending[-1])  # close what the region covered opened, down to here and no further
     carried = emitter.returns[entry.returns - 1]
     if match(entry.recovery, emitter, grammar, lambda: match(entry.resume, emitter, grammar, carried)):
         return True
     emitter.rewind(stopped)
-    raise failure
+    emitter.failing = code
+    return False
 
 
 def run(grammar, production, data, parameters=None, deterministic=frozenset(), holding=frozenset()):
@@ -1430,10 +1517,10 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
     node = entry
     failed_at = None
     while True:
-        try:
-            did_match = match(node, emitter, grammar, _accept)
-        except CommitFailure as failure:
-            _fail(emitter, MESSAGES[failure.code])  # committed: the error names what the cut expected
+        did_match = match(node, emitter, grammar, _accept)
+        if emitter.failing is not None:
+            code, emitter.failing = emitter.failing, None
+            _fail(emitter, MESSAGES[code])  # committed and nothing answered for it: the error names what the cut wanted
         else:
             if did_match:
                 emitter.cut()

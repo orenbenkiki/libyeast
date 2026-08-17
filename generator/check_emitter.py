@@ -57,7 +57,7 @@ READ_ONLY = (  # in alphabetical order
 # live chain of entered productions, pushed on entry and popped on exit even as an exception unwinds, so a rewind —
 # which happens inside a production, its entry still standing — must leave it alone, not truncate it. The return points
 # of those same productions are pushed and taken back with them, one for one.
-TRANSIENT = ("entered", "returns")
+TRANSIENT = ("entered", "failing", "returns", "unwinding")
 
 
 def _dirty(emitter):

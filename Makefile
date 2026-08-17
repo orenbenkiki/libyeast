@@ -68,8 +68,8 @@ CMAKE_IN  := CMakeLists.txt $(wildcard cmake/*.in)
 # $(shell ...) stays happy.
 VERSION   := $(shell sed -n 's/^project.yeast VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt)
 ALL_SRC   := $(LIB_SRC) $(PUB_HDR) $(PRIV_HDR) $(wildcard tests/*.c)   # what the format/lint/comment checks scan
-# Common find prune (skip .git, vendored third_party, and build dirs), reused below.
-FIND_PRUNE := -name .git -prune -o -name third_party -prune -o -path './build*' -prune -o
+# Common find prune (skip .git, vendored third_party, build dirs, and untracked junk-* scratch), reused below.
+FIND_PRUNE := -name .git -prune -o -name third_party -prune -o -path './build*' -prune -o -path './junk*' -prune -o
 MD_FILES  := $(shell find . $(FIND_PRUNE) -name '*.md' -print)
 PY_FILES  := $(shell find . $(FIND_PRUNE) -name '*.py' -print)
 CMAKE_FILES := CMakeLists.txt $(shell find . $(FIND_PRUNE) -name '*.cmake' -print)

@@ -171,11 +171,7 @@ def exercised(grammar, fixtures=None):
                 reached.add(name)  # the production's body offered a solution — it matched
                 return continuation()
 
-            try:
-                matched = base_match(node, emitter, grammar_arg, record)
-            except interpreter.CommitFailure:
-                rejected.add(name)
-                raise
+            matched = base_match(node, emitter, grammar_arg, record)
             if not matched:
                 rejected.add(name)
             return matched

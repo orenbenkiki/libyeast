@@ -1452,6 +1452,44 @@ class CloseWindow:
 
 
 @dataclass(frozen=True)
+class PushBackTrack:
+    """
+    A zero-width action that opens a region the parse gives back whole: from here to the `PopBackTrack` that closes it,
+    the ways taken inside are the ways taken, and a failure past the close gives the region up rather than choosing
+    among them again.
+
+    What makes a repetition possessive, said where the grammar can see it rather than left to whoever runs it: a run
+    takes its turns, and a continuation that fails fails the run entire, there being no shorter run to fall back to. A
+    failure before the close backtracks like any other — what the region settles is what has closed.
+    """
+
+    pair: frozenset
+
+    def references(self):
+        return []
+
+    def renamed(self, names):
+        return self
+
+
+@dataclass(frozen=True)
+class PopBackTrack:
+    """
+    A zero-width action that closes the region the innermost `PushBackTrack` opened, settling the ways taken inside it.
+    Paired with `PushBackTrack`, and like the other pairs it holds on the parse's own stack rather than where it was
+    written, so a split that cuts the two apart is nothing either half has to know.
+    """
+
+    pair: frozenset
+
+    def references(self):
+        return []
+
+    def renamed(self, names):
+        return self
+
+
+@dataclass(frozen=True)
 class OpenProvisional:
     """
     A zero-width action that opens the provisional run: the tokens emitted from here on are undecided — built and held,
