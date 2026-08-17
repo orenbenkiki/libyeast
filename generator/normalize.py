@@ -26,13 +26,12 @@ parameter away, leaving the stack the one place it is. Nothing declares, passes 
 Phase 5 is the empties. A caller choosing whether to enter a production that may match nothing is choosing blind, and
 the choice cannot be put on a character while both answers live under one name. `lower-optionals` brings the empty match
 an optional hides out beside the way that reads, `span-consumes` takes the character runs out of the question by writing
-each as the scan it is, `lower-runs` says the two repetitions as the one `LongestRun` they are,
-`mint-consuming-and-residue` gives every production that may match empty a name for each of the two things it is,
-`distribute-residues` writes the choice between the two where the caller stands rather than behind the one name, and
-`dissolve-residues` writes what is left taking no character into the call sites that enter it. Nothing anything decides
-to enter can match empty — `no-conditional-production-matches-empty` at none, the root and the recovery keeping their
-empty ways, having no call site to hold the choice, and a continuation being where a way carries on rather than
-something chosen.
+each as the scan it is, `lower-runs` says both repetitions as the ways they are, `mint-consuming-and-residue` gives
+every production that may match empty a name for each of the two things it is, `distribute-residues` writes the choice
+between the two where the caller stands rather than behind the one name, and `dissolve-residues` writes what is left
+taking no character into the call sites that enter it. Nothing anything decides to enter can match empty —
+`no-conditional-production-matches-empty` at none, the root and the recovery keeping their empty ways, having no call
+site to hold the choice, and a continuation being where a way carries on rather than something chosen.
 
 Phase 6 is the wrappers. A scope that holds what it covers has nowhere to stand in an alternative, which has a place for
 an action and none for a node enclosing a call, so each becomes the pair that brackets it: `lower-wraps` writes a
@@ -1124,8 +1123,6 @@ def _shortest_match(node, grammar, seen=frozenset()):
         return min((_shortest_match(way, grammar, seen) for way in ways), default=_SHORTEST_CAP)
     if isinstance(node, ir.Plus):
         return _shortest_match(node.item, grammar, seen)
-    if isinstance(node, ir.LongestRun):
-        return _shortest_match(node.item, grammar, seen) if node.least else 0
     if isinstance(node, (ir.Rep, ir.ConsumeCountedSpan)):
         # A count the parse works out may be none at all, and then the repetition takes nothing.
         taken = node.item if isinstance(node, ir.Rep) else node.set
@@ -1686,9 +1683,10 @@ def _every_character_run_is_a_span(grammar):
 
 EVERY_CHARACTER_RUN_IS_A_SPAN = Invariant("every-character-run-is-a-span", _every_character_run_is_a_span)
 
-# The two repetitions the vendored notation writes are gone, one `LongestRun` standing for both. What is left after this
-# is one operation for repeating a way, which is what every reading past here is written against. The counted `Rep` is
-# not one of these: it takes the number of turns it names rather than as many as it can, and is a later step's.
+# The two repetitions the vendored notation writes are gone, each said as the ways it is: a turn, a recursion taking the
+# rest, and a settled region around the turns after the first. Nothing past here repeats anything, which is what every
+# reading past here is written against. The counted `Rep` is not one of these: it takes the number of turns it names
+# rather than as many as it can, and is a later step's.
 NO_STAR_OR_PLUS_NODES = _absent("no-star-or-plus-nodes", ir.Star, ir.Plus)
 
 
@@ -2119,7 +2117,7 @@ _LOOKS_AHEAD = (ir.EndOfStream, ir.LiteralPeek, ir.Look, ir.NegLook)
 _HOLDERS = (ir.Commit, ir.Max, ir.Recover, ir.Token, ir.Wrap)
 
 # A repetition: the turns it takes are the same state entered again.
-_RUNS = (ir.LongestRun, ir.Plus, ir.Star)
+_RUNS = (ir.Plus, ir.Star)
 
 # A scan of a character class, which may be asked for none at all and so forces no character to be there.
 _SCANS = (ir.ConsumeCountedSpan, ir.ConsumeSpan)
@@ -2163,12 +2161,12 @@ _LEAF_ITEMS = (
 
 # What holds a match, and so cannot stand where an item does: the tree the phase takes apart. A choice and a run become
 # productions of their own, a recovery moves to the edge an alternative rides, and a binding becomes an action.
-_HOLDS_A_MATCH = (ir.Alt, ir.Bind, ir.LongestRun, ir.Recover, ir.Seq)
+_HOLDS_A_MATCH = (ir.Alt, ir.Bind, ir.Recover, ir.Seq)
 
 # What a production's body may be, each a state the machine has: a choice of ways, a run of one, a way under a handler,
 # or a way. A binding is not among them — a body that is one hides a write behind a match, which `no-bind-nodes` counts
 # wherever it stands.
-_BODY_KINDS = (ir.Alt, ir.Choice, ir.LongestRun, ir.Recover, ir.Seq)
+_BODY_KINDS = (ir.Alt, ir.Choice, ir.Recover, ir.Seq)
 
 
 def _inner_ways(node):
@@ -2182,7 +2180,6 @@ _INNER_WAYS = ir.Reading(
         ir.Choice: lambda node: node.alternatives,
         ir.Alt: lambda node: node.items,
         ir.Seq: lambda node: (node,),
-        ir.LongestRun: lambda node: (node.item,),
         ir.Recover: lambda node: (node.item, node.recovery),
         ir.Bind: lambda node: (node.cond,),  # a binding: the match it puts a value in scope for
     },
@@ -2251,7 +2248,7 @@ NO_BIND_NODES = _absent("no-bind-nodes", ir.Bind)
 # not among them — a run taken whole is a value the input decides, judged once, so what it costs does not grow with what
 # it takes. A counted repetition is here too, its turns being as many as the count says and the count a value the parse
 # works out.
-_REPETITIONS = (ir.LongestRun, ir.Plus, ir.Rep, ir.Star)
+_REPETITIONS = (ir.Plus, ir.Rep, ir.Star)
 
 
 def _is_bounded_question(node, grammar, entered=frozenset()):
@@ -2525,10 +2522,6 @@ def _every_body_is_a_choice_a_run_or_a_set(grammar):
         body = production.body
         if isinstance(body, ir.CharSet):
             continue
-        if isinstance(body, ir.LongestRun):
-            if not isinstance(body.item, ir.Ref):
-                faults.append(f"{name}: a run whose turn is not a call, where the loop has no state to jump to")
-            continue
         if not isinstance(body, ir.Choice):
             faults.append(f"{name}: a body that is neither a set, a run of a call, nor a choice of alternatives")
             continue
@@ -2769,7 +2762,6 @@ _CAN_BE_REFUSED = ir.Reading(
         ir.ConsumeCountedSpan: lambda node, grammar, seen: not (
             isinstance(node.count, ir.Lit) and node.count.value <= 0
         ),
-        ir.LongestRun: lambda node, grammar, seen: node.least > 0 and _can_be_refused(node.item, grammar, seen),
         ir.Plus: lambda node, grammar, seen: _can_be_refused(node.item, grammar, seen),
         # A count of none takes nothing whatever happens; any other turns on what it repeats.
         ir.Rep: lambda node, grammar, seen: not (isinstance(node.count, ir.Lit) and node.count.value <= 0)
@@ -2910,7 +2902,7 @@ def build_alternatives(grammar, namer):
 
     def told(production):
         body = production.body
-        if isinstance(body, (ir.CharSet, ir.LongestRun)):
+        if isinstance(body, ir.CharSet):
             return production
         if isinstance(body, ir.Recover):
             alternatives = (_as_alternative(body.item, recovery=body.recovery),)
@@ -4430,8 +4422,6 @@ def _with_inner_ways(node, rebuilt):
         return dataclasses.replace(node, items=tuple(rebuilt(way) for way in node.items))
     if isinstance(node, ir.Seq):
         return rebuilt(node)
-    if isinstance(node, ir.LongestRun):
-        return dataclasses.replace(node, item=rebuilt(node.item))
     if isinstance(node, ir.Recover):
         return dataclasses.replace(node, item=rebuilt(node.item), recovery=rebuilt(node.recovery))
     if isinstance(node, ir.Bind):
@@ -4583,7 +4573,6 @@ _IS_NULLABLE = ir.Reading(
         # A run of none or more takes nothing by taking no turn; one of at least a turn takes nothing only where the
         # turn does.
         (ir.Opt, ir.Star): True,
-        ir.LongestRun: lambda node, grammar, ways: node.least == 0 or _is_nullable(node.item, grammar, ways),
         ir.Plus: lambda node, grammar, ways: _is_nullable(node.item, grammar, ways),
         ir.ConsumeCountedSpan: _counted_span_is_nullable,
         ir.Bind: lambda node, grammar, ways: _is_nullable(node.cond, grammar, ways),
@@ -4657,8 +4646,9 @@ def _split_run(node, grammar, ways):
         return taking, ir.Empty()  # a run of none or more takes nothing where the first turn cannot match
     if empty is None:
         return node, None  # the item always reads, so a run that must take a turn does
-    # The run ends on a turn that takes nothing, which is kept once — and `_unsplittable_runs` holds that turn to
-    # leaving nothing, so the reading way is the reading turns and the empty way is the one that took none.
+    # The run ends on a turn that takes nothing, and that turn is the last one there is: `lower-runs` says of every turn
+    # that it takes a character, so one taking none is not a turn the run took. The reading way is therefore the turns
+    # that read and the empty way is the turn that took none.
     return taking, empty
 
 
@@ -5033,7 +5023,6 @@ def _entered_unconsumed(node, grammar, ways, entering=()):
 _WALKED_UNCONSUMED = (
     ir.Commit,
     ir.ExcludeAt,
-    ir.LongestRun,
     ir.Look,
     ir.LookBehind,
     ir.Max,

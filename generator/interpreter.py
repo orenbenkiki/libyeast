@@ -978,8 +978,6 @@ def match(node, emitter, grammar, k):
         return _repeat(node.set, emitter, grammar, k)
     if isinstance(node, ir.ConsumeTrimmedSpan):  # a `TrimStar`, as the canonical form spells it
         return match(ir.TrimStar(node.full, node.trim), emitter, grammar, k)
-    if isinstance(node, ir.LongestRun):
-        return _longest_run(node.item, node.least, emitter, grammar, k)
     if isinstance(node, ir.Star):
         return _longest_run(node.item, 0, emitter, grammar, k)
     if isinstance(node, ir.Plus):

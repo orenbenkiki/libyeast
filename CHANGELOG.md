@@ -254,14 +254,15 @@ All notable changes to this project are documented here. The format follows
   none being a turn the run did not take, and what the region settles is the turns it holds — so a failure past its
   close gives the whole run up rather than taking fewer turns. The turn never taken is a way of its own where the
   spelling is `(***)` and no way at all where it is `(+++)`, which is the whole of the difference between them, and the
-  interpreter had been saying so all along — its two arms were the same code but for that last line, and are one arm
-  now. `no-star-or-plus-nodes` settles at none over 72 runs.
+  interpreter had been saying so all along — its two arms differed by that one line. `no-star-or-plus-nodes` settles at
+  none over 72 runs, and nothing past that step repeats anything at all.
 
-  That replaces writing `x*` as `x+ | <empty>`, which mapped one repetition onto the other and made a primitive look
-  like an ordered choice it is not: an ordered choice can be backed out of for a shorter run, and a longest run cannot.
-  Lowering the run to a production of its own waits for the gates, a gate being the only thing that makes a turn commit
-  without inventing a second mechanism for it. What the grammar repeats a way with is one kind now, and what it scans a
-  character class with is two — the maximal run and the counted one.
+  The ways are an ordered choice, and what holds one to the longest run is the settled region around the turns rather
+  than anything about the choice: a failure past the region's close gives the whole run up instead of taking fewer
+  turns. What ends the run is the guard each turn carries and not a gate on the choice — a turn that took no character
+  is not a turn the run took, which is a thing the grammar says where it used to be a comparison of positions inside the
+  interpreter's own loop. Nothing repeats a way any more, and what scans a character class is two kinds — the maximal
+  run and the counted one.
 
   Every function that dispatches on node kind raises on one it has not heard of, not only the ones that answer yes or
   no. The rule had been read as being about the booleans, where a wrong `False` turns a scan into a way; it is about any

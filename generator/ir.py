@@ -663,31 +663,6 @@ class Plus:
 
 
 @dataclass(frozen=True)
-class LongestRun:
-    """
-    The longest run of `item`, matching where it took at least `least` turns.
-
-    One operation, and the only one the grammar has for repeating a way: take `item` again and again while it matches,
-    and stop where it does not. What it took is the longest run and there is no shorter one — a continuation that fails
-    fails the run, rather than sending it back for fewer turns. `least` is the whole of the difference between the two
-    repetitions the vendored notation writes: `(***)` is a run of none or more and `(+++)` a run that must take one, and
-    neither is the other with something around it.
-
-    A run over a character class is a `ConsumeSpan` instead — the same operation, said as the scan a parser makes of it.
-    """
-
-    item: object
-    least: int
-
-    def references(self):
-        return _refs(self.item)
-
-    def renamed(self, names):
-        (item,) = _renamed(names, self.item)
-        return replace(self, item=item)
-
-
-@dataclass(frozen=True)
 class Opt:
     """`(???)`: optional (zero or one)."""
 
@@ -1760,7 +1735,6 @@ NOT_ONE_CHAR = (
     Len,
     Lit,
     LiteralPeek,
-    LongestRun,
     Look,
     LookBehind,
     Lt,
@@ -1848,7 +1822,6 @@ _IS_ONE_CHAR = Reading(
             Le,
             Len,
             LiteralPeek,
-            LongestRun,
             Lt,
             Match,
             Max,
@@ -1909,7 +1882,7 @@ def repeated(node):
     """
     if isinstance(node, TrimStar):
         return node.full
-    if isinstance(node, (LongestRun, Plus, Rep, Star)):
+    if isinstance(node, (Plus, Rep, Star)):
         return node.item
     if isinstance(node, (ConsumeSpan, ConsumeCountedSpan, ConsumeTrimmedSpan)):
         return None  # a run already said as its scan
