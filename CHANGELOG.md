@@ -1143,7 +1143,7 @@ All notable changes to this project are documented here. The format follows
   writes a way out on the promise that a later pass will gate it, and that promise is what has no floor: the state such
   a way carries on at is composed afresh every round, so each pass finds a new one to write out and descends. Every
   guard against that — a bound on the passes, a circle to refuse, states named by what they hold — is a guard against a
-  rule that was simply wrong. `every-conditional-way-is-gated` reads 58 over 793 productions, and the phase is three
+  rule that was simply wrong. `every-conditional-way-is-gated` reads 58 over 1027 productions, and the phase is three
   steps: the expansion, the hoist to the callers with its merge, and the expansion again.
 
 - The sweep's duplicate-merge reads each body once instead of once a round. Two productions behave alike when their

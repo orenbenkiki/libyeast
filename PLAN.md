@@ -287,7 +287,7 @@ read as what it admits on each axis that is independent of the others — the ch
 character behind it, whether the parse stands at a line start, and the indentation it stands under — so a choice split
 on the indentation is told apart where one split on the character is.
 
-**What the wrappers leave owed.** The six pairs are held to by the parse rather than by a reading of the grammar: each
+**What the wrappers leave owed.** The seven pairs are held to by the parse rather than by a reading of the grammar: each
 half carries the pair it belongs to, and the interpreter refuses a close whose pair does not meet the open standing on
 its stack. That is the right shape for them and the wrong one for the markers: a marker pair crosses productions by
 design — `b-chomped-last` emits `end-scalar` for a `begin-scalar` opened elsewhere — so holding one to a single way

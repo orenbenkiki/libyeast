@@ -1409,6 +1409,23 @@ def match(node, emitter, grammar, k):
         emitter.rewind(stopped)  # this rule does not answer for it after all: leave no trace and let it go on up
         emitter.failing = code
         return False
+    if isinstance(node, ir.StartMustConsume):
+        # A turn that must take a character opens: where its close is reached at the position this stood at, the turn
+        # has not matched, and a loop that would repeat it forever ends there instead.
+        checkpoint = emitter.checkpoint()
+        emitter.stack += (("consume", emitter.position, node.pair),)
+        if k():
+            return True
+        emitter.give_back(checkpoint)
+        return False
+    if isinstance(node, ir.EndMustConsume):
+        opened_at, opened, emitter.stack = _popped(emitter, "consume", "a turn that must take a character", node.pair)
+        if emitter.position == opened_at:
+            return False  # nothing taken: the turn did not match, whatever it performed while standing still
+        if k():
+            return True
+        emitter.stack += (("consume", opened_at, opened),)  # backtracked into the turn: it stands open again
+        return False
     if isinstance(node, ir.PushBackTrack):
         # A settled region opens. Its ways stand between here and its close as live choices, and its close is what says
         # a failure past it unwinds to here: no choice on the way takes another way, and the region is given back whole

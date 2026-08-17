@@ -1452,6 +1452,43 @@ class CloseWindow:
 
 
 @dataclass(frozen=True)
+class StartMustConsume:
+    """
+    A zero-width action that opens a region which must take a character: where the `EndMustConsume` that closes it is
+    reached with the position where this stood, the region has not matched.
+
+    What makes a loop end, said where the grammar can see it. A turn taking no character is a turn that would repeat
+    forever, so a run says of its turn that it takes one — the machine reading a loop that must make progress rather
+    than comparing positions to find out. Harmless around a turn that always takes one, which is why a run says it of
+    every turn rather than of the turns that need it.
+    """
+
+    pair: frozenset
+
+    def references(self):
+        return []
+
+    def renamed(self, names):
+        return self
+
+
+@dataclass(frozen=True)
+class EndMustConsume:
+    """
+    A zero-width action that closes the region the innermost `StartMustConsume` opened, refusing it where the parse
+    stands where the open did. Paired with `StartMustConsume`, on the parse's own stack as the other pairs are.
+    """
+
+    pair: frozenset
+
+    def references(self):
+        return []
+
+    def renamed(self, names):
+        return self
+
+
+@dataclass(frozen=True)
 class PushBackTrack:
     """
     A zero-width action that opens a region the parse gives back whole: from here to the `PopBackTrack` that closes it,
@@ -1709,6 +1746,7 @@ NOT_ONE_CHAR = (
     Cut,
     Emit,
     Empty,
+    EndMustConsume,
     EndOfStream,
     Error,
     ExcludeAt,
@@ -1735,11 +1773,13 @@ NOT_ONE_CHAR = (
     Opt,
     Param,
     Plus,
+    PopBackTrack,
     PopCode,
     PopIndent,
     PopMessage,
     PopRecovery,
     Prod,
+    PushBackTrack,
     PushCode,
     PushIndent,
     PushMessage,
@@ -1751,6 +1791,7 @@ NOT_ONE_CHAR = (
     SetForbidden,
     SetVar,
     Star,
+    StartMustConsume,
     StartOfLine,
     Sub,
     Token,
@@ -1796,6 +1837,7 @@ _IS_ONE_CHAR = Reading(
             Cut,
             Emit,
             Empty,
+            EndMustConsume,
             EndOfStream,
             Error,
             ExcludeAt,
@@ -1813,10 +1855,12 @@ _IS_ONE_CHAR = Reading(
             OpenWindow,
             Opt,
             Plus,
+            PopBackTrack,
             PopCode,
             PopIndent,
             PopMessage,
             PopRecovery,
+            PushBackTrack,
             PushCode,
             PushIndent,
             PushMessage,
@@ -1827,6 +1871,7 @@ _IS_ONE_CHAR = Reading(
             SetForbidden,
             SetVar,
             Star,
+            StartMustConsume,
             StartOfLine,
             Sub,
             Token,
