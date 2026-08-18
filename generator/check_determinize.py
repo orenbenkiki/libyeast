@@ -36,7 +36,7 @@ def _grammar_before(step_name):
         raise AssertionError(f"{step_name}: no such pipeline step")
     # stages() opens with the base, so the grammar at a step's index is the one the step before it produced — purged of
     # what the root no longer reaches, exactly as the pipeline hands it on.
-    return normalize.stages(annotated2ir.load())[0][names.index(step_name)][1]
+    return normalize.stages(annotated2ir.load())[names.index(step_name)][1]
 
 
 def _check():

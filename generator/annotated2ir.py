@@ -164,9 +164,9 @@ def node(x):
                 return ir.Max(expr(value[0]), value[1], node(value[2]))
             return ir.Max(expr(value))
         if op == "(<)":
-            return ir.Lt(expr(value[0]), expr(value[1]))
+            return ir.ColumnLt(expr(value[0]), expr(value[1]))
         if op == "(<=)":
-            return ir.Le(expr(value[0]), expr(value[1]))
+            return ir.ColumnLe(expr(value[0]), expr(value[1]))
         if op == "(case)":
             default = node(value["else"]) if "else" in value else None
             return ir.Case(value["var"], branches(value, node), default)

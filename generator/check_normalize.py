@@ -180,7 +180,7 @@ def _check(does_bisect=False, hint=None):
     fixtures = spec_tests.load()
     suite = check_star.cases()
     _say(f"{len(fixtures)} fixture(s), {len(suite)} suite case(s); running {len(normalize.STEPS)} step(s)")
-    stages, points = normalize.stages(annotated2ir.load())
+    stages = normalize.stages(annotated2ir.load())
     final_label, final = stages[-1]
     _say(f"{len(stages) - 1} stage(s) built, {len(final)} production(s) at [{final_label}]; pinning the fixtures")
     groups, errors = _pinned(stages, fixtures)
@@ -217,7 +217,7 @@ def _check(does_bisect=False, hint=None):
     # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
     # stays none after — a step breaking one saying so in its `lapses` and why, and a step naming one doing something
     # about it. Every structural property the pipeline claims is judged here, so nothing else below repeats one.
-    for fault in normalize.invariant_faults(stages, points):
+    for fault in normalize.invariant_faults(stages):
         errors.append(f"[invariant] {fault}")
     # A step naming neither an invariant nor a reason for having none promises what nothing checks. A step outliving the
     # invariant it was written for is the way one arrives here: the invariant is what the pipeline is for and the step
@@ -238,6 +238,24 @@ def _check(does_bisect=False, hint=None):
     asked = interpreter.ASKED["flattened"]
     if asked:
         errors.append(f"[global] {asked} read(s) answered from a stack a single slot could not have stood for")
+
+    # Every reading that answered a kind it had called untested, and which kind — each pair a decision now owed, which
+    # is whether the family naming that kind is the right thing to say of it. The answer stood for the run, so whatever
+    # the corpus did above is what put it to the test: it says here whether the run held, since a run that broke has
+    # these as its first suspects and one that held has them as answers borne out. Said whatever happened and before the
+    # gate reports, which exits and would take the list with it, and the gate fails on a pair however the rest went.
+    owed = ir.owed()
+    pairs = [f"{what} — {kind}" for what, kinds in owed.items() for kind in kinds]
+    _say(
+        f"{len(pairs)} reading answer(s) taken on a family's word and never before tested, against a corpus that "
+        f"{'did not hold' if corpus else 'held'}: " + ("; ".join(pairs) or "none")
+    )
+    for what, kinds in owed.items():
+        for kind in kinds:
+            errors.append(
+                f"[reading] the reading of {what} calls {kind} untested and it has arrived: say whether the family "
+                f"naming it answers for it, and take it off that list or name a family that tells the two apart"
+            )
 
     # The rounds each fixpoint took, deepest first — said before the gate reports, which exits where anything failed and
     # would take this with it. `ir.ROUNDS` is a backstop, and this is what says how far out of reach it is.
@@ -278,7 +296,7 @@ def _check(does_bisect=False, hint=None):
     # What the final grammar still breaks, whatever the steps settle between them — each one a step not yet written, and
     # the list Phase 03 finishes by emptying. Every structural count the phase watches is in here, the meter among them,
     # so what follows says only what the list cannot: where those counts fall and what they are made of.
-    unsettled = normalize.unsettled_invariants(final, points)
+    unsettled = normalize.unsettled_invariants(final)
     print(
         f"    {len(unsettled)} invariant(s) the final grammar still breaks: "
         + ", ".join(f"{name} {count}" for name, count in unsettled)

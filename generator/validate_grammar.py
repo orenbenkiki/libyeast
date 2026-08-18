@@ -42,8 +42,8 @@ def consumed(node, is_annotated, references):
     """
     if isinstance(node, ir.Token):
         yield from consumed(node.item, True, references)
-    elif isinstance(node, (*ir.ZERO_WIDTH, ir.LiteralPeek)):
-        return  # reads the input and gives it back; what is inside is a question, not a match
+    elif isinstance(node, ir.ASKED_NOT_TAKEN_NODES):
+        return  # what is inside is asked about and never taken, so no character of it is one this counts
     elif isinstance(node, ir.CONSUMING):
         yield is_annotated
     elif isinstance(node, ir.Ref):

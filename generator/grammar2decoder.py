@@ -14,7 +14,6 @@ Usage: `make regen`, or `python3 generator/grammar2decoder.py`, which writes `sr
 import unicodedata
 
 import chars
-import ir
 import io
 import os
 
@@ -23,7 +22,6 @@ import annotated2ir
 ASCII_LIMIT = 0x80
 DELETE = 0x7F
 NEL = 0x85
-BOM = 0xFEFF
 NONCHARACTERS = (0xFFFE, 0xFFFF)
 SURROGATES = (0xD800, 0xDFFF)
 C1_LIMIT = 0xA0  # the C1 controls run from the end of ASCII up to here
@@ -37,18 +35,14 @@ CONTROL_NAMES = {
     NEL: "NEXT LINE",
 }
 
-# The keys a character that the grammar does not name can take. Each is a group of characters the grammar cannot tell
-# apart; `check_groups` proves the grouping is exactly this, so a grammar change cannot quietly redefine a name.
-ASCII_GROUPS = ("YS_KEY_CONTROL", "YS_KEY_DELETE", "YS_KEY_DIGIT", "YS_KEY_HEX_LETTER", "YS_KEY_LETTER", "YS_KEY_OTHER")
-
-# The keys a valid non-ASCII character that the grammar does not name can take, the length bits excluded — a character
-# of either kind may be two, three or four bytes long, so `decoder.c` ORs the length in. The C1 controls and the
-# noncharacters share a key: to the grammar, both are merely JSON-compatible and not printable.
-NON_ASCII_GROUPS = ("YS_KEY_NOT_PRINTABLE", "YS_KEY_CONTENT")
-
 
 def ascii_group(codepoint):
-    """The name of the key an unnamed ASCII character takes."""
+    """
+    The name of the key an unnamed ASCII character takes.
+
+    Each is a group of characters the grammar cannot tell apart; `check_groups` proves the grouping is exactly this, so
+    a grammar change cannot quietly redefine a name.
+    """
     if codepoint < 0x20:
         return "YS_KEY_CONTROL"
     if codepoint == DELETE:
@@ -63,7 +57,13 @@ def ascii_group(codepoint):
 
 
 def non_ascii_group(codepoint):
-    """The name of the key an unnamed non-ASCII character takes."""
+    """
+    The name of the key an unnamed non-ASCII character takes, the length bits excluded — a character of either kind may
+    be two, three or four bytes long, so `decoder.c` ORs the length in.
+
+    The C1 controls and the noncharacters share a key: to the grammar, both are merely JSON-compatible and not
+    printable.
+    """
     if codepoint < C1_LIMIT or codepoint in NONCHARACTERS:
         return "YS_KEY_NOT_PRINTABLE"
     return "YS_KEY_CONTENT"
@@ -124,44 +124,50 @@ def spelling(codepoint):
     return f"U+{codepoint:04X}"
 
 
-def defined(body):
+def defined(grammar, body):
     """
-    The character a production defines outright, or None — looking through any token annotation that wraps it.
+    The character a production defines outright, or None — the one codepoint its body takes, however it is spelled.
 
-    A kind named nowhere raises rather than answering None: a new way of writing one character would otherwise leave
-    that character out of the tables, and the drift gate can only see a table that changed, not one that never had it.
+    Read off what the body consumes rather than off its shape, so a character written a new way is found rather than
+    silently missing from the tables: `chars.denote` answers what a node takes, and a production defines a character
+    exactly where that is a set of one.
     """
-    while isinstance(body, (ir.Token, ir.Wrap)):
-        body = body.item
-    if isinstance(body, ir.Char):
-        return body.cp
-    if isinstance(body, ir.KINDS):
-        return None
-    raise TypeError(f"cannot tell whether {type(body).__name__} defines a character")
+    return chars.single_codepoint(chars.denote(grammar, body))
 
 
 def sites(grammar):
     """
     For each character the grammar names, where it is named: `{codepoint: ([defining], [using])}` production texts.
 
-    A production defines a character when its whole body is that character, however the production annotates it; the
-    characters no production defines are written inline, inside `ns-uri-char` and its like, so those are cited by where
-    they appear instead.
+    A production defines a character where its body takes that character and nothing else, and where several do, the one
+    that names it is the plainest of them — `chars.naming_productions` answers that for a lone character exactly as it
+    does for a wider set. The characters no production names are written inline, inside `ns-uri-char` and its like, so
+    those are cited by where they appear instead.
     """
-    found = {}
-    for name, production in grammar.items():
-        cited = f"[{production.number:03d}] {name}"
-        codepoint = defined(production.body)
+    cited = {name: f"[{production.number:03d}] {name}" for name, production in grammar.items()}
+    naming = chars.naming_productions(grammar)
+    definer = {}
+    for denotation, name in naming.items():
+        codepoint = chars.single_codepoint(denotation)
         if codepoint is not None:
-            found.setdefault(codepoint, ([], []))[0].append(cited)
-            continue
+            rivals = definer.setdefault(codepoint, [])
+            rivals.append(name)
+    found = {codepoint: ([cited[chars.simplest_name(grammar, names)]], []) for codepoint, names in definer.items()}
+
+    for name, production in grammar.items():
+        if defined(grammar, production.body) is not None:
+            continue  # its own character is named above, wherever the plainest spelling of it stands
         pending, seen = [production.body], set()
         while pending:
             node = pending.pop()
-            if isinstance(node, ir.Char) and node.cp not in seen:
-                seen.add(node.cp)
-                found.setdefault(node.cp, ([], []))[1].append(cited)
-            pending.extend(chars.children(node))
+            nested = list(chars.children(node))
+            # A character is written *here* where the node holds nothing and takes one codepoint — a leaf spelling it,
+            # rather than a shape built over one, which is cited at whatever it is built from.
+            written = None if nested else chars.single_codepoint(chars.denote(grammar, node))
+            if written is not None and written not in seen:
+                seen.add(written)
+                found.setdefault(written, ([], []))[1].append(cited[name])
+            pending.extend(nested)
     return found
 
 

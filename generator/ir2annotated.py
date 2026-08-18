@@ -36,104 +36,89 @@ def args_yaml(args):
 
 def expr_yaml(e):
     """Regenerate a value/parameter expression."""
-    if isinstance(e, ir.Param):
-        return e.name
-    if isinstance(e, ir.Lit):
-        return e.value
-    if isinstance(e, ir.Match):
-        return "(match)"
-    if isinstance(e, ir.Column):
-        return "<column>"
-    if isinstance(e, ir.AutoDetectIndent):
-        return "<auto-detect-indent>"  # written back only where the vendored grammar is regenerated for comparison
-    if isinstance(e, ir.Add):
-        return {"(+)": [expr_yaml(e.a), expr_yaml(e.b)]}
-    if isinstance(e, ir.Sub):
-        return {"(-)": [expr_yaml(e.a), expr_yaml(e.b)]}
-    if isinstance(e, ir.Atoi):
-        return {"(atoi)": expr_yaml(e.arg)}
-    if isinstance(e, ir.Len):
-        return {"(len)": expr_yaml(e.arg)}
-    if isinstance(e, ir.Flip):
-        return {"(flip)": {"var": e.var, **{b.value: expr_yaml(b.item) for b in e.branches}}}
-    if isinstance(e, ir.Ref):
-        return {e.name: args_yaml(e.args)}
-    raise TypeError(f"not an expression: {e!r}")
+    return _EXPR_YAML(e)
+
+
+# How each value expression is spelled. A kind named nowhere raises: one written back by accident would be spelled the
+# way something else is, and the roundtrip would compare the grammar against a reading of it rather than itself.
+_EXPR_YAML = ir.Reading(
+    "how a value expression is written in the annotated grammar",
+    {
+        ir.Param: lambda e: e.name,
+        ir.Lit: lambda e: e.value,
+        ir.Match: "(match)",
+        ir.Column: "<column>",
+        ir.AutoDetectIndent: "<auto-detect-indent>",  # written back only where the vendored grammar is regenerated
+        ir.Add: lambda e: {"(+)": [expr_yaml(e.a), expr_yaml(e.b)]},
+        ir.Sub: lambda e: {"(-)": [expr_yaml(e.a), expr_yaml(e.b)]},
+        ir.Atoi: lambda e: {"(atoi)": expr_yaml(e.arg)},
+        ir.Len: lambda e: {"(len)": expr_yaml(e.arg)},
+        ir.Flip: lambda e: {"(flip)": {"var": e.var, **{b.value: expr_yaml(b.item) for b in e.branches}}},
+        ir.Ref: lambda e: {e.name: args_yaml(e.args)},
+    },
+)
 
 
 def node_yaml(n):
     """Regenerate a grammar node."""
-    if isinstance(n, ir.Char):
-        return char_text(n.cp)
-    if isinstance(n, ir.Range):
-        return [hex_text(n.lo), hex_text(n.hi)]
-    if isinstance(n, ir.Ref):
-        return n.name if not n.args else {n.name: args_yaml(n.args)}
-    if isinstance(n, ir.Empty):
-        return "<empty>"
-    if isinstance(n, ir.StartOfLine):
-        return "<start-of-line>"
-    if isinstance(n, ir.EndOfStream):
-        return "<end-of-stream>"
-    if isinstance(n, ir.Invalid):
-        return "<invalid>"
-    if isinstance(n, ir.Seq):
-        return {"(all)": [node_yaml(i) for i in n.items]}
-    if isinstance(n, ir.Alt):
-        return {"(any)": [node_yaml(i) for i in n.items]}
-    if isinstance(n, ir.Star):
-        return {"(***)": node_yaml(n.item)}
-    if isinstance(n, ir.Plus):
-        return {"(+++)": node_yaml(n.item)}
-    if isinstance(n, ir.Opt):
-        return {"(???)": node_yaml(n.item)}
-    if isinstance(n, ir.Rep):
-        inner = n.count.value if isinstance(n.count, ir.Lit) else n.count.name
-        return {f"({{{inner}}})": node_yaml(n.item)}
-    if isinstance(n, ir.Look):
-        return {"(===)": node_yaml(n.item)}
-    if isinstance(n, ir.NegLook):
-        return {"(!==)": node_yaml(n.item)}
-    if isinstance(n, ir.LookBehind):
-        return {"(<==)": node_yaml(n.item)}
-    if isinstance(n, ir.Diff):
-        return {"(---)": [node_yaml(n.base), *(node_yaml(m) for m in n.minus)]}
-    if isinstance(n, ir.ExcludeAt):
-        return {"(exclude)": node_yaml(n.item)}
-    if isinstance(n, ir.SetVar):
-        return {"(set)": [n.param, expr_yaml(n.value)]}
-    if isinstance(n, ir.Increase):
-        return {"(increase)": n.param}
-    if isinstance(n, ir.Max):
-        if n.item is not None:
-            return {"(max)": [expr_yaml(n.limit), n.message, node_yaml(n.item)]}
-        return {"(max)": expr_yaml(n.limit)}
-    if isinstance(n, ir.Lt):
-        return {"(<)": [expr_yaml(n.a), expr_yaml(n.b)]}
-    if isinstance(n, ir.Le):
-        return {"(<=)": [expr_yaml(n.a), expr_yaml(n.b)]}
-    if isinstance(n, ir.Case):
-        default = {"else": node_yaml(n.default)} if n.default is not None else {}
-        return {"(case)": {"var": n.var, **{b.value: node_yaml(b.item) for b in n.branches}, **default}}
-    if isinstance(n, ir.Flip):
-        return {"(flip)": {"var": n.var, **{b.value: expr_yaml(b.item) for b in n.branches}}}
-    if isinstance(n, ir.Bind):
-        return {"(if)": node_yaml(n.cond), "(set)": [n.param, expr_yaml(n.value)]}
-    if isinstance(n, ir.Token):
-        return {"(token)": [n.code, node_yaml(n.item)]}
-    if isinstance(n, ir.Wrap):
-        return {"(wrap)": [n.begin, n.end, node_yaml(n.item)]}
-    if isinstance(n, ir.Emit):
-        return {"(emit)": n.code}
-    if isinstance(n, ir.Cut):
-        return {"(cut)": n.message}
-    if isinstance(n, ir.Commit):
-        return {"(commit)": [n.message, node_yaml(n.item)]}
-    if isinstance(n, ir.Error):
-        return {"(error)": n.message}
-    if isinstance(n, ir.Recover):
-        return {"(recover)": [node_yaml(n.recovery), node_yaml(n.item)]}
-    raise TypeError(f"not a grammar node: {n!r}")
+    return _NODE_YAML(n)
+
+
+def _max_yaml(n):
+    """A `(max)`'s: the wrapping form spells what it covers, and the vendored grammar's bare form its limit alone."""
+    if n.item is not None:
+        return {"(max)": [expr_yaml(n.limit), n.message, node_yaml(n.item)]}
+    return {"(max)": expr_yaml(n.limit)}
+
+
+def _case_yaml(n):
+    """A `(case)`'s: the variable it switches on, a branch per value, and the else where it has one."""
+    default = {"else": node_yaml(n.default)} if n.default is not None else {}
+    return {"(case)": {"var": n.var, **{b.value: node_yaml(b.item) for b in n.branches}, **default}}
+
+
+# How each node is spelled. A kind named nowhere raises: one written back by accident would be spelled the way something
+# else is, and the roundtrip would compare the grammar against a reading of it rather than itself.
+_NODE_YAML = ir.Reading(
+    "how a grammar node is written in the annotated grammar",
+    {
+        ir.Char: lambda n: char_text(n.cp),
+        ir.Range: lambda n: [hex_text(n.lo), hex_text(n.hi)],
+        ir.Ref: lambda n: n.name if not n.args else {n.name: args_yaml(n.args)},
+        ir.Empty: "<empty>",
+        ir.StartOfLine: "<start-of-line>",
+        ir.EndOfStream: "<end-of-stream>",
+        ir.Invalid: "<invalid>",
+        ir.Seq: lambda n: {"(all)": [node_yaml(i) for i in n.items]},
+        ir.Alt: lambda n: {"(any)": [node_yaml(i) for i in n.items]},
+        ir.Star: lambda n: {"(***)": node_yaml(n.item)},
+        ir.Plus: lambda n: {"(+++)": node_yaml(n.item)},
+        ir.Opt: lambda n: {"(???)": node_yaml(n.item)},
+        # The count is a number where it is fixed and the parameter's name where it is carried, which is how each of
+        # those is spelled as a value expression anyway.
+        ir.Rep: lambda n: {f"({{{expr_yaml(n.count)}}})": node_yaml(n.item)},
+        ir.Look: lambda n: {"(===)": node_yaml(n.item)},
+        ir.NegLook: lambda n: {"(!==)": node_yaml(n.item)},
+        ir.LookBehind: lambda n: {"(<==)": node_yaml(n.item)},
+        ir.Diff: lambda n: {"(---)": [node_yaml(n.base), *(node_yaml(m) for m in n.minus)]},
+        ir.ExcludeAt: lambda n: {"(exclude)": node_yaml(n.item)},
+        ir.SetVar: lambda n: {"(set)": [n.param, expr_yaml(n.value)]},
+        ir.Increase: lambda n: {"(increase)": n.param},
+        ir.Max: _max_yaml,
+        ir.ColumnLt: lambda n: {"(<)": [expr_yaml(n.a), expr_yaml(n.b)]},
+        ir.ColumnLe: lambda n: {"(<=)": [expr_yaml(n.a), expr_yaml(n.b)]},
+        ir.Case: _case_yaml,
+        ir.Flip: lambda n: {"(flip)": {"var": n.var, **{b.value: expr_yaml(b.item) for b in n.branches}}},
+        ir.Bind: lambda n: {"(if)": node_yaml(n.cond), "(set)": [n.param, expr_yaml(n.value)]},
+        ir.Token: lambda n: {"(token)": [n.code, node_yaml(n.item)]},
+        ir.Wrap: lambda n: {"(wrap)": [n.begin, n.end, node_yaml(n.item)]},
+        ir.Emit: lambda n: {"(emit)": n.code},
+        ir.Cut: lambda n: {"(cut)": n.message},
+        ir.Commit: lambda n: {"(commit)": [n.message, node_yaml(n.item)]},
+        ir.Error: lambda n: {"(error)": n.message},
+        ir.Recover: lambda n: {"(recover)": [node_yaml(n.recovery), node_yaml(n.item)]},
+    },
+)
 
 
 def regenerate(productions):

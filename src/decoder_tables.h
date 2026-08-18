@@ -17,9 +17,9 @@
 #define YS_LIT_KEY_CHARACTER_TABULATION      0x0610FA01u // U+0009, [032] s-tab
 #define YS_LIT_KEY_LINE_FEED                 0x04000242u // U+000A, [024] b-line-feed
 #define YS_LIT_KEY_CARRIAGE_RETURN           0x04000243u // U+000D, [025] b-carriage-return
-#define YS_LIT_KEY_SPACE                     0x0600FA04u // U+0020, [031] s-space, [051] ns-esc-space
+#define YS_LIT_KEY_SPACE                     0x0600FA04u // U+0020, [031] s-space
 #define YS_LIT_KEY_EXCLAMATION_MARK          0x0405FB05u // '!',    [015] c-tag
-#define YS_LIT_KEY_QUOTATION_MARK            0x0405EB06u // '"',    [019] c-double-quote, [052] ns-esc-double-quote
+#define YS_LIT_KEY_QUOTATION_MARK            0x0405EB06u // '"',    [019] c-double-quote
 #define YS_LIT_KEY_NUMBER_SIGN               0x0405FB07u // '#',    [012] c-comment
 #define YS_LIT_KEY_DOLLAR_SIGN               0x0445FA08u // '$',    [039] ns-uri-char
 #define YS_LIT_KEY_PERCENT_SIGN              0x0405FB09u // '%',    [020] c-directive
@@ -51,7 +51,7 @@
 #define YS_LIT_KEY_LATIN_CAPITAL_LETTER_U    0x0547FA23u // 'U',    [061] ns-esc-32-bit
 #define YS_LIT_KEY_LATIN_CAPITAL_LETTER_Y    0x0547FA24u // 'Y',    [086] ns-yaml-directive
 #define YS_LIT_KEY_LEFT_SQUARE_BRACKET       0x0404FBA5u // '[',    [008] c-sequence-start
-#define YS_LIT_KEY_REVERSE_SOLIDUS           0x0445EA26u // U+005C, [041] c-escape, [054] ns-esc-backslash
+#define YS_LIT_KEY_REVERSE_SOLIDUS           0x0445EA26u // U+005C, [041] c-escape
 #define YS_LIT_KEY_RIGHT_SQUARE_BRACKET      0x0404FBA7u // ']',    [009] c-sequence-end
 #define YS_LIT_KEY_LOW_LINE                  0x0445FA28u // '_',    [056] ns-esc-non-breaking-space
 #define YS_LIT_KEY_GRAVE_ACCENT              0x0405FF29u // '`',    [021] c-reserved, [022] c-indicator

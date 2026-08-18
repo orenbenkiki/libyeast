@@ -245,9 +245,8 @@ All notable changes to this project are documented here. The format follows
   and judged whole, which is what `s-indent-le`'s "the maximal run, and then its length against `n`" needs: falling back
   to a shorter run would let an over-indented line pass as if it had none. `span-consumes` writes each as the one scan
   it is — `x*` a `ConsumeSpan`, `x+` the character and that span behind it, 56 in all — and a counted one the same way:
-  `x{n}` over a character class is the `n` characters of the set, all of them or none, which is a `ConsumeCountedSpan`,
-  a count the parse works out included, since a non-positive one matches nothing there as it does here. Seven of those,
-  and `Rep` is gone from the grammar with them.
+  `x{n}` over a character class is a run of up to `n` characters of the set and the guard asking whether it reached `n`,
+  a count the parse works out being the two ways it is. Seven of those, and `Rep` is gone from the grammar with them.
 
   A repetition of a way is said as the ways it is, and `lower-runs` says both spellings that way: a turn, a recursion
   taking the rest, and a settled region around the turns after the first. Every turn takes a character, a turn taking
@@ -1160,6 +1159,48 @@ All notable changes to this project are documented here. The format follows
   ignorant. Wired to the gate, it named `Look` in front of `OpenWindow` at once — the pair that was holding a flow
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
+
+- **Nothing a way performs can fail.** A counted scan took `n` characters of a class or none at all, and no gate could
+  protect it: a gate speaks for the character in front of it and not for `n` of them, so a scan asked for more than is
+  there was a way failing on what it does rather than on what it decided — 52 of them in the final grammar, the one
+  failure edge in the machine that no question stood in front of. `x{n}` is now a run of up to `n` of the class, which
+  takes what is there and says whether it reached the limit, and the guard behind it asks. The taking always matches,
+  the refusing is a question like any other, and `ConsumeCountedSpan` is gone from the IR. The shape is `x+`'s, which
+  the pipeline already wrote: a scan that may take none, made to take one by the `Look` in front of it. So the split on
+  the count is made where the run and its guard are minted, and `split-counted-spans-on-the-count` — which gated the
+  scan afterwards — is gone with the kind it gated.
+
+- **A reading says what it has not met, and answers for it or does not.** `ir.Reading` took `NEVER` for a kind a wide
+  group named but the reading never meets, which claimed an impossibility nobody had proved. Two lists replace it, and
+  they differ in whether there is an answer: `untested` names a kind a family answers for that nothing has ever asked
+  about — one that arrives is answered from the family, recorded, listed and fails the gate, so the decision is made
+  rather than passed over — and `unknown` names one nothing answers for at all, which raises where it stands. Naming a
+  kind untested that no group of the reading names is refused: there is no answer to call untested. Splitting the two
+  standing uses proved the distinction real — seven kinds their families answer for, and `Choice`, which nothing does.
+
+- **What a run reaches is recorded by the run.** Coverage was collected by rebinding `interpreter.match` and
+  `interpreter.evaluate`, so a handler reaching a production any other way was missed and the report read exactly like a
+  covered one. A run now fills an `interpreter.Coverage` where it enters and hands back productions, and the gate reads
+  it: there is no outside to bypass. The same reasoning retires `interpreter.match`'s own dispatch chain — it is a table
+  over the kinds, but not an `ir.Reading`, since a reading is called through its type and a few thousand of those nested
+  is all a C stack holds, where this matcher recurses once per grammar step.
+
+- **The families of node kinds are named in one place.** Every list of two or more kinds lived beside whichever reading
+  used it, so the same idea had several memberships and nothing compared them. They are one section of `ir.py` now, and
+  reading them together found two that did not match their own words: the scan family left out the trimmed scan while
+  saying "a scan of a character class, which may be asked for none at all", and the zero-width family left out the
+  gate's literal form though it matches without consuming, which `validate_grammar` had been patching around inline. A
+  third, `TAKES_CHARACTERS`, was `CONSUMING` narrowed to the spellings one phase uses — it made a way holding a `Char`
+  count as taking nothing, and is gone. What a family is called now says which category its kinds are drawn from, and
+  `ZERO_WIDTH` is `ASKED_NOT_TAKEN_NODES`: taking nothing is what every action and guard does, and holding characters
+  that are asked about and never taken is what those five have.
+
+- `no-empty-nodes`, settled by `build-alternatives`. A way is its gate, its actions and the calls it hands control to,
+  and an empty match is none of the three — a way matching the empty input is the way with no gate, no action and no
+  call — so there is nowhere in the machine's own words for one to stand. The lowerings mint them freely, 5 in the base
+  grammar rising to 160, and the last 99 go where the ways are built.
+
+- `Lt` and `Le` are `ColumnLt` and `ColumnLe`, which is what they compare.
 
 ### Changed
 

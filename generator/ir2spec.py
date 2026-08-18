@@ -22,6 +22,16 @@ import yaml
 # them out and never notice: `x / end-block-scalar` is `x / <empty>`, which is `x?`, which is what it writes.
 MARKER_ONLY = frozenset({"end-block-scalar"})
 
+# A scope the official grammar has no question for, so what it wraps is what that grammar writes in its place: a
+# `(recover)` says where a failed cut stops unwinding, a `(commit)` is a scoped cut, an annotation says what the
+# characters are called, a `(wrap)` puts markers around them. A `(max)` is a scope too and is not one of these — the
+# official grammar writes its bound, as a bare `(max)` before what it covers.
+WRAPS_WHAT_IT_WRITES = (ir.Commit, ir.Recover, ir.Token, ir.Wrap)
+
+# What libyeast writes and the official grammar has nothing for: the tokens it emits, the errors it names, and the point
+# it commits at. A sequence drops these rather than writing something in their place.
+WRITES_NOTHING = (ir.Cut, ir.Emit, ir.Error)
+
 # The rules libyeast adds around the official grammar: the root the parser runs, and the unparsed recovery it and a
 # failed cut hand off to. They consume, so they are not marker-only, and the official grammar has no counterpart to
 # compare them against, so recovering it just leaves them out.
@@ -102,9 +112,7 @@ def normalize(node):
 
 def erase(node, owner):
     """What the official grammar writes where libyeast writes `node`."""
-    if isinstance(node, (ir.Token, ir.Wrap, ir.Recover, ir.Commit)):
-        # A `(recover)` says where a failed cut stops unwinding, and a `(commit)` is a scoped cut, both questions the
-        # official grammar never asks: what they wrap is what that grammar writes.
+    if isinstance(node, WRAPS_WHAT_IT_WRITES):
         return erase(node.item, owner)
     if isinstance(node, ir.Max) and node.item is not None:
         # libyeast wraps a production in `(max)`; the official grammar writes the character bound as a bare `(max)`

@@ -29,6 +29,8 @@ INDENT_MODES = annotated2ir.INDENT_MODES
 SILENT = (
     ir.Char,
     ir.CharSet,
+    ir.ColumnLe,
+    ir.ColumnLt,
     ir.Cut,
     ir.Diff,
     ir.Empty,
@@ -37,12 +39,15 @@ SILENT = (
     ir.Flip,
     ir.Increase,
     ir.Invalid,
-    ir.Le,
-    ir.Lt,
     ir.Range,
     ir.SetVar,
     ir.StartOfLine,
 )
+# A scope whose markers are the markers of what it holds: it matches what is inside it, so what is inside it emits.
+# Passing over one would let a marker opened there go unclosed, and no other gate looks. A `(max)` is one of these where
+# it wraps a match and is not one where it is the vendored grammar's bare length note, so it is answered for on its own;
+# a `(recover)` is not one either, its two ways having to agree rather than one of them being the answer.
+SCOPES = (ir.Commit, ir.Token)
 BALANCED = ((), ())  # no marker left open, and none closed that was not opened here
 
 
@@ -85,44 +90,67 @@ def agreed(effects, what):
 
 def effect(node, values, known):
     """The markers `node` leaves open or closes, with `c` and `t` fixed to `values`."""
-    if isinstance(node, ir.Emit):
-        return marker(node.code)
-    if isinstance(node, ir.Wrap):
-        return compose(compose(marker(node.begin), effect(node.item, values, known)), marker(node.end))
-    if isinstance(node, (ir.Token, ir.Commit)) or (isinstance(node, ir.Max) and node.item is not None):
-        # A `(<<<)`, a `(commit)` or a wrapping `(max)` matches what is inside it, so what is inside it emits. Passing
-        # over it would let a marker opened there go unclosed, and no other gate looks.
-        return effect(node.item, values, known)
-    if isinstance(node, ir.ZERO_WIDTH):
-        return BALANCED  # a lookahead emits nothing, whatever it matches
-    if isinstance(node, ir.Seq):
-        settled = BALANCED
-        for item in node.items:
-            settled = compose(settled, effect(item, values, known))
-        return settled
-    if isinstance(node, ir.Alt):
-        return agreed([effect(item, values, known) for item in node.items], "an alternation")
-    if isinstance(node, ir.Case):
-        # A rule reached only in some contexts lists only those: `ns-plain` has no block-in branch, because nothing
-        # reaches it with block-in. A branch that is not there is a path that cannot be taken, and emits nothing.
-        taken = {branch.value: branch.item for branch in node.branches}.get(values[node.var])
-        return BALANCED if taken is None else effect(taken, values, known)
-    if isinstance(node, ir.Opt):
-        return agreed([effect(node.item, values, known), BALANCED], "an optional rule")
-    if isinstance(node, (ir.Star, ir.Plus, ir.Rep)):
+    return _EFFECT(node, values, known)
+
+
+def _effect_of_run(node, values, known):
+    """A sequence's: each item after the one before it, what one leaves open being what the next may close."""
+    settled = BALANCED
+    for item in node.items:
+        settled = compose(settled, effect(item, values, known))
+    return settled
+
+
+def _effect_of_switch(node, values, known):
+    """
+    A `(case)`'s: the branch the values select, and nothing where it has none.
+
+    A rule reached only in some contexts lists only those: `ns-plain` has no block-in branch, because nothing reaches it
+    with block-in. A branch that is not there is a path that cannot be taken, and emits nothing.
+    """
+    taken = {branch.value: branch.item for branch in node.branches}.get(values[node.var])
+    return BALANCED if taken is None else effect(taken, values, known)
+
+
+def _effect_of_recovery(node, values, known):
+    """
+    A recovery's: the one way its two paths balance.
+
+    Recovering closes what the item left open, down to here, so that path leaves only what the recovery itself emits —
+    and the item's own way has to agree with it.
+    """
+    return agreed([effect(node.item, values, known), effect(node.recovery, values, known)], "a recovery")
+
+
+# What each kind leaves open and closes. A kind named nowhere raises: what its markers do is then something nothing has
+# looked at, which is how a `(recover)` once hid every marker inside it.
+_EFFECT = ir.Reading(
+    "the markers a match leaves open and the ones it closes",
+    {
+        ir.Emit: lambda node, values, known: marker(node.code),
+        ir.Wrap: lambda node, values, known: compose(
+            compose(marker(node.begin), effect(node.item, values, known)), marker(node.end)
+        ),
+        SCOPES: lambda node, values, known: effect(node.item, values, known),
+        # A wrapping `(max)` is one of those; the vendored grammar's bare `(max)` is a length note and matches nothing.
+        ir.Max: lambda node, values, known: BALANCED if node.item is None else effect(node.item, values, known),
+        ir.ASKED_NOT_TAKEN_NODES: BALANCED,  # what is asked about emits nothing, whatever it matches
+        SILENT: BALANCED,
+        ir.Seq: _effect_of_run,
+        ir.Alt: lambda node, values, known: agreed(
+            [effect(item, values, known) for item in node.items], "an alternation"
+        ),
+        ir.Case: _effect_of_switch,
+        ir.Opt: lambda node, values, known: agreed([effect(node.item, values, known), BALANCED], "an optional rule"),
         # A rule that opens or closes a marker cannot be repeated: twice around leaves twice as many open.
-        return agreed([effect(node.item, values, known), BALANCED], "a repeated rule")
-    if isinstance(node, ir.Bind):
-        return effect(node.cond, values, known)
-    if isinstance(node, ir.Recover):
-        # Both ways through must balance the same way. Recovering closes what the item left open, down to here, so that
-        # path leaves only what the recovery itself emits — and the item's own way has to agree with it.
-        return agreed([effect(node.item, values, known), effect(node.recovery, values, known)], "a recovery")
-    if isinstance(node, ir.Ref):
-        return known.get(node.name, BALANCED)
-    if isinstance(node, SILENT):
-        return BALANCED
-    raise TypeError(f"cannot tell what markers {type(node).__name__} leaves: it is not known to emit, or not to")
+        ir.REPETITIONS: lambda node, values, known: agreed(
+            [effect(node.item, values, known), BALANCED], "a repeated rule"
+        ),
+        ir.Bind: lambda node, values, known: effect(node.cond, values, known),
+        ir.Recover: _effect_of_recovery,
+        ir.Ref: lambda node, values, known: known.get(node.name, BALANCED),
+    },
+)
 
 
 def settle(grammar, values):

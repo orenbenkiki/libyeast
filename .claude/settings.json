@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/no-shell-file-writes.sh\"",
+            "timeout": 10,
+            "statusMessage": "checking for shell file writes"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/reading-rule.sh\"",
+            "timeout": 10,
+            "statusMessage": "checking the Reading rule"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/tense-check.sh\"",
+            "timeout": 10,
+            "statusMessage": "checking tense"
+          }
+        ]
+      }
+    ]
+  }
+}

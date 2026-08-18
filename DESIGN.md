@@ -6,8 +6,9 @@ graph, resolving anchors, aliases and tags, constructing native values, and the 
 (duplicate mapping keys, mapping key order) are a higher layer's and out of scope. Its one departure from YAML 1.2 is
 that it reads UTF-8 only, forgoing the UTF-16 and UTF-32 the spec also asks for. This document is a map: it names the
 pieces and how they relate, and points at where each piece's design and rationale live — in that piece's own source (its
-file or its comments). The full public API surface is declared, but the parser core is not yet implemented — parsing
-returns a "not implemented" error — so what exists is the project framework and this facade.
+file or its comments). The full public API surface is declared, but the parser core is not yet implemented — reading a
+token from a parser fills a single error token reading "not implemented" — so what exists is the project framework and
+this facade.
 
 ## Pieces
 
@@ -57,21 +58,22 @@ returns a "not implemented" error — so what exists is the project framework an
   `ys_read_token`'s return, not as a token; there is one terminal `is_done` state, reached by a clean end-of-stream or
   by a fault alike. There is one automaton, not a scanner and a parser: in yeast the automaton's output already *is* the
   token stream, so a second layer would need a vocabulary that does not exist — and would be the one thing on the hot
-  path the grammar did not derive. The automaton itself is not generated yet (see `PLAN.md`); what is here is everything
-  it will run on.
+  path the grammar did not derive. The automaton is not generated, and the runtime here is partial — built for what the
+  grammar asked when it was written, and narrower than what it asks now: the queue holds one undivided open run with a
+  single marker ahead of it, where the grammar's provisional vocabulary marks a run and names a side of that mark.
 - **Messages** — `src/messages.h` and `src/messages.c`: what libyeast says to its caller, as one table of static strings
   indexed by name, so that all of it can be read in one place and swapped for another language. The messages that depend
   on the grammar live in `grammar/messages.yaml`, keyed by the code a `(cut)` or an `(error)` names — the one source the
-  interpreter reads and the C table will be generated from, gated so the two cannot drift. Each says what was expected
-  and never what was found, the byte that failed being the first unparsed token behind the error. That table is not
-  generated into `src/parser_tables.h` yet. The messages `src/messages.c` keeps for itself are the ones no grammar can
-  reach: the wire reader's, which answer for a broken wire rather than for a parse. Running out of memory and a reader
-  that failed are not among them — they are `ys_read_token`'s return value, a `ys_status`, not a token with text, so the
-  token model stays about the data and not about the machine running on it. That is also why `tests/spec/` pins
-  `YS_CODE_ERROR` and no other error code: a fixture is a grammar and an input, and a host failure is a property of
-  neither — when a cap trips depends on how `ys_memory_grow` grows a buffer, and a reader fails for reasons the input
-  cannot express. So the host failures are the C parser's alone, and `tests/test_parser.c` covers them there with a
-  refusing allocator and a drip reader.
+  interpreter reads, gated against the grammar's own error sites so a renamed code or an orphaned message fails the
+  build. Each says what was expected and never what was found, the byte that failed being the first unparsed token
+  behind the error. That table is not generated into `src/parser_tables.h` yet. The messages `src/messages.c` keeps for
+  itself are the ones no grammar can reach: the wire reader's, which answer for a broken wire rather than for a parse.
+  Running out of memory and a reader that failed are not among them — they are `ys_read_token`'s return value, a
+  `ys_status`, not a token with text, so the token model stays about the data and not about the machine running on it.
+  That is also why `tests/spec/` pins `YS_CODE_ERROR` and no other error code: a fixture is a grammar and an input, and
+  a host failure is a property of neither — when a cap trips depends on how `ys_memory_grow` grows a buffer, and a
+  reader fails for reasons the input cannot express. So the host failures are the C parser's alone, and
+  `tests/test_parser.c` covers them there with a refusing allocator and a drip reader.
 - **Decoder** — `src/decoder.h`, `src/decoder.c` and the generated `src/decoder_tables.h`: the bottom layer, which turns
   input bytes into characters the parser can branch on. A character becomes a 32-bit key holding the id of the character
   if the grammar names it, one bit per character set the grammar tests, and the bytes it consumed — so a test is one
@@ -82,7 +84,7 @@ returns a "not implemented" error — so what exists is the project framework an
   documents the key; `decoder.c` holds the UTF-8 mechanics, which are RFC 3629's and not the grammar's.
 - **Grammar** — `grammar/yeast-spec-1.2.yaml`: libyeast's grammar, and the source everything else is generated from. It
   is the YAML 1.2 productions with three additions: each indicator character is reached through the production that
-  names it; 98 of the 211 productions carry the yeast token codes — which productions bracket their match in
+  names it; 104 of the 224 productions carry the yeast token codes — which productions bracket their match in
   `Begin`/`End` markers, and what code each consumed character is given; and six rules are libyeast's own — the root the
   parser runs, `l-yeast-stream` (a YAML stream, and then the end of the input), and the
   `l-recover`/`l-recover-entry`/`l-unparsed`/`nb-unparsed`/`s-indent-le-line` that answer for input it cannot parse.
@@ -110,9 +112,8 @@ returns a "not implemented" error — so what exists is the project framework an
   `check_normalize.py` and `check_determinize.py`, which report through `gate.py`. A fixture whose production the sweep
   takes out of a pipeline stage is not dropped: `check_normalize` pins it to the last stage whose grammar can run it,
   holds it there token for token, and credits coverage from where it stands — so the stranded fixtures (a family a
-  speculation replaced, a nullable production its consuming copy replaced, a bare monomorphic copy only a fixture
-  enters, `c-reserved`, which the spec defines and nothing references) go on guarding the last grammar that reaches
-  them. This is where the grammar-derived parser will be generated (see `PLAN.md`); it runs on Python 3 + PyYAML.
+  speculation replaced, a bare monomorphic copy only a fixture enters, `c-reserved`, which the spec defines and nothing
+  references) go on guarding the last grammar that reaches them. It runs on Python 3 + PyYAML.
 - **YamlReference** — `third_party/yamlreference/`: the Haskell YAML 1.2 reference parser, vendored to be read. Its
   grammar carries the token annotations `grammar/yeast-spec-1.2.yaml` replicates, and its `Code` type is where `ys_code`
   comes from. It is LGPL, while libyeast is MIT: no source is copied from it, nothing links against it, and nothing of
@@ -125,59 +126,175 @@ returns a "not implemented" error — so what exists is the project framework an
   globbed, with `CONFIGURE_DEPENDS` to reconfigure when the set changes, so a new file cannot be left out of the build
   or slip past the gate — which a hand-kept list is exactly what allows.
 - **Gate** — `Makefile` wraps CMake as the incremental pre-commit gate `make pc`, a pure aggregator of five sub-gates:
-  `all` (the build), `test` (Debug + Release tests and the `// UNTESTED` coverage gate), `verify` (the fifteen generator
-  gates, `verify-roundtrip` through `verify-decoder`), `vet` (formatting, lint, comment rule, marker scan,
-  version-drift, packaging), and `gh-pages` (Doxygen docs + gcovr coverage report). Stamp-file targets keep it
+  `all` (the build), `test` (Debug + Release tests and the `// UNTESTED` coverage gate), `verify` (the fourteen
+  generator gates, `verify-roundtrip` through `verify-decoder`; `verify-provisional` and `verify-determinize` stand
+  aside, neither having anything to read in the pipeline as it stands), `vet` (formatting, lint, comment rule, marker
+  scan, version-drift, packaging), and `gh-pages` (Doxygen docs + gcovr coverage report). Stamp-file targets keep it
   incremental.
 - **CI** — `.github/workflows/`: one workflow per sub-gate (`vet.yml`, `test.yml`, `verify.yml`, `gh-pages.yml`) plus
   `codeql.yml`, each producing an independent status badge. `gh-pages.yml` publishes the Doxygen docs and the coverage
   report to GitHub Pages; the coverage-percentage badge reads a JSON published there. `dependabot.yml` keeps the pinned
   GitHub Actions current.
-- **Quality scripts** — `scripts/`: `check_comments.py` (comment-style rule), `coverage_gate.py` (the `// UNTESTED`
-  contract), `coverage_badge.py` (coverage-percentage badge JSON), `check-deps.sh` (tool presence), and the
-  `install-*-deps.sh` dependency installers. Every generator gate reports through `generator/gate.py`, so that a failure
-  reads the same wherever it came from and no gate can report success by forgetting to exit.
+- **Quality scripts** — `scripts/`: `check_comments.py` (comment-style rule), `wrap_long_comments.py` (reflows a comment
+  block to the column limit, and checks one), `coverage_gate.py` (the `// UNTESTED` contract), `coverage_badge.py`
+  (coverage-percentage badge JSON), `check-deps.sh` (tool presence), and the `install-*-deps.sh` dependency installers.
+  Every generator gate reports through `generator/gate.py`, so that a failure reads the same wherever it came from and
+  no gate can report success by forgetting to exit.
 - **Packaging** — `cmake/*.in` (relocatable pkg-config + CMake package config), `conanfile.py` (Conan), and
   `ports/yeast/` (vcpkg). The version flows from the single CMake source into all of them; `make check-version` guards
   against vcpkg drift.
 - **Docs** — `Doxyfile` drives the API docs from the header comments, completeness-gated: an undocumented public symbol
   or a missing `@param`/`@return` fails the build.
 
+## Why the parser is shaped this way
+
+A YAML parser sits on one horn of a dilemma. A mechanically faithful one — backtracking over the productions as written
+— can go superlinear; a hand-written state machine is fast and O(n) but its conformance is established test by test,
+faithful by luck rather than by derivation. libyeast is meant to be both: a deterministic, committed,
+character-at-a-time automaton with an indentation stack and bounded deferred-token tracking, generated from the
+parameterized productions, so its speed comes from the state machine and its fidelity from the derivation.
+
+**The one load-bearing fact:** YAML restricts implicit ("simple") keys to a **single line**. That restriction is what
+makes determinization finite, makes the deferred-token set bounded, and makes a pull `ys_read_token` able to return
+without draining the whole document. It does triple duty, and the architecture rests on it. It bounds the *key* deferral
+and nothing else — there is a second deferral, and the block scalar is where it lives.
+
+**Indentation detection is not the problem.** A block collection's indentation, and an inline one's, are read straight
+off the current column — YamlReference peeks past comment lines first, but `s-l-comments` has already eaten them, so
+there is nothing to peek past. Those two cost no lookahead at all.
+
+**The empty lines that open a block scalar are the problem, and the chomping is why.** An empty line there is content if
+a content line follows it — `l-empty` — and is chomped away if none does — `b-non-content`. The same line, told apart by
+something that has not happened yet. So none of those tokens can be handed back until the parser reaches a content line
+or the end of the scalar, and the run of them has no bound: YAML bounds lookahead only for implicit keys, at 1024
+characters, and says nothing at all here. Nor is this an artefact of yeast — the *value* depends on it too: `|-` with
+two blank lines and nothing after is `""`, and with `text` after is `"\n\ntext"`, so any parser that produces a value
+looks exactly as far.
+
+So libyeast queues them. The tokens of the run are built and held, none handed back; when the run resolves, either they
+become content and the scalar's end arrives later, or `end-scalar` is **injected ahead of them** and they become the
+breaks that were chomped away — the marker's position is what says they were never content. `end-block-scalar` exists to
+emit that marker, and without it an empty stripped block scalar opens a scalar it never closes.
+
+`max_bytes` bounds it, being the same guard a single enormous token needs. The buffered input, the tokens held back with
+it, and the stack that deep nesting grows are capped together, since a run that is never resolved grows all three; past
+the cap `ys_read_token` returns `YS_FAILED_MEMORY`, the caller's sizing to fix.
+
+**An explicit pushdown automaton, not a call stack.** The pull API — the caller invokes `ys_read_token` and the parser
+does not call back — forces the lowering target, and the speed and streaming requirements agree with it: all three want
+the same non-recursive machine. A recursive-descent shape keeps "where am I" in the C return-address chain, which cannot
+suspend to hand back a token, so what the generator emits is a state enum, an explicit heap stack and a single dispatch
+loop. Suspension is then free: run the loop until a token is produced, save the state, return. That is libyaml's shape,
+and libyaml's API is pull for the same reason.
+
+**The deferred set is the token queue with a resolution tag.** The possibly-key, possibly-scalar hypothesis is a queue
+entry marked undecided; a read hands back the frontmost decided token, advancing the input only where the head is still
+undecided or the queue is empty. Because the ambiguity is line-bounded, the buffering before an honest return is bounded
+too.
+
+**Where the rewind problem went.** A backtracking parser would have to discard emitted tokens on every failed
+alternative. A committed automaton does not backtrack — a transition emits on commit — so there is nothing to rewind.
+The only undecided tokens are the ones inside a line-bounded lookahead; they live in the queue above and are retyped
+there if the hypothesis fails. The single-line rule that bounds the deferral bounds the retention with it. Indentation
+detection, the other deferral, retains nothing at all: it consumes and emits as it goes.
+
+## Six parameters, two fates
+
+The productions are indexed by six parameters, and the move the whole generator turns on — a binding-time analysis — is
+to sort them into two fates and treat those completely differently. `c` and `n` are the exemplars.
+
+- **`c` — context · static.** `c` ranges over a **finite** set (block-in, block-out, flow-in, flow-out, block-key,
+  flow-key), so it is specialized away at generation time: each `c`-parameterized production monomorphizes into at most
+  six concrete ones, and it is gone from the runtime.
+- **`n` — indentation · runtime.** `n` is an **unbounded** integer threaded as `s-indent(n)`, `s-indent(<n)`,
+  `s-indent(≤n)`. It cannot be specialized away and survives into the emitted automaton, carried on the indentation
+  stack.
+
+The others follow the same two fates: **`t`** (chomping — strip, clip, keep) and **`r`** (the resume policy
+`ys_options.resume` chooses) are finite and specialize away like `c`; **`m`** (the auto-detected indent) and **`f`**
+(the floor a block scalar's leading empty lines set for its first content line) are unbounded integers and are held like
+`n` — not threaded, in the end, but read off the one slot each, which is what *What the parse may hold* is about. So the
+runtime carries `n`, `m` and `f` and never sees `c`, `t` or `r`: the emitted C is one automaton per resume policy, and
+`ys_options.resume` picks the start state.
+
+Getting the split right is the crux: partial-evaluate over `c` while *preserving* `n`.
+
+```
+# a production, before and after c-specialization
+ns-plain(n, c)          ::= parameterized on both
+
+  # becomes, at generation time:
+ns-plain-blockKey(n)    # c pinned → concrete automaton fragment
+ns-plain-flowIn(n)      # n still threaded → indentation stack
+```
+
 ## The normalization pipeline, one goal at a time
 
 The pipeline in `generator/normalize.py` is a sequence of phases, each owning one invariant: a phase adds steps until
 that count is none, and from its end the law's "none stays none" makes every later step keep it. A phase finished with a
-green corpus is a checkpoint that lands on its own. The order is dependency's rather than the meter's — Phase 0 settles
-`no-i-t-parameters`, neither the chomping nor a block scalar's indentation mode declared, passed or read; Phase 1
-settles `every-difference-is-between-character-sets` and then `every-character-question-is-a-character-set`, and follows
-the specialization because a set the context picks denotes nothing until a caller is known; Phase 2 settles
-`no-f-parameter`, the block scalar's leading-empty floor; Phase 3 settles `no-m-parameter`, the detected indent; Phase 4
-settles `no-n-parameter`, the indentation itself; Phase 5 is the empties, and settles
-`every-way-is-either-empty-or-consumes`, then `every-production-is-either-empty-or-consumes`, then
-`no-nested-production-matches-empty`; Phase 6 is the wrappers, one invariant per kind of scope; Phase 8 is the
-flattening, which settles `no-choice-of-choices` by writing out a choice that a way of a choice calls, so every way of
-it stands where a gate can be put on it rather than one call below. A step written where its goal's other steps already
-ran is a smaller step, against a grammar with less in it.
+green corpus is a checkpoint that lands on its own. A step written where its goal's other steps already ran is a smaller
+step, against a grammar with less in it.
 
-One invariant belongs to no phase. `every-option-is-reachable` is claimed from the moment the contexts are monomorphized
-and every step after answers for it: a choice goes on to its next way exactly where the one in front of it fails and is
-handed back, so a way no input refuses leaves nothing for the ways behind it to be entered on. Backtracking hides it —
-the way matches, the continuation fails, the parse returns and tries the next — and a machine that never returns simply
-loses them. It reads none from the claim through the whole pipeline.
+Which phase owns which invariant, and which steps serve it, is declared in `STEPS` beside the steps themselves and is
+not repeated here: a second telling is a second thing to hold true, and it is the telling rather than the list that goes
+stale. What is worth saying here is the shape. The order is dependency's rather than the meter's: the parameters go
+before anything that reads a grammar without resolving a call, the character questions follow the specialization because
+a set a context picks denotes nothing until a caller is known, the scopes become pairs before a way is cut into a call
+and a continuation, and the gates come last because there is nothing to gate until a body is an ordered list of ways.
+`invariant_faults` holds the whole list to the law, and `unsettled_invariants` names what the final grammar still breaks
+— one count, `every-conditional-way-is-gated`, which the last phase lowers and does not finish.
 
-**Gate, peek, guard — three words, each for one thing.** A **gate** is the field of an alternative on which the choice
-is made, asked where the alternative is entered. A **peek** is the question in it about the character in front of the
-parse, a `CharSet` or a `LiteralPeek`. A **guard** is a zero-width node that decides — `Look`, `NegLook`, `LookBehind`,
-`StartOfLine`, `EndOfStream`, `Le`, `Lt` — and belongs in a gate, one among a way's actions being a decision asked a
-step too late. "Test" is none of these and names nothing: it has stood for all three and for a probe besides. PLAN.md
-carries the same three definitions, and a name in the code still saying "test" is owed a rename to what it means.
+**The shape comes before the determinizing, and the reasons are structural rather than a preference.**
+
+- A decision point in the tree has no identity. `Seq(a, (x | y), b)` decides in the middle of a sequence, and its follow
+  is `b` and whatever the caller's is, so a commit-safety certificate would be a statement about a context that minting
+  a continuation then changes. Determinizing first means proving each one, reshaping, and proving it again.
+- A determinizer walks configurations of `(production, alternative, cursor)` — subset construction over gated ways. On a
+  tree there is nothing for it to park at, so determinizing first means a second determinizer for a shape on its way
+  out.
+- The reshaping breaks what determinism rests on, by design: giving a choice a production of its own hands nullability
+  back, and splitting a way into a call and a continuation moves what a certificate was written against. Determinism
+  first pays that cost once per shape step, for ever.
+- A speculation's mark and injections stand where a shared prefix ends, which is a cursor into an alternative. In the
+  tree that boundary is a path through nested nodes, and it moves whenever the nesting does.
+
+Only the *universal* shape lands blind. Reshaping that a conflict alone justifies waits and is pulled at named sites,
+and the determinize meter arrives with the gates rather than before them: a count over the tree measures a shape about
+to be discarded, and its number would not be comparable to the one that matters.
+
+One invariant belongs to no phase of its own. `every-option-is-reachable` is settled where the contexts are
+monomorphized, and every step after answers for it: a choice goes on to its next way exactly where the one in front of
+it fails and is handed back, so a way no input refuses leaves nothing for the ways behind it to be entered on.
+Backtracking hides it — the way matches, the continuation fails, the parse tries the next — and a machine that commits
+simply loses them. It reads none from there through the whole pipeline.
+
+**Gate, peek, guard — three words, each for one thing.**
+
+- A **gate** is the *field* of an alternative on which the choice is made. It is a set of guards — no order between
+  them, each a question about the one position the alternative is entered at — and the alternative is taken only where
+  every one holds. A gate is asked where the alternative is entered, which is what makes it the only place a decision
+  can stand. A gate holding nothing is the unconditional fallthrough, which only the last alternative may carry.
+- A **peek** is the question about the character in front of the parse: a `Look` over a `CharSet`. It is one guard among
+  the rest rather than a field of its own, and the one question the generated parser answers by indexing the decoder's
+  key.
+- A **guard** is a zero-width node that decides — `Look`, `NegLook`, `LookBehind`, `StartOfLine`, `EndOfStream`, `Le`,
+  `Lt`, `EndMustConsume`. A guard belongs in a gate; one reached among a way's actions is a decision asked a step too
+  late. A `(cut)` is not one of these: it takes nothing either, but it commits the parse rather than asking it anything,
+  and it stands with the actions. Nor do all of them ask about the input — `EndMustConsume` asks whether the turn it
+  closes took a character, which is why the gate holding it is the one entered after that turn rather than the turn's
+  own.
+
+"Test" is none of these and names nothing: it has stood for all three and for a probe besides. No name in the generator
+uses it in any of those senses — `Invariant.test` is the one that keeps the word, and there it means what it says, the
+check that counts where an invariant is broken.
 
 A way is refused where a character it needs is not there, where a guard it asks declines, or where its gate turns it
 away. It is not refused past a `(cut)`, nor inside a committed region, a failure there being the message that region
-names rather than a way handed back. That is one question — whether *some* input refuses the way — and not the narrower
-one of what happens on a character the way cannot start with, which is what a gate hoist needs and what `_does_refuse`
-answers for it. What a machine could tell the ways apart by is `every-way-is-gated`, asked where the gates exist. One
-reading answers each — `_can_be_refused` for the first, `_entry_of` for the second.
+names rather than a way handed back. That is one question — whether *some* input refuses the way — and `_can_be_refused`
+is the one reading that answers it, `every-option-is-reachable` being what holds the grammar to it. What a gate hoist
+needs is narrower: not whether some input refuses the way, but what the character in front of it can be, which is
+`_ahead_of_gate`. Whether every way something decides to enter carries a gate at all is
+`every-conditional-way-is-gated`, asked from where the gates exist.
 
 **Every question about a node is asked through `ir.Reading`**, a table from node kind to what to do about it, because
 the alternative — a chain of `isinstance` tests ending in a fallthrough — answers permissively for whatever spelling its
@@ -208,17 +325,17 @@ as empty again, a hoisted `EndOfStream` went invisible and a recovery circuit ap
 `_parts_of_way` is the accessor for a question — the gate's guards, then what the way performs, in the order the parse
 meets them. Either rule may be broken with a written reason at the site; neither may be broken silently.
 
-Three of the readings answer with a `Verdict` rather than a value, which is what lets a walk over a way's items be a
-table too: whether to take the item, step over it, stop there, follow the call it makes, or treat it as the commit past
-which failing is an error rather than a refusal.
+A reading answers with whatever the question wants: `_is_one_char` a yes-or-no, `_split` the pair of halves a match has,
+`_peek_spans` the codepoint intervals a question admits or nothing where its set is not pinned down. What every one of
+them shares is the dispatch, not the answer.
 
-Every scope is a pair, the recovery included. What answers for a failed cut is `PushRecovery(recovery, resume)` before
-the call it covers and `PopRecovery` where that call returns — both named outright, so nothing about the region is
-implied by where it sits and a rewrite that moves a way moves it with the actions. It is the last scope to be written
-because it is the only one whose close carries information: the others restore and are done, this one resumes, and where
-a way carries on only has a name once the way is a call and a continuation. Two productions are minted per site, one
-holding the pop and one holding the resume, since a way that ends at the call it covers has neither a place to close the
-region nor a name to carry on at.
+Not every scope is a pair. What answers for a failed cut rides the edge an alternative already has — `recover` beside
+the call it protects — so a rewrite that moves the way moves the handler with it, and there is nothing to open and
+nothing to close. The IR does name a `PushRecovery`/`PopRecovery` pair and the interpreter has handlers for both,
+holding the recovery and the resume together so an unwind reads where to stop and where to carry on from one place; no
+step writes them, which the unexercised-handler report says out loud by listing both. Among the pairs that are written,
+a close is not always silent: a settled region's says where a failure unwinds to, and a must-consume region's decides,
+being a guard rather than an action.
 
 A scope that holds what it covers has nowhere to stand in an alternative — `gate  actions…  [P1  actions…]  [P2]` has a
 place for an action and none for a node enclosing a call, and a `(token)` around a call is an action that must run where
@@ -232,36 +349,28 @@ since a second turn would open it again. The path and not the way, once a way ha
 is a production of its own, so a `PushCode` before the call and its `PopCode` in the continuation are one pair meeting
 on the parse's own stack. A way's calls are not alike there — the one it carries on at is the rest of the same path, and
 one it comes back from must come back level, the continuation waiting behind it being the caller's and not the callee's.
-The markers are not that: a pair of them crosses productions by design, and what follows them through the pipeline is
-owed by the phase that splits a way into a call and a continuation, which is the first thing that can put a `begin` in
-one production and its `end` in another.
+The markers are not that: a pair of them crosses productions by design, which the phase that splits a way into a call
+and a continuation is the first thing to make happen — a `begin` in one production and its `end` in another.
 
 What a wrapper displaced waited in the frame of the match that was running, where a pair's waits on the parse's own
 state — which is the point, a frame being gone once a way is split into a call and a continuation — so what a frame
 unwound for free is now something to clear. An abandoned parse's scopes are taken off where it is abandoned, at the
 in-grammar `(recover)` that answers for the cut and at the stream's own level where nothing does, and a parse that
-matches is refused if it ends with a window or a committed region still open.
+matches is refused if it ends holding any scope open, whichever of the seven kinds it is.
 
 The empties are what a caller cannot decide on. Entering a production that may match nothing is a choice made with no
-character to go on, and it stays one while both answers live under a single name — so each such production is given a
-name for the ways that take a character and a name for the ways that take none, and becomes the choice between the two.
-The split is the same match in the same order: a sequence's ways come out as its parts already offer them, and no
-alternation in the grammar has an empty way ahead of a reading one. Where a shape cannot say the two apart locally it is
-said differently rather than argued about — a possessive scan's empty way is the negative peek that is exactly when it
-takes nothing, a counted repetition's is the count being non-positive, and a commit is lifted over the choice so one
-message scope stands around both ways rather than one around each, which would make the reading way's failure the error
-instead of a step on the way to the empty one.
+character to go on, and it stays one while both answers live under a single name. What the pipeline does about that
+today is to take the empty match out of the nodes that hide it: an optional becomes the alternation it already is, so
+its empty way stands beside the way that reads; a run over a character class becomes the scan it is, entered on the
+class, since what such a run takes is a value the input decides rather than a way the parse chooses; and both
+repetitions are said as the ways they are, a turn and a recursion under a region that settles them.
 
-Naming the two ways is half of it: while the choice sits behind the production's own name, a caller still reaches it
-without knowing whether anything will be taken, and there is nowhere to put a gate. So the choice is written at the call
-site instead — `A ::= F (X_reads | X_empty)` — where the parse already stands. The way around it is not split to do
-that: `A ::= F X_reads | F` would run `F` twice, where one alternation inside the sequence duplicates nothing.
-
-What is left matching empty is then what only ever took nothing — the residue a split named, and the productions that
-were actions alone — and a name is worth having where it stands for a decision. There is none in a way that consumes
-nothing and always ends where it began, so each is written into the call sites that enter it and the caller's own way
-says what it does. What keeps its empty ways is the root and the recovery: a parse enters both by name rather than by a
-call, so there is no call site to hold the choice and no caller to make it blind.
+That is as far as it goes. A production something decides to enter may still match empty, no step gives one a name for
+each of the two things it is, and `no-conditional-production-matches-empty` is carried by no step in the pipeline —
+which `STEPS` says where the phase is declared, and `unsettled_invariants` would report the day a step claimed it. The
+reading that tells the two apart does exist and is used: `_is_nullable` and `_split` are what
+`no-production-reaches-itself-unconsumed` asks whether a cycle can turn without taking a character. The rest is
+`PLAN.md`'s.
 
 A carried value stops being one parameter at a time, smallest first, because the mechanism is what is being proved and
 not the value: `f` is read by one production, so a floor that nested would show up over four reads rather than over
@@ -281,13 +390,68 @@ first, since a write whose readers are a production away is exactly what the par
 
 What the count is for is naming the shapes that have to change before a value can be one. A detected indent read once,
 beside the write, is a value one place holds; the same value read on every turn of a loop is not, everything the loop
-enters detecting its own in between — and the count named exactly those, 843 of them, before the loop was given the
-indentation it had already measured. So the shape is answerable rather than argued over: the number says something is
-wrong, a step changes the shape, and the number says whether that was it.
+enters detecting its own in between — and the count names exactly those. So the shape is answerable rather than argued
+over: the number says something is wrong, a step changes the shape, and the number says whether that was it.
 
-## The three rules the normalization pipeline is held to
+## The canonical form
 
-Three rules bind every transformation in `generator/normalize.py`, and they matter more than any one step does, so they
+A **terminal production** is a set of characters, nothing more. Every other production is an ordered list of
+alternatives, and an alternative is `gate  actions…  [P1  actions…]  [P2]`:
+
+- The **gate** is a conjunction tested without consuming, as above. An empty gate is the unconditional fallthrough,
+  allowed only as the last alternative.
+- **actions** operate on the parse's own state. Taking the peeked character is itself an action rather than part of the
+  gate — `ConsumePeeked` likewise takes a peeked literal on the gate's word, the bytes never scanned twice.
+- **P1, P2** are zero, one or two productions the alternative hands control to. Two means run P1 and carry on at P2:
+  push P2 as where to carry on, go to P1 — so P1 is the call, P2 the continuation, and there is at most one push per
+  edge. One is a tail goto. Nothing follows P2, so a sequence of three splits through a helper, `A → B A₁` with
+  `A₁ → C D`, and the `_<N>` suffix names where it came from.
+
+Alternatives are asked in order and the first whose gate holds is the one taken. Two alternatives may share a gate;
+order resolves the overlap, and proving the earlier one safe to commit to is the whole of determinization.
+
+**No unbounded lookahead survives.** A `Look`, `NegLook`, `LookBehind` or `(exclude)` over more than one character is
+transformed away — into a character-set gate, a literal peek, a cheap guard, or a speculation — so the canonical grammar
+holds none of them. The one bounded exception is the gate's own `LiteralPeek`: the longest literal plus one character of
+follow test, within the window the parser's fill already guarantees, lowered to a single comparison.
+
+## What the parse may hold
+
+**Every value the parse carries is a global singleton, possibly empty, or an entry in the one unified stack.** There is
+no third place — nothing a call holds of its own, no scope implied by the tree shape, no slot reachable only from where
+it was written. The C parser is a state machine and that stack, so a value fitting neither is one it cannot hold, and a
+transformation producing one has produced something the parser cannot run whatever the corpus says.
+
+- *Globals* are what does not nest: the position and its mark, the open run and the code its characters carry, the
+  `(max)` window and the count of opens standing over it, `m` and `f` — computed indentations rather than scopes.
+- *The unified stack* is what nests: the indentation in force, the code a `(token)` displaced, the regions a commit, a
+  recovery, a settled run and a must-consume turn open, and where to carry on. All are pushed and popped by actions the
+  grammar writes, never by anything a call does on their behalf.
+
+**And every push is written down.** There is no call, and so nothing a call implicitly pushes or pops: a production that
+goes on to another pushes where to carry on and jumps, and where it carries on from is what a pop takes. Reading a call
+as "push a continuation, then go" is what keeps the stack safe to transform. A value riding on something a call pushes
+is a footgun, because the pipeline inlines — the sweep splices do-nothing calls, and `expand-called-ways` writes a
+callee's ways where the call stood — and a value living on what they remove has nowhere to go and no gate that could see
+it coming. Written as actions, an inlining deletes a continuation push and a jump and touches nothing else, because
+nothing was ever riding them.
+
+```
+call P, carry on at Q       PushContinuation(Q) ; GOTO P
+carry on                    Pop ; GOTO what it held
+the indentation changes     PushIndent(n) … PopIndent
+a `(token)` opens           PushCode(code) … PopCode
+```
+
+The parser holds one other store, and it is not state: the **pending-token run**, the output a speculation has emitted
+but not yet committed to. It is a second stack in the implementation and nothing like the first in kind — the unified
+stack holds what the parse must give back, this holds what the parse has produced and may still retype. Only one is open
+at a time, its extent is written in the grammar by `OpenProvisional`/`CommitProvisional`, and nothing reads a value out
+of it. So the invariant covers state, and the pending run is accounted for separately rather than smuggled into it.
+
+## The six rules the normalization pipeline is held to
+
+Six rules bind every transformation in `generator/normalize.py`, and they matter more than any one step does, so they
 are written here rather than left to be inferred from the code.
 
 **Many simple steps, never few clever ones.** A step does one thing. One found doing two is split — a split changes no
@@ -306,9 +470,10 @@ hypothesis is a missing normalizing step, not an inherent conflict.
 properties: each step makes the grammar simpler in one stated way, everything after it may lean on that, and it is the
 accumulation that brings the grammar within reach of simple machinery — common-prefix factoring, gate disjointness —
 rather than any one clever transformation. So a step is not a function; it is
-`Step(name, transform, invariants, reduces, lapses, untestable)`. An invariant counts the places it is broken, being a
-count and not a yes-or-no; a step naming one is taken to finish it, and `reduces` names the ones it only lowers, for a
-count several steps share. `lapses` is a written reason for breaking one and the only licence to, and `untestable` is
+`Step(name, transform, settles, reduces, establishes, lapses, untestable)`. An invariant counts the places it is broken,
+being a count and not a yes-or-no; `settles` names the ones it takes to none, `reduces` the ones it only lowers, for a
+count several steps share, and `establishes` the ones that were no question in front of it, the shape they are about
+being what the step builds. `lapses` is a written reason for breaking one and the only licence to, and `untestable` is
 the reason a step has no invariant at all — what it makes true being momentary, or a property of a run rather than of a
 shape. The pipeline enforces the law itself — a count never rises, a settling step leaves none, none stays none, a lapse
 nobody takes is stale — so a property established in the middle cannot lapse silently at the end, which is exactly what
@@ -327,15 +492,28 @@ reason, the counts are printed on the gate line, and the staleness net refuses o
 the standing question at every one of them is *what universal step would retire this?*, never *what other site deserves
 one?*
 
+**A transformation is a local, mechanical rule.** It reads a production's own nodes, plus at most the grammar-wide
+tables that are themselves defined production by production — what can be in front, what follows, the reference graph —
+and its correctness argument is stated against exactly that. No step may lean on a global property of the parse ("this
+is only ever attempted at a line start", "this position is always preceded by X") however true by construction: a rule
+that needs one is the wrong rule, and the right one spells the same fact locally, usually in a device the grammar
+already owns. The only judgment a step may embody is *where* it applies, never what the result looks like at a site.
+
+**Every transform is read for correctness against the semantics of the nodes it moves**, by hand, whatever the gates
+say. The gates are a net and not a substitute: a transformation that moves an action into another production, or copies
+one without binding its parameters, changes nothing the corpus can see wherever the sites it hits happen to be
+identities, and stays wrong at the next site. The reading is cheapest where the answer is structural, which is the
+argument for keeping the shapes simple enough to read.
+
 **Not yet held — the one thing in this document that is not yet true.** Everything else here describes what the code
 does; this section describes what it must do, and the pipeline does not satisfy it today. The comparisons the second
 rule asks for are not all written. What the first rule asks for is met: no step does two things, and every step must
 change the grammar — one that does not is a fault named where it stands, since a step goes idle when what it looks for
-has stopped reaching it, which is a regression in the step before it. Nothing is declared, so nothing is singled out: no
-point of interest is tracked and no declaration table stands, each phase re-deriving what it needs. Reaching conformance
-with all three comes before driving the determinize meter down: a meter driven down over steps of the wrong shape buys a
-number and keeps the debt. The qualification in this paragraph comes out when the pipeline conforms, and the three rules
-then stand as a hard constraint on every step after.
+has stopped reaching it, which is a regression in the step before it. The fourth is met too, and nothing is left of the
+machinery that served it: nothing names a site, nothing tracks a point of interest, and no declaration table stands,
+each phase re-deriving what it needs. So of the six, five are met and the second is not: the comparisons it asks for are
+not all written, and a factoring that cannot see two ways share a prefix is a canonical form nobody has written down
+rather than an inherent conflict.
 
 ## An indentation is measured where it is consumed
 
@@ -354,8 +532,8 @@ line's column. `<column>` says that directly, and the `max(1, …)` clamp the of
 always meant — the run must leave the parse deeper than the indentation in force, or this way does not apply.
 
 **One span, then a gate on what it measured.** A line's indentation is taken as a single run and the checks are made on
-the result: `s-indent-le` has always been `(***) s-space` followed by a guard on `(len) (match)`, and the delayed
-detections are written the same way. The indentation is never split into two consumes, and never consumed twice.
+the result: `s-indent-le` is `(***) s-space` followed by a guard on `(len) (match)`, and the delayed detections are
+written the same way. The indentation is never split into two consumes, and never consumed twice.
 
 This is sound because **a run over a character class is possessive** and gives nothing back, so peeking a length and
 then consuming exactly that many characters is the same parse as consuming the run — the peek was buying nothing. Each
@@ -393,7 +571,7 @@ fixtures go on testing libyeast rather than a parser it is not.
   decoder classifies UTF-8 bytes straight into a key without ever assembling a codepoint, and tokens are spans of those
   bytes — a design the other encodings would fight (a second classifier, codepoint assembly to serialize a token,
   source-byte marks). YAML 1.2 asks a conformant parser for UTF-16, and UTF-32 where it accepts JSON; libyeast forgoes
-  them for now. Non-UTF-8 inputs are simply left out of the fixtures.
+  them. Non-UTF-8 inputs are left out of the fixtures.
 - **A byte-order mark is the character, not the encoding.** libyeast's `bom` token holds the mark it matched (`U+FEFF`);
   YamlReference's holds the name of the encoding it detected (`UTF-8`). Detecting no encoding, libyeast has no name to
   give.
@@ -435,6 +613,16 @@ productions that diverge only when run alone, and agree once composed into a doc
   `ns-plain-char` (rule 130), with its two exceptions; YamlReference instead subtracts `:`/`#` up in 128/129 and makes
   130 just `ns-plain-safe`. So run alone, `ns-plain-safe-out(':')` matches for libyeast and errors for YamlReference —
   but a full plain scalar accepts the same characters either way (verified against YamlReference's own fixtures).
+
+## How fidelity is earned
+
+Passing tests is a floor, not a proof: every place backtracking is replaced by a committed decision is a place the
+automaton can diverge from the productions' meaning. What stands against that is two differential oracles, each
+authoritative for a different half of the pipeline. Against **YamlReference** the comparison is token-for-token on yeast
+— the codes are identical, so it judges the syntactic layer, production structure and character classes, at the finest
+grain there is. Against **YAMLStar** the comparison is value-for-value on the folded load output, judging composition
+and schema resolution — the semantic layer. Agreement with both spans the whole pipeline, and a mismatch with exactly
+one half localizes the fault. The YAML Test Suite, folded to events, is the empirical floor beneath both.
 
 ## Memory safety
 

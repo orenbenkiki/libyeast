@@ -20,13 +20,16 @@ import gate
 import interpreter
 import wire
 
-# What an `Emitter` holds, and whether a checkpoint must restore it. The input is the only thing that is not state: it
-# is read and never written. Naming them is the point — a new field must be sorted into one list or the other, and the
-# gate says so rather than assuming.
+# What an `Emitter` holds, and whether a checkpoint must restore it. Two things are not the parse's state: the input,
+# which is read and never written, and the record of the productions a run reached, which is written and never read back
+# — a rewind leaves that standing, a production a fixture reached having been reached whatever the parse did after.
+# Naming them is the point — a new field must be sorted into one list or the other, and the gate says so rather than
+# assuming.
 RESTORED = (  # in alphabetical order
     "ceiling",
     "ceiling_message",
     "code",
+    "did_fill_span",
     "env",
     "forbidden",
     "is_sol",
@@ -45,6 +48,7 @@ RESTORED = (  # in alphabetical order
 READ_ONLY = (  # in alphabetical order
     "byte_at",
     "chars",
+    "coverage",
     "deterministic",
     "globals",
     "holding",

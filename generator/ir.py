@@ -35,12 +35,12 @@ RECOVER = "l-recover"
 FINITE_PARAMS = ("c", "t", "r", "i")
 FINITE_DEFAULTS = {"r": "n"}
 
-# The parameters that are one value for the parse rather than one per call: what `normalize.read_globals` takes off
-# every declaration and every call, leaving the reads and the writes to reach the single slot. A global is what does not
-# nest — the auto-detected indent is measured by the construct that opens and read while it stands, the block scalar's
-# floor by its leading empty lines and read by its first content line, one construct at a time — and `clear-params` is
-# what says where each stops applying, so a read past its region is refused rather than answered from what the last one
-# left. In alphabetical order.
+# The parameters that are one value for the parse rather than one per call: what `read-global-f` and `read-global-m`
+# take off every declaration and every call, leaving the reads and the writes to reach the single slot. A global is what
+# does not nest — the auto-detected indent is measured by the construct that opens and read while it stands, the block
+# scalar's floor by its leading empty lines and read by its first content line, one construct at a time — and `clear-f`
+# and `clear-m` are what say where each stops applying, so a read past its region is refused rather than answered from
+# what the last one left. In alphabetical order.
 GLOBAL_PARAMS = ("f", "m")
 
 
@@ -92,12 +92,6 @@ def is_one_char(node, grammar, seen=frozenset()):
     return _IS_ONE_CHAR(node, grammar, seen)
 
 
-# What a reading says of a kind it does not meet where it is asked, overriding whatever wider group named it: a `(case)`
-# past the specialization, a tree node past the re-encode. It is checked rather than believed — reaching one raises —
-# which is what lets a group of a hundred kinds be reused across readings that each meet a different part of it.
-NEVER = "never"
-
-
 class Reading:
     """
     A total dispatch over node kinds: what to do for each, with nothing left to a default.
@@ -117,10 +111,20 @@ class Reading:
     reported. So a reading says nothing about kinds it cannot see, and a kind added to the IR touches only the readings
     that actually meet it — on the day they do, loudly, rather than never.
 
-    `NEVER` is how a reading keeps a wide group and still says what of it cannot arrive: it overrides whatever named the
-    kind, it is left out of what coverage asks about, and it raises if the kind ever does arrive. A group with a
-    reasonable meaning of its own is therefore worth naming once and reusing, each reading taking back the part of it
-    that does not reach there.
+    Two lists say what has never arrived, and they differ in whether there is an answer for it. Intents come first: what
+    separates one answer from another is a real property of the kinds, and a reading only makes use of it — so a reading
+    names the family it means, which is a statement about the kinds themselves, and then says which part of that family
+    it has not met.
+
+    - `untested` — a family names the kind and so answers for it, and nothing has ever put that answer to the test. One
+      that arrives is answered, the family's word being a reasonable one to take, and is recorded as arrived: the run
+      reports it and fails, so the decision is made rather than passed over. Either the family's answer is right for it
+      and the kind comes off the list, or it is wrong — and then the family was the wrong thing to say here, and what is
+      needed is a finer one that tells the two apart.
+    - `unknown` — nothing here answers for the kind at all, whatever a family would have said. One that arrives raises
+      where it stands, there being no answer to take.
+
+    Both are measurements rather than claims: they say what has happened, not what cannot.
 
     - **No kind is named twice.** Named groups overlap — `Cut` is a guard and a commit both — and a chain of tests
       resolves that silently by its order, with nothing saying which resolution was meant. Here it is an error until
@@ -134,46 +138,59 @@ class Reading:
 
     _all = []
 
-    def __init__(self, what, over):
+    def __init__(self, what, over, untested=(), unknown=()):
         self.what = what
         self._by_kind = {}
-        # `NEVER` is applied after everything else and is the only entry allowed to override, so a reading names a wide
-        # group for what it does meet and takes back the part of it that cannot arrive — in either order, since nothing
-        # here depends on how the table is written down.
-        for wanted in (False, True):
-            for kinds, handler in over.items():
-                if (handler is NEVER) != wanted:
-                    continue
-                for kind in kinds if isinstance(kinds, tuple) else (kinds,):
-                    if kind in self._by_kind and not wanted:
-                        raise TypeError(f"the reading of {what} names {kind.__name__} twice")
-                    self._by_kind[kind] = handler
-        stray = sorted(kind.__name__ for kind in self._by_kind if kind not in KINDS)
+        for kinds, handler in over.items():
+            for kind in kinds if isinstance(kinds, tuple) else (kinds,):
+                if kind in self._by_kind:
+                    raise TypeError(f"the reading of {what} names {kind.__name__} twice")
+                self._by_kind[kind] = handler
+        self._untested = frozenset(untested)
+        self._unknown = frozenset(unknown)
+        both = sorted(kind.__name__ for kind in self._untested & self._unknown)
+        if both:
+            raise TypeError(f"the reading of {what} calls {', '.join(both)} both untested and unknown")
+        # An untested kind is one a family answers for, so there has to be a family that names it: without one there is
+        # no answer to call untested, and what is meant is that nothing is known of it.
+        idle = sorted(kind.__name__ for kind in self._untested if kind not in self._by_kind)
+        if idle:
+            raise TypeError(f"the reading of {what} calls {', '.join(idle)} untested, which no group of it names")
+        for kind in self._unknown:
+            self._by_kind.pop(kind, None)  # nothing is known of it, whatever a family would have said
+        stray = sorted(kind.__name__ for kind in (*self._by_kind, *self._untested, *self._unknown) if kind not in KINDS)
         if stray:
             raise TypeError(f"the reading of {what} names {', '.join(stray)}, which are no kinds of node")
         self._used = set()
+        self._arrived = set()  # the untested kinds that have turned up, each one a decision now owed
         Reading._all.append(self)
 
     def __call__(self, node, *carried):
-        handler = self._by_kind.get(type(node))
+        kind = type(node)
+        if kind in self._unknown:
+            raise TypeError(f"the reading of {self.what} knows nothing of {kind.__name__}, and it has arrived")
+        handler = self._by_kind.get(kind)
         if handler is None:
-            raise TypeError(f"the reading of {self.what} has not been told what {type(node).__name__} means")
-        if handler is NEVER:
-            raise TypeError(f"the reading of {self.what} was told {type(node).__name__} cannot reach it, and it has")
-        self._used.add(type(node))
+            raise TypeError(f"the reading of {self.what} has not been told what {kind.__name__} means")
+        if kind in self._untested:
+            self._arrived.add(kind)  # answered by its family, and that the family is right for it is what is owed
+        else:
+            self._used.add(kind)
         return handler(node, *carried) if callable(handler) else handler
 
     def unused(self):
         """The kinds this reading claims to handle and was never asked about — each one a guess nothing bore out."""
-        return sorted(
-            kind.__name__ for kind, handler in self._by_kind.items() if handler is not NEVER and kind not in self._used
-        )
+        return sorted(kind.__name__ for kind in self._by_kind if kind not in self._used | self._untested)
+
+    def arrived(self):
+        """The kinds this reading calls untested that have since arrived — each one a decision it now owes."""
+        return sorted(kind.__name__ for kind in self._arrived)
 
 
 # What no fixpoint over a grammar should need. Every one of them settles in a handful of rounds — each drops a call or
 # moves a question, and there are finitely many of both — so a loop still going here is one that has stopped settling,
 # and a run that says so beats one that never returns. The deepest measured is the sweep's refinement of duplicate
-# bodies at 25, which `deepest_rounds` reports so this stays a number somebody measured rather than one somebody
+# bodies at 24, which `deepest_rounds` reports so this stays a number somebody measured rather than one somebody
 # guessed.
 ROUNDS = 100
 
@@ -215,7 +232,7 @@ def rounds(what):
     """The rounds of a fixpoint, counted and said, raising where `what` has plainly stopped settling."""
     for round in range(ROUNDS):
         _DEEPEST[what] = max(_DEEPEST.get(what, 0), round + 1)
-        if round % 10 == 0:  # the first, and every tenth after it: the deepest fixpoint measured takes 25 rounds, so a
+        if round % 10 == 0:  # the first, and every tenth after it: the deepest fixpoint measured takes 24 rounds, so a
             say(
                 f"        {what}: round {round + 1}"
             )  # settling one says so two or three times and a stuck one keeps on
@@ -236,6 +253,14 @@ def unexercised():
     return {reading.what: reading.unused() for reading in Reading._all if reading.unused()}
 
 
+def owed():
+    """
+    `{what: [kind]}` for every reading whose untested part has arrived — a decision each one owes, and a run that met
+    one says so and fails rather than passing on the family's word.
+    """
+    return {reading.what: reading.arrived() for reading in Reading._all if reading.arrived()}
+
+
 def what_was_reached():
     """
     What this process has reached: the kinds each reading answered for, and how deep each fixpoint went.
@@ -247,16 +272,19 @@ def what_was_reached():
     return (
         {reading.what: {kind.__name__ for kind in reading._used} for reading in Reading._all},
         dict(_DEEPEST),
+        {reading.what: {kind.__name__ for kind in reading._arrived} for reading in Reading._all},
     )
 
 
 def also_reached(held):
     """Fold what another process reached into this one's, as `what_was_reached` gave it."""
-    used, deepest = held
+    used, deepest, arrived = held
     for reading in Reading._all:
         for kind in KINDS:
             if kind.__name__ in used.get(reading.what, ()):
                 reading._used.add(kind)
+            if kind.__name__ in arrived.get(reading.what, ()):
+                reading._arrived.add(kind)
     for what, rounds in deepest.items():
         _DEEPEST[what] = max(_DEEPEST.get(what, 0), rounds)
 
@@ -377,7 +405,7 @@ class AutoDetectIndent:
     without consuming anything and bounded by nothing.
 
     The official grammar's, and only ever read from it — libyeast's own grammar takes each such indentation where it
-    stands and reads `Column`, so nothing here evaluates one. It stays because the vendored grammar the erasure gate
+    stands and reads `Column`, so nothing here evaluates one. It stays because the vendored grammar `check_vendor_spec`
     compares against spells it, and one reader loads them both.
     """
 
@@ -823,12 +851,12 @@ class Gate:
 class Alternative:
     """
     One way a production may go: a `Gate` to enter on, the `actions` it performs, and up to two productions it hands
-    control to. `first` is the call and `second` the continuation — run `first`, and when it returns resume at `second`
-    — so an edge is one push. `second` alone is a tail call; neither is a return. Nothing follows `second`, which is why
-    a sequence's trailing actions become a continuation of their own. `recover` rides the push: where it names a
-    recovery production, a cut unwinding out of `first` stops at it — the error is emitted, the markers `first` opened
-    are closed down to here, `recover` matches what this rule gives up, and the parse resumes where `first` would have
-    returned as though it had matched. A recovery that does not match sends the cut on up.
+    control to. `first` is the call and `second` where the path carries on past it — so an edge is one push. `second`
+    alone is a tail call. Nothing follows `second`, which is why a sequence's trailing actions become a continuation of
+    their own. `recover` rides the push: where it names a recovery production, a cut unwinding out of `first` stops at
+    it — the error is emitted, the markers `first` opened are closed down to here, `recover` matches what this rule
+    gives up, and the parse carries on at `second` as though `first` had matched. A recovery that does not match sends
+    the cut on up.
     """
 
     gate: object
@@ -883,23 +911,43 @@ class ConsumeLiteral:
 
 
 @dataclass(frozen=True)
-class ConsumeCountedSpan:
+class ConsumeLimitedSpan:
     """
-    Exactly `count` characters of `set`, consumed in one scan, matching nothing if fewer are there — what a `({N})`
-    repetition of a character class becomes in the canonical form. `count` is a literal where the grammar fixes it (an
-    escape's two, four or eight hex digits) or a parameter where the input does (`s-indent`'s `n` spaces), so one scan
-    that counts serves both.
+    Up to `limit` characters of `set`, consumed in one scan, and how many there were is what it says: a scan that fills
+    the limit and one that falls short both match, and `DidConsumeFullLimitedSpan` is what tells them apart.
+
+    An action that cannot fail, which is what a counted scan cannot be: a gate speaks for the character in front of it
+    and not for `limit` of them, so a scan asked for a count it cannot reach is a way failing on what it performs. Here
+    the taking always matches and the question about it is a guard like any other, asked past the action it is about.
     """
 
     set: object
-    count: object
+    limit: object
 
     def references(self):
-        return _refs(self.set, self.count)
+        return _refs(self.set, self.limit)
 
     def renamed(self, names):
-        set, count = _renamed(names, self.set, self.count)
-        return replace(self, set=set, count=count)
+        set, limit = _renamed(names, self.set, self.limit)
+        return replace(self, set=set, limit=limit)
+
+
+@dataclass(frozen=True)
+class DidConsumeFullLimitedSpan:
+    """
+    Whether the `ConsumeLimitedSpan` just performed took its whole limit.
+
+    It asks about the action in front of it and nothing else, so it stands where that action left the parse: every other
+    action takes the answer away, and asking with none there raises rather than being answered. A guard that reads what
+    an action did is how a taking that cannot fail still says no — the refusal moved out of the action and into a
+    question about it.
+    """
+
+    def references(self):
+        return []
+
+    def renamed(self, names):
+        return self
 
 
 @dataclass(frozen=True)
@@ -1017,8 +1065,8 @@ class Max:
 
 
 @dataclass(frozen=True)
-class Lt:
-    """`(<)`: assert the first expression is less than the second."""
+class ColumnLt:
+    """`(<)`: assert the first indentation is less than the second."""
 
     a: object
     b: object
@@ -1032,8 +1080,8 @@ class Lt:
 
 
 @dataclass(frozen=True)
-class Le:
-    """`(<=)`: assert the first expression is less than or equal to the second."""
+class ColumnLe:
+    """`(<=)`: assert the first indentation is less than or equal to the second."""
 
     a: object
     b: object
@@ -1102,9 +1150,9 @@ class ClearVar:
     A zero-width action that says `param` stops applying here: past it, nothing holds a value for it, and reading one is
     a fault rather than whatever was left behind.
 
-    Where a construct that measures `param` returns to a caller with none of its own, the value has no further meaning —
-    and a refusal is what says so, where leaving it standing would let a later read take a measurement of something that
-    has ended and no gate would see it happen.
+    Where a construct that measures `param` is done and the path carries on where none of its own is in force, the value
+    has no further meaning — and a refusal is what says so, where leaving it standing would let a later read take a
+    measurement of something that has ended and no gate would see it happen.
     """
 
     param: str
@@ -1198,15 +1246,19 @@ class Emit:
         return self
 
 
-# The pairs, and what says which close answers which open. Every half carries `pair`: the pairs it can stand for, one
-# per pair as written and both halves of that pair carrying the same. A close is held to the open standing on the stack
-# by the two sharing one — the kind cannot say it, two `(token)`s being the same kind and different pairs, and a close
-# that takes the wrong open of its own kind is invisible to anything that only asks what kind stands there.
+# The pairs, and what says which close answers which open. Each half a step writes carries `pair`: the pairs it can
+# stand for, one per pair as written and both halves of that pair carrying the same. A close is held to the open
+# standing on the stack by the two sharing one — the kind cannot say it, two `(token)`s being the same kind and
+# different pairs, and a close that takes the wrong open of its own kind is invisible to anything that only asks what
+# kind stands there. The provisional run is the one scope with no `pair` on either half: there is only ever one open, so
+# its close has nothing to be told apart from.
 #
 # A set of them rather than one, because a merge makes halves indistinguishable: two productions alike but for which
 # pair they hold are one production, and the half that survives stands for both. So a close answers an open where the
 # two intersect, that being where some one pair they both stand for exists — and what a merge costs is told exactly
 # there, precision falling where the grammar itself stopped telling the two apart.
+
+
 @dataclass(frozen=True)
 class PushIndent:
     """
@@ -1230,8 +1282,8 @@ class PushIndent:
 class PopIndent:
     """
     A zero-width action that takes the indentation in force off the stack, putting back the one it displaced. It leads a
-    production of its own rather than standing beside the call it answers for: nothing of an alternative runs after its
-    call returns, so the push carries on at that production and the pop is what coming back means.
+    production of its own rather than standing beside the call it answers for: nothing of an alternative runs past the
+    call it makes, so the way carries on at that production and the pop is the first thing done there.
 
     `level` is what its `PushIndent` put there, written on both halves where the two are minted together and carried
     with the pop wherever it moves. It says nothing the stack does not already hold, and is not what the pop restores
@@ -1313,8 +1365,8 @@ class PushMessage:
     """
     A zero-width action that opens a committed region under `message` — what a `(commit)` opens with. From here to the
     `PopMessage` that closes it, the input must carry the parse through: a failure that unwinds past this point with the
-    region never closed raises `message`, where one that unwinds through a closed region backtracks like any other. A
-    gate is never hoisted past one — refusing entry to a region the grammar committed to must stay the error it names.
+    region never closed is `message`, where one that unwinds through a closed region backtracks like any other. A gate
+    is never hoisted past one — refusing entry to a region the grammar committed to must stay the error it names.
     """
 
     message: str
@@ -1353,8 +1405,9 @@ class PushRecovery:
     input the parse gives up, and `resume` is where it carries on once that has matched.
 
     What the parse holds is the two together, so an unwind reads where to stop and where to go on from one place rather
-    than working either out from what the abandoned parse left behind. `resume` names the way's own continuation — the
-    point the protected call returns to — which is what makes carrying on here the same as the call having matched.
+    than working either out from what the abandoned parse left behind. `resume` names the way's own continuation — where
+    the path carries on past the protected call — which is what makes carrying on here the same as the call having
+    matched.
 
     A recovery that says nothing recovers nothing: a rule reached under a resume policy that does not recover here has
     no branch to take, so the cut goes on unwinding to whoever does answer for it.
@@ -1520,9 +1573,9 @@ class OpenProvisional:
 class MarkProvisional:
     """
     A zero-width action that marks the open run's current position, cutting it into the region before the mark and the
-    region from the mark on — the side a later `RetypeProvisional` or `InjectBefore` names. One-for-one with
-    `ys_queue_mark_run`; a run carries one mark at a time, and taking it again moves it, the last taken winning — how a
-    line scan marks each fresh line. A mark is a parse position, not a property of any token.
+    region from the mark on — the side a later `RetypeProvisional` or `InjectBefore` names. A run carries one mark at a
+    time, and taking it again moves it, the last taken winning — how a line scan marks each fresh line. A mark is a
+    parse position, not a property of any token.
     """
 
     def references(self):
@@ -1590,7 +1643,7 @@ class CommitProvisional:
 @dataclass(frozen=True)
 class Cut:
     """
-    `(cut)`: a zero-width commit past which the parse does not backtrack; on a later failure it is the error, and
+    `(cut)`: a zero-width commit past which the parse does not backtrack — on a later failure it is the error.
 
     `message` names the expectation to report — a key into `grammar/messages.yaml`.
     """
@@ -1611,12 +1664,12 @@ class Commit:
 
     Where a `(cut)` commits the whole parse from its point on, `(commit)` commits only that `item` can match at all: if
     `item` cannot (a quoted scalar that never closes, a flow collection that never ends), `message` is the error, as a
-    `(cut)` raises it. But if `item` matches and a *later* rule fails, the match backtracks like any other — the
-    commitment does not reach past `item`. That is what lets a flow scalar which closed cleanly be reinterpreted when it
-    turns out not to be the mapping key it was tried as, while one that never closed is still the error it should be.
-    `message` keys `grammar/messages.yaml`, as a `(cut)`'s does. An implicit key that will not parse is simply not this
-    key rather than an error, so where a commit is reached in a key context the grammar wraps it in a `(case) c` whose
-    key branches are the bare `item` and whose `else` is the commit — the softening a switch on `c`, not the parser's.
+    `(cut)`'s is. But if `item` matches and a *later* rule fails, the match backtracks like any other — the commitment
+    does not reach past `item`. That is what lets a flow scalar which closed cleanly be reinterpreted when it turns out
+    not to be the mapping key it was tried as, while one that never closed is still the error it should be. `message`
+    keys `grammar/messages.yaml`, as a `(cut)`'s does. An implicit key that will not parse is simply not this key rather
+    than an error, so where a commit is reached in a key context the grammar wraps it in a `(case) c` whose key branches
+    are the bare `item` and whose `else` is the commit — the softening a switch on `c`, not the parser's.
     """
 
     message: str
@@ -1692,13 +1745,174 @@ class Prod:
         return replace(self, body=body)
 
 
-# The nodes that match without consuming: a lookahead reads the input and gives it back. In alphabetical order.
-ZERO_WIDTH = (ExcludeAt, Look, LookBehind, NegLook)
+# The families of kinds, and nothing else, so that what one says can be read against what its neighbours say. A family
+# is a statement about the kinds themselves — what an action is, what takes no character, what holds a match — and it is
+# families that separate one answer from another wherever the grammar is read: a reading names the family it means, and
+# `untested` says which part of that family it has not met. Two families with the same members are one family under two
+# names, and two that differ by a kind are a question about that kind, so they are kept together where both can be seen.
+# A group that says only "the kinds this one reading meets" is no family and stays where it is used.
 
-# The kinds that never match exactly one character, so that `is_one_char` answers for none it has not heard of and a
-# kind named nowhere raises instead. A repetition or a sequence takes a run rather than a character; a lookaround, a
-# marker, an action and a guard take none; a value expression is no match at all; and the canonical form's own consumes
-# say in their names how much they take. In alphabetical order.
+# The nodes holding characters that are asked about and never taken. A lookaround asks where it stands — whether the set
+# is in front, whether it is not, whether it stood behind — and an exclusion asks at every take that follows, saying
+# what may not stand from here on. So a walk of what the grammar takes stops at one of these: what is inside is asked,
+# not taken, and counting it would count characters the parse never consumes.
+#
+# Taking nothing is not what makes one of these — every action and every guard takes nothing too. `<end-of-stream>` asks
+# about the input and is not one: it holds no characters to stop at. In alphabetical order.
+ASKED_NOT_TAKEN_NODES = (ExcludeAt, LiteralPeek, Look, LookBehind, NegLook)
+
+# What always takes at least one character where it matches, the counterpart of `TAKES_NOTHING`. A kind that reads on
+# one way and not on another — a run, a repetition, a choice — is neither, and is asked about its parts instead. In
+# alphabetical order.
+ALWAYS_READS = (Char, CharSet, ConsumeChar, ConsumeLiteral, ConsumePeeked, Diff, Invalid, Range)
+
+# The kinds that take characters themselves, rather than through whatever they hold. What a walk of a node's children
+# must not descend into, on pain of counting the same characters twice or of counting a peek's set as a match — and, the
+# same thing said forwards, what moves the parse on, so a question asked in front of one no longer speaks for where the
+# parse now stands. Every spelling of taking is here, whichever phase writes it: a family narrowed to the spellings one
+# phase happens to use answers a question about the other phases' by silently not counting them. In alphabetical order.
+CONSUMING = (
+    Char,
+    CharSet,
+    ConsumeChar,
+    ConsumeLimitedSpan,
+    ConsumeLiteral,
+    ConsumePeeked,
+    ConsumeSpan,
+    ConsumeTrimmedSpan,
+    Diff,
+    Invalid,
+    Range,
+)
+
+# What leaves something behind and matches wherever it is reached: it moves the parse's own state and never the
+# position. In alphabetical order.
+ACTIONS = (
+    ClearVar,
+    CloseWindow,
+    CommitProvisional,
+    Cut,
+    Emit,
+    Error,
+    ExcludeAt,
+    Increase,
+    InjectBefore,
+    MarkProvisional,
+    OpenProvisional,
+    OpenWindow,
+    PopBackTrack,
+    PopCode,
+    PopIndent,
+    PopMessage,
+    PopRecovery,
+    PushBackTrack,
+    PushCode,
+    PushIndent,
+    PushMessage,
+    PushRecovery,
+    RetypeProvisional,
+    SetForbidden,
+    SetVar,
+    StartMustConsume,
+)
+
+# A question the parse answers where it stands, taking nothing: what the input holds around it, and how the count it
+# carries compares. It leaves nothing behind and may decline, which is what tells it from an action. A `(cut)` is not
+# one of these — it takes nothing either, but it commits the parse rather than asking it anything, and it stands with
+# the actions. In alphabetical order.
+GUARDS = (
+    ColumnLe,
+    ColumnLt,
+    DidConsumeFullLimitedSpan,
+    EndMustConsume,
+    EndOfStream,
+    LiteralPeek,
+    Look,
+    LookBehind,
+    NegLook,
+    StartOfLine,
+)
+
+# What a way performs: everything the machine does where it stands, to the input or to the state it carries. What may
+# stand in a way's actions, as against its gate, which only asks.
+PERFORMED_NODES = (*ACTIONS, *CONSUMING)
+
+# What takes no character at all: an action leaves something behind, a guard asks a question, an empty match does
+# neither. `<empty>` is both an action and a guard, doing nothing and always matching, so it is named where each of them
+# needs it. What stands behind one of these is what a match begins on.
+TAKES_NOTHING = (*ACTIONS, *GUARDS, Empty)
+
+# A peek: a guard that holds its question about the input as an `item` and takes nothing, whether it asks about what
+# stands in front or what stands behind. `every-peek-is-a-character-set` is what these are held to. Not every guard that
+# reads the input is one — `<end-of-stream>` asks whether a character is there at all and holds no question, and the
+# literal form holds a run of characters rather than a set.
+PEEKS = (Look, LookBehind, NegLook)
+
+# The guards that read what stands in front of the parse: whether a character is there at all, whether it begins a
+# literal, whether it falls in a set, whether it falls outside one. What stands behind is not one of these, and neither
+# is where the parse is in the line or how the indentation compares.
+LOOKS_AHEAD = (EndOfStream, LiteralPeek, Look, NegLook)
+
+# What a peek holds that shapes the output rather than the question: the run's code and the markers. A lookaround is
+# probed and given back, so none of it reaches the stream and none of it is part of what the peek asks. In alphabetical
+# order.
+PEEK_OUTPUT = (Emit, PopCode, PushCode, Token, Wrap)
+
+# The kinds that always match exactly one character, whichever of their set that character is. The other four that can
+# be one — a difference, an alternation, a call, a switch — are one only where what they hold is, which is a question
+# about the grammar rather than about the kind. In alphabetical order.
+ALWAYS_ONE_CHAR = (Char, CharSet, Invalid, Range)
+
+# A match repeated: the same state entered again, as many times as the input allows or as a count fixes. A run said as
+# the scan a parser makes of it is not one of these — the scan is what such a repetition is lowered *to*. In
+# alphabetical order.
+REPETITIONS = (Plus, Rep, Star)
+
+# A repetition the input ends rather than a count: it takes turns until what it repeats declines, where `REPETITIONS`
+# takes in the counted one as well. What the phases lower is these two, a count being a run of a length already fixed.
+RUNS = (Plus, Star)
+
+# A run of a character class said as the scan a parser makes of it, which may be asked for none at all and so forces no
+# character to be there. In alphabetical order.
+SCANS = (ConsumeLimitedSpan, ConsumeSpan, ConsumeTrimmedSpan)
+
+# A node that holds what it covers rather than bracketing it with a pair — what the wrappers phase takes apart. In
+# alphabetical order.
+HOLDERS = (Commit, Max, Recover, Token, Wrap)
+
+# The kinds whose item is entered where they are: a run and a repetition take their first turn there, a scope and a
+# commit their content, and a lookaround tests at the position it stands at. In alphabetical order.
+WALKED_UNCONSUMED = (Commit, ExcludeAt, Look, LookBehind, Max, NegLook, Plus, Recover, Rep, Star, Token, Wrap)
+
+# What holds a match, and so cannot stand where an item does. A choice and a run become productions of their own, a
+# recovery moves to the edge an alternative rides, and a binding becomes an action. In alphabetical order.
+HOLDS_A_MATCH = (Alt, Bind, Recover, Seq)
+
+# What a production's body may be, each a state the machine has: a choice of ways, a run of one, a way under a handler,
+# or a way. A binding is not among them — a body that is one hides a write behind a match, which `no-bind-nodes` counts
+# wherever it stands. In alphabetical order.
+BODY_KINDS = (Alt, Choice, Recover, Seq)
+
+# What an item may be: something the machine does where it stands — a call, or anything that takes no character, or
+# anything that takes characters. A guard's question is the guard's own business and no item of the way, which is what
+# lets a peek hold a set and an exclusion a question a bounded run of steps answers; `every-peek-is-a-character-set` and
+# `every-exclusion-is-bounded` are what answer for those. Said as the two families and the call rather than as a list of
+# the spellings one phase reaches: a taking left out of the list is a step the machine has, read as a shape it has no
+# state for.
+LEAF_ITEMS = (*TAKES_NOTHING, *CONSUMING, Ref)
+
+# What a production may hold instead of a matcher: a value the parse works out — an indentation, a measured length, a
+# parameter, a switch over one. It matches nothing, so it takes no character and reads nowhere. In alphabetical order.
+VALUE_KINDS = (Add, Atoi, AutoDetectIndent, Column, Flip, Global, Indent, Len, Lit, Match, Param, Sub)
+
+# The values with nothing inside them, which is what lets a walk of the grammar tell a value it must leave alone from a
+# value holding more of the value language. In alphabetical order.
+VALUE_LEAVES = (Lit, Param)
+
+# The kinds that never match exactly one character. A repetition or a sequence takes a run rather than a character; a
+# lookaround, a marker, an action and a guard take none; a value expression is no match at all; and the canonical form's
+# own consumes say in their names how much they take. With the eight that can be one character it is `KINDS`, which is
+# what it is here for. In alphabetical order.
 NOT_ONE_CHAR = (
     Add,
     Alternative,
@@ -1710,15 +1924,18 @@ NOT_ONE_CHAR = (
     ClearVar,
     CloseWindow,
     Column,
+    ColumnLe,
+    ColumnLt,
     Commit,
     CommitProvisional,
     ConsumeChar,
-    ConsumeCountedSpan,
+    ConsumeLimitedSpan,
     ConsumeLiteral,
     ConsumePeeked,
     ConsumeSpan,
     ConsumeTrimmedSpan,
     Cut,
+    DidConsumeFullLimitedSpan,
     Emit,
     Empty,
     EndMustConsume,
@@ -1731,13 +1948,11 @@ NOT_ONE_CHAR = (
     Increase,
     Indent,
     InjectBefore,
-    Le,
     Len,
     Lit,
     LiteralPeek,
     Look,
     LookBehind,
-    Lt,
     MarkProvisional,
     Match,
     Max,
@@ -1773,17 +1988,19 @@ NOT_ONE_CHAR = (
     Wrap,
 )
 
-# Every kind there is. `NOT_ONE_CHAR` names all but the eight `is_one_char` answers for on their own terms, so the two
-# between them are the whole of it — and a kind added to neither raises there before it can reach anything here. What
-# reads it is every net that has to tell "a kind I know, which is not this" from "a kind nobody has named".
+# Every kind there is. `NOT_ONE_CHAR` names all but the eight that can be one character, so the two between them are the
+# whole of it — and a kind added to neither is one `Reading` refuses to be told about, since a table naming it would be
+# naming what is no kind of node. What reads this is every net that has to tell "a kind I know, which is not this" from
+# "a kind nobody has named".
 KINDS = NOT_ONE_CHAR + (Alt, Case, Char, CharSet, Diff, Invalid, Range, Ref)
 
-# What `is_one_char` answers, as the reading it is: `NOT_ONE_CHAR` and the eight named here are `KINDS` exactly, so the
-# table is total by construction and a kind added to neither breaks it where the module loads.
+# What `is_one_char` answers, as the reading it is: the kinds it has been asked about and no others. A kind absent from
+# here is one nothing has ever asked this of, and arriving it raises rather than being answered for — which is the whole
+# of what a reading buys, and why the table is smaller than `KINDS`.
 _IS_ONE_CHAR = Reading(
     "whether a node matches exactly one character",
     {
-        (Char, Range, Invalid, CharSet): True,
+        ALWAYS_ONE_CHAR: True,
         Diff: lambda node, grammar, seen: is_one_char(node.base, grammar, seen),
         # An empty alternation matches nothing at all, so it is no character either.
         Alt: lambda node, grammar, seen: bool(node.items)
@@ -1803,12 +2020,15 @@ _IS_ONE_CHAR = Reading(
             ClearVar,
             CloseWindow,
             Column,
+            ColumnLe,
+            ColumnLt,
             Commit,
             ConsumeChar,
-            ConsumeCountedSpan,
+            ConsumeLimitedSpan,
             ConsumePeeked,
             ConsumeSpan,
             Cut,
+            DidConsumeFullLimitedSpan,
             Emit,
             Empty,
             EndMustConsume,
@@ -1819,10 +2039,8 @@ _IS_ONE_CHAR = Reading(
             Global,
             Increase,
             Indent,
-            Le,
             Len,
             LiteralPeek,
-            Lt,
             Match,
             Max,
             OpenWindow,
@@ -1853,23 +2071,6 @@ _IS_ONE_CHAR = Reading(
     },
 )
 
-# The kinds that take characters themselves, rather than through whatever they hold. What a walk of a node's children
-# must not descend into, on pain of counting the same characters twice or of counting a peek's set as a match. In
-# alphabetical order.
-CONSUMING = (
-    Char,
-    CharSet,
-    ConsumeChar,
-    ConsumeCountedSpan,
-    ConsumeLiteral,
-    ConsumePeeked,
-    ConsumeSpan,
-    ConsumeTrimmedSpan,
-    Diff,
-    Invalid,
-    Range,
-)
-
 
 def repeated(node):
     """
@@ -1882,9 +2083,9 @@ def repeated(node):
     """
     if isinstance(node, TrimStar):
         return node.full
-    if isinstance(node, (Plus, Rep, Star)):
+    if isinstance(node, REPETITIONS):
         return node.item
-    if isinstance(node, (ConsumeSpan, ConsumeCountedSpan, ConsumeTrimmedSpan)):
+    if isinstance(node, SCANS):
         return None  # a run already said as its scan
     if isinstance(node, KINDS):
         return None
@@ -1896,15 +2097,15 @@ def rebuilt(node, visit):
     `node` with every grammar node it holds replaced by `visit` of that node.
 
     The generic walker the module's shape exists for: it reaches every node the same way, whatever node it is — a field
-    of its own or an item of a tuple of them — so a caller recurses without special-casing any node. A `Lit` and a
-    `Param` are values rather than grammar and are left as they are.
+    of its own or an item of a tuple of them — so a caller recurses without special-casing any node. What a node holds
+    that is a value rather than grammar is left as it is.
     """
     if not is_dataclass(node):
         return node
     changed = {}
     for field in fields(node):
         value = getattr(node, field.name)
-        if is_dataclass(value) and not isinstance(value, (Lit, Param)):
+        if is_dataclass(value) and not isinstance(value, VALUE_LEAVES):
             changed[field.name] = visit(value)
         elif isinstance(value, tuple) and value and all(is_dataclass(item) for item in value):
             changed[field.name] = tuple(visit(item) for item in value)
