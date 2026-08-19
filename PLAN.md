@@ -50,30 +50,65 @@ establishes an invariant the steps after it may lean on. What each phase owns an
 
 **The order of the work, and each item is a gate on the next.**
 
-1. **Give every way the set it starts on, and carry it in the IR.** A way and a production each hold a **start set**:
-   the codepoints it may be entered on, whether it may be entered at the end of the stream, and whether it takes none —
-   or *unknown*, where nothing has said yet. The steps fill it, and two invariants hold it to the grammar:
+1. **Give every way the space of states it may be entered in.** Every guard the grammar carries is a question about one
+   axis of a small multidimensional space, and what a parse stands in when it decides is one point of it. A
+   **`SubSpace`** is a set of such points, and two of them answer for every way and every production:
 
-   - **`production-first-set-is-union-of-ways-first-sets`** — the two homes agree.
-   - **`first-set-of-way-is-identical-to-gates`** — a way's set is what its own gate says intersected with what its
-     callees say, and, where the way has no gate of its own, what the gates on every path into it say. *Unknown* fails
-     this wherever the gates do determine a set, so the invariant is the meter as well as the check: it counts the ways
-     that could know and do not, and reaches none when every one of them carries what the grammar already states.
+   - **The accepted space** — the states the way itself takes, read from below: its own gate and guards, intersected
+     with what its actions consume and what its callees accept, as a least fixpoint from the empty space. The walk over
+     a way's parts carries `alive`, the states at which it can still stand having taken nothing: a part that must take
+     contributes `alive ∩ its own space` and ends the walk, one that may take nothing contributes the same and leaves
+     `alive` standing, and a call contributes `alive ∩ what the callee accepts` and narrows `alive` to the states that
+     callee can pass taking nothing.
+   - **The gated space** — the states a parse may enter it in, read from above and **per call site**: the caller's own
+     gated space narrowed by the gate standing where the call is, as a greatest fixpoint from the whole space.
 
-   **Why it is a field and not a computation.** Every take is protected by a gate, so the guards that decide a way exist
-   somewhere in the grammar already — none has to be invented. But a hoist *moves* a guard, and 8 takes today are
-   protected only by a gate that moved to their callers: read from below, they say "the character the gate found", and
-   the gate is no longer there to ask. Recomputing after each hoist would lose exactly those. Recorded where it was
-   true, the set survives the guard moving, and a hoist becomes a step that leaves the start set behind it.
+   **`gated ⊆ accepted`, per way, and that is the whole law.** Where it breaks, something enters a way in a state
+   nothing behind it takes — the backtracking the shape exists to remove — and the fault is named at the call site that
+   admits the state rather than at the way that fails on it. Where the gated space is empty, nothing enters the way at
+   all. That is a different question from `every-option-is-reachable`, which asks whether a way in front can be refused,
+   and neither answers the other.
 
-   **What the field is not.** Not a `CharSet` — there is no span for "no character left", and a set is a description
-   where a `CharSet` is something the machine runs. Keeping them different types is what stops a start set from being
-   spliced into a way as a match. And taking none is not the same as being entered at the end of the stream: the first
-   says what this way consumes once entered, which is what lets a caller union it with its continuation's; the second
-   says what the machine may be looking at when it decides. A way can be either, both, or neither.
+   **The axes, read off the guards the grammar already carries.**
 
-   **Any rewrite that touches a way's parts sets its start set back to unknown.** A stale set is a claim nothing checks,
-   and clearing is always safe where keeping is not.
+   | Axis                   | Its values                                                                             |
+   | ---------------------- | -------------------------------------------------------------------------------------- |
+   | the character in front | one of 57 literals, one of 8 classes, or the end of the stream                         |
+   | the character behind   | `ns-char` or not — the one set all 8 look-behinds ask about                            |
+   | the line start         | standing at one, or not                                                                |
+   | the indentation        | `n == 0` or not, and seven further comparisons relating `n` to `len`, `column` and `m` |
+   | the parse's own state  | `EndMustConsume` and `DidMatchFullSpan`, a bit each                                    |
+
+   Counted over the grammar's ways: 717 carry no gate at all and 982 a gate asking the character in front alone; then 94
+   ask the indentation with it, 94 the parse's state, 52 the indentation alone, 18 the line start, 8 the character
+   behind with it, 6 the parse's state with it, and 4 the line start with it — 1975 in all. So a single gate is one box,
+   but **82 productions offer ways constraining different axes**, and one box cannot hold a production's space. A
+   `SubSpace` is a *set* of boxes.
+
+   **Every axis is finite, so a `SubSpace` is exact.** The character axis is not a codepoint range: `chars.Model.key`
+   gives every codepoint one word, and the tables generated from it name 57 literals and 8 classes over 20 sets — which
+   is the alphabet the emitted parser itself tests, one bit against the key the decoder already made. So the analysis
+   speaks the machine's own alphabet: every distinction it can draw the parser can test, and there is none it can draw
+   that the parser cannot. Nothing is approximated in either direction, which is what makes the law a law rather than a
+   heuristic with a chosen failure mode.
+
+   **It is computed, not carried.** Nothing in the IR holds a `SubSpace`. A stored one is stale the moment a step
+   splices a way, and a derived field that takes part in identity stops the sweep merging productions that behave alike.
+   It is computed over the grammar a stage has produced, once the sweep has settled it, and computed again for the next
+   — a value the grammar decides, not a claim a step leaves behind. Nor is it a `CharSet`: a `CharSet` is something the
+   machine runs, and splicing a description in as a match is the mistake the separate type prevents.
+
+   **What the walk asks rather than decides.** Whether a way can take nothing is `_is_nullable`'s answer and is read
+   from there, the space needing it to know when to carry on past a part. The end of the stream is a value on the
+   character axis, the base grammar naming `<end-of-stream>`, not a flag beside it.
+
+   **The corpus is the independent witness.** An invariant that recomputes what it checks proves nothing. The
+   interpreter knows the state each way was actually entered in, so it asserts membership in that way's gated space at
+   every entry, which is what catches a space computed too narrow; too wide is what the law catches.
+
+   **The order of the work.** The `SubSpace` type and its operations first, then the accepted space from below, then the
+   gated space from above, then the law over the two with the interpreter's assertion beside it. Each stands on its own
+   and is gated before the next.
 
 1. **Settle `every-conditional-way-is-gated`.** It stands at 58 — every one a way something decides to enter that
    carries no question the machine can ask before entering it, which is the backtracking the whole shape exists to
@@ -85,7 +120,7 @@ establishes an invariant the steps after it may lean on. What each phase owns an
    removed from the pipeline as dead rather than lost — one puts the caller's continuation inside the callee, the other
    sends the tail down into the callee instead of copying the ways out.
 
-   With the start sets carried, a gate is minted from what a way starts on rather than hoisted from a guard that
+   With the accepted space computed, a gate is minted from what a way accepts rather than hoisted from a guard that
    happened to be reachable — which is what the pipeline cannot do today. Every gating step it has *relocates* a guard:
    `expand-called-ways` copies ways out, `hoist-guards-to-gates` and `hoist-guards-to-callers` move guards up,
    `merge-gate-peeks` merges them, and `split-consumes-into-gates` mints one from a set standing in the way itself. None
@@ -105,15 +140,14 @@ One invariant is owed and belongs to no phase: `no-conditional-production-matche
 decides to enter matches empty. No step in the pipeline carries it, and no phase above claims it. **215 ways something
 decides to enter can match empty**, in 196 productions, and 63 of those carry a gate already — a gate decides and the
 way then takes nothing, which is not itself a fault. What it costs is tightness: a way that may take none makes its
-caller's start set the union of its own and its continuation's, so the sets widen wherever one stands. The start set
-records taking none as one of its three parts, so the question is read off the field rather than walked for.
+caller's accepted space the union of its own and its continuation's, so the spaces widen wherever one stands.
 
 A phase re-implements what it needs rather than inheriting it: a step is kept only where it earns its place, and the
 ones between the phases' goals are derived when their phase arrives.
 
 **The two questions, in order.** A machine that never backtracks needs each way of a choice to carry a gate it can ask
-before entering it, and then it needs the gates to be exclusive. They are separate problems: the first is item 1 above,
-the second is item 2, and what follows here is the design for the second.
+before entering it, and then it needs the gates to be exclusive. They are separate problems: the first is item 2 above,
+the second is item 3, and what follows here is the design for the second.
 
 **Where the gate lift belongs.** `every-called-alternative-is-unconditional` — a way calling, where its own gate stood,
 a production that offers one way and asks something of its own — is item 2's rather than the gating phase's. The caller
@@ -184,22 +218,12 @@ point, and any residual logged as an assurance gap. Last, every terminal is asse
      off the grammar, so it stands while a call is still a field. The machine's kind assertions are the stronger answer
      and arrive with the machine; until then nothing rests on a probe.
 
-1. *A gate verifier, mechanistic and in both directions.* A gate is correct when its character set is exactly what the
-   options behind it can consume first: every character the gate admits is consumable by one of them, and every
-   character one of them can consume is admitted by the gate. The first direction failing means the gate lets through a
-   character nothing takes; the second means it refuses a character the alternative could have matched, which is a lost
-   parse.
-
-   - The set is computed by walking an alternative's elements carrying `alive`, the characters at which the walk can
-     still stand here having consumed nothing: an element that must consume contributes `alive ∩ its own set` and ends
-     the walk, one that may consume nothing contributes the same and leaves `alive` alone, and a call contributes
-     `alive ∩ entry(callee)` and narrows `alive` to `alive ∩ empty(callee)`, since passing a call without consuming
-     needs that call to match empty right there. `entry` is a least fixpoint and `empty` a greatest one.
-   - It computes its own character sets rather than reading the first tables, which err wide on purpose — a certificate
-     stands on disjointness, so too wide refuses safely, and an equality check has no use for it. Where the verifier
-     cannot decide a set exactly it says so and counts it, rather than passing.
-   - It runs after every step from `gate-hoist` on, beside the properness check, and an alternative that can match empty
-     is judged on the characters where it can, which its callees' own gates decide.
+1. *The other direction of the gate, once the spaces stand.* Item 1's law is that a gate never admits a state the way
+   behind it refuses. The reverse — that a gate never refuses a state a way behind it would have taken — is a lost parse
+   rather than a backtrack, and the spaces answer it the same way, a way's gated space against what its own parts
+   accept. It is a count and not yet a law: while a parse may fail and be handed back, a production refusing what it
+   could have taken is a way its caller declines to offer, and only a committed machine makes that a fault. It runs
+   beside the law, on the same two computations.
 
 1. *Splitting `monomorphize`, noted so it is not rediscovered.* It specializes `c`, `t` and `r` in one pass over their
    combinations, where three passes of the one generic operation would give the same grammar with three
@@ -420,9 +444,9 @@ speculation target; the document prefix and the implicit key land after, spendin
    - *Aggressive common-prefix extraction* — `split-conflicts` and `factor-prefixes` already extract identical prefixes;
      the refinement makes indentation identical, and the extraction is driven to leave no factorable prefix standing —
      where it stops, the stop is one of the named blockers below, never a shrug. Two admissions grow it: an identical
-     maximal scan joins the prefix where every leftover's first set is pinned, cannot match empty, and excludes the
-     scanned set — a shorter run then leaves a character no leftover admits, so the maximal run is the only one that
-     proceeds and the factoring reorders nothing; and a `(match)` scope's opening joins where the minted leftover
+     maximal scan joins the prefix where every leftover's accepted space is known, cannot match empty, and excludes the
+     scanned characters — a shorter run then leaves a character no leftover admits, so the maximal run is the only one
+     that proceeds and the factoring reorders nothing; and a `(match)` scope's opening joins where the minted leftover
      production declares the origin and is passed the caller's own, the `code` parameter's exact twin, so the closing
      half restores what the unfactored close restored. A leftover's leading `Lt`/`Le` assertions rise into its gate's
      guards, judged at the same position, where the certificates read them. Together these are the whole of the local
