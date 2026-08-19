@@ -2004,7 +2004,6 @@ NOT_ONE_CHAR = (
     PopIndentAction,
     PopMessageAction,
     PopRecoveryAction,
-    Prod,
     PushBackTrackAction,
     PushCodeAction,
     PushIndentAction,
@@ -2025,10 +2024,13 @@ NOT_ONE_CHAR = (
     Wrapper,
 )
 
-# Every kind there is. `NOT_ONE_CHAR` names all but the eight that can be one character, so the two between them are the
-# whole of it — and a kind added to neither is one `Reading` refuses to be told about, since a table naming it would be
-# naming what is no kind of node. What reads this is every net that has to tell "a kind I know, which is not this" from
-# "a kind nobody has named".
+# Every kind of node there is — every kind of thing that stands inside a body. `NOT_ONE_CHAR` names all but the eight
+# that can be one character, so the two between them are the whole of it, and a kind added to neither is one `Reading`
+# refuses to be told about, since a table naming it would be naming what is no kind of node. What reads this is every
+# net that has to tell "a kind I know, which is not this" from "a kind nobody has named".
+#
+# A `Prod` is not one of them. It is a name, a parameter list and a body: the thing a body hangs off rather than
+# anything standing in one, so no walk of a body meets it and no reading is asked what it means.
 KINDS = NOT_ONE_CHAR + (AltTree, CaseTree, OneCharSet, CharSet, DiffSet, InvalidSet, RangeSet, RefCall)
 
 # What `is_one_char` answers, as the reading it is: the kinds it has been asked about and no others. A kind absent from
