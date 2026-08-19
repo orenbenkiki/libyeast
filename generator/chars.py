@@ -2,7 +2,7 @@
 """
 The character model the decoder is built from, derived from the grammar IR.
 
-The grammar names 57 literal characters and tests 19 distinct character sets, so those 76 are every question the parser
+The grammar names 57 literal characters and tests 20 distinct character sets, so those 77 are every question the parser
 can ask about a character. `Model.key` answers all of them at once: a 32-bit word holding the character's named-literal
 id, one bit per character set it belongs to, and its UTF-8 length. Unions and subtractions are evaluated here, so a test
 in the parser is a single bit test.
@@ -268,9 +268,9 @@ def spans(denotation):
     if kind == "range":
         return [(denotation[1], denotation[2])]
     if kind == "union":
-        return _merged_spans([span for part in denotation[1] for span in spans(part)])
+        return merged_spans([span for part in denotation[1] for span in spans(part)])
     if kind == "difference":
-        return _subtracted_spans(spans(denotation[1]), _merged_spans([s for p in denotation[2] for s in spans(p)]))
+        return subtracted_spans(spans(denotation[1]), merged_spans([s for p in denotation[2] for s in spans(p)]))
     raise ValueError(f"unknown denotation {denotation!r}")
 
 
@@ -282,7 +282,7 @@ def single_codepoint(denotation):
     return intervals[0][0] if len(intervals) == 1 and intervals[0][0] == intervals[0][1] else None
 
 
-def _merged_spans(intervals):
+def merged_spans(intervals):
     """`intervals` as sorted, coalesced `(low, high)` pairs."""
     merged = []
     for low, high in sorted(intervals):
@@ -293,7 +293,7 @@ def _merged_spans(intervals):
     return merged
 
 
-def _subtracted_spans(intervals, minus):
+def subtracted_spans(intervals, minus):
     """`intervals` with every interval of `minus` removed."""
     for low, high in minus:
         remaining = []

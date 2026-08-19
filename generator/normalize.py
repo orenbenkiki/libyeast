@@ -1300,35 +1300,10 @@ def _spans_node(spans):
     """
     invalid = [span for span in spans if span[0] < 0]
     return ir.CharSet(
-        tuple([(-1, -1)] * bool(invalid) + [tuple(span) for span in _merged_spans([s for s in spans if s[0] >= 0])])
+        tuple(
+            [(-1, -1)] * bool(invalid) + [tuple(span) for span in chars.merged_spans([s for s in spans if s[0] >= 0])]
+        )
     )
-
-
-def _merged_spans(spans):
-    """`spans` as sorted, coalesced `(lo, hi)` codepoint intervals."""
-    merged = []
-    for lo, hi in sorted(spans):
-        if merged and lo <= merged[-1][1] + 1:
-            merged[-1] = (merged[-1][0], max(merged[-1][1], hi))
-        else:
-            merged.append((lo, hi))
-    return merged
-
-
-def _subtracted_spans(spans, minus):
-    """`spans` with every interval of `minus` removed."""
-    for exclude_lo, exclude_hi in minus:
-        remaining = []
-        for lo, hi in spans:
-            if exclude_hi < lo or exclude_lo > hi:
-                remaining.append((lo, hi))
-                continue
-            if lo < exclude_lo:
-                remaining.append((lo, exclude_lo - 1))
-            if hi > exclude_hi:
-                remaining.append((exclude_hi + 1, hi))
-        spans = remaining
-    return spans
 
 
 def _denoted_spans(denotation):
@@ -1339,11 +1314,11 @@ def _denoted_spans(denotation):
     if kind == "range":
         return [(denotation[1], denotation[2])]
     if kind == "union":
-        return _merged_spans([span for part in denotation[1] for span in _denoted_spans(part)])
+        return chars.merged_spans([span for part in denotation[1] for span in _denoted_spans(part)])
     if kind == "difference":
-        return _subtracted_spans(
+        return chars.subtracted_spans(
             _denoted_spans(denotation[1]),
-            _merged_spans([span for part in denotation[2] for span in _denoted_spans(part)]),
+            chars.merged_spans([span for part in denotation[2] for span in _denoted_spans(part)]),
         )
     raise ValueError(f"unknown denotation {denotation!r}")
 
@@ -1370,7 +1345,7 @@ def _united_peek_spans(peek, grammar):
             return None
         gathered += admitted
     invalid = [span for span in gathered if span[0] < 0]
-    return [(-1, -1)] * bool(invalid) + _merged_spans([span for span in gathered if span[0] >= 0])
+    return [(-1, -1)] * bool(invalid) + chars.merged_spans([span for span in gathered if span[0] >= 0])
 
 
 def _denoted_peek_spans(peek, grammar):
@@ -2517,7 +2492,7 @@ def _ahead_of_any(parts, at, paths, grammar):
     them may be the one the parse took and the answer has to hold for all of them.
     """
     spans = [span for path in paths or ({},) for span in _ahead_of(_guards_in_force(parts, at, path), grammar)]
-    return tuple(_merged_spans(spans))
+    return tuple(chars.merged_spans(spans))
 
 
 def _entering_guards(grammar):
@@ -3038,12 +3013,12 @@ def merge_gate_peeks(grammar, _namer):
             kinds = ", ".join(sorted(type(guard).__name__ for guard in ahead))
             raise AssertionError(f"a gate reads ahead as {kinds}, which is two questions about one character")
         rest = [guard for guard in way.gate.guards if not isinstance(guard, (ir.LookGuard, ir.NegLookGuard))]
-        refused = _merged_spans([span for guard in nots for span in guard.item.spans])
+        refused = chars.merged_spans([span for guard in nots for span in guard.item.spans])
         if looks:
             admitted = list(looks[0].item.spans)
             for guard in looks[1:]:
-                admitted = _subtracted_spans(admitted, _subtracted_spans(admitted, list(guard.item.spans)))
-            asked = ir.LookGuard(item=_spans_node(_subtracted_spans(admitted, refused)))
+                admitted = chars.subtracted_spans(admitted, chars.subtracted_spans(admitted, list(guard.item.spans)))
+            asked = ir.LookGuard(item=_spans_node(chars.subtracted_spans(admitted, refused)))
         else:
             asked = ir.NegLookGuard(item=_spans_node(refused))
         return dataclasses.replace(way, gate=ir.GatePart(guards=(*rest, asked)))
