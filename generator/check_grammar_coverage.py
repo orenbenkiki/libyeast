@@ -46,53 +46,53 @@ AMBIENT = {"r": len(annotated2ir.RESUMES)}
 # takes nothing and refuses nothing where it stands, committing the parse instead, so what fails is whatever comes after
 # it. Both lists in alphabetical order, and a kind in neither raises rather than being read as either.
 ALWAYS = (
-    ir.ClearVar,
-    ir.CloseWindow,
-    ir.CommitProvisional,
-    ir.ConsumeChar,  # the gate found the character, so taking it cannot fail
-    ir.ConsumePeeked,  # the gate found the literal, so taking it cannot fail
-    ir.Cut,
-    ir.Emit,
-    ir.Empty,
-    ir.Error,
-    ir.ExcludeAt,
-    ir.Flip,
-    ir.Increase,
-    ir.InjectBefore,
-    ir.MarkProvisional,
-    ir.OpenProvisional,
-    ir.OpenWindow,
-    ir.PopBackTrack,
-    ir.PopCode,
-    ir.PopIndent,
-    ir.PopMessage,
-    ir.PopRecovery,
-    ir.PushBackTrack,
-    ir.PushCode,
-    ir.PushIndent,
-    ir.PushMessage,
-    ir.PushRecovery,
-    ir.RetypeProvisional,
-    ir.SetForbidden,
-    ir.SetVar,
-    ir.StartMustConsume,
+    ir.ClearVarAction,
+    ir.CloseWindowAction,
+    ir.CommitProvisionalAction,
+    ir.ConsumeCharAction,  # the gate found the character, so taking it cannot fail
+    ir.ConsumePeekedAction,  # the gate found the literal, so taking it cannot fail
+    ir.CutAction,
+    ir.EmitAction,
+    ir.EmptyTree,
+    ir.ErrorAction,
+    ir.ExcludeAtAction,
+    ir.FlipValue,
+    ir.IncreaseAction,
+    ir.InjectBeforeAction,
+    ir.MarkProvisionalAction,
+    ir.OpenProvisionalAction,
+    ir.OpenWindowAction,
+    ir.PopBackTrackAction,
+    ir.PopCodeAction,
+    ir.PopIndentAction,
+    ir.PopMessageAction,
+    ir.PopRecoveryAction,
+    ir.PushBackTrackAction,
+    ir.PushCodeAction,
+    ir.PushIndentAction,
+    ir.PushMessageAction,
+    ir.PushRecoveryAction,
+    ir.RetypeProvisionalAction,
+    ir.SetForbiddenAction,
+    ir.SetVarAction,
+    ir.StartMustConsumeAction,
 )
 NEVER_SURE = (
-    ir.Char,
+    ir.OneCharSet,
     ir.CharSet,  # a set says no where the character is not one of its own
-    ir.ConsumeLiteral,  # a fixed sequence says no where the input does not spell it
-    ir.ColumnLe,
-    ir.ColumnLt,
-    ir.Diff,
-    ir.EndMustConsume,  # a turn that took no character says no, which is what ends the run holding it
-    ir.EndOfStream,
-    ir.Invalid,
-    ir.LiteralPeek,  # a gate's literal form says no where the input does not begin it
-    ir.Look,
-    ir.LookBehind,
-    ir.NegLook,
-    ir.Range,
-    ir.StartOfLine,
+    ir.ConsumeLiteralAction,  # a fixed sequence says no where the input does not spell it
+    ir.ColumnLeGuard,
+    ir.ColumnLtGuard,
+    ir.DiffSet,
+    ir.EndMustConsumeGuard,  # a turn that took no character says no, which is what ends the run holding it
+    ir.EndOfStreamGuard,
+    ir.InvalidSet,
+    ir.LiteralPeekGuard,  # a gate's literal form says no where the input does not begin it
+    ir.LookGuard,
+    ir.LookBehindGuard,
+    ir.NegLookGuard,
+    ir.RangeSet,
+    ir.StartOfLineGuard,
 )
 
 
@@ -143,22 +143,29 @@ _IS_TOTAL = ir.Reading(
         ALWAYS: True,
         NEVER_SURE: False,
         # A repetition of none or more, an optional and a scan all take nothing where nothing is there.
-        (ir.ConsumeSpan, ir.ConsumeTrimmedSpan, ir.Opt, ir.Star, ir.TrimStar): True,
+        (ir.ConsumeSpanAction, ir.ConsumeTrimmedSpanAction, ir.OptTree, ir.StarTree, ir.TrimStarTree): True,
         # A wrapping `(max)` says no where its production does; the vendored grammar's bare `(max)` is a length note.
-        ir.Max: lambda node, grammar, seen: is_total(node.item, grammar, seen) if node.item is not None else False,
-        # A recovery answers a cut and nothing else, so what says no is the item saying it.
-        (ir.Commit, ir.Plus, ir.Recover, ir.Rep, ir.Token, ir.Wrap): lambda node, grammar, seen: is_total(
-            node.item, grammar, seen
+        ir.MaxWrapper: lambda node, grammar, seen: (
+            is_total(node.item, grammar, seen) if node.item is not None else False
         ),
-        ir.Bind: lambda node, grammar, seen: is_total(node.cond, grammar, seen),
-        ir.Seq: lambda node, grammar, seen: all(is_total(item, grammar, seen) for item in node.items),
-        ir.Alt: lambda node, grammar, seen: any(is_total(item, grammar, seen) for item in node.items),
-        ir.Case: _a_switch_is_total,
-        ir.Choice: lambda node, grammar, seen: any(is_total(way, grammar, seen) for way in node.alternatives),
-        ir.Alternative: _a_way_is_total,
+        # A recovery answers a cut and nothing else, so what says no is the item saying it.
+        (
+            ir.CommitWrapper,
+            ir.PlusTree,
+            ir.RecoverWrapper,
+            ir.RepTree,
+            ir.TokenWrapper,
+            ir.Wrapper,
+        ): lambda node, grammar, seen: is_total(node.item, grammar, seen),
+        ir.BindTree: lambda node, grammar, seen: is_total(node.cond, grammar, seen),
+        ir.SeqTree: lambda node, grammar, seen: all(is_total(item, grammar, seen) for item in node.items),
+        ir.AltTree: lambda node, grammar, seen: any(is_total(item, grammar, seen) for item in node.items),
+        ir.CaseTree: _a_switch_is_total,
+        ir.ChoiceState: lambda node, grammar, seen: any(is_total(way, grammar, seen) for way in node.alternatives),
+        ir.AlternativeState: _a_way_is_total,
         # A recursion reached again is taken as total, the rest of the body deciding: a rule is total only where some
         # path through it does not depend on the recursion.
-        ir.Ref: lambda node, grammar, seen: node.name in seen
+        ir.RefCall: lambda node, grammar, seen: node.name in seen
         or is_total(grammar[node.name].body, grammar, seen | {node.name}),
     },
 )
@@ -247,11 +254,11 @@ def _decided_by_callers(grammar, wanted):
     gated = {name: True for name in wanted}
     for production in grammar.values():
         body = production.body
-        if not isinstance(body, ir.Choice):
+        if not isinstance(body, ir.ChoiceState):
             continue
         for way in body.alternatives:
             for held in (way.first, way.second):
-                if isinstance(held, ir.Ref) and held.name in gated and not way.gate.guards:
+                if isinstance(held, ir.RefCall) and held.name in gated and not way.gate.guards:
                     gated[held.name] = False
     called = {name for production in grammar.values() for name in production.references()}
     return {_base(name) for name, is_gated in gated.items() if is_gated and name in called}

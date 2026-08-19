@@ -274,9 +274,9 @@ simply loses them. It reads none from there through the whole pipeline.
   them, each a question about the one position the alternative is entered at — and the alternative is taken only where
   every one holds. A gate is asked where the alternative is entered, which is what makes it the only place a decision
   can stand. A gate holding nothing is the unconditional fallthrough, which only the last alternative may carry.
-- A **peek** is the question about the character in front of the parse: a `Look` over a `CharSet`. It is one guard among
-  the rest rather than a field of its own, and the one question the generated parser answers by indexing the decoder's
-  key.
+- A **peek** is the question about the character in front of the parse: a `LookGuard` over a `CharSet`. It is one guard
+  among the rest rather than a field of its own, and the one question the generated parser answers by indexing the
+  decoder's key.
 - A **guard** is a zero-width node that decides — `Look`, `NegLook`, `LookBehind`, `StartOfLine`, `EndOfStream`, `Le`,
   `Lt`, `EndMustConsume`. A guard belongs in a gate; one reached among a way's actions is a decision asked a step too
   late. A `(cut)` is not one of these: it takes nothing either, but it commits the parse rather than asking it anything,
@@ -606,8 +606,9 @@ Some further differences never reach the token stream a caller sees, so they are
 productions that diverge only when run alone, and agree once composed into a document:
 
 - libyeast consumes and emits the indentation YamlReference peeks at, so it needs no cross-line lookahead.
-- It flattens the character-class helpers it uses only inside a `Diff`, so a helper run _alone_ emits `unparsed` where
-  YamlReference emits its tokens — invisible in a real document, since the helper only ever appears in a subtraction.
+- It flattens the character-class helpers it uses only inside a `DiffSet`, so a helper run _alone_ emits `unparsed`
+  where YamlReference emits its tokens — invisible in a real document, since the helper only ever appears in a
+  subtraction.
 - It follows the spec's factoring of the plain-scalar `:`/`#` exclusion, and YamlReference does not. The spec keeps
   `ns-plain-safe-out`/`-in` (rules 128/129) as `ns-char` (and `ns-char - c-flow-indicator`) and excludes `:`/`#` in
   `ns-plain-char` (rule 130), with its two exceptions; YamlReference instead subtracts `:`/`#` up in 128/129 and makes

@@ -26,11 +26,11 @@ MARKER_ONLY = frozenset({"end-block-scalar"})
 # `(recover)` says where a failed cut stops unwinding, a `(commit)` is a scoped cut, an annotation says what the
 # characters are called, a `(wrap)` puts markers around them. A `(max)` is a scope too and is not one of these — the
 # official grammar writes its bound, as a bare `(max)` before what it covers.
-WRAPS_WHAT_IT_WRITES = (ir.Commit, ir.Recover, ir.Token, ir.Wrap)
+WRAPS_WHAT_IT_WRITES = (ir.CommitWrapper, ir.RecoverWrapper, ir.TokenWrapper, ir.Wrapper)
 
 # What libyeast writes and the official grammar has nothing for: the tokens it emits, the errors it names, and the point
 # it commits at. A sequence drops these rather than writing something in their place.
-WRITES_NOTHING = (ir.Cut, ir.Emit, ir.Error)
+WRITES_NOTHING = (ir.CutAction, ir.EmitAction, ir.ErrorAction)
 
 # The rules libyeast adds around the official grammar: the root the parser runs, and the unparsed recovery it and a
 # failed cut hand off to. They consume, so they are not marker-only, and the official grammar has no counterpart to
@@ -87,21 +87,21 @@ def flatten(items):
     """
     spliced = []
     for item in items:
-        spliced.extend(item.items if isinstance(item, ir.Seq) else [item])
+        spliced.extend(item.items if isinstance(item, ir.SeqTree) else [item])
     return tuple(spliced)
 
 
 def normalize(node):
     """`node` with its sequences flattened, and a sequence of one item collapsed into that item."""
     node = ir.rebuilt(node, normalize)
-    if isinstance(node, ir.Seq):
+    if isinstance(node, ir.SeqTree):
         items = flatten(node.items)
-        return items[0] if len(items) == 1 else ir.Seq(items)
-    if isinstance(node, ir.Alt) and node.items and isinstance(node.items[-1], ir.Empty):
+        return items[0] if len(items) == 1 else ir.SeqTree(items)
+    if isinstance(node, ir.AltTree) and node.items and isinstance(node.items[-1], ir.EmptyTree):
         # An alternation whose last branch matches nothing is an optional, which is how the official grammar writes it.
         rest = node.items[:-1]
-        return ir.Opt(rest[0] if len(rest) == 1 else ir.Alt(rest))
-    if isinstance(node, ir.Case):
+        return ir.OptTree(rest[0] if len(rest) == 1 else ir.AltTree(rest))
+    if isinstance(node, ir.CaseTree):
         # A case whose branches are all one thing is that thing, no dispatch: libyeast's soft-commit case reads that way
         # once the commit it wraps is erased to its item, matching the official grammar's bare rule.
         items = [branch.item for branch in node.branches] + ([node.default] if node.default is not None else [])
@@ -114,19 +114,23 @@ def erase(node, owner):
     """What the official grammar writes where libyeast writes `node`."""
     if isinstance(node, WRAPS_WHAT_IT_WRITES):
         return erase(node.item, owner)
-    if isinstance(node, ir.Max) and node.item is not None:
+    if isinstance(node, ir.MaxWrapper) and node.item is not None:
         # libyeast wraps a production in `(max)`; the official grammar writes the character bound as a bare `(max)`
         # before that production instead, so the wrapping is undone into the sequence the vendored grammar spells.
         inner = erase(node.item, owner)
-        items = inner.items if isinstance(inner, ir.Seq) else (inner,)
-        return ir.Seq((ir.Max(node.limit),) + items)
-    if isinstance(node, ir.Ref) and node.name in MARKER_ONLY:
-        return ir.Empty()
-    if isinstance(node, ir.Ref) and not node.args and node.name in INDICATORS and node.name != owner:
-        return ir.Char(INDICATORS[node.name])
-    if isinstance(node, ir.Seq):
-        kept = [erase(item, owner) for item in node.items if not isinstance(item, (ir.Emit, ir.Cut, ir.Error))]
-        return ir.Seq(tuple(kept))
+        items = inner.items if isinstance(inner, ir.SeqTree) else (inner,)
+        return ir.SeqTree((ir.MaxWrapper(node.limit),) + items)
+    if isinstance(node, ir.RefCall) and node.name in MARKER_ONLY:
+        return ir.EmptyTree()
+    if isinstance(node, ir.RefCall) and not node.args and node.name in INDICATORS and node.name != owner:
+        return ir.OneCharSet(INDICATORS[node.name])
+    if isinstance(node, ir.SeqTree):
+        kept = [
+            erase(item, owner)
+            for item in node.items
+            if not isinstance(item, (ir.EmitAction, ir.CutAction, ir.ErrorAction))
+        ]
+        return ir.SeqTree(tuple(kept))
     return ir.rebuilt(node, lambda item: erase(item, owner))
 
 

@@ -88,7 +88,7 @@ class Mark:
 
 
 @dataclass(frozen=True)
-class Token:
+class TokenWrapper:
     """A wire token: its code character, its start mark, and its text escaped as it appears on the wire."""
 
     code: str
@@ -108,7 +108,7 @@ def parse(wire):
             continue
         byte, char, line, column = (int(group) for group in position.groups())
         code_line = lines[index + 1] if index + 1 < len(lines) else ""
-        tokens.append(Token(code_line[:1], Mark(byte, char, line, column), code_line[1:]))
+        tokens.append(TokenWrapper(code_line[:1], Mark(byte, char, line, column), code_line[1:]))
         index += 2
     return tokens
 

@@ -21,7 +21,11 @@ MESSAGES = os.path.join(os.path.dirname(annotated2ir.DEFAULT_GRAMMAR), "messages
 
 def named_codes(grammar):
     """The set of message codes named by a `(cut)`, an `(error)` or a wrapping `(max)` anywhere in `grammar`."""
-    codes = set(chars.gathered(grammar, (ir.Cut, ir.Error, ir.Max, ir.Commit), lambda node: node.message))
+    codes = set(
+        chars.gathered(
+            grammar, (ir.CutAction, ir.ErrorAction, ir.MaxWrapper, ir.CommitWrapper), lambda node: node.message
+        )
+    )
     return codes - {None}  # the vendored grammar's bare `(max)` names no message
 
 

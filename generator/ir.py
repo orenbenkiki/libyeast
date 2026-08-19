@@ -8,8 +8,8 @@ normalized here, so the round-trip stays exact. Flattening and simplification be
 `ir2spec.py` does its own, to compare against the official grammar.
 
 Every node is a dataclass, and every grammar node it holds is a field of its own or an item of a tuple of them — which
-is what lets a walker recurse over the IR without knowing what any particular node is. `Branch` exists for that reason:
-a `(case)` branch is a node rather than a bare pair, so nothing has to special-case one.
+is what lets a walker recurse over the IR without knowing what any particular node is. `BranchPart` exists for that
+reason: a `(case)` branch is a node rather than a bare pair, so nothing has to special-case one.
 
 Every node also answers `references()`: the productions its subtree names directly, without following into their bodies.
 Each class spells its own fields out, so which fields can hold a production — and which are codes, messages, or counts —
@@ -81,9 +81,9 @@ def is_one_char(node, grammar, seen=frozenset()):
 
     It is what tells a scan from a way, which both the interpreter and the normalizer must agree on: a run over a
     character class is a value the input decides, taken whole and judged whole, and a run over anything else is a way
-    the parse chooses. A `Char`, `Range` or `Invalid` is one; a `Diff` is one when its base is (the exclusions only
-    narrow it); an `Alt` is one when every branch is (a union of char sets), so a lowered optional `x | <empty>` is not
-    one; a `Ref` is one when its production is.
+    the parse chooses. A `OneCharSet`, `RangeSet` or `InvalidSet` is one; a `DiffSet` is one when its base is (the
+    exclusions only narrow it); an `AltTree` is one when every branch is (a union of char sets), so a lowered optional
+    `x | <empty>` is not one; a `RefCall` is one when its production is.
 
     Every other kind that reaches here is named as not one, and a kind named nowhere raises: `_IS_ONE_CHAR` is a
     `Reading`, so it answers only for what it has been told about and the corpus proves every answer is reached. A
@@ -126,7 +126,7 @@ class Reading:
 
     Both are measurements rather than claims: they say what has happened, not what cannot.
 
-    - **No kind is named twice.** Named groups overlap — `Cut` is a guard and a commit both — and a chain of tests
+    - **No kind is named twice.** Named groups overlap — `CutAction` is a guard and a commit both — and a chain of tests
       resolves that silently by its order, with nothing saying which resolution was meant. Here it is an error until
       someone writes the answer down.
 
@@ -324,7 +324,7 @@ def _renamed(names, *values):
 
 
 @dataclass(frozen=True)
-class Param:
+class ParamValue:
     """A grammar parameter: `n` (indentation), `c` (context), `m` (indent indicator), or `t` (chomping)."""
 
     name: str
@@ -337,7 +337,7 @@ class Param:
 
 
 @dataclass(frozen=True)
-class Lit:
+class LitValue:
     """A literal value: an int, a string (e.g. `"block-in"`), or None (the grammar's `null`)."""
 
     value: object
@@ -350,7 +350,7 @@ class Lit:
 
 
 @dataclass(frozen=True)
-class Match:
+class MatchValue:
     """
     `(match)`: the text of the open run — the token about to be emitted, which is what a rule has just matched. What a
     rule reads when it must act on that text, the characters being in hand already, with nothing remembered about where
@@ -365,12 +365,12 @@ class Match:
 
 
 @dataclass(frozen=True)
-class Global:
+class GlobalValue:
     """
     The value of the global `name` — one for the parse, not one per call.
 
-    A value read off the single slot rather than a parameter passed to get here: `SetVar` and `Increase` write it,
-    `ClearVar` says where it stops applying, and nothing declares it or carries it down a call.
+    A value read off the single slot rather than a parameter passed to get here: `SetVarAction` and `IncreaseAction`
+    write it, `ClearVarAction` says where it stops applying, and nothing declares it or carries it down a call.
     """
 
     name: str
@@ -383,12 +383,12 @@ class Global:
 
 
 @dataclass(frozen=True)
-class Indent:
+class IndentValue:
     """
     The indentation in force: what the top of the stack holds, and what the characters here are measured against.
 
-    A value read off the stack rather than a parameter passed to get here — `PushIndent` and `PopIndent` are what put it
-    there and take it back, so nothing declares it and no call carries it.
+    A value read off the stack rather than a parameter passed to get here — `PushIndentAction` and `PopIndentAction` are
+    what put it there and take it back, so nothing declares it and no call carries it.
     """
 
     def references(self):
@@ -399,14 +399,14 @@ class Indent:
 
 
 @dataclass(frozen=True)
-class AutoDetectIndent:
+class AutoDetectIndentValue:
     """
     `<auto-detect-indent>`: the indentation of the next line holding a character other than a space, less `n`, read
     without consuming anything and bounded by nothing.
 
     The official grammar's, and only ever read from it — libyeast's own grammar takes each such indentation where it
-    stands and reads `Column`, so nothing here evaluates one. It stays because the vendored grammar `check_vendor_spec`
-    compares against spells it, and one reader loads them both.
+    stands and reads `ColumnValue`, so nothing here evaluates one. It stays because the vendored grammar
+    `check_vendor_spec` compares against spells it, and one reader loads them both.
     """
 
     def references(self):
@@ -417,7 +417,7 @@ class AutoDetectIndent:
 
 
 @dataclass(frozen=True)
-class Column:
+class ColumnValue:
     """
     `<column>`: the column the parse stands at, counted from zero.
 
@@ -433,7 +433,7 @@ class Column:
 
 
 @dataclass(frozen=True)
-class Add:
+class AddValue:
     """`(+)`: integer addition of two expressions."""
 
     a: object
@@ -448,7 +448,7 @@ class Add:
 
 
 @dataclass(frozen=True)
-class Sub:
+class SubValue:
     """`(-)`: integer subtraction of two expressions."""
 
     a: object
@@ -463,7 +463,7 @@ class Sub:
 
 
 @dataclass(frozen=True)
-class Len:
+class LenValue:
     """`(len)`: how many characters a matched string holds."""
 
     arg: object
@@ -477,7 +477,7 @@ class Len:
 
 
 @dataclass(frozen=True)
-class Atoi:
+class AtoiValue:
     """`(atoi)`: the integer the decimal digits of a matched string spell."""
 
     arg: object
@@ -491,7 +491,7 @@ class Atoi:
 
 
 @dataclass(frozen=True)
-class Branch:
+class BranchPart:
     """One branch of a `(case)` or a `(flip)`: what to use when the parameter has this value."""
 
     value: str
@@ -506,7 +506,7 @@ class Branch:
 
 
 @dataclass(frozen=True)
-class Flip:
+class FlipValue:
     """`(flip)`: a pure value transformer over a parameter (e.g. `in-flow` mapping one context to another)."""
 
     var: str
@@ -524,7 +524,7 @@ class Flip:
 
 
 @dataclass(frozen=True)
-class Char:
+class OneCharSet:
     """A single literal codepoint."""
 
     cp: int
@@ -537,7 +537,7 @@ class Char:
 
 
 @dataclass(frozen=True)
-class Range:
+class RangeSet:
     """An inclusive codepoint range `[lo, hi]`."""
 
     lo: int
@@ -551,7 +551,7 @@ class Range:
 
 
 @dataclass(frozen=True)
-class Ref:
+class RefCall:
     """A reference to another production, passing `args` (expressions)."""
 
     name: str
@@ -565,7 +565,7 @@ class Ref:
 
 
 @dataclass(frozen=True)
-class Empty:
+class EmptyTree:
     """`<empty>`: the epsilon match."""
 
     def references(self):
@@ -576,7 +576,7 @@ class Empty:
 
 
 @dataclass(frozen=True)
-class StartOfLine:
+class StartOfLineGuard:
     """`<start-of-line>`: a zero-width assertion that the parser is at the start of a line."""
 
     def references(self):
@@ -587,7 +587,7 @@ class StartOfLine:
 
 
 @dataclass(frozen=True)
-class EndOfStream:
+class EndOfStreamGuard:
     """`<end-of-stream>`: a zero-width assertion that the parser is at the end of the input."""
 
     def references(self):
@@ -598,7 +598,7 @@ class EndOfStream:
 
 
 @dataclass(frozen=True)
-class Invalid:
+class InvalidSet:
     """
     `<invalid>`: one byte that begins no valid UTF-8 sequence. It belongs to no character set, so it matches nowhere the
     grammar names a character — only the recovery rules reach for it, where a run of these is `unparsed-invalid`.
@@ -635,7 +635,7 @@ class CharSet:
 
 
 @dataclass(frozen=True)
-class Seq:
+class SeqTree:
     """`(all)`: an ordered concatenation."""
 
     items: tuple
@@ -649,7 +649,7 @@ class Seq:
 
 
 @dataclass(frozen=True)
-class Alt:
+class AltTree:
     """`(any)`: an ordered alternation."""
 
     items: tuple
@@ -663,7 +663,7 @@ class Alt:
 
 
 @dataclass(frozen=True)
-class Star:
+class StarTree:
     """`(***)`: zero or more."""
 
     item: object
@@ -677,7 +677,7 @@ class Star:
 
 
 @dataclass(frozen=True)
-class Plus:
+class PlusTree:
     """`(+++)`: one or more."""
 
     item: object
@@ -691,7 +691,7 @@ class Plus:
 
 
 @dataclass(frozen=True)
-class Opt:
+class OptTree:
     """`(???)`: optional (zero or one)."""
 
     item: object
@@ -705,7 +705,7 @@ class Opt:
 
 
 @dataclass(frozen=True)
-class Rep:
+class RepTree:
     """`({N})`: exactly `count` times, where `count` is an expression (a literal or a parameter)."""
 
     count: object
@@ -720,13 +720,13 @@ class Rep:
 
 
 @dataclass(frozen=True)
-class TrimStar:
+class TrimStarTree:
     """
     A maximal run of `full` whose trailing run of `trim` characters is given back — the normalized form of a `(trim*
     content)*`, where `full` is `trim | content`. A plain scalar's in-line run is one: it keeps its inner spaces and
-    leaves the trailing ones, so `nb-ns-plain-in-line` — `(s-white* ns-plain-char)*` — becomes `TrimStar` over `s-white
-    | ns-plain-char`, trimming `s-white`; the single- and double-quoted in-line runs likewise. It matches the empty
-    string, so a run of nothing but `trim` characters consumes none of them.
+    leaves the trailing ones, so `nb-ns-plain-in-line` — `(s-white* ns-plain-char)*` — becomes `TrimStarTree` over
+    `s-white | ns-plain-char`, trimming `s-white`; the single- and double-quoted in-line runs likewise. It matches the
+    empty string, so a run of nothing but `trim` characters consumes none of them.
     """
 
     full: object
@@ -741,11 +741,11 @@ class TrimStar:
 
 
 @dataclass(frozen=True)
-class ConsumeSpan:
+class ConsumeSpanAction:
     """
-    A maximal run of `set` characters, consumed in one scan — what a `Star` over a character class becomes in the
-    canonical form, mapping to a single repeated-char-set match. Matches the empty string; one that stands for a `Plus`
-    sits behind a gate peeking `set`, which is what proves it takes at least one.
+    A maximal run of `set` characters, consumed in one scan — what a `StarTree` over a character class becomes in the
+    canonical form, mapping to a single repeated-char-set match. Matches the empty string; one that stands for a
+    `PlusTree` sits behind a gate peeking `set`, which is what proves it takes at least one.
     """
 
     set: object
@@ -759,10 +759,10 @@ class ConsumeSpan:
 
 
 @dataclass(frozen=True)
-class ConsumeChar:
+class ConsumeCharAction:
     """
     The one character the gate peeked, taken into the run. It consumes exactly one, always: the gate has already found
-    it there, so a `ConsumeChar` that finds nothing is a gate that did not do its job, and the interpreter says so
+    it there, so a `ConsumeCharAction` that finds nothing is a gate that did not do its job, and the interpreter says so
     rather than matching nothing. The generated parser carries the same assertion.
     """
 
@@ -774,7 +774,7 @@ class ConsumeChar:
 
 
 @dataclass(frozen=True)
-class LiteralPeek:
+class LiteralPeekGuard:
     """
     A gate's literal form: the alternative is entered where the input begins with `text` and the first character after
     it passes the follow test — `then`, a class it must belong to, or `barrier`, a class it must not; at most one is
@@ -798,11 +798,11 @@ class LiteralPeek:
 
 
 @dataclass(frozen=True)
-class ConsumePeeked:
+class ConsumePeekedAction:
     """
-    The literal the gate's `LiteralPeek` found, taken into the run. It consumes the literal's characters, always: the
-    gate has already found them there, so finding otherwise is a gate that did not do its job — the interpreter says so,
-    and the generated parser advances without scanning the bytes a second time. `ConsumeLiteral` stays the
+    The literal the gate's `LiteralPeekGuard` found, taken into the run. It consumes the literal's characters, always:
+    the gate has already found them there, so finding otherwise is a gate that did not do its job — the interpreter says
+    so, and the generated parser advances without scanning the bytes a second time. `ConsumeLiteralAction` stays the
     test-and-consume for a literal no gate vouches for.
     """
 
@@ -821,12 +821,12 @@ def _asked_in_order(guard):
 
 
 @dataclass(frozen=True)
-class Gate:
+class GatePart:
     """
     What an alternative is entered on, tested without consuming: the `guards` that must all hold where the parse stands.
     They are a set and not a sequence — each is a question about the same position, so no order between them means
     anything, and a gate holding none is the unconditional fallthrough, which only the last alternative may carry. The
-    question about the character in front is a `Look` over its class, one guard among the rest.
+    question about the character in front is a `LookGuard` over its class, one guard among the rest.
 
     Held as a tuple in one canonical order rather than as a set, so that two gates asking the same questions are the
     same gate — which is what lets the sweep merge the productions that carry them — while what the pipeline emits stays
@@ -848,9 +848,9 @@ class Gate:
 
 
 @dataclass(frozen=True)
-class Alternative:
+class AlternativeState:
     """
-    One way a production may go: a `Gate` to enter on, the `actions` it performs, and up to two productions it hands
+    One way a production may go: a `GatePart` to enter on, the `actions` it performs, and up to two productions it hands
     control to. `first` is the call and `second` where the path carries on past it — so an edge is one push. `second`
     alone is a tail call. Nothing follows `second`, which is why a sequence's trailing actions become a continuation of
     their own. `recover` rides the push: where it names a recovery production, a cut unwinding out of `first` stops at
@@ -876,11 +876,11 @@ class Alternative:
 
 
 @dataclass(frozen=True)
-class Choice:
+class ChoiceState:
     """
     A production's body as the state machine reads it: its `alternatives` in order, the first whose gate holds being the
-    one taken. It replaces `Alt` where a body has been shaped, so a choice that is canonical is never mistaken for one
-    that is not.
+    one taken. It replaces `AltTree` where a body has been shaped, so a choice that is canonical is never mistaken for
+    one that is not.
     """
 
     alternatives: tuple
@@ -894,7 +894,7 @@ class Choice:
 
 
 @dataclass(frozen=True)
-class ConsumeLiteral:
+class ConsumeLiteralAction:
     """
     A fixed sequence of characters, matched in one go and all or nothing — `---`, `...`, a directive's `YAML` or `TAG`.
     What a run of literal characters in a sequence becomes in the canonical form: one comparison of a few bytes rather
@@ -911,10 +911,10 @@ class ConsumeLiteral:
 
 
 @dataclass(frozen=True)
-class ConsumeLimitedSpan:
+class ConsumeLimitedSpanAction:
     """
     Up to `limit` characters of `set`, consumed in one scan, and how many there were is what it says: a scan that fills
-    the limit and one that falls short both match, and `DidConsumeFullLimitedSpan` is what tells them apart.
+    the limit and one that falls short both match, and `DidMatchFullSpanGuard` is what tells them apart.
 
     An action that cannot fail, which is what a counted scan cannot be: a gate speaks for the character in front of it
     and not for `limit` of them, so a scan asked for a count it cannot reach is a way failing on what it performs. Here
@@ -933,9 +933,9 @@ class ConsumeLimitedSpan:
 
 
 @dataclass(frozen=True)
-class DidConsumeFullLimitedSpan:
+class DidMatchFullSpanGuard:
     """
-    Whether the `ConsumeLimitedSpan` just performed took its whole limit.
+    Whether the `ConsumeLimitedSpanAction` just performed took its whole limit.
 
     It asks about the action in front of it and nothing else, so it stands where that action left the parse: every other
     action takes the answer away, and asking with none there raises rather than being answered. A guard that reads what
@@ -951,10 +951,10 @@ class DidConsumeFullLimitedSpan:
 
 
 @dataclass(frozen=True)
-class ConsumeTrimmedSpan:
+class ConsumeTrimmedSpanAction:
     """
     A maximal run of `full` characters whose trailing run of `trim` is given back, consumed in one scan — what a
-    `TrimStar` becomes in the canonical form, the two-set trimming scan a plain or quoted scalar's line compiles to.
+    `TrimStarTree` becomes in the canonical form, the two-set trimming scan a plain or quoted scalar's line compiles to.
     Matches the empty string.
     """
 
@@ -970,7 +970,7 @@ class ConsumeTrimmedSpan:
 
 
 @dataclass(frozen=True)
-class Look:
+class LookGuard:
     """`(===)`: positive lookahead (zero-width)."""
 
     item: object
@@ -984,7 +984,7 @@ class Look:
 
 
 @dataclass(frozen=True)
-class NegLook:
+class NegLookGuard:
     """`(!==)`: negative lookahead (zero-width)."""
 
     item: object
@@ -998,7 +998,7 @@ class NegLook:
 
 
 @dataclass(frozen=True)
-class LookBehind:
+class LookBehindGuard:
     """`(<==)`: positive look-behind (the preceding input matched `item`)."""
 
     item: object
@@ -1012,7 +1012,7 @@ class LookBehind:
 
 
 @dataclass(frozen=True)
-class Diff:
+class DiffSet:
     """`(---)`: character-class subtraction — `base` but none of `minus`."""
 
     base: object
@@ -1027,7 +1027,7 @@ class Diff:
 
 
 @dataclass(frozen=True)
-class ExcludeAt:
+class ExcludeAtAction:
     """`(exclude)`: a zero-width negative guard (the current position is not at `item`)."""
 
     item: object
@@ -1041,7 +1041,7 @@ class ExcludeAt:
 
 
 @dataclass(frozen=True)
-class Max:
+class MaxWrapper:
     """
     `(max)`: a bound of `limit` characters — the implicit-key lookahead limit (§7.4.2).
 
@@ -1065,7 +1065,7 @@ class Max:
 
 
 @dataclass(frozen=True)
-class ColumnLt:
+class ColumnLtGuard:
     """`(<)`: assert the first indentation is less than the second."""
 
     a: object
@@ -1080,7 +1080,7 @@ class ColumnLt:
 
 
 @dataclass(frozen=True)
-class ColumnLe:
+class ColumnLeGuard:
     """`(<=)`: assert the first indentation is less than or equal to the second."""
 
     a: object
@@ -1095,7 +1095,7 @@ class ColumnLe:
 
 
 @dataclass(frozen=True)
-class Case:
+class CaseTree:
     """
     `(case)`: dispatch on a parameter's value, each branch a grammar node, `default` the `else` for a value no branch
     names — `None` where there is none, and then a value with no branch is a path that does not match.
@@ -1114,7 +1114,7 @@ class Case:
 
 
 @dataclass(frozen=True)
-class Bind:
+class BindTree:
     """`(if)` + `(set)`: match `cond`, binding parameter `param` to `value` as a side effect."""
 
     cond: object
@@ -1130,7 +1130,7 @@ class Bind:
 
 
 @dataclass(frozen=True)
-class SetVar:
+class SetVarAction:
     """`(set)` standalone: bind parameter `param` to `value` with no matching (a zero-width action)."""
 
     param: str
@@ -1145,7 +1145,7 @@ class SetVar:
 
 
 @dataclass(frozen=True)
-class ClearVar:
+class ClearVarAction:
     """
     A zero-width action that says `param` stops applying here: past it, nothing holds a value for it, and reading one is
     a fault rather than whatever was left behind.
@@ -1165,7 +1165,7 @@ class ClearVar:
 
 
 @dataclass(frozen=True)
-class Increase:
+class IncreaseAction:
     """
     `(increase)`: increase indentation parameter `param` to the current column — `param = max(param, column)` — a
     zero-width action. It records the widest indentation seen so far, which is how a block scalar's leading empty lines
@@ -1184,16 +1184,16 @@ class Increase:
 # --- token annotations ---
 #
 # The parser accumulates the characters it consumes into a run, and gives the run a code. A run ends — becoming one
-# token — wherever a `Token` scope begins or ends, and wherever an `Emit` marker falls. So an annotation does not make
-# *a* token: it says what code the characters consumed within it carry, and where the runs are cut.
+# token — wherever a `TokenWrapper` scope begins or ends, and wherever an `EmitAction` marker falls. So an annotation
+# does not make *a* token: it says what code the characters consumed within it carry, and where the runs are cut.
 #
 # A character consumed under no annotation at all carries the code `unparsed`, which is what the parser says about input
 # it could not parse. On the success path that is always a mistake, so `validate_grammar.py` holds every
-# character-consuming node to lying within some `Token`.
+# character-consuming node to lying within some `TokenWrapper`.
 
 
 @dataclass(frozen=True)
-class Token:
+class TokenWrapper:
     """
     `(token)`: the characters `item` consumes carry `code`, but for those a nested annotation claims.
 
@@ -1213,9 +1213,9 @@ class Token:
 
 
 @dataclass(frozen=True)
-class Wrap:
+class Wrapper:
     """
-    `(wrap)`: zero-width `begin` and `end` markers bracketing `item` — sugar for an `Emit` on either side of it.
+    `(wrap)`: zero-width `begin` and `end` markers bracketing `item` — sugar for an `EmitAction` on either side of it.
 
     A node of its own, rather than the sequence it stands for, so that the two markers are paired by construction and a
     `begin` cannot lose its `end`.
@@ -1234,7 +1234,7 @@ class Wrap:
 
 
 @dataclass(frozen=True)
-class Emit:
+class EmitAction:
     """`(emit)`: a zero-width token at this point, which also cuts the run of characters around it."""
 
     code: str
@@ -1260,7 +1260,7 @@ class Emit:
 
 
 @dataclass(frozen=True)
-class PushIndent:
+class PushIndentAction:
     """
     A zero-width action that pushes `level` onto the stack as the indentation the characters after it are measured
     against. It comes off where the call it was pushed for is done with it, which is the production that call carries on
@@ -1279,18 +1279,18 @@ class PushIndent:
 
 
 @dataclass(frozen=True)
-class PopIndent:
+class PopIndentAction:
     """
     A zero-width action that takes the indentation in force off the stack, putting back the one it displaced. It leads a
     production of its own rather than standing beside the call it answers for: nothing of an alternative runs past the
     call it makes, so the way carries on at that production and the pop is the first thing done there.
 
-    `level` is what its `PushIndent` put there, written on both halves where the two are minted together and carried
-    with the pop wherever it moves. It says nothing the stack does not already hold, and is not what the pop restores
-    from — a pop takes off whatever is on top. It is there so that a step moving the pop, or moving something past it,
-    can say which indentation the actions around it are measuring against, without a table pairing the two ends; and it
-    is checked where the pop runs, so the pairing is a refusal rather than a claim. Two pops of the same level are the
-    same action still, so what merges before this carries a level merges after it.
+    `level` is what its `PushIndentAction` put there, written on both halves where the two are minted together and
+    carried with the pop wherever it moves. It says nothing the stack does not already hold, and is not what the pop
+    restores from — a pop takes off whatever is on top. It is there so that a step moving the pop, or moving something
+    past it, can say which indentation the actions around it are measuring against, without a table pairing the two
+    ends; and it is checked where the pop runs, so the pairing is a refusal rather than a claim. Two pops of the same
+    level are the same action still, so what merges before this carries a level merges after it.
     """
 
     level: object
@@ -1305,7 +1305,7 @@ class PopIndent:
 
 
 @dataclass(frozen=True)
-class SetForbidden:
+class SetForbiddenAction:
     """
     A zero-width action that sets what may not match at a start of line to `item`, `None` where nothing may not.
 
@@ -1327,10 +1327,10 @@ class SetForbidden:
 
 
 @dataclass(frozen=True)
-class PushCode:
+class PushCodeAction:
     """
     A zero-width action that cuts the run and sets the code its following characters carry to `code` — what a `(token)`
-    opens with — pushing the code it displaces onto the stack for its own `PopCode` to take back.
+    opens with — pushing the code it displaces onto the stack for its own `PopCodeAction` to take back.
     """
 
     code: str
@@ -1344,10 +1344,10 @@ class PushCode:
 
 
 @dataclass(frozen=True)
-class PopCode:
+class PopCodeAction:
     """
     A zero-width action that cuts the run and takes back the code its following characters carry from the top of the
-    stack — what its `PushCode` displaced. Paired with it: `Token(code, item)` lowers to `PushCode(code), item,
+    stack — what its `PushCodeAction` displaced. Paired with it: `Token(code, item)` lowers to `PushCode(code), item,
     PopCode`. A pop with nothing pushed is refused: the pair is what says where a code begins and ends.
     """
 
@@ -1361,12 +1361,12 @@ class PopCode:
 
 
 @dataclass(frozen=True)
-class PushMessage:
+class PushMessageAction:
     """
     A zero-width action that opens a committed region under `message` — what a `(commit)` opens with. From here to the
-    `PopMessage` that closes it, the input must carry the parse through: a failure that unwinds past this point with the
-    region never closed is `message`, where one that unwinds through a closed region backtracks like any other. A gate
-    is never hoisted past one — refusing entry to a region the grammar committed to must stay the error it names.
+    `PopMessageAction` that closes it, the input must carry the parse through: a failure that unwinds past this point
+    with the region never closed is `message`, where one that unwinds through a closed region backtracks like any other.
+    A gate is never hoisted past one — refusing entry to a region the grammar committed to must stay the error it names.
     """
 
     message: str
@@ -1380,13 +1380,13 @@ class PushMessage:
 
 
 @dataclass(frozen=True)
-class PopMessage:
+class PopMessageAction:
     """
-    A zero-width action that closes the committed region the innermost `PushMessage` opened — reaching it is what makes
-    the region's commitment kept, so a later failure backtracks through it softly. Paired with `PushMessage`:
-    `Commit(message, item)` lowers to `PushMessage(message), item, PopMessage`. The pair may be cut across a minted
-    helper: like a `(token)`'s code it pairs with its push on the parse's own stack, so where the halves stand is
-    nothing the split has to know.
+    A zero-width action that closes the committed region the innermost `PushMessageAction` opened — reaching it is what
+    makes the region's commitment kept, so a later failure backtracks through it softly. Paired with
+    `PushMessageAction`: `Commit(message, item)` lowers to `PushMessage(message), item, PopMessage`. The pair may be cut
+    across a minted helper: like a `(token)`'s code it pairs with its push on the parse's own stack, so where the halves
+    stand is nothing the split has to know.
     """
 
     pair: frozenset
@@ -1399,7 +1399,7 @@ class PopMessage:
 
 
 @dataclass(frozen=True)
-class PushRecovery:
+class PushRecoveryAction:
     """
     A zero-width action that says what answers for a failed `(cut)` from here on: `recovery` matches whatever of the
     input the parse gives up, and `resume` is where it carries on once that has matched.
@@ -1426,11 +1426,12 @@ class PushRecovery:
 
 
 @dataclass(frozen=True)
-class PopRecovery:
+class PopRecoveryAction:
     """
-    A zero-width action that takes back what the innermost `PushRecovery` established, so a cut past this point unwinds
-    to whatever answered before it. Paired with `PushRecovery`, and like the other pairs it holds on the parse's own
-    stack rather than where it was written, so a split that cuts the two apart is nothing either half has to know.
+    A zero-width action that takes back what the innermost `PushRecoveryAction` established, so a cut past this point
+    unwinds to whatever answered before it. Paired with `PushRecoveryAction`, and like the other pairs it holds on the
+    parse's own stack rather than where it was written, so a split that cuts the two apart is nothing either half has to
+    know.
     """
 
     pair: frozenset
@@ -1443,7 +1444,7 @@ class PopRecovery:
 
 
 @dataclass(frozen=True)
-class OpenWindow:
+class OpenWindowAction:
     """
     A zero-width action that opens a `(max)` window `limit` characters wide, past which a committed consume fails the
     cut `message` names. Windows do not nest: only the outermost applies, an inner one being inside the budget the outer
@@ -1463,11 +1464,11 @@ class OpenWindow:
 
 
 @dataclass(frozen=True)
-class CloseWindow:
+class CloseWindowAction:
     """
-    A zero-width action that closes a `(max)` window. Paired with `OpenWindow`: `Max(limit, message, item)` lowers to
-    `OpenWindow(limit, message), item, CloseWindow`. The one it closes is the outermost open — the inner ones only count
-    — so the window is gone exactly when the open that set it is closed.
+    A zero-width action that closes a `(max)` window. Paired with `OpenWindowAction`: `Max(limit, message, item)` lowers
+    to `OpenWindow(limit, message), item, CloseWindow`. The one it closes is the outermost open — the inner ones only
+    count — so the window is gone exactly when the open that set it is closed.
     """
 
     pair: frozenset
@@ -1480,10 +1481,10 @@ class CloseWindow:
 
 
 @dataclass(frozen=True)
-class StartMustConsume:
+class StartMustConsumeAction:
     """
-    A zero-width action that opens a region which must take a character: where the `EndMustConsume` that closes it is
-    reached with the position where this stood, the region has not matched.
+    A zero-width action that opens a region which must take a character: where the `EndMustConsumeGuard` that closes it
+    is reached with the position where this stood, the region has not matched.
 
     What makes a loop end, said where the grammar can see it. A turn taking no character is a turn that would repeat
     forever, so a run says of its turn that it takes one — the machine reading a loop that must make progress rather
@@ -1501,10 +1502,11 @@ class StartMustConsume:
 
 
 @dataclass(frozen=True)
-class EndMustConsume:
+class EndMustConsumeGuard:
     """
-    A zero-width action that closes the region the innermost `StartMustConsume` opened, refusing it where the parse
-    stands where the open did. Paired with `StartMustConsume`, on the parse's own stack as the other pairs are.
+    A zero-width action that closes the region the innermost `StartMustConsumeAction` opened, refusing it where the
+    parse stands where the open did. Paired with `StartMustConsumeAction`, on the parse's own stack as the other pairs
+    are.
     """
 
     pair: frozenset
@@ -1517,11 +1519,11 @@ class EndMustConsume:
 
 
 @dataclass(frozen=True)
-class PushBackTrack:
+class PushBackTrackAction:
     """
-    A zero-width action that opens a region the parse gives back whole: from here to the `PopBackTrack` that closes it,
-    the ways taken inside are the ways taken, and a failure past the close gives the region up rather than choosing
-    among them again.
+    A zero-width action that opens a region the parse gives back whole: from here to the `PopBackTrackAction` that
+    closes it, the ways taken inside are the ways taken, and a failure past the close gives the region up rather than
+    choosing among them again.
 
     What makes a repetition possessive, said where the grammar can see it rather than left to whoever runs it: a run
     takes its turns, and a continuation that fails fails the run entire, there being no shorter run to fall back to. A
@@ -1538,11 +1540,11 @@ class PushBackTrack:
 
 
 @dataclass(frozen=True)
-class PopBackTrack:
+class PopBackTrackAction:
     """
-    A zero-width action that closes the region the innermost `PushBackTrack` opened, settling the ways taken inside it.
-    Paired with `PushBackTrack`, and like the other pairs it holds on the parse's own stack rather than where it was
-    written, so a split that cuts the two apart is nothing either half has to know.
+    A zero-width action that closes the region the innermost `PushBackTrackAction` opened, settling the ways taken
+    inside it. Paired with `PushBackTrackAction`, and like the other pairs it holds on the parse's own stack rather than
+    where it was written, so a split that cuts the two apart is nothing either half has to know.
     """
 
     pair: frozenset
@@ -1555,11 +1557,11 @@ class PopBackTrack:
 
 
 @dataclass(frozen=True)
-class OpenProvisional:
+class OpenProvisionalAction:
     """
     A zero-width action that opens the provisional run: the tokens emitted from here on are undecided — built and held,
-    none handed back — until a `CommitProvisional` resolves them. One-for-one with `ys_queue_open_run`; only one run is
-    open at a time.
+    none handed back — until a `CommitProvisionalAction` resolves them. One-for-one with `ys_queue_open_run`; only one
+    run is open at a time.
     """
 
     def references(self):
@@ -1570,12 +1572,12 @@ class OpenProvisional:
 
 
 @dataclass(frozen=True)
-class MarkProvisional:
+class MarkProvisionalAction:
     """
     A zero-width action that marks the open run's current position, cutting it into the region before the mark and the
-    region from the mark on — the side a later `RetypeProvisional` or `InjectBefore` names. A run carries one mark at a
-    time, and taking it again moves it, the last taken winning — how a line scan marks each fresh line. A mark is a
-    parse position, not a property of any token.
+    region from the mark on — the side a later `RetypeProvisionalAction` or `InjectBeforeAction` names. A run carries
+    one mark at a time, and taking it again moves it, the last taken winning — how a line scan marks each fresh line. A
+    mark is a parse position, not a property of any token.
     """
 
     def references(self):
@@ -1586,7 +1588,7 @@ class MarkProvisional:
 
 
 @dataclass(frozen=True)
-class RetypeProvisional:
+class RetypeProvisionalAction:
     """
     A zero-width action that rewrites the held tokens in `region` — `all`, `before_mark` or `after_mark` — by kind: a
     token whose characters were consumed as a line break takes `breaks`, any other takes `rest`, and a kind whose code
@@ -1607,7 +1609,7 @@ class RetypeProvisional:
 
 
 @dataclass(frozen=True)
-class InjectBefore:
+class InjectBeforeAction:
     """
     A zero-width action that puts the decided markers `codes`, in order, into the open run at `at` — its `start`, ahead
     of the whole run, or its `mark`, between the two sides. `begin-document` and the node markers ahead of a document's
@@ -1626,11 +1628,11 @@ class InjectBefore:
 
 
 @dataclass(frozen=True)
-class CommitProvisional:
+class CommitProvisionalAction:
     """
     A zero-width action that resolves the open run: its tokens are decided and may be handed back. One-for-one with
-    `ys_queue_resolve_run`. Paired with `OpenProvisional` dynamically, as a committed region's push and pop are — the
-    run is the queue's, not any one call's, so the pair may be cut across productions.
+    `ys_queue_resolve_run`. Paired with `OpenProvisionalAction` dynamically, as a committed region's push and pop are —
+    the run is the queue's, not any one call's, so the pair may be cut across productions.
     """
 
     def references(self):
@@ -1641,7 +1643,7 @@ class CommitProvisional:
 
 
 @dataclass(frozen=True)
-class Cut:
+class CutAction:
     """
     `(cut)`: a zero-width commit past which the parse does not backtrack — on a later failure it is the error.
 
@@ -1658,7 +1660,7 @@ class Cut:
 
 
 @dataclass(frozen=True)
-class Commit:
+class CommitWrapper:
     """
     `(commit)`: match `item`, committing only to `item` being present — a `(cut)` scoped to what follows it.
 
@@ -1684,7 +1686,7 @@ class Commit:
 
 
 @dataclass(frozen=True)
-class Error:
+class ErrorAction:
     """
     `(error)`: a zero-width error token at this point, which also cuts the run of characters around it.
 
@@ -1703,7 +1705,7 @@ class Error:
 
 
 @dataclass(frozen=True)
-class Recover:
+class RecoverWrapper:
     """
     `(recover)`: where a `(cut)` inside `item` stops unwinding, when `recovery` says it stops here.
 
@@ -1759,12 +1761,21 @@ class Prod:
 #
 # Taking nothing is not what makes one of these — every action and every guard takes nothing too. `<end-of-stream>` asks
 # about the input and is not one: it holds no characters to stop at. In alphabetical order.
-ASKED_NOT_TAKEN_NODES = (ExcludeAt, LiteralPeek, Look, LookBehind, NegLook)
+ASKED_NOT_TAKEN_NODES = (ExcludeAtAction, LiteralPeekGuard, LookGuard, LookBehindGuard, NegLookGuard)
 
 # What always takes at least one character where it matches, the counterpart of `TAKES_NOTHING`. A kind that reads on
 # one way and not on another — a run, a repetition, a choice — is neither, and is asked about its parts instead. In
 # alphabetical order.
-ALWAYS_READS = (Char, CharSet, ConsumeChar, ConsumeLiteral, ConsumePeeked, Diff, Invalid, Range)
+ALWAYS_READS = (
+    OneCharSet,
+    CharSet,
+    ConsumeCharAction,
+    ConsumeLiteralAction,
+    ConsumePeekedAction,
+    DiffSet,
+    InvalidSet,
+    RangeSet,
+)
 
 # The kinds that take characters themselves, rather than through whatever they hold. What a walk of a node's children
 # must not descend into, on pain of counting the same characters twice or of counting a peek's set as a match — and, the
@@ -1772,48 +1783,48 @@ ALWAYS_READS = (Char, CharSet, ConsumeChar, ConsumeLiteral, ConsumePeeked, Diff,
 # parse now stands. Every spelling of taking is here, whichever phase writes it: a family narrowed to the spellings one
 # phase happens to use answers a question about the other phases' by silently not counting them. In alphabetical order.
 CONSUMING = (
-    Char,
+    OneCharSet,
     CharSet,
-    ConsumeChar,
-    ConsumeLimitedSpan,
-    ConsumeLiteral,
-    ConsumePeeked,
-    ConsumeSpan,
-    ConsumeTrimmedSpan,
-    Diff,
-    Invalid,
-    Range,
+    ConsumeCharAction,
+    ConsumeLimitedSpanAction,
+    ConsumeLiteralAction,
+    ConsumePeekedAction,
+    ConsumeSpanAction,
+    ConsumeTrimmedSpanAction,
+    DiffSet,
+    InvalidSet,
+    RangeSet,
 )
 
 # What leaves something behind and matches wherever it is reached: it moves the parse's own state and never the
 # position. In alphabetical order.
 ACTIONS = (
-    ClearVar,
-    CloseWindow,
-    CommitProvisional,
-    Cut,
-    Emit,
-    Error,
-    ExcludeAt,
-    Increase,
-    InjectBefore,
-    MarkProvisional,
-    OpenProvisional,
-    OpenWindow,
-    PopBackTrack,
-    PopCode,
-    PopIndent,
-    PopMessage,
-    PopRecovery,
-    PushBackTrack,
-    PushCode,
-    PushIndent,
-    PushMessage,
-    PushRecovery,
-    RetypeProvisional,
-    SetForbidden,
-    SetVar,
-    StartMustConsume,
+    ClearVarAction,
+    CloseWindowAction,
+    CommitProvisionalAction,
+    CutAction,
+    EmitAction,
+    ErrorAction,
+    ExcludeAtAction,
+    IncreaseAction,
+    InjectBeforeAction,
+    MarkProvisionalAction,
+    OpenProvisionalAction,
+    OpenWindowAction,
+    PopBackTrackAction,
+    PopCodeAction,
+    PopIndentAction,
+    PopMessageAction,
+    PopRecoveryAction,
+    PushBackTrackAction,
+    PushCodeAction,
+    PushIndentAction,
+    PushMessageAction,
+    PushRecoveryAction,
+    RetypeProvisionalAction,
+    SetForbiddenAction,
+    SetVarAction,
+    StartMustConsumeAction,
 )
 
 # A question the parse answers where it stands, taking nothing: what the input holds around it, and how the count it
@@ -1821,16 +1832,16 @@ ACTIONS = (
 # one of these — it takes nothing either, but it commits the parse rather than asking it anything, and it stands with
 # the actions. In alphabetical order.
 GUARDS = (
-    ColumnLe,
-    ColumnLt,
-    DidConsumeFullLimitedSpan,
-    EndMustConsume,
-    EndOfStream,
-    LiteralPeek,
-    Look,
-    LookBehind,
-    NegLook,
-    StartOfLine,
+    ColumnLeGuard,
+    ColumnLtGuard,
+    DidMatchFullSpanGuard,
+    EndMustConsumeGuard,
+    EndOfStreamGuard,
+    LiteralPeekGuard,
+    LookGuard,
+    LookBehindGuard,
+    NegLookGuard,
+    StartOfLineGuard,
 )
 
 # What a way performs: everything the machine does where it stands, to the input or to the state it carries. What may
@@ -1840,58 +1851,71 @@ PERFORMED_NODES = (*ACTIONS, *CONSUMING)
 # What takes no character at all: an action leaves something behind, a guard asks a question, an empty match does
 # neither. `<empty>` is both an action and a guard, doing nothing and always matching, so it is named where each of them
 # needs it. What stands behind one of these is what a match begins on.
-TAKES_NOTHING = (*ACTIONS, *GUARDS, Empty)
+TAKES_NOTHING = (*ACTIONS, *GUARDS, EmptyTree)
 
 # A peek: a guard that holds its question about the input as an `item` and takes nothing, whether it asks about what
 # stands in front or what stands behind. `every-peek-is-a-character-set` is what these are held to. Not every guard that
 # reads the input is one — `<end-of-stream>` asks whether a character is there at all and holds no question, and the
 # literal form holds a run of characters rather than a set.
-PEEKS = (Look, LookBehind, NegLook)
+PEEKS = (LookGuard, LookBehindGuard, NegLookGuard)
 
 # The guards that read what stands in front of the parse: whether a character is there at all, whether it begins a
 # literal, whether it falls in a set, whether it falls outside one. What stands behind is not one of these, and neither
 # is where the parse is in the line or how the indentation compares.
-LOOKS_AHEAD = (EndOfStream, LiteralPeek, Look, NegLook)
+LOOKS_AHEAD = (EndOfStreamGuard, LiteralPeekGuard, LookGuard, NegLookGuard)
 
 # What a peek holds that shapes the output rather than the question: the run's code and the markers. A lookaround is
 # probed and given back, so none of it reaches the stream and none of it is part of what the peek asks. In alphabetical
 # order.
-PEEK_OUTPUT = (Emit, PopCode, PushCode, Token, Wrap)
+PEEK_OUTPUT = (EmitAction, PopCodeAction, PushCodeAction, TokenWrapper, Wrapper)
 
 # The kinds that always match exactly one character, whichever of their set that character is. The other four that can
 # be one — a difference, an alternation, a call, a switch — are one only where what they hold is, which is a question
 # about the grammar rather than about the kind. In alphabetical order.
-ALWAYS_ONE_CHAR = (Char, CharSet, Invalid, Range)
+ALWAYS_ONE_CHAR = (OneCharSet, CharSet, InvalidSet, RangeSet)
 
 # A match repeated: the same state entered again, as many times as the input allows or as a count fixes. A run said as
 # the scan a parser makes of it is not one of these — the scan is what such a repetition is lowered *to*. In
 # alphabetical order.
-REPETITIONS = (Plus, Rep, Star)
+REPETITIONS = (PlusTree, RepTree, StarTree)
 
 # A repetition the input ends rather than a count: it takes turns until what it repeats declines, where `REPETITIONS`
 # takes in the counted one as well. What the phases lower is these two, a count being a run of a length already fixed.
-RUNS = (Plus, Star)
+RUNS = (PlusTree, StarTree)
 
 # A run of a character class said as the scan a parser makes of it, which may be asked for none at all and so forces no
 # character to be there. In alphabetical order.
-SCANS = (ConsumeLimitedSpan, ConsumeSpan, ConsumeTrimmedSpan)
+SCANS = (ConsumeLimitedSpanAction, ConsumeSpanAction, ConsumeTrimmedSpanAction)
 
 # A node that holds what it covers rather than bracketing it with a pair — what the wrappers phase takes apart. In
 # alphabetical order.
-HOLDERS = (Commit, Max, Recover, Token, Wrap)
+WRAPPERS = (CommitWrapper, MaxWrapper, RecoverWrapper, TokenWrapper, Wrapper)
 
 # The kinds whose item is entered where they are: a run and a repetition take their first turn there, a scope and a
 # commit their content, and a lookaround tests at the position it stands at. In alphabetical order.
-WALKED_UNCONSUMED = (Commit, ExcludeAt, Look, LookBehind, Max, NegLook, Plus, Recover, Rep, Star, Token, Wrap)
+WALKED_UNCONSUMED = (
+    CommitWrapper,
+    ExcludeAtAction,
+    LookGuard,
+    LookBehindGuard,
+    MaxWrapper,
+    NegLookGuard,
+    PlusTree,
+    RecoverWrapper,
+    RepTree,
+    StarTree,
+    TokenWrapper,
+    Wrapper,
+)
 
 # What holds a match, and so cannot stand where an item does. A choice and a run become productions of their own, a
 # recovery moves to the edge an alternative rides, and a binding becomes an action. In alphabetical order.
-HOLDS_A_MATCH = (Alt, Bind, Recover, Seq)
+HOLDS_A_MATCH = (AltTree, BindTree, RecoverWrapper, SeqTree)
 
 # What a production's body may be, each a state the machine has: a choice of ways, a run of one, a way under a handler,
 # or a way. A binding is not among them — a body that is one hides a write behind a match, which `no-bind-nodes` counts
 # wherever it stands. In alphabetical order.
-BODY_KINDS = (Alt, Choice, Recover, Seq)
+BODY_KINDS = (AltTree, ChoiceState, RecoverWrapper, SeqTree)
 
 # What an item may be: something the machine does where it stands — a call, or anything that takes no character, or
 # anything that takes characters. A guard's question is the guard's own business and no item of the way, which is what
@@ -1899,100 +1923,113 @@ BODY_KINDS = (Alt, Choice, Recover, Seq)
 # `every-exclusion-is-bounded` are what answer for those. Said as the two families and the call rather than as a list of
 # the spellings one phase reaches: a taking left out of the list is a step the machine has, read as a shape it has no
 # state for.
-LEAF_ITEMS = (*TAKES_NOTHING, *CONSUMING, Ref)
+LEAF_ITEMS = (*TAKES_NOTHING, *CONSUMING, RefCall)
 
 # What a production may hold instead of a matcher: a value the parse works out — an indentation, a measured length, a
 # parameter, a switch over one. It matches nothing, so it takes no character and reads nowhere. In alphabetical order.
-VALUE_KINDS = (Add, Atoi, AutoDetectIndent, Column, Flip, Global, Indent, Len, Lit, Match, Param, Sub)
+VALUE_KINDS = (
+    AddValue,
+    AtoiValue,
+    AutoDetectIndentValue,
+    ColumnValue,
+    FlipValue,
+    GlobalValue,
+    IndentValue,
+    LenValue,
+    LitValue,
+    MatchValue,
+    ParamValue,
+    SubValue,
+)
 
 # The values with nothing inside them, which is what lets a walk of the grammar tell a value it must leave alone from a
 # value holding more of the value language. In alphabetical order.
-VALUE_LEAVES = (Lit, Param)
+VALUE_LEAVES = (LitValue, ParamValue)
 
 # The kinds that never match exactly one character. A repetition or a sequence takes a run rather than a character; a
 # lookaround, a marker, an action and a guard take none; a value expression is no match at all; and the canonical form's
 # own consumes say in their names how much they take. With the eight that can be one character it is `KINDS`, which is
 # what it is here for. In alphabetical order.
 NOT_ONE_CHAR = (
-    Add,
-    Alternative,
-    Atoi,
-    AutoDetectIndent,
-    Bind,
-    Branch,
-    Choice,
-    ClearVar,
-    CloseWindow,
-    Column,
-    ColumnLe,
-    ColumnLt,
-    Commit,
-    CommitProvisional,
-    ConsumeChar,
-    ConsumeLimitedSpan,
-    ConsumeLiteral,
-    ConsumePeeked,
-    ConsumeSpan,
-    ConsumeTrimmedSpan,
-    Cut,
-    DidConsumeFullLimitedSpan,
-    Emit,
-    Empty,
-    EndMustConsume,
-    EndOfStream,
-    Error,
-    ExcludeAt,
-    Flip,
-    Gate,
-    Global,
-    Increase,
-    Indent,
-    InjectBefore,
-    Len,
-    Lit,
-    LiteralPeek,
-    Look,
-    LookBehind,
-    MarkProvisional,
-    Match,
-    Max,
-    NegLook,
-    OpenProvisional,
-    OpenWindow,
-    Opt,
-    Param,
-    Plus,
-    PopBackTrack,
-    PopCode,
-    PopIndent,
-    PopMessage,
-    PopRecovery,
+    AddValue,
+    AlternativeState,
+    AtoiValue,
+    AutoDetectIndentValue,
+    BindTree,
+    BranchPart,
+    ChoiceState,
+    ClearVarAction,
+    CloseWindowAction,
+    ColumnValue,
+    ColumnLeGuard,
+    ColumnLtGuard,
+    CommitWrapper,
+    CommitProvisionalAction,
+    ConsumeCharAction,
+    ConsumeLimitedSpanAction,
+    ConsumeLiteralAction,
+    ConsumePeekedAction,
+    ConsumeSpanAction,
+    ConsumeTrimmedSpanAction,
+    CutAction,
+    DidMatchFullSpanGuard,
+    EmitAction,
+    EmptyTree,
+    EndMustConsumeGuard,
+    EndOfStreamGuard,
+    ErrorAction,
+    ExcludeAtAction,
+    FlipValue,
+    GatePart,
+    GlobalValue,
+    IncreaseAction,
+    IndentValue,
+    InjectBeforeAction,
+    LenValue,
+    LitValue,
+    LiteralPeekGuard,
+    LookGuard,
+    LookBehindGuard,
+    MarkProvisionalAction,
+    MatchValue,
+    MaxWrapper,
+    NegLookGuard,
+    OpenProvisionalAction,
+    OpenWindowAction,
+    OptTree,
+    ParamValue,
+    PlusTree,
+    PopBackTrackAction,
+    PopCodeAction,
+    PopIndentAction,
+    PopMessageAction,
+    PopRecoveryAction,
     Prod,
-    PushBackTrack,
-    PushCode,
-    PushIndent,
-    PushMessage,
-    PushRecovery,
-    Recover,
-    Rep,
-    RetypeProvisional,
-    Seq,
-    SetForbidden,
-    SetVar,
-    Star,
-    StartMustConsume,
-    StartOfLine,
-    Sub,
-    Token,
-    TrimStar,
-    Wrap,
+    PushBackTrackAction,
+    PushCodeAction,
+    PushIndentAction,
+    PushMessageAction,
+    PushRecoveryAction,
+    RecoverWrapper,
+    RepTree,
+    RetypeProvisionalAction,
+    SeqTree,
+    SetForbiddenAction,
+    SetVarAction,
+    StarTree,
+    StartMustConsumeAction,
+    StartOfLineGuard,
+    SubValue,
+    TokenWrapper,
+    TrimStarTree,
+    Wrapper,
 )
 
 # Every kind there is. `NOT_ONE_CHAR` names all but the eight that can be one character, so the two between them are the
 # whole of it — and a kind added to neither is one `Reading` refuses to be told about, since a table naming it would be
 # naming what is no kind of node. What reads this is every net that has to tell "a kind I know, which is not this" from
 # "a kind nobody has named".
-KINDS = NOT_ONE_CHAR + (Alt, Case, Char, CharSet, Diff, Invalid, Range, Ref)
+KINDS = NOT_ONE_CHAR + (AltTree, CaseTree, OneCharSet, CharSet, DiffSet, InvalidSet, RangeSet, RefCall)
 
 # What `is_one_char` answers, as the reading it is: the kinds it has been asked about and no others. A kind absent from
 # here is one nothing has ever asked this of, and arriving it raises rather than being answered for — which is the whole
@@ -2001,72 +2038,72 @@ _IS_ONE_CHAR = Reading(
     "whether a node matches exactly one character",
     {
         ALWAYS_ONE_CHAR: True,
-        Diff: lambda node, grammar, seen: is_one_char(node.base, grammar, seen),
+        DiffSet: lambda node, grammar, seen: is_one_char(node.base, grammar, seen),
         # An empty alternation matches nothing at all, so it is no character either.
-        Alt: lambda node, grammar, seen: bool(node.items)
+        AltTree: lambda node, grammar, seen: bool(node.items)
         and all(is_one_char(item, grammar, seen) for item in node.items),
-        Ref: lambda node, grammar, seen: node.name in seen
+        RefCall: lambda node, grammar, seen: node.name in seen
         or is_one_char(grammar[node.name].body, grammar, seen | {node.name}),
         # Every kind that reaches here and is not one character: a repetition or a sequence takes a run rather than a
         # character, an action and a guard take none, a value expression is no match at all, and the canonical form's
         # own consumes are answered where they are made. Spelled out rather than taken from a wider group, since no
         # other reading shares one — what is missing raises, and what is spare `unexercised` reports.
         (
-            Add,
-            Alternative,
-            Atoi,
-            Bind,
-            Choice,
-            ClearVar,
-            CloseWindow,
-            Column,
-            ColumnLe,
-            ColumnLt,
-            Commit,
-            ConsumeChar,
-            ConsumeLimitedSpan,
-            ConsumePeeked,
-            ConsumeSpan,
-            Cut,
-            DidConsumeFullLimitedSpan,
-            Emit,
-            Empty,
-            EndMustConsume,
-            EndOfStream,
-            Error,
-            ExcludeAt,
-            Gate,
-            Global,
-            Increase,
-            Indent,
-            Len,
-            LiteralPeek,
-            Match,
-            Max,
-            OpenWindow,
-            Opt,
-            Plus,
-            PopBackTrack,
-            PopCode,
-            PopIndent,
-            PopMessage,
-            PopRecovery,
-            PushBackTrack,
-            PushCode,
-            PushIndent,
-            PushMessage,
-            PushRecovery,
-            Recover,
-            Rep,
-            Seq,
-            SetForbidden,
-            SetVar,
-            Star,
-            StartMustConsume,
-            StartOfLine,
-            Sub,
-            Token,
-            Wrap,
+            AddValue,
+            AlternativeState,
+            AtoiValue,
+            BindTree,
+            ChoiceState,
+            ClearVarAction,
+            CloseWindowAction,
+            ColumnValue,
+            ColumnLeGuard,
+            ColumnLtGuard,
+            CommitWrapper,
+            ConsumeCharAction,
+            ConsumeLimitedSpanAction,
+            ConsumePeekedAction,
+            ConsumeSpanAction,
+            CutAction,
+            DidMatchFullSpanGuard,
+            EmitAction,
+            EmptyTree,
+            EndMustConsumeGuard,
+            EndOfStreamGuard,
+            ErrorAction,
+            ExcludeAtAction,
+            GatePart,
+            GlobalValue,
+            IncreaseAction,
+            IndentValue,
+            LenValue,
+            LiteralPeekGuard,
+            MatchValue,
+            MaxWrapper,
+            OpenWindowAction,
+            OptTree,
+            PlusTree,
+            PopBackTrackAction,
+            PopCodeAction,
+            PopIndentAction,
+            PopMessageAction,
+            PopRecoveryAction,
+            PushBackTrackAction,
+            PushCodeAction,
+            PushIndentAction,
+            PushMessageAction,
+            PushRecoveryAction,
+            RecoverWrapper,
+            RepTree,
+            SeqTree,
+            SetForbiddenAction,
+            SetVarAction,
+            StarTree,
+            StartMustConsumeAction,
+            StartOfLineGuard,
+            SubValue,
+            TokenWrapper,
+            Wrapper,
         ): False,
     },
 )
@@ -2081,7 +2118,7 @@ def repeated(node):
     kind is named and one named nowhere raises, rather than being read as something that does not repeat — a repetition
     this had not heard of would go unseen, which is what `is_one_char` answering `False` by default did.
     """
-    if isinstance(node, TrimStar):
+    if isinstance(node, TrimStarTree):
         return node.full
     if isinstance(node, REPETITIONS):
         return node.item

@@ -27,27 +27,27 @@ INDENT_MODES = annotated2ir.INDENT_MODES
 # inside it — a node this does not know is a node whose markers nothing has looked at, and the gate says so rather than
 # passing it. In alphabetical order.
 SILENT = (
-    ir.Char,
+    ir.OneCharSet,
     ir.CharSet,
-    ir.ColumnLe,
-    ir.ColumnLt,
-    ir.Cut,
-    ir.Diff,
-    ir.Empty,
-    ir.EndOfStream,
-    ir.Error,
-    ir.Flip,
-    ir.Increase,
-    ir.Invalid,
-    ir.Range,
-    ir.SetVar,
-    ir.StartOfLine,
+    ir.ColumnLeGuard,
+    ir.ColumnLtGuard,
+    ir.CutAction,
+    ir.DiffSet,
+    ir.EmptyTree,
+    ir.EndOfStreamGuard,
+    ir.ErrorAction,
+    ir.FlipValue,
+    ir.IncreaseAction,
+    ir.InvalidSet,
+    ir.RangeSet,
+    ir.SetVarAction,
+    ir.StartOfLineGuard,
 )
 # A scope whose markers are the markers of what it holds: it matches what is inside it, so what is inside it emits.
 # Passing over one would let a marker opened there go unclosed, and no other gate looks. A `(max)` is one of these where
 # it wraps a match and is not one where it is the vendored grammar's bare length note, so it is answered for on its own;
 # a `(recover)` is not one either, its two ways having to agree rather than one of them being the answer.
-SCOPES = (ir.Commit, ir.Token)
+SCOPES = (ir.CommitWrapper, ir.TokenWrapper)
 BALANCED = ((), ())  # no marker left open, and none closed that was not opened here
 
 
@@ -127,28 +127,30 @@ def _effect_of_recovery(node, values, known):
 _EFFECT = ir.Reading(
     "the markers a match leaves open and the ones it closes",
     {
-        ir.Emit: lambda node, values, known: marker(node.code),
-        ir.Wrap: lambda node, values, known: compose(
+        ir.EmitAction: lambda node, values, known: marker(node.code),
+        ir.Wrapper: lambda node, values, known: compose(
             compose(marker(node.begin), effect(node.item, values, known)), marker(node.end)
         ),
         SCOPES: lambda node, values, known: effect(node.item, values, known),
         # A wrapping `(max)` is one of those; the vendored grammar's bare `(max)` is a length note and matches nothing.
-        ir.Max: lambda node, values, known: BALANCED if node.item is None else effect(node.item, values, known),
+        ir.MaxWrapper: lambda node, values, known: BALANCED if node.item is None else effect(node.item, values, known),
         ir.ASKED_NOT_TAKEN_NODES: BALANCED,  # what is asked about emits nothing, whatever it matches
         SILENT: BALANCED,
-        ir.Seq: _effect_of_run,
-        ir.Alt: lambda node, values, known: agreed(
+        ir.SeqTree: _effect_of_run,
+        ir.AltTree: lambda node, values, known: agreed(
             [effect(item, values, known) for item in node.items], "an alternation"
         ),
-        ir.Case: _effect_of_switch,
-        ir.Opt: lambda node, values, known: agreed([effect(node.item, values, known), BALANCED], "an optional rule"),
+        ir.CaseTree: _effect_of_switch,
+        ir.OptTree: lambda node, values, known: agreed(
+            [effect(node.item, values, known), BALANCED], "an optional rule"
+        ),
         # A rule that opens or closes a marker cannot be repeated: twice around leaves twice as many open.
         ir.REPETITIONS: lambda node, values, known: agreed(
             [effect(node.item, values, known), BALANCED], "a repeated rule"
         ),
-        ir.Bind: lambda node, values, known: effect(node.cond, values, known),
-        ir.Recover: _effect_of_recovery,
-        ir.Ref: lambda node, values, known: known.get(node.name, BALANCED),
+        ir.BindTree: lambda node, values, known: effect(node.cond, values, known),
+        ir.RecoverWrapper: _effect_of_recovery,
+        ir.RefCall: lambda node, values, known: known.get(node.name, BALANCED),
     },
 )
 

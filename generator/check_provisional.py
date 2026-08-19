@@ -18,29 +18,31 @@ import normalize
 
 def _root(actions):
     """A one-production grammar whose only alternative performs `actions` — a root, since nothing references it."""
-    alternative = ir.Alternative(gate=ir.Gate(guards=()), actions=tuple(actions), first=None, second=None, recover=None)
-    production = ir.Prod(number=0, name="p", params=(), body=ir.Choice(alternatives=(alternative,)))
+    alternative = ir.AlternativeState(
+        gate=ir.GatePart(guards=()), actions=tuple(actions), first=None, second=None, recover=None
+    )
+    production = ir.Prod(number=0, name="p", params=(), body=ir.ChoiceState(alternatives=(alternative,)))
     return {"p": production}
 
 
 def _open():
-    return ir.OpenProvisional()
+    return ir.OpenProvisionalAction()
 
 
 def _mark():
-    return ir.MarkProvisional()
+    return ir.MarkProvisionalAction()
 
 
 def _retype(region):
-    return ir.RetypeProvisional(rest=None, breaks="line-feed", region=region)
+    return ir.RetypeProvisionalAction(rest=None, breaks="line-feed", region=region)
 
 
 def _inject(at):
-    return ir.InjectBefore(codes=("begin-pair",), at=at)
+    return ir.InjectBeforeAction(codes=("begin-pair",), at=at)
 
 
 def _commit():
-    return ir.CommitProvisional()
+    return ir.CommitProvisionalAction()
 
 
 # Each case: a name, the run's actions, and the fault substring expected — or None where the run balances.

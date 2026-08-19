@@ -29,14 +29,14 @@ def emitted(node):
     contribute no code of its own, and a rule that emits it would read as documented while saying nothing about it.
     """
     codes = []
-    if isinstance(node, ir.Token):
+    if isinstance(node, ir.TokenWrapper):
         codes.append(node.code)
         codes.extend(emitted(node.item))
-    elif isinstance(node, ir.Wrap):
+    elif isinstance(node, ir.Wrapper):
         codes.append(node.begin)
         codes.extend(emitted(node.item))
         codes.append(node.end)
-    elif isinstance(node, ir.Emit):
+    elif isinstance(node, ir.EmitAction):
         codes.append(node.code)
     elif isinstance(node, ir.KINDS):
         for child in chars.children(node):

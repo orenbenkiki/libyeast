@@ -38,12 +38,12 @@ REP = re.compile(r"^\(\{(.+)\}\)$")  # ({2}) / ({n})
 INT = re.compile(r"^-?[0-9]+$")
 SPECIAL = re.compile(r"^<(.+)>$")  # <empty>, <start-of-line>, <end-of-stream>, <auto-detect-indent>
 SPECIALS = {
-    "empty": ir.Empty,
-    "start-of-line": ir.StartOfLine,
-    "end-of-stream": ir.EndOfStream,
-    "invalid": ir.Invalid,
-    "column": ir.Column,
-    "auto-detect-indent": ir.AutoDetectIndent,  # the vendored grammar's; libyeast's own spells none
+    "empty": ir.EmptyTree,
+    "start-of-line": ir.StartOfLineGuard,
+    "end-of-stream": ir.EndOfStreamGuard,
+    "invalid": ir.InvalidSet,
+    "column": ir.ColumnValue,
+    "auto-detect-indent": ir.AutoDetectIndentValue,  # the vendored grammar's; libyeast's own spells none
 }
 
 
@@ -58,10 +58,10 @@ def special(x):
 
 
 def char(text):
-    """A quoted character or `xHH` hex codepoint becomes a Char."""
+    """A quoted character or `xHH` hex codepoint becomes a `OneCharSet`."""
     if HEX.match(text):
-        return ir.Char(int(text[1:], 16))
-    return ir.Char(ord(text))
+        return ir.OneCharSet(int(text[1:], 16))
+    return ir.OneCharSet(ord(text))
 
 
 def is_char(x):
@@ -70,7 +70,7 @@ def is_char(x):
 
 def count(spec):
     """Parse the `({N})` count: a digit literal or a parameter name."""
-    return ir.Lit(int(spec)) if INT.match(spec) else ir.Param(spec)
+    return ir.LitValue(int(spec)) if INT.match(spec) else ir.ParamValue(spec)
 
 
 def args(value):
@@ -80,7 +80,7 @@ def args(value):
 
 def branches(mapping, translate):
     """The value-keyed branches of a `(case)`/`(flip)`, minus the `var` selector and a `(case)`'s `else` default."""
-    return tuple(ir.Branch(key, translate(val)) for key, val in mapping.items() if key not in ("var", "else"))
+    return tuple(ir.BranchPart(key, translate(val)) for key, val in mapping.items() if key not in ("var", "else"))
 
 
 def expr(x):
@@ -88,117 +88,117 @@ def expr(x):
     if isinstance(x, dict):
         ((op, value),) = x.items()
         if op == "(+)":
-            return ir.Add(expr(value[0]), expr(value[1]))
+            return ir.AddValue(expr(value[0]), expr(value[1]))
         if op == "(-)":
-            return ir.Sub(expr(value[0]), expr(value[1]))
+            return ir.SubValue(expr(value[0]), expr(value[1]))
         if op == "(atoi)":
-            return ir.Atoi(expr(value))
+            return ir.AtoiValue(expr(value))
         # The vendored grammar's own spelling: `(ord)` is a single character there and `(atoi)` a whole string here,
         # which agree at the one digit it is applied to.
         if op == "(ord)":
-            return ir.Atoi(expr(value))
+            return ir.AtoiValue(expr(value))
         if op == "(len)":
-            return ir.Len(expr(value))
+            return ir.LenValue(expr(value))
         if op == "(flip)":
-            return ir.Flip(value["var"], branches(value, expr))
-        return ir.Ref(op, args(value))  # a function call, e.g. {in-flow: c}
+            return ir.FlipValue(value["var"], branches(value, expr))
+        return ir.RefCall(op, args(value))  # a function call, e.g. {in-flow: c}
     if x is None:
-        return ir.Lit(None)
+        return ir.LitValue(None)
     if isinstance(x, int):
-        return ir.Lit(x)
+        return ir.LitValue(x)
     if x == "(match)":
-        return ir.Match()
+        return ir.MatchValue()
     if x in PARAMS:
-        return ir.Param(x)
+        return ir.ParamValue(x)
     if x == "null":
-        return ir.Lit(None)
+        return ir.LitValue(None)
     if INT.match(x):
-        return ir.Lit(int(x))
+        return ir.LitValue(int(x))
     marker = special(x)
     if marker is not None:
         return marker
-    return ir.Lit(x)  # a value string, e.g. "block-in", "auto-detect"
+    return ir.LitValue(x)  # a value string, e.g. "block-in", "auto-detect"
 
 
 def node(x):
     """Translate a grammar node (a matcher)."""
     if isinstance(x, list):
         if len(x) == 2 and is_char(x[0]) and is_char(x[1]):
-            return ir.Range(char(x[0]).cp, char(x[1]).cp)
+            return ir.RangeSet(char(x[0]).cp, char(x[1]).cp)
         raise ValueError(f"unexpected bare list in grammar position: {x!r}")
     if isinstance(x, dict):
         if set(x) == {"(if)", "(set)"}:
             target, value = x["(set)"]
-            return ir.Bind(node(x["(if)"]), target, expr(value))
+            return ir.BindTree(node(x["(if)"]), target, expr(value))
         ((op, value),) = x.items()
         if op == "(all)":
-            return ir.Seq(tuple(node(i) for i in value))
+            return ir.SeqTree(tuple(node(i) for i in value))
         if op == "(any)":
-            return ir.Alt(tuple(node(i) for i in value))
+            return ir.AltTree(tuple(node(i) for i in value))
         if op == "(***)":
-            return ir.Star(node(value))
+            return ir.StarTree(node(value))
         if op == "(+++)":
-            return ir.Plus(node(value))
+            return ir.PlusTree(node(value))
         if op == "(???)":
-            return ir.Opt(node(value))
+            return ir.OptTree(node(value))
         if op == "(===)":
-            return ir.Look(node(value))
+            return ir.LookGuard(node(value))
         if op == "(!==)":
-            return ir.NegLook(node(value))
+            return ir.NegLookGuard(node(value))
         if op == "(<==)":
-            return ir.LookBehind(node(value))
+            return ir.LookBehindGuard(node(value))
         # The vendored spelling: match `value`, giving nothing back if a predicate within it then fails. Its two uses
         # wrap a repetition, which matches possessively here and so hands back nothing already.
         if op == "(<<<)":
             return node(value)
         if op == "(---)":
-            return ir.Diff(node(value[0]), tuple(node(i) for i in value[1:]))
+            return ir.DiffSet(node(value[0]), tuple(node(i) for i in value[1:]))
         if op == "(exclude)":
-            return ir.ExcludeAt(node(value))
+            return ir.ExcludeAtAction(node(value))
         if op == "(set)":
-            return ir.SetVar(value[0], expr(value[1]))
+            return ir.SetVarAction(value[0], expr(value[1]))
         if op == "(increase)":
-            return ir.Increase(value)
+            return ir.IncreaseAction(value)
         if op == "(max)":
             if isinstance(value, list):  # libyeast wraps a production, the vendored grammar precedes one
-                return ir.Max(expr(value[0]), value[1], node(value[2]))
-            return ir.Max(expr(value))
+                return ir.MaxWrapper(expr(value[0]), value[1], node(value[2]))
+            return ir.MaxWrapper(expr(value))
         if op == "(<)":
-            return ir.ColumnLt(expr(value[0]), expr(value[1]))
+            return ir.ColumnLtGuard(expr(value[0]), expr(value[1]))
         if op == "(<=)":
-            return ir.ColumnLe(expr(value[0]), expr(value[1]))
+            return ir.ColumnLeGuard(expr(value[0]), expr(value[1]))
         if op == "(case)":
             default = node(value["else"]) if "else" in value else None
-            return ir.Case(value["var"], branches(value, node), default)
+            return ir.CaseTree(value["var"], branches(value, node), default)
         if op == "(flip)":
-            return ir.Flip(value["var"], branches(value, expr))
+            return ir.FlipValue(value["var"], branches(value, expr))
         if op == "(token)":
-            return ir.Token(value[0], node(value[1]))
+            return ir.TokenWrapper(value[0], node(value[1]))
         if op == "(wrap)":
-            return ir.Wrap(value[0], value[1], node(value[2]))
+            return ir.Wrapper(value[0], value[1], node(value[2]))
         if op == "(emit)":
-            return ir.Emit(value)
+            return ir.EmitAction(value)
         if op == "(cut)":
-            return ir.Cut(value)
+            return ir.CutAction(value)
         if op == "(commit)":
-            return ir.Commit(value[0], node(value[1]))
+            return ir.CommitWrapper(value[0], node(value[1]))
         if op == "(error)":
-            return ir.Error(value)
+            return ir.ErrorAction(value)
         if op == "(recover)":
-            return ir.Recover(node(value[0]), node(value[1]))
+            return ir.RecoverWrapper(node(value[0]), node(value[1]))
         rep = REP.match(op)
         if rep:
-            return ir.Rep(count(rep.group(1)), node(value))
+            return ir.RepTree(count(rep.group(1)), node(value))
         if op.startswith("("):
             raise ValueError(f"unhandled grammar operator {op!r}")
-        return ir.Ref(op, args(value))  # a single non-operator key: a parameterized reference
+        return ir.RefCall(op, args(value))  # a single non-operator key: a parameterized reference
     marker = special(x)
     if marker is not None:
         return marker
     if is_char(x):
         return char(x)
     if isinstance(x, str):
-        return ir.Ref(x)  # a bare production name
+        return ir.RefCall(x)  # a bare production name
     raise ValueError(f"unexpected grammar scalar: {x!r}")
 
 

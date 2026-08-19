@@ -117,7 +117,9 @@ def _match_drift(vendored, ours):
     `(match)` the official grammar reads and libyeast does not is a reading nothing here justifies.
     """
     holders = {
-        label: {name for name, production in grammar.items() if any(isinstance(n, ir.Match) for n in walk(production))}
+        label: {
+            name for name, production in grammar.items() if any(isinstance(n, ir.MatchValue) for n in walk(production))
+        }
         for label, grammar in (("official", vendored), ("libyeast", ours))
     }
     return [

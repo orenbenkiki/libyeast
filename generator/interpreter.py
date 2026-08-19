@@ -12,8 +12,8 @@ It matches every node the IR defines, and a node it does not know raises rather 
 reached one is reported as the crash it is. The grammar as written: the character-level nodes, the repetitions, the
 parameter machinery and its arithmetic, the assertions and the lookarounds, and the annotations that give the tokens
 their codes and their markers. The canonical form beside it: the consumes a run of characters is said as, the pairs each
-scope is written down to, and the provisional run's own actions. `Recover` says where a failed `(cut)` stops unwinding;
-what each node means is written where it is defined, and this matches them one for one.
+scope is written down to, and the provisional run's own actions. `RecoverWrapper` says where a failed `(cut)` stops
+unwinding; what each node means is written where it is defined, and this matches them one for one.
 
 Matching is success-continuation style: `match` calls a continuation for each way a node matches, in greedy order, and
 the continuation reports whether the rest of the parse succeeded — so an alternation is re-entered when a later element
@@ -84,21 +84,22 @@ class Checkpoint(NamedTuple):
 
 class _Recovery(NamedTuple):
     """
-    What a `PushRecovery` leaves standing: what answers for a failed cut inside the region, where the parse carries on
-    once it has, and everything the unwind has to put back before either runs.
+    What a `PushRecoveryAction` leaves standing: what answers for a failed cut inside the region, where the parse
+    carries on once it has, and everything the unwind has to put back before either runs.
 
     One of these is what a `("recovery", entry, pairs)` on the parse's own stack holds, so the region stands where every
-    other scope does and its `PopRecovery` is held to taking the one open. `stack` is that stack as it was before the
-    entry went on it, which is what the unwind puts back — the region and everything opened inside it going together.
+    other scope does and its `PopRecoveryAction` is held to taking the one open. `stack` is that stack as it was before
+    the entry went on it, which is what the unwind puts back — the region and everything opened inside it going
+    together.
 
     `returns` is how deep the return stack stood where the region opened. Running the recovery and then the resume
     completes the way the region was pushed in, so what follows is where that way's own caller carries on — this is
     where to find it, not a rule of its own.
 
-    `is_closed` is the one element `PopRecovery` writes through, and what says whether the region still stands: a cut
-    past a region's close is answered by whatever stood before it, and one inside a region reopened by a way of its own
-    is answered here again. It is a record and not a read of the stack, because an unwind gives the stack back on its
-    way out — where the entry sits says nothing about what the region has already been.
+    `is_closed` is the one element `PopRecoveryAction` writes through, and what says whether the region still stands: a
+    cut past a region's close is answered by whatever stood before it, and one inside a region reopened by a way of its
+    own is answered here again. It is a record and not a read of the stack, because an unwind gives the stack back on
+    its way out — where the entry sits says nothing about what the region has already been.
     """
 
     recovery: object
@@ -228,7 +229,9 @@ class Emitter:
         # Windows do not nest, so the outermost is the one in force: an open displaces the window it finds and sets one
         # of its own only where it displaced none, and its close puts back what it displaced
         self.probing = 0  # how many lookaheads are in progress — a probe may read past the ceiling, a commit may not
-        self.did_fill_span = None  # whether the `ConsumeLimitedSpan` just performed took its whole limit, and nothing
+        self.did_fill_span = (
+            None  # whether the `ConsumeLimitedSpanAction` just performed took its whole limit, and nothing
+        )
         # where the last action performed was any other: the answer belongs to the action in front of the guard that
         # reads it, so every other action takes it away and asking with none there is a fault rather than a `False`
         self.entered = []  # the productions currently entered, outermost first — the depth guard's trace of what nests
@@ -239,7 +242,9 @@ class Emitter:
         # stands behind it. It says the unwind gives back only the scopes: what was read stays read and what was emitted
         # stands, which is what the recovery carries on over and where its error is stamped. No part of a checkpoint,
         # for the same reason `unwinding` is not
-        self.unwinding = None  # the pairs of the `PopBackTrack` a failure is unwinding to, or None where the failure is
+        self.unwinding = (
+            None  # the pairs of the `PopBackTrackAction` a failure is unwinding to, or None where the failure is
+        )
         # an ordinary one. A settled region's ways stand between its close and its open as live choices, so while this
         # is set no choice takes another way: the failure travels to the open, which gives the region back whole and
         # clears it. No part of a checkpoint — it says where a failure is going, not where the parse has been
@@ -403,7 +408,7 @@ class Emitter:
             character, start, start_position = self.run
             raw = self.raw[self.byte_at[start_position] : self.byte_at[self.position]]
             if raw:
-                self.tokens.append(wire.Token(character, start, wire.escape(raw, character)))
+                self.tokens.append(wire.TokenWrapper(character, start, wire.escape(raw, character)))
             self.run = None
 
     def marker(self, code):
@@ -416,7 +421,7 @@ class Emitter:
         `(wrap)` cannot say. Pairing by node would leave those invisible to a parse that has to close what it opened.
         """
         self.cut()
-        self.tokens.append(wire.Token(wire.CODE_CHAR[code], self.mark, ""))
+        self.tokens.append(wire.TokenWrapper(wire.CODE_CHAR[code], self.mark, ""))
         if code.startswith("begin-"):
             self.pending += ("end-" + code[len("begin-") :],)
         elif self.pending and self.pending[-1] == code:
@@ -425,7 +430,7 @@ class Emitter:
     def error(self, message):
         """Emit an error token: `message` as its text, at the position, spanning no input. Cuts the open run first."""
         self.cut()
-        self.tokens.append(wire.Token(wire.ERROR, self.mark, wire.escape(message.encode("utf-8"))))
+        self.tokens.append(wire.TokenWrapper(wire.ERROR, self.mark, wire.escape(message.encode("utf-8"))))
 
     def open_provisional(self):
         """
@@ -475,7 +480,7 @@ class Emitter:
             if code is None or wire.CODE_CHAR[code] == token.code:
                 continue
             self.trail.append(("retype", index, token))
-            self.tokens[index] = wire.Token(wire.CODE_CHAR[code], token.start, token.text)
+            self.tokens[index] = wire.TokenWrapper(wire.CODE_CHAR[code], token.start, token.text)
 
     def inject_before(self, codes, at):
         """
@@ -493,7 +498,7 @@ class Emitter:
         start = self.tokens[index].start if index < len(self.tokens) else self.mark
         for offset, code in enumerate(codes):
             self.trail.append(("inject", index + offset))
-            self.tokens.insert(index + offset, wire.Token(wire.CODE_CHAR[code], start, ""))
+            self.tokens.insert(index + offset, wire.TokenWrapper(wire.CODE_CHAR[code], start, ""))
         inserted = len(codes)
         # An index at or past the insertion point moves right by what was inserted — the run start where the injection
         # is its own, the mark where it stands at or past the injection.
@@ -513,7 +518,8 @@ def evaluate(expression, emitter, grammar):
     """
     Evaluate a value expression — a parameter, a literal, the matched text, or the arithmetic and dispatch over them.
 
-    `Match()` is the text of the open run — what the rule has just matched — which is what `Atoi` and `Len` read.
+    `Match()` is the text of the open run — what the rule has just matched — which is what `AtoiValue` and `LenValue`
+    read.
     """
     return _EVALUATE(expression, emitter, grammar)
 
@@ -529,8 +535,8 @@ def _evaluated_parameter(node, emitter, grammar):
         if held != value:
             raise AssertionError(f"the stack holds an indentation of {held!r} where the parameter is {value!r}")
     if value is None and not emitter.passing_arguments:
-        # Nothing holds a value for it: either no construct has measured one yet or a `ClearVar` has said the one that
-        # did has ended. Passing it on is not reading it — an out-parameter travels to its setter unset.
+        # Nothing holds a value for it: either no construct has measured one yet or a `ClearVarAction` has said the one
+        # that did has ended. Passing it on is not reading it — an out-parameter travels to its setter unset.
         raise AssertionError(f"`{node.name}` is read where nothing holds a value for it")
     return value
 
@@ -586,25 +592,27 @@ def _evaluated_call(node, emitter, grammar):
 
 # What each value expression works out to.
 #
-# `AutoDetectIndent` is absent and raises: the official grammar spells it, libyeast's own reads `Column` where it
-# stands, and a value invented for it here would be a lookahead the parser cannot make.
+# `AutoDetectIndentValue` is absent and raises: the official grammar spells it, libyeast's own reads `ColumnValue` where
+# it stands, and a value invented for it here would be a lookahead the parser cannot make.
 _EVALUATE = ir.Reading(
     "the value an expression works out",
     {
-        ir.Lit: lambda node, emitter, grammar: node.value,
-        ir.Param: _evaluated_parameter,
-        ir.Global: _evaluated_global,
-        ir.Indent: lambda node, emitter, grammar: _indent(emitter),
-        ir.Match: _evaluated_match,
+        ir.LitValue: lambda node, emitter, grammar: node.value,
+        ir.ParamValue: _evaluated_parameter,
+        ir.GlobalValue: _evaluated_global,
+        ir.IndentValue: lambda node, emitter, grammar: _indent(emitter),
+        ir.MatchValue: _evaluated_match,
         # The column the parse stands at, and what the first line's marks are short by where a run began mid-line.
-        ir.Column: lambda node, emitter, grammar: emitter.mark.column
+        ir.ColumnValue: lambda node, emitter, grammar: emitter.mark.column
         + (emitter.offset if emitter.mark.line == 1 else 0),
-        ir.Atoi: lambda node, emitter, grammar: int(evaluate(node.arg, emitter, grammar)),
-        ir.Len: lambda node, emitter, grammar: len(evaluate(node.arg, emitter, grammar)),
-        ir.Add: lambda node, emitter, grammar: evaluate(node.a, emitter, grammar) + evaluate(node.b, emitter, grammar),
-        ir.Sub: lambda node, emitter, grammar: evaluate(node.a, emitter, grammar) - evaluate(node.b, emitter, grammar),
-        ir.Flip: _evaluated_switch,
-        ir.Ref: _evaluated_call,
+        ir.AtoiValue: lambda node, emitter, grammar: int(evaluate(node.arg, emitter, grammar)),
+        ir.LenValue: lambda node, emitter, grammar: len(evaluate(node.arg, emitter, grammar)),
+        ir.AddValue: lambda node, emitter, grammar: evaluate(node.a, emitter, grammar)
+        + evaluate(node.b, emitter, grammar),
+        ir.SubValue: lambda node, emitter, grammar: evaluate(node.a, emitter, grammar)
+        - evaluate(node.b, emitter, grammar),
+        ir.FlipValue: _evaluated_switch,
+        ir.RefCall: _evaluated_call,
     },
 )
 
@@ -894,7 +902,7 @@ def _matched_call(node, emitter, grammar, k):
     by_reference = [
         parameter
         for parameter, argument in zip(production.params, node.args)
-        if isinstance(argument, ir.Param) and argument.name == parameter
+        if isinstance(argument, ir.ParamValue) and argument.name == parameter
     ]
     emitter.passing_arguments = True
     arguments = tuple(evaluate(argument, emitter, grammar) for argument in node.args)
@@ -908,7 +916,7 @@ def _matched_call(node, emitter, grammar, k):
     emitter.env = {**saved_env, **dict(zip(production.params, arguments))}
 
     # A global is the parse's rather than any one call's, so what the callee left in one reaches the caller whatever the
-    # call passed — and a `ClearVar` reaches it too, which is why this carries a cleared value out where the
+    # call passed — and a `ClearVarAction` reaches it too, which is why this carries a cleared value out where the
     # by-reference pass keeps the caller's. Only where nothing declares them: until the read-global steps take the
     # declarations away they are parameters, and a call's own binding is the by-reference pass's to carry.
     def continue_out():
@@ -942,7 +950,7 @@ def _matched_call(node, emitter, grammar, k):
         print(f"    depth {len(emitter.entered)}: {node.name}", file=sys.stderr)
     try:
         body = production.body
-        if node.name in emitter.deterministic and isinstance(body, ir.Choice) and len(body.alternatives) > 1:
+        if node.name in emitter.deterministic and isinstance(body, ir.ChoiceState) and len(body.alternatives) > 1:
             # A deterministic production commits: the first alternative whose gate holds is the parse, and its failure
             # is the production's — no other is tried. The proved-disjoint gates are what make this the same parse
             # backtracking finds; an empty gate is the unconditional fallthrough and always holds, and a guard refusing
@@ -1051,9 +1059,9 @@ def _matched_way(node, emitter, grammar, k):
     parts = tuple(node.gate.guards) + tuple(node.actions)
     # A recovery riding the edge is the `(recover)` scope over the call it protects — the same handler, resuming where
     # the way carries on past that call, which is exactly the continuation the call already has here.
-    first = node.first if node.recover is None else ir.Recover(node.recover, node.first)
+    first = node.first if node.recover is None else ir.RecoverWrapper(node.recover, node.first)
     parts += tuple(item for item in (first, node.second) if item is not None)
-    return match(ir.Seq(parts), emitter, grammar, k)
+    return match(ir.SeqTree(parts), emitter, grammar, k)
 
 
 def _matched_gated_char(node, emitter, grammar, k):
@@ -1097,7 +1105,7 @@ def _matched_literal(node, emitter, grammar, k):
     """
     checkpoint = emitter.checkpoint()
     for codepoint in node.text:
-        if not match(ir.Char(codepoint), emitter, grammar, _accept):
+        if not match(ir.OneCharSet(codepoint), emitter, grammar, _accept):
             emitter.give_back(checkpoint)
             return False
     if k():
@@ -1134,7 +1142,7 @@ def _matched_did_fill_span(node, emitter, grammar, k):
 
 
 def _matched_span(node, emitter, grammar, k):
-    """A maximal run of the set, which is a `Star` over a character class as the canonical form spells it."""
+    """A maximal run of the set, which is a `StarTree` over a character class as the canonical form spells it."""
     if "every-consume-is-protected-by-a-gate" in emitter.holding and not _probe(node.set, emitter, grammar):
         raise AssertionError("a gated run is not there: the gate let through what it should have refused")
     return _repeat(node.set, emitter, grammar, k)
@@ -1345,11 +1353,11 @@ def _matched_open_committed(node, emitter, grammar, k):
     """
     A committed region opened, the error standing until its close is reached.
 
-    The record pairs with the `PopMessage` that closes it, which marks it reached. A failure that unwinds back here with
-    the region never closed is the error; through a closed one it backtracks like any other match — the commitment does
-    not reach past its close. A `(commit)` scope's terms exactly, the close standing where the scope's end stood. The
-    record is what the stack entry holds and `reached` is written through it, so a rewind puts back which regions stand
-    and never what one of them has already been.
+    The record pairs with the `PopMessageAction` that closes it, which marks it reached. A failure that unwinds back
+    here with the region never closed is the error; through a closed one it backtracks like any other match — the
+    commitment does not reach past its close. A `(commit)` scope's terms exactly, the close standing where the scope's
+    end stood. The record is what the stack entry holds and `reached` is written through it, so a rewind puts back which
+    regions stand and never what one of them has already been.
     """
     record = [False]
     emitter.stack += (("message", record, node.pair),)
@@ -1634,12 +1642,12 @@ def _matched_peeked_literal(node, emitter, grammar, k):
     Spelled here as the lookahead it means: each literal character as itself, a `then` as end-of-input-or-the-class, a
     `barrier` as a negative look, which passes at the end of the input on its own.
     """
-    pattern = tuple(ir.Char(cp=codepoint) for codepoint in node.text)
+    pattern = tuple(ir.OneCharSet(cp=codepoint) for codepoint in node.text)
     if node.then is not None:
-        pattern += (ir.Alt(items=(ir.EndOfStream(), ir.Look(node.then))),)
+        pattern += (ir.AltTree(items=(ir.EndOfStreamGuard(), ir.LookGuard(node.then))),)
     if node.barrier is not None:
-        pattern += (ir.NegLook(node.barrier),)
-    return k() if _probe(ir.Seq(items=pattern), emitter, grammar) else False
+        pattern += (ir.NegLookGuard(node.barrier),)
+    return k() if _probe(ir.SeqTree(items=pattern), emitter, grammar) else False
 
 
 def _matched_exclusion(node, emitter, grammar, k):
@@ -1728,81 +1736,81 @@ def _matched_switch(node, emitter, grammar, k):
 # a parse of a real input reaches. Everything a way performs, bar the one scan whose answer a guard is waiting to read.
 # A guard is not among them: a question asked between the scan and the guard about it leaves what the scan did standing,
 # which is what lets a gate tell the two ways apart.
-_TAKES_THE_ANSWER_AWAY = frozenset(ir.PERFORMED_NODES) - {ir.ConsumeLimitedSpan}
+_TAKES_THE_ANSWER_AWAY = frozenset(ir.PERFORMED_NODES) - {ir.ConsumeLimitedSpanAction}
 
 _MATCHED = {
-    ir.Char: _matched_char,
+    ir.OneCharSet: _matched_char,
     ir.CharSet: _matched_set,
-    ir.Range: _matched_range,
-    ir.Invalid: _matched_invalid,
-    ir.Empty: lambda node, emitter, grammar, k: k(),
-    ir.Ref: _matched_call,
-    ir.Seq: _matched_sequence,
-    ir.Alt: _matched_alternation,
-    ir.Diff: _matched_difference,
-    ir.Opt: _matched_optional,
-    ir.Choice: _matched_choice,
-    ir.Alternative: _matched_way,
-    ir.ConsumeChar: _matched_gated_char,
-    ir.ConsumePeeked: _matched_gated_literal,
-    ir.ConsumeLiteral: _matched_literal,
-    ir.ConsumeLimitedSpan: _matched_limited_span,
-    ir.DidConsumeFullLimitedSpan: _matched_did_fill_span,
-    ir.ConsumeSpan: _matched_span,
-    # A trimmed run is spelled as the `TrimStar` it is, the canonical form's own name for the same match.
-    ir.ConsumeTrimmedSpan: lambda node, emitter, grammar, k: match(
-        ir.TrimStar(node.full, node.trim), emitter, grammar, k
+    ir.RangeSet: _matched_range,
+    ir.InvalidSet: _matched_invalid,
+    ir.EmptyTree: lambda node, emitter, grammar, k: k(),
+    ir.RefCall: _matched_call,
+    ir.SeqTree: _matched_sequence,
+    ir.AltTree: _matched_alternation,
+    ir.DiffSet: _matched_difference,
+    ir.OptTree: _matched_optional,
+    ir.ChoiceState: _matched_choice,
+    ir.AlternativeState: _matched_way,
+    ir.ConsumeCharAction: _matched_gated_char,
+    ir.ConsumePeekedAction: _matched_gated_literal,
+    ir.ConsumeLiteralAction: _matched_literal,
+    ir.ConsumeLimitedSpanAction: _matched_limited_span,
+    ir.DidMatchFullSpanGuard: _matched_did_fill_span,
+    ir.ConsumeSpanAction: _matched_span,
+    # A trimmed run is spelled as the `TrimStarTree` it is, the canonical form's own name for the same match.
+    ir.ConsumeTrimmedSpanAction: lambda node, emitter, grammar, k: match(
+        ir.TrimStarTree(node.full, node.trim), emitter, grammar, k
     ),
-    ir.TrimStar: _matched_trimmed_run,
-    ir.Star: lambda node, emitter, grammar, k: _longest_run(node.item, 0, emitter, grammar, k),
-    ir.Plus: lambda node, emitter, grammar, k: _longest_run(node.item, 1, emitter, grammar, k),
-    ir.Rep: _matched_counted_run,
-    ir.Case: _matched_switch,
-    ir.SetForbidden: _matched_forbidding,
-    ir.SetVar: _matched_write,
-    ir.ClearVar: _matched_clear,
-    ir.Increase: _matched_raise,
-    ir.Bind: _matched_binding,
-    ir.ColumnLt: lambda node, emitter, grammar, k: (
+    ir.TrimStarTree: _matched_trimmed_run,
+    ir.StarTree: lambda node, emitter, grammar, k: _longest_run(node.item, 0, emitter, grammar, k),
+    ir.PlusTree: lambda node, emitter, grammar, k: _longest_run(node.item, 1, emitter, grammar, k),
+    ir.RepTree: _matched_counted_run,
+    ir.CaseTree: _matched_switch,
+    ir.SetForbiddenAction: _matched_forbidding,
+    ir.SetVarAction: _matched_write,
+    ir.ClearVarAction: _matched_clear,
+    ir.IncreaseAction: _matched_raise,
+    ir.BindTree: _matched_binding,
+    ir.ColumnLtGuard: lambda node, emitter, grammar, k: (
         k() if evaluate(node.a, emitter, grammar) < evaluate(node.b, emitter, grammar) else False
     ),
-    ir.ColumnLe: lambda node, emitter, grammar, k: (
+    ir.ColumnLeGuard: lambda node, emitter, grammar, k: (
         k() if evaluate(node.a, emitter, grammar) <= evaluate(node.b, emitter, grammar) else False
     ),
-    ir.Max: _matched_window,
-    ir.StartOfLine: lambda node, emitter, grammar, k: k() if emitter.is_sol else False,
-    ir.EndOfStream: lambda node, emitter, grammar, k: k() if emitter.position == len(emitter.chars) else False,
-    ir.Look: lambda node, emitter, grammar, k: k() if _probe(node.item, emitter, grammar) else False,
-    ir.NegLook: lambda node, emitter, grammar, k: k() if not _probe(node.item, emitter, grammar) else False,
-    ir.LiteralPeek: _matched_peeked_literal,
-    ir.ExcludeAt: _matched_exclusion,
-    ir.LookBehind: _matched_look_behind,
-    ir.Token: _matched_token,
-    ir.Wrap: _matched_wrapped,
-    ir.Emit: _matched_marker,
-    ir.PushIndent: _matched_push_indent,
-    ir.PopIndent: _matched_pop_indent,
-    ir.PushCode: _matched_push_code,
-    ir.PopCode: _matched_pop_code,
-    ir.OpenWindow: _matched_open_window,
-    ir.CloseWindow: _matched_close_window,
-    ir.OpenProvisional: _matched_open_provisional,
-    ir.MarkProvisional: _matched_mark_provisional,
-    ir.RetypeProvisional: _matched_retype_provisional,
-    ir.InjectBefore: _matched_inject,
-    ir.CommitProvisional: _matched_commit_provisional,
-    ir.Cut: _matched_cut,
-    ir.PushMessage: _matched_open_committed,
-    ir.PopMessage: _matched_close_committed,
-    ir.Commit: _matched_committed,
-    ir.Error: _matched_error,
-    ir.PushRecovery: _matched_open_recovery,
-    ir.PopRecovery: _matched_close_recovery,
-    ir.Recover: _matched_recovering,
-    ir.StartMustConsume: _matched_open_turn,
-    ir.EndMustConsume: _matched_close_turn,
-    ir.PushBackTrack: _matched_open_settled,
-    ir.PopBackTrack: _matched_close_settled,
+    ir.MaxWrapper: _matched_window,
+    ir.StartOfLineGuard: lambda node, emitter, grammar, k: k() if emitter.is_sol else False,
+    ir.EndOfStreamGuard: lambda node, emitter, grammar, k: k() if emitter.position == len(emitter.chars) else False,
+    ir.LookGuard: lambda node, emitter, grammar, k: k() if _probe(node.item, emitter, grammar) else False,
+    ir.NegLookGuard: lambda node, emitter, grammar, k: k() if not _probe(node.item, emitter, grammar) else False,
+    ir.LiteralPeekGuard: _matched_peeked_literal,
+    ir.ExcludeAtAction: _matched_exclusion,
+    ir.LookBehindGuard: _matched_look_behind,
+    ir.TokenWrapper: _matched_token,
+    ir.Wrapper: _matched_wrapped,
+    ir.EmitAction: _matched_marker,
+    ir.PushIndentAction: _matched_push_indent,
+    ir.PopIndentAction: _matched_pop_indent,
+    ir.PushCodeAction: _matched_push_code,
+    ir.PopCodeAction: _matched_pop_code,
+    ir.OpenWindowAction: _matched_open_window,
+    ir.CloseWindowAction: _matched_close_window,
+    ir.OpenProvisionalAction: _matched_open_provisional,
+    ir.MarkProvisionalAction: _matched_mark_provisional,
+    ir.RetypeProvisionalAction: _matched_retype_provisional,
+    ir.InjectBeforeAction: _matched_inject,
+    ir.CommitProvisionalAction: _matched_commit_provisional,
+    ir.CutAction: _matched_cut,
+    ir.PushMessageAction: _matched_open_committed,
+    ir.PopMessageAction: _matched_close_committed,
+    ir.CommitWrapper: _matched_committed,
+    ir.ErrorAction: _matched_error,
+    ir.PushRecoveryAction: _matched_open_recovery,
+    ir.PopRecoveryAction: _matched_close_recovery,
+    ir.RecoverWrapper: _matched_recovering,
+    ir.StartMustConsumeAction: _matched_open_turn,
+    ir.EndMustConsumeGuard: _matched_close_turn,
+    ir.PushBackTrackAction: _matched_open_settled,
+    ir.PopBackTrackAction: _matched_close_settled,
 }
 
 
@@ -1871,12 +1879,12 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
     emitter.deterministic = deterministic
     emitter.coverage = coverage
     emitter.holds_indent = any(
-        isinstance(node, ir.PushIndent) for name in grammar for node in _nodes(grammar[name].body)
+        isinstance(node, ir.PushIndentAction) for name in grammar for node in _nodes(grammar[name].body)
     )
     # Whether every run of a class is entered under a gate that found that class — which a grammar says by having no way
-    # holding a `ConsumeSpan` without a `Look` in its gate. Once a run of none or more has been said as the two ways it
-    # is, what is left takes at least one, and a run that finds none is a gate that lied rather than a match that
-    # declined. Before that step a span is a run of none or more and taking none is what it is for.
+    # holding a `ConsumeSpanAction` without a `LookGuard` in its gate. Once a run of none or more has been said as the
+    # two ways it is, what is left takes at least one, and a run that finds none is a gate that lied rather than a match
+    # that declined. Before that step a span is a run of none or more and taking none is what it is for.
     emitter.holding = holding
     emitter.globals = tuple(
         name for name in ir.GLOBAL_PARAMS if not any(name in grammar[held].params for held in grammar)
@@ -1887,7 +1895,7 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
     if "n" in emitter.env:  # the indentation the run is entered under, which no alternative pushed and none pops
         emitter.stack = (("indent", emitter.env["n"], None),)
     entered = emitter.stack  # what the run itself put there, which is what a parse that closed what it opened ends at
-    entry = ir.Ref(production, tuple(ir.Lit(emitter.env.get(name)) for name in grammar[production].params))
+    entry = ir.RefCall(production, tuple(ir.LitValue(emitter.env.get(name)) for name in grammar[production].params))
 
     # A cut says where the unwind lands and nothing else; what to do about the input from there is `l-recover`'s, which
     # under a resuming policy parses the rest of the stream — and that may commit and fail again. So recovery is a loop
@@ -1932,4 +1940,4 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
         recover, recover_args = ir.entry(grammar, RECOVER, {"n": -1, "r": resume})
         emitter.stack = (("indent", recover_args["n"], None),)  # the stream's own level, the recovery entered under it
         entered = emitter.stack
-        node = ir.Ref(recover, tuple(ir.Lit(recover_args[parameter]) for parameter in grammar[recover].params))
+        node = ir.RefCall(recover, tuple(ir.LitValue(recover_args[parameter]) for parameter in grammar[recover].params))

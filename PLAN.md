@@ -247,18 +247,18 @@ point, and any residual logged as an assurance gap. Last, every terminal is asse
    survives to a body's top belongs to that production, which hands it to its callers". Three steps, each dumb, each
    with an invariant:
 
-   1. **`explicit-empties` — every emptiness is an `Alt` holding a zero-width way.** `x?` becomes `(x | ε)`, `x*`
-      becomes `(x+ | ε)`, an all-zero-width sequence already is one. *Invariant: no node matches empty except an `Alt`
-      with a zero-width way.*
-   1. **`distribute-empties` — push that `Alt` outward, one node at a time.** Through a sequence, `Seq(…, Alt(X, z), …)`
-      becomes `Alt(Seq(…, X, …), Seq(…, z, …))`; through an alternation, flatten; through a wrapper — a `(token)`, a
-      `(<<<)`, a `(commit)` — wrap each way, so each keeps a whole pair. **Not** through a repetition: `(x|z)*` is not
-      `x*|z*`, and a repetition already means "as many as there are, including none", so it absorbs. **Not** into a
-      lookahead or a difference, where a choice is a pattern and not a decision. *Invariant: an `Alt` with a zero-width
-      way stands only as a production's own body.* Absorption wants no step of its own — it is what this rule does when
-      it meets a reader.
+   1. **`explicit-empties` — every emptiness is an `AltTree` holding a zero-width way.** `x?` becomes `(x | ε)`, `x*`
+      becomes `(x+ | ε)`, an all-zero-width sequence already is one. *Invariant: no node matches empty except an
+      `AltTree` with a zero-width way.*
+   1. **`distribute-empties` — push that `AltTree` outward, one node at a time.** Through a sequence,
+      `SeqTree(…, AltTree(X, z), …)` becomes `AltTree(SeqTree(…, X, …), SeqTree(…, z, …))`; through an alternation,
+      flatten; through a wrapper — a `(token)`, a `(<<<)`, a `(commit)` — wrap each way, so each keeps a whole pair.
+      **Not** through a repetition: `(x|z)*` is not `x*|z*`, and a repetition already means "as many as there are,
+      including none", so it absorbs. **Not** into a lookahead or a difference, where a choice is a pattern and not a
+      decision. *Invariant: an `AltTree` with a zero-width way stands only as a production's own body.* Absorption wants
+      no step of its own — it is what this rule does when it meets a reader.
    1. **`lift-empties` — a non-root body's zero-width way goes to its call sites.** Drop it from the body and write
-      `(Ref(P) | residue)` at every reference. That makes a fresh inline `Alt`, so the step above runs again.
+      `(RefCall(P) | residue)` at every reference. That makes a fresh inline `AltTree`, so the step above runs again.
       *Invariant, and the goal: no production a parse does not enter by name offers a way that reads and a way that does
       not.*
 
@@ -326,9 +326,9 @@ point, and any residual logged as an assurance gap. Last, every terminal is asse
      absorbing steps pay down. A broad reading that counts everything matching empty measures the wrong thing: it names
      steps that only mint the single-way bundle the invariant permits, and every lapse written for it goes stale the
      moment it is narrowed.
-     - What it took to read at all: `_is_nullable` knew only the pre-canonical vocabulary and refused a `Choice`, so the
-       check could not run past `alternative-shape`; the gate and its guards take nothing and a recovery is no way an
-       alternative offers, which leaves the actions and the two calls. It answers a different question from
+     - What it took to read at all: `_is_nullable` knew only the pre-canonical vocabulary and refused a `ChoiceState`,
+       so the check could not run past `alternative-shape`; the gate and its guards take nothing and a recovery is no
+       way an alternative offers, which leaves the actions and the two calls. It answers a different question from
        `_alternative_first`'s nullability and keeps its own convention — a span run is a value the scan decides, not a
        way the parse chooses — so the two stay separate deliberately. The repetition half read `node.item` on a
        `TrimStar`, which spells it `full`: latent for as long as the check ran at one stage only.
@@ -549,10 +549,10 @@ re-taken mark is for: the line scan marks each fresh line, the last taken wins, 
 boundary a run can resolve at. The corpus is what settles coverage.
 
 **The validator** is the target invariant and equals "done": every production is a terminal character set or an ordered
-list of canonical alternatives; no `Star`, `Plus`, `Opt`, `Diff`, `Token`, `Wrap` or `Case` survives — a `Look` or
-`NegLook` does, being what a gate's guards are made of; every alternative is gate-led with at most two calls and nothing
-past the second; and every decision point is commit-safe. The invariants `normalize.STEPS` already carries hold most of
-that; what is missing is the last clause.
+list of canonical alternatives; no `StarTree`, `PlusTree`, `OptTree`, `DiffSet`, `TokenWrapper`, `Wrapper` or `CaseTree`
+survives — a `LookGuard` or `NegLook` does, being what a gate's guards are made of; every alternative is gate-led with
+at most two calls and nothing past the second; and every decision point is commit-safe. The invariants `normalize.STEPS`
+already carries hold most of that; what is missing is the last clause.
 
 **The verification net** is the reference interpreter, which already diffs the token stream across every stage and
 already runs committed where a step says a production's decisions are proved. What is owed is the second half of that

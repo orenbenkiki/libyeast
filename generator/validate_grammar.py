@@ -40,13 +40,13 @@ def consumed(node, is_annotated, references):
     A kind named nowhere raises rather than being walked into for its children: a new way of taking a character would
     otherwise yield nothing of its own, and every character it takes would pass this check without an annotation.
     """
-    if isinstance(node, ir.Token):
+    if isinstance(node, ir.TokenWrapper):
         yield from consumed(node.item, True, references)
     elif isinstance(node, ir.ASKED_NOT_TAKEN_NODES):
         return  # what is inside is asked about and never taken, so no character of it is one this counts
     elif isinstance(node, ir.CONSUMING):
         yield is_annotated
-    elif isinstance(node, ir.Ref):
+    elif isinstance(node, ir.RefCall):
         references.append((node.name, is_annotated))
     elif isinstance(node, ir.KINDS):
         for child in chars.children(node):
@@ -97,14 +97,14 @@ def check_matches(grammar):
     """
     errors = []
     for name, production in sorted(grammar.items()):
-        holders = [node for node in walk(production.body) if isinstance(node, ir.Token)]
+        holders = [node for node in walk(production.body) if isinstance(node, ir.TokenWrapper)]
         for token in holders:
-            inner = [node for node in walk(token.item) if isinstance(node, ir.Token)]
-            if inner and any(isinstance(node, ir.Match) for node in walk(token.item)):
+            inner = [node for node in walk(token.item) if isinstance(node, ir.TokenWrapper)]
+            if inner and any(isinstance(node, ir.MatchValue) for node in walk(token.item)):
                 errors.append(f"{name}: a `(match)` reads a run a nested `(token)` has cut")
         covered = {id(node) for token in holders for node in walk(token.item)}
         for node in walk(production.body):
-            if isinstance(node, ir.Match) and id(node) not in covered:
+            if isinstance(node, ir.MatchValue) and id(node) not in covered:
                 errors.append(f"{name}: a `(match)` stands outside any `(token)`, so no run is its own")
     return errors
 
@@ -133,7 +133,7 @@ def validate(grammar):
     errors = check_annotated(grammar) + check_matches(grammar) + check_renaming(grammar)
     referenced = set()
     for name, prod in grammar.items():
-        for ref in (n for n in walk(prod.body) if isinstance(n, ir.Ref)):
+        for ref in (n for n in walk(prod.body) if isinstance(n, ir.RefCall)):
             referenced.add(ref.name)
             if ref.name not in grammar:
                 errors.append(f"{name}: reference to undefined production {ref.name!r}")
