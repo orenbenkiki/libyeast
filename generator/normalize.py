@@ -3487,6 +3487,59 @@ def _no_char_set_is_an_item(grammar):
 NO_CHAR_SET_IS_AN_ITEM = Invariant("no-char-set-is-an-item", _no_char_set_is_an_item)
 
 
+def _asks_about_a_run(production):
+    """
+    Whether any way of `production` asks about a run before performing anything, which its callers have to have made.
+
+    In its gate or first among the things it performs, which are the same claim on a caller: a state minted at a guard
+    holds it at the head of what it does, and moving it into the gate is what says the state is entered on it.
+    """
+    body = production.body
+    ways = body.alternatives if isinstance(body, ir.ChoiceState) else ()
+    return any(
+        isinstance(held, ir.DidMatchFullSpanGuard) for way in ways for held in (*way.gate.guards, *way.actions[:1])
+    )
+
+
+def _every_span_question_follows_its_run(grammar):
+    """
+    Check that every question about a limited run is asked where that run left the parse.
+
+    The guard reads what the action in front of it did and nothing else, so that action has to be the run. Where the
+    question stands among the things a way performs, the run is the item before it. Where it heads a state of its own —
+    which is where minting the guard states puts it — the run is the last thing every way calling that state performs,
+    and the call is the first that way makes: a call made past another call is entered wherever that one left off, and
+    what the run did has been taken away by whatever the callee performed.
+
+    Asked anywhere else the guard reads what an earlier run did, or nothing at all, which the interpreter refuses where
+    it happens. This is that refusal asked of the grammar instead, so a step that moves the two apart is a fault where
+    it stands rather than a crash on the first input that reaches it.
+    """
+    faults = []
+    asking = {name for name, production in grammar.items() if _asks_about_a_run(production)}
+    for name, production in grammar.items():
+        body = production.body
+        for way in body.alternatives if isinstance(body, ir.ChoiceState) else ():
+            # Asked at the head of a way, the run is the caller's to have made, which the walk over call sites below
+            # says. Anywhere else the run stands in this way or nowhere.
+            for at, item in enumerate(way.actions[1:], start=1):
+                if isinstance(item, ir.DidMatchFullSpanGuard) and not isinstance(
+                    way.actions[at - 1], ir.ConsumeLimitedSpanAction
+                ):
+                    faults.append(f"{name}: a question about a run is asked where no run stands in front of it")
+            calls = [held for held in (way.first, way.second) if held is not None]
+            if not calls or getattr(calls[0], "name", None) not in asking:
+                continue
+            if not way.actions or not isinstance(way.actions[-1], ir.ConsumeLimitedSpanAction):
+                faults.append(f"{name}: hands control to a question about a run it did not make")
+    return faults
+
+
+EVERY_SPAN_QUESTION_FOLLOWS_ITS_RUN = Invariant(
+    "every-span-question-follows-its-run", _every_span_question_follows_its_run
+)
+
+
 def _every_consume_is_protected_by_a_gate(grammar):
     """
     Check that every take is protected by a gate that found what it takes — a `LookGuard` or a `LiteralPeekGuard`, in
@@ -5141,6 +5194,9 @@ STEPS = [
         span_consumes,
         settles=(EVERY_CHARACTER_RUN_IS_A_SPAN, EVERY_EXCLUSION_IS_BOUNDED),
         reduces=NO_STAR_OR_PLUS_NODES,
+        # The run and the question about it are made here, side by side, and nothing after may put anything between
+        # them: this is where there is a pair to say that of.
+        establishes=EVERY_SPAN_QUESTION_FOLLOWS_ITS_RUN,
     ),
     Step("lower-runs", lower_runs, settles=NO_STAR_OR_PLUS_NODES),
     # A phase of one step, carrying no number of its own: `EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS`. What an exclusion
