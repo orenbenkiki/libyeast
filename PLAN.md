@@ -50,6 +50,31 @@ establishes an invariant the steps after it may lean on. What each phase owns an
 
 **The order of the work, and each item is a gate on the next.**
 
+1. **Give every way the set it starts on, and carry it in the IR.** A way and a production each hold a **start set**:
+   the codepoints it may be entered on, whether it may be entered at the end of the stream, and whether it takes none —
+   or *unknown*, where nothing has said yet. The steps fill it, and two invariants hold it to the grammar:
+
+   - **`production-first-set-is-union-of-ways-first-sets`** — the two homes agree.
+   - **`first-set-of-way-is-identical-to-gates`** — a way's set is what its own gate says intersected with what its
+     callees say, and, where the way has no gate of its own, what the gates on every path into it say. *Unknown* fails
+     this wherever the gates do determine a set, so the invariant is the meter as well as the check: it counts the ways
+     that could know and do not, and reaches none when every one of them carries what the grammar already states.
+
+   **Why it is a field and not a computation.** Every take is protected by a gate, so the guards that decide a way exist
+   somewhere in the grammar already — none has to be invented. But a hoist *moves* a guard, and 8 takes today are
+   protected only by a gate that moved to their callers: read from below, they say "the character the gate found", and
+   the gate is no longer there to ask. Recomputing after each hoist would lose exactly those. Recorded where it was
+   true, the set survives the guard moving, and a hoist becomes a step that leaves the start set behind it.
+
+   **What the field is not.** Not a `CharSet` — there is no span for "no character left", and a set is a description
+   where a `CharSet` is something the machine runs. Keeping them different types is what stops a start set from being
+   spliced into a way as a match. And taking none is not the same as being entered at the end of the stream: the first
+   says what this way consumes once entered, which is what lets a caller union it with its continuation's; the second
+   says what the machine may be looking at when it decides. A way can be either, both, or neither.
+
+   **Any rewrite that touches a way's parts sets its start set back to unknown.** A stale set is a claim nothing checks,
+   and clearing is always safe where keeping is not.
+
 1. **Settle `every-conditional-way-is-gated`.** It stands at 58 — every one a way something decides to enter that
    carries no question the machine can ask before entering it, which is the backtracking the whole shape exists to
    remove. The 58 are two families. **39** tail-call a production offering one way that carries no gate: there is no
@@ -59,16 +84,29 @@ establishes an invariant the steps after it may lean on. What each phase owns an
    ungated and buy nothing. Two shapes aimed at the second family are written and kept in `junk-lowering-gates.py`,
    removed from the pipeline as dead rather than lost — one puts the caller's continuation inside the callee, the other
    sends the tail down into the callee instead of copying the ways out.
+
+   With the start sets carried, a gate is minted from what a way starts on rather than hoisted from a guard that
+   happened to be reachable — which is what the pipeline cannot do today. Every gating step it has *relocates* a guard:
+   `expand-called-ways` copies ways out, `hoist-guards-to-gates` and `hoist-guards-to-callers` move guards up,
+   `merge-gate-peeks` merges them, and `split-consumes-into-gates` mints one from a set standing in the way itself. None
+   computes what a call can begin with, which is why a way whose deciding guards sit inside two different callees has
+   nothing to hoist and stays ungated.
+
 1. **Settle `every-choice-is-deterministic`.** With the ways gated, what remains is the choices no character tells
    apart. `every-called-alternative-is-unconditional` belongs here rather than to the gating phase: taking a callee's
    gate out to the ways that call it carries a guard over what the caller performs before the call, which nothing can do
    until the gate and the call are made adjacent. The design for the rest — the block-structure factoring, the
    speculations and the one vocabulary they spend — is *Determinize, what remains* and *The provisional mechanism*
    below. **At none, the grammar is deterministic**, and that is what Phase 04 needs.
+
 1. **Adapt the C parser to it** (Phase 04), and what follows from there.
 
 One invariant is owed and belongs to no phase: `no-conditional-production-matches-empty` — that no production something
-decides to enter matches empty. No step in the pipeline carries it, and no phase above claims it.
+decides to enter matches empty. No step in the pipeline carries it, and no phase above claims it. **215 ways something
+decides to enter can match empty**, in 196 productions, and 63 of those carry a gate already — a gate decides and the
+way then takes nothing, which is not itself a fault. What it costs is tightness: a way that may take none makes its
+caller's start set the union of its own and its continuation's, so the sets widen wherever one stands. The start set
+records taking none as one of its three parts, so the question is read off the field rather than walked for.
 
 A phase re-implements what it needs rather than inheriting it: a step is kept only where it earns its place, and the
 ones between the phases' goals are derived when their phase arrives.
