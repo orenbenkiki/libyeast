@@ -1163,6 +1163,20 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A subspace says which states a parse can decide in.** Every guard asks about one axis of a small space — the
+  character in front, the character behind, whether the parse stands at a line start, whether it stands under
+  indentation, and two bits of its own bookkeeping — so what a parse stands in when it decides is one point of it, and
+  what a gate admits, what a way takes and what a call site can reach are each a subset. `spaces.SubSpace` is that
+  subset: the characters admitted under each of the 32 standings, exact because every axis is finite, with union,
+  intersection and containment computed standing by standing. The end of the stream is the character axis's own value
+  and not the absence of a character, a way entered there being a way entered somewhere; a comparison relating two of
+  the parse's own values is no axis at all, and a guard asking one constrains nothing. `check_spaces` judges the algebra
+  by the states it holds rather than by itself — the operations are compared against set arithmetic over an enumeration
+  of every standing and an alphabet spanning each boundary the cases name.
+
+- **The span algebra is said once.** `normalize` carried its own copy of merging and subtracting codepoint intervals,
+  character for character the one in `chars`, where the character model the decoder is built from already keeps it.
+
 - **Nothing a way performs can fail.** A counted scan took `n` characters of a class or none at all, and no gate could
   protect it: a gate speaks for the character in front of it and not for `n` of them, so a scan asked for more than is
   there was a way failing on what it does rather than on what it decided — 52 of them in the final grammar, the one

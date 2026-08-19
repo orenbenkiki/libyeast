@@ -102,7 +102,7 @@ DEV_DEP_TOOLS   := python3 python3:yaml $(CLANG_FORMAT) $(CLANG_TIDY) $(CPPCHECK
 .PHONY: all package install test test-debug test-release regen \
         verify verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
         verify-emitter verify-provisional verify-determinize verify-fixtures verify-grammar verify-star \
-        verify-normalize verify-wire verify-decoder verify-grammar-base verify-grammar-base-coverage \
+        verify-normalize verify-wire verify-decoder verify-spaces verify-grammar-base verify-grammar-base-coverage \
         vet vet-format vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh \
         vet-comments vet-lint vet-version vet-packaging vet-$(TODO_X) \
         gh-pages gh-pages-docs gh-pages-coverage \
@@ -332,6 +332,13 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 	python3 generator/check_provisional.py
 	@touch $@
 
+# The subspace algebra: a guard names a subset of the states a parse can decide in, and every operation on one is
+# judged by the states it holds — enumerated over a small alphabet and all 32 standings, so union, intersection and
+# containment are checked against set arithmetic rather than against themselves.
+.stamps/verify-spaces: $(GEN_SRC) | .stamps
+	python3 generator/check_spaces.py
+	@touch $@
+
 # The determinizer derives a conflict's provisional decision by subset construction over its live alternatives. This
 # runs it on the flow fold and checks the decision it reads — hold the break, retype it to the content path's code —
 # equals the RetypeProvisional the hand-built speculate-folds commits, whose corpus test is then the engine's for it.
@@ -407,6 +414,7 @@ verify-wire: .stamps/verify-wire
 verify-messages: .stamps/verify-messages
 verify-emitter: .stamps/verify-emitter
 verify-provisional: .stamps/verify-provisional
+verify-spaces: .stamps/verify-spaces
 verify-determinize: .stamps/verify-determinize
 verify-fixtures: .stamps/verify-fixtures
 verify-star: .stamps/verify-star
@@ -424,7 +432,7 @@ verify-grammar: verify-grammar-base verify-grammar-base-coverage
 # anything to read in a pipeline whose steps are the chomping's.
 verify: verify-roundtrip verify-references verify-markers verify-emits verify-messages verify-spec \
         verify-emitter verify-fixtures verify-grammar verify-star \
-        verify-normalize verify-wire verify-decoder
+        verify-normalize verify-wire verify-decoder verify-spaces
 
 # Static code quality.
 vet-format-c: .stamps/vet-format-c
