@@ -39,10 +39,11 @@ def expr_yaml(e):
     return _EXPR_YAML(e)
 
 
-# How each value expression is spelled. A kind named nowhere raises: one written back by accident would be spelled the
-# way something else is, and the roundtrip would compare the grammar against a reading of it rather than itself.
+# A kind named nowhere raises: one written back by accident would be spelled the way something else is, and the
+# roundtrip would compare the grammar against a reading of it rather than itself.
 _EXPR_YAML = ir.Reading(
-    "how a value expression is written in the annotated grammar",
+    "what a value expression is written as in the annotated grammar: the string or number it spells, or the "
+    "single-entry mapping its operator names",
     {
         ir.ParamValue: lambda e: e.name,
         ir.LitValue: lambda e: e.value,
@@ -77,10 +78,11 @@ def _case_yaml(n):
     return {"(case)": {"var": n.var, **{b.value: node_yaml(b.item) for b in n.branches}, **default}}
 
 
-# How each node is spelled. A kind named nowhere raises: one written back by accident would be spelled the way something
-# else is, and the roundtrip would compare the grammar against a reading of it rather than itself.
+# A kind named nowhere raises: one written back by accident would be spelled the way something else is, and the
+# roundtrip would compare the grammar against a reading of it rather than itself.
 _NODE_YAML = ir.Reading(
-    "how a grammar node is written in the annotated grammar",
+    "what a grammar node is written as in the annotated grammar: the character or name it spells, the pair of hex "
+    "bounds a range spells, or the single-entry mapping its operator names",
     {
         ir.OneCharSet: lambda n: char_text(n.cp),
         ir.RangeSet: lambda n: [hex_text(n.lo), hex_text(n.hi)],

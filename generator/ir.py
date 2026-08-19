@@ -1891,6 +1891,33 @@ SCANS = (ConsumeLimitedSpanAction, ConsumeSpanAction, ConsumeTrimmedSpanAction)
 # alphabetical order.
 WRAPPERS = (CommitWrapper, MaxWrapper, RecoverWrapper, TokenWrapper, Wrapper)
 
+# The shapes of the tree the lowerings take apart: a choice of ways, a run of one, a repetition, an optional, a binding,
+# a switch, an empty match. Each is a thing the grammar is written in and none is a thing the machine has a state for,
+# which is what the phases before the canonical form are for removing. In alphabetical order.
+TREES = (
+    AltTree,
+    BindTree,
+    CaseTree,
+    EmptyTree,
+    OptTree,
+    PlusTree,
+    RepTree,
+    SeqTree,
+    StarTree,
+    TrimStarTree,
+)
+
+# What the machine has a state for: the choice of ways a production offers, and one of those ways. What the trees above
+# become. In alphabetical order.
+STATES = (AlternativeState, ChoiceState)
+
+# What a node holds that is neither a match nor a value: the arm of a switch, which pairs a parameter's value with a
+# match, and the gate a way is entered on, which holds the guards it asks. In alphabetical order.
+PARTS = (BranchPart, GatePart)
+
+# What hands control to a production, which is the one kind that does.
+CALLS = (RefCall,)
+
 # The kinds whose item is entered where they are: a run and a repetition take their first turn there, a scope and a
 # commit their content, and a lookaround tests at the position it stands at. In alphabetical order.
 WALKED_UNCONSUMED = (

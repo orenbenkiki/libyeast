@@ -122,10 +122,10 @@ def _effect_of_recovery(node, values, known):
     return agreed([effect(node.item, values, known), effect(node.recovery, values, known)], "a recovery")
 
 
-# What each kind leaves open and closes. A kind named nowhere raises: what its markers do is then something nothing has
-# looked at, which is how a `(recover)` once hid every marker inside it.
+# A kind named nowhere raises: what its markers do is then something nothing has looked at, which is how a `(recover)`
+# once hid every marker inside it.
 _EFFECT = ir.Reading(
-    "the markers a match leaves open and the ones it closes",
+    "a pair: the marker names a match closes without opening, and the names it leaves open",
     {
         ir.EmitAction: lambda node, values, known: marker(node.code),
         ir.Wrapper: lambda node, values, known: compose(

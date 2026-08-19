@@ -40,19 +40,59 @@ def consumed(node, is_annotated, references):
     A kind named nowhere raises rather than being walked into for its children: a new way of taking a character would
     otherwise yield nothing of its own, and every character it takes would pass this check without an annotation.
     """
-    if isinstance(node, ir.TokenWrapper):
-        yield from consumed(node.item, True, references)
-    elif isinstance(node, ir.ASKED_NOT_TAKEN_NODES):
-        return  # what is inside is asked about and never taken, so no character of it is one this counts
-    elif isinstance(node, ir.CONSUMING):
-        yield is_annotated
-    elif isinstance(node, ir.RefCall):
-        references.append((node.name, is_annotated))
-    elif isinstance(node, ir.KINDS):
-        for child in chars.children(node):
-            yield from consumed(child, is_annotated, references)
-    else:
-        raise TypeError(f"cannot tell what {type(node).__name__} consumes")
+    yield from _CONSUMED(node, is_annotated, references)
+
+
+def _taken_under_an_annotation(node, is_annotated, references):
+    """An annotation's: what it holds, taken under it — which is what says the characters inside are covered."""
+    return consumed(node.item, True, references)
+
+
+def _taken_by_a_call(node, is_annotated, references):
+    """A call's: nothing of its own, and the name recorded with whether an annotation covers where it stands."""
+    references.append((node.name, is_annotated))
+    return ()
+
+
+def _taken_by_what_it_holds(node, is_annotated, references):
+    """Anything holding parts: what each of them takes, under the annotation that covers the whole."""
+    return (held for child in chars.children(node) for held in consumed(child, is_annotated, references))
+
+
+# Only the kinds an annotated grammar is written in: this reads the grammar as the vendored source says it, before any
+# lowering, so a canonical spelling arriving is a question about a grammar this was never asked about rather than one it
+# may answer by walking into.
+_CONSUMED = ir.Reading(
+    "one boolean per character a node takes, each saying whether a token annotation covers that character",
+    {
+        ir.TokenWrapper: _taken_under_an_annotation,
+        # What is inside is asked about and never taken, so no character of it is one this counts.
+        ir.ASKED_NOT_TAKEN_NODES: lambda node, is_annotated, references: (),
+        ir.CONSUMING: lambda node, is_annotated, references: (is_annotated,),
+        ir.RefCall: _taken_by_a_call,
+        (
+            *ir.VALUE_KINDS,
+            *ir.PARTS,
+            *(kind for kind in ir.TREES if kind is not ir.EmptyTree),
+            *(kind for kind in ir.WRAPPERS if kind is not ir.TokenWrapper),
+            *(kind for kind in ir.ACTIONS if kind not in ir.ASKED_NOT_TAKEN_NODES and kind not in ir.CONSUMING),
+            *(kind for kind in ir.GUARDS if kind not in ir.ASKED_NOT_TAKEN_NODES),
+            ir.EmptyTree,
+        ): _taken_by_what_it_holds,
+    },
+    # The canonical spellings, which no annotated grammar holds: this gate reads the vendored source and the shapes the
+    # lowerings mint are past where it looks.
+    untested=(
+        ir.CharSet,
+        ir.ConsumeCharAction,
+        ir.ConsumeLimitedSpanAction,
+        ir.ConsumeLiteralAction,
+        ir.ConsumePeekedAction,
+        ir.ConsumeSpanAction,
+        ir.ConsumeTrimmedSpanAction,
+        ir.LiteralPeekGuard,
+    ),
+)
 
 
 def check_annotated(grammar):

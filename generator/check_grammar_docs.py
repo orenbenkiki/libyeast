@@ -28,22 +28,49 @@ def emitted(node):
     A kind named nowhere raises rather than being walked into for its children: a new way of emitting would otherwise
     contribute no code of its own, and a rule that emits it would read as documented while saying nothing about it.
     """
-    codes = []
-    if isinstance(node, ir.TokenWrapper):
-        codes.append(node.code)
-        codes.extend(emitted(node.item))
-    elif isinstance(node, ir.Wrapper):
-        codes.append(node.begin)
-        codes.extend(emitted(node.item))
-        codes.append(node.end)
-    elif isinstance(node, ir.EmitAction):
-        codes.append(node.code)
-    elif isinstance(node, ir.KINDS):
-        for child in chars.children(node):
-            codes.extend(emitted(child))
-    else:
-        raise TypeError(f"cannot tell what {type(node).__name__} emits")
-    return list(dict.fromkeys(codes))
+    return list(dict.fromkeys(_EMITTED(node)))
+
+
+def _emitted_around_it(node):
+    """A `(wrap)`'s: the marker it opens with, what it holds, and the marker it closes with."""
+    return [node.begin, *emitted(node.item), node.end]
+
+
+def _emitted_by_what_it_holds(node):
+    """Anything holding parts: what each of them emits, in the order they are performed."""
+    return [code for child in chars.children(node) for code in emitted(child)]
+
+
+# Only the kinds an annotated grammar is written in, this reading the vendored source before any lowering.
+_EMITTED = ir.Reading(
+    "the list of token codes a node emits, in the order it emits them and with repeats",
+    {
+        ir.TokenWrapper: lambda node: [node.code, *emitted(node.item)],
+        ir.Wrapper: _emitted_around_it,
+        ir.EmitAction: lambda node: [node.code],
+        (
+            *ir.VALUE_KINDS,
+            *ir.PARTS,
+            *ir.CALLS,
+            *ir.TREES,
+            *(kind for kind in ir.WRAPPERS if kind not in (ir.TokenWrapper, ir.Wrapper)),
+            *(kind for kind in ir.ACTIONS if kind is not ir.EmitAction),
+            *ir.GUARDS,
+            *(kind for kind in ir.CONSUMING if kind not in ir.ACTIONS),
+        ): _emitted_by_what_it_holds,
+    },
+    # The canonical spellings, which no annotated grammar holds.
+    untested=(
+        ir.CharSet,
+        ir.ConsumeCharAction,
+        ir.ConsumeLimitedSpanAction,
+        ir.ConsumeLiteralAction,
+        ir.ConsumePeekedAction,
+        ir.ConsumeSpanAction,
+        ir.ConsumeTrimmedSpanAction,
+        ir.LiteralPeekGuard,
+    ),
+)
 
 
 def documented(text):

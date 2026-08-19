@@ -265,7 +265,7 @@ def _finite_value_of_call(node, grammar, env):
 # to a production that is a value function. A kind absent from here is no finite value, and it raises rather than being
 # read as one — a specialization that guessed would fix a copy's name to a value the grammar never said.
 _FINITE_VALUE = ir.Reading(
-    "the value a finite parameter takes, where an expression settles one",
+    "the string a finite parameter is settled to by an expression, and `None` where the expression settles none",
     {
         ir.ParamValue: lambda node, grammar, env: env[node.name],
         ir.LitValue: lambda node, grammar, env: node.value,
@@ -1022,11 +1022,11 @@ def _shortest_call(node, grammar, seen):
     return _shortest_match(grammar[node.name].body, grammar, seen | {node.name})
 
 
-# How few characters each kind can take. A lower bound is what the count is for, so a difference contributes its base's
-# — the exclusions only remove matches — and a kind named nowhere raises: one answered for by accident would say a way
-# takes two characters where it can take one, and the subtraction would come off a way it reaches.
+# A lower bound is what the count is for, so a difference contributes its base's — the exclusions only remove matches —
+# and a kind named nowhere raises: one answered for by accident would say a way takes two characters where it can take
+# one, and the subtraction would come off a way it reaches.
 _SHORTEST_MATCH = ir.Reading(
-    "the fewest characters a match can take, counted no further than the cap",
+    "how few characters a match can take, as an integer counted no further than `_SHORTEST_CAP`",
     {
         # One character, whichever of the set it is.
         (ir.OneCharSet, ir.CharSet, ir.InvalidSet, ir.RangeSet): lambda node, grammar, seen: 1,
@@ -1149,15 +1149,36 @@ def _peeked_question(node, grammar):
     the code its character carries, and peeking it asks whether the character is a `#`. A name is read through for the
     same reason a match's is not — the caller's hold on a production is what a match wants and a peek has no use for.
     """
-    if isinstance(node, ir.RefCall) and not node.args:
-        return _peeked_question(grammar[node.name].body, grammar)
-    if isinstance(node, (ir.TokenWrapper, ir.Wrapper)):
-        return _peeked_question(node.item, grammar)
-    if isinstance(node, ir.SeqTree):
-        asked = [item for item in node.items if not isinstance(item, ir.PEEK_OUTPUT)]
-        if len(asked) == 1:
-            return _peeked_question(asked[0], grammar)
-    return node
+    return _PEEKED_QUESTION(node, grammar)
+
+
+def _asked_through_a_call(node, grammar):
+    """
+    A call's: what the production it names asks.
+
+    A call passing arguments asks what its callee asks under those arguments, which the callee's body alone does not
+    say, so the question is the call itself and a reader of it holds the name.
+    """
+    if node.args:
+        return node
+    return _peeked_question(grammar[node.name].body, grammar)
+
+
+# A kind named nowhere raises rather than being handed back as its own question: read that way, a shape nothing has
+# looked at says "ask about this" and the reader believes it — a peek of a run would be taken for a peek of a character,
+# and the set it is held to would be one nothing established.
+_PEEKED_QUESTION = ir.Reading(
+    "the node a peek of a node asks about — the set or the call it reads down to, or the node itself",
+    {
+        ir.RefCall: _asked_through_a_call,
+        # A scope reads through: what it puts around what it holds shapes the output, and a probe hands the output back.
+        (ir.TokenWrapper, ir.Wrapper): lambda node, grammar: _peeked_question(node.item, grammar),
+        # A set is the question already, whichever way it is written.
+        (ir.AltTree, ir.CharSet, ir.DiffSet, ir.OneCharSet): lambda node, grammar: node,
+    },
+    # A `(wrap)` reads through exactly as an annotation does, and no peek has held one.
+    untested=(ir.Wrapper,),
+)
 
 
 def lower_char_sets(grammar, namer):
@@ -1206,24 +1227,47 @@ def _every_character_question_is_a_character_set(grammar):
     """
     faults = []
     for name, production in grammar.items():
-
-        def walk(node, owner=name):
-            if isinstance(node, ir.CharSet):
-                return  # lowered
-            if isinstance(node, ir.PEEKS) and ir.is_one_char(_peeked_question(node.item, grammar), grammar):
-                if not isinstance(node.item, ir.CharSet):
-                    kinds = (type(node).__name__, type(node.item).__name__)
-                    faults.append(f"{owner}: a {kinds[0]} asks about a character as a {kinds[1]}")
-                return
-            if isinstance(node, ir.RefCall):
-                return  # a hold on the production where the set is
-            if ir.is_one_char(node, grammar):
-                faults.append(f"{owner}: a {type(node).__name__} is a character set and is not a `CharSet`")
-                return
-            ir.rebuilt(node, lambda child: (walk(child, owner), child)[1])
-
-        walk(production.body)
+        _CHARACTER_QUESTIONS(production.body, grammar, name, faults)
     return faults
+
+
+def _asked_by_a_peek(node, grammar, owner, faults):
+    """A peek's: where what it holds is one character, the set it holds is what the parser is given."""
+    if not ir.is_one_char(_peeked_question(node.item, grammar), grammar):
+        return _asked_where_it_stands(node, grammar, owner, faults)
+    if not isinstance(node.item, ir.CharSet):
+        kinds = (type(node).__name__, type(node.item).__name__)
+        faults.append(f"{owner}: a {kinds[0]} asks about a character as a {kinds[1]}")
+
+
+def _asked_where_it_stands(node, grammar, owner, faults):
+    """Anything else: a match of one character is a set and is counted, and whatever holds parts is walked into."""
+    if ir.is_one_char(node, grammar):
+        faults.append(f"{owner}: a {type(node).__name__} is a character set and is not a `CharSet`")
+        return
+    ir.rebuilt(node, lambda child: (_CHARACTER_QUESTIONS(child, grammar, owner, faults), child)[1])
+
+
+# A kind named nowhere raises rather than being walked into: a shape holding a question this had not heard of would be
+# stepped over, and the set it asks about would go uncounted.
+_CHARACTER_QUESTIONS = ir.Reading(
+    "nothing, appending to `faults` a line per question about a character written as anything but a `CharSet`",
+    {
+        ir.CharSet: lambda node, grammar, owner, faults: None,  # the shape the parser is given, and the walk is done
+        ir.PEEKS: _asked_by_a_peek,
+        ir.RefCall: lambda node, grammar, owner, faults: None,  # a hold on the production where the set is said
+        (
+            # `TAKES_NOTHING` spans categories: the empty match is a tree and is named with them below.
+            *(kind for kind in ir.TAKES_NOTHING if kind not in (*ir.PEEKS, ir.EmptyTree)),
+            *(kind for kind in ir.CONSUMING if kind is not ir.CharSet),
+            *ir.VALUE_KINDS,
+            *ir.WRAPPERS,
+            *ir.TREES,
+            *ir.STATES,
+            *ir.PARTS,
+        ): _asked_where_it_stands,
+    },
+)
 
 
 EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET = Invariant(
@@ -1796,17 +1840,47 @@ def _reached_forbidden(node, standing, reached):
     other shape holds its parts where it stands itself — so a branch of a choice neither takes an exclusion from its
     sibling nor hands one on.
     """
-    if isinstance(node, ir.SeqTree):
-        for item in node.items:
-            standing = _reached_forbidden(item, standing, reached)
-        return standing
-    if isinstance(node, ir.ExcludeAtAction):
-        return node.item
-    if isinstance(node, ir.RefCall):
-        reached[node.name].add(standing)
-        return standing
+    return _REACHED_FORBIDDEN(node, standing, reached)
+
+
+def _forbidden_along_a_run(node, standing, reached):
+    """A sequence's: what each part is reached with is what the part before it left, in the order they are performed."""
+    for item in node.items:
+        standing = _reached_forbidden(item, standing, reached)
+    return standing
+
+
+def _forbidden_at_a_call(node, standing, reached):
+    """A call's: what stands here is what the callee is entered with, and the call itself forbids nothing."""
+    reached[node.name].add(standing)
+    return standing
+
+
+def _forbidden_where_it_stands(node, standing, reached):
+    """Anything holding its parts where it stands: each of them is reached with what reaches the whole."""
     ir.rebuilt(node, lambda child: (_reached_forbidden(child, standing, reached), child)[1])
     return standing
+
+
+# A kind named nowhere raises rather than being walked into by default: a shape that carried the set along its parts,
+# read as holding them where it stands, would hand every part what reaches the whole and lose an exclusion set halfway
+# through it.
+_REACHED_FORBIDDEN = ir.Reading(
+    "the node forbidden where a match ends, which is what reaches whatever stands past it",
+    {
+        ir.SeqTree: _forbidden_along_a_run,
+        ir.ExcludeAtAction: lambda node, standing, reached: node.item,
+        ir.RefCall: _forbidden_at_a_call,
+        (
+            *(kind for kind in ir.TAKES_NOTHING if kind is not ir.ExcludeAtAction),
+            *ir.CONSUMING,
+            *ir.VALUE_KINDS,
+            *ir.WRAPPERS,
+            ir.AltTree,
+            ir.BindTree,
+        ): _forbidden_where_it_stands,
+    },
+)
 
 
 def _forbidden_entries(grammar):
@@ -1981,7 +2055,7 @@ def _inner_ways(node):
 
 
 _INNER_WAYS = ir.Reading(
-    "the ways a body offers, each a match in its own right",
+    "the tuple of nodes a body offers as its ways, each a match in its own right",
     {
         ir.ChoiceState: lambda node: node.alternatives,
         ir.AltTree: lambda node: node.items,
@@ -4799,7 +4873,7 @@ def _entered_by_parts(parts, grammar, ways, entering):
 # the walk into what they hold is written here and they are taken out of the group below. A chain settled that overlap
 # by the order its tests happened to stand in; a reading refuses to have it settled twice.
 _ENTERED_UNCONSUMED = ir.Reading(
-    "the productions a match can enter with nothing taken",
+    "the set of production names a match can enter with nothing taken",
     {
         ir.RefCall: lambda node, grammar, ways, entering: {node.name},
         (ir.AltTree, ir.ChoiceState): lambda node, grammar, ways, entering: {

@@ -1221,6 +1221,25 @@ All notable changes to this project are documented here. The format follows
   left off, and what the run did has been taken away by whatever the callee performed. The interpreter already refused
   this where it happened; asked of the grammar instead, a step that moves the two apart is a fault where it stands.
 
+- **Every question about the grammar is a reading.** Five were still answered by an `isinstance` chain, and the audit
+  that found them is worth keeping: 43 functions name three or more kinds, but a family named in a membership test is
+  what the families are *for*; of the 13 that answer differently per kind, 10 are step transforms reshaping named kinds
+  and passing the rest through, which is a rewrite and not a question. The five are `validate_grammar.consumed`, what a
+  node takes and whether an annotation covers it; `check_grammar_docs.emitted`, the codes it emits;
+  `normalize._peeked_question`, what a peek asks; `normalize._reached_forbidden`, what is forbidden where a match ends;
+  and the walker inside `every-character-question-is-a-character-set`. Two of them answer by `yield from` and by
+  appending rather than by returning, which is why a search for a chain of returns does not find them.
+
+  The peek's was the one that mattered. Its tail handed the node back as its own question, so a shape nothing had looked
+  at said "ask about this" and three readers believed it — `lower-runs`, `span-consumes` and the character-set
+  invariant. The other two chains ending in `elif isinstance(node, ir.KINDS)` said in their own docstrings that a kind
+  named nowhere raises, and could not: that arm names every kind there is. Both read the vendored grammar before any
+  lowering, so the canonical spellings are what they now call untested rather than what they walk into by default.
+
+- The nine categories are named as families — `TREES`, `STATES`, `PARTS` and `CALLS` join the five that were already
+  there — and between them they cover all 79 kinds exactly. What made that worth doing is that a reading naming "every
+  other kind" by category raises for a kind in no category, where one naming `KINDS` cannot.
+
 - A `Prod` is no kind of node and is not among them. `KINDS` is every kind of thing that stands inside a body, and a
   production is what a body hangs off — a name, a parameter list and a body — so no walk of a body meets one, which is
   why it alone fell into no category. A reading naming it is refused now, a table answering for it being one that

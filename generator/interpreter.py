@@ -590,12 +590,11 @@ def _evaluated_call(node, emitter, grammar):
     return result
 
 
-# What each value expression works out to.
-#
 # `AutoDetectIndentValue` is absent and raises: the official grammar spells it, libyeast's own reads `ColumnValue` where
 # it stands, and a value invented for it here would be a lookahead the parser cannot make.
 _EVALUATE = ir.Reading(
-    "the value an expression works out",
+    "the value an expression works out: an indentation or length as an integer, a finite parameter as its string, or "
+    "`None` where the parameter it reads holds nothing",
     {
         ir.LitValue: lambda node, emitter, grammar: node.value,
         ir.ParamValue: _evaluated_parameter,

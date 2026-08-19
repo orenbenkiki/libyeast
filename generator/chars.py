@@ -163,11 +163,12 @@ def _takes_no_single_character(node, grammar, seen):
     return None
 
 
-# What each kind takes from the input. The groups are the reasons, and every kind is decided against the one question
-# rather than answered by the group it happens to fall in. A kind absent from here has never been asked this, and it
-# raises rather than being read as taking nothing.
+# The groups are the reasons, and every kind is decided against the one question rather than answered by the group it
+# happens to fall in. A kind absent from here has never been asked this, and it raises rather than being read as taking
+# nothing.
 _DENOTES = ir.Reading(
-    "the codepoints a node consumes, where it consumes exactly one character",
+    "the codepoints a node consumes as a denotation — `('literal', cp)`, `('range', lo, hi)`, `('union', parts)` or "
+    "`('difference', base, minus)` — and `None` where it does not consume exactly one character",
     {
         # Takes one character, and names the set itself.
         ir.OneCharSet: lambda node, grammar, seen: ("literal", node.cp),
