@@ -196,12 +196,13 @@ All notable changes to this project are documented here. The format follows
   Phase 2 is the block scalar's leading-empty floor. `clear-f` gives the value an end — the production that reads it,
   `s-indent-floor`, clears it where it returns, the reader and not the writer, since the floor is measured deep inside
   the leading empties and handed up to the one thing that asks about it — and `read-global-f` takes the declaration off
-  every production and the argument off every call, each read becoming a `Global`. The reads hide where the generic
-  walker does not go: it carries a `Param` as a value and never visits one a field holds directly, so `s-indent-floor`'s
-  `Le(f, n)` is a read both the count and the rewrite had to walk the fields themselves to see. What licenses the drop
-  is that the value does not nest, and the interpreter says so rather than the argument: a `(set)` puts it on a stack of
-  that global's own, a `(clear)` takes it off, the single slot stands beside it, and the reads where the two differ are
-  counted over the whole corpus. The gate holds that at none — and made to nest, the same net reports 21.
+  every production and the argument off every call, each read becoming a `GlobalValue`. The reads hide where the generic
+  walker does not go: it carries a `ParamValue` as a value and never visits one a field holds directly, so
+  `s-indent-floor`'s `Le(f, n)` is a read both the count and the rewrite had to walk the fields themselves to see. What
+  licenses the drop is that the value does not nest, and the interpreter says so rather than the argument: a `(set)`
+  puts it on a stack of that global's own, a `(clear)` takes it off, the single slot stands beside it, and the reads
+  where the two differ are counted over the whole corpus. The gate holds that at none — and made to nest, the same net
+  reports 21.
 
   Phase 3 is the detected indent, and `clear-m` and `read-global-m` do what `f`'s pair did. What made it possible is
   that nothing reads the value twice over a region something else can write in: the block header measures it and the
@@ -209,9 +210,9 @@ All notable changes to this project are documented here. The format follows
   is a value no single slot can hold — every collection or block scalar the loop entered detected one of its own in
   between — and the count of reads a slot could not have answered stood at 843 for exactly that reason. It is the
   grammar that answers for it now, each collection entering its entries at the indentation the first of them
-  established, so the count stands at none. `Bind` maintains the stack beside the slot too — a write is a write however
-  it is spelled, and a block header's indicator sets the detected indent through one, so a global written that way had
-  been invisible to the net.
+  established, so the count stands at none. `BindTree` maintains the stack beside the slot too — a write is a write
+  however it is spelled, and a block header's indicator sets the detected indent through one, so a global written that
+  way had been invisible to the net.
 
   Phase 4 is the indentation, and it is not one of the parse's own values: a nested collection's entries are measured
   against their own, so it goes on the parse's stack rather than into a slot. `push-indents` puts a push before every
@@ -237,16 +238,17 @@ All notable changes to this project are documented here. The format follows
 
   Phase 5 is the empties, and `lower-optionals` is its first step: `x?` becomes `x | <empty>`, the empty way standing
   beside the one that reads rather than hidden inside a node. It is the same match and the interpreter says so — an
-  `Opt` tries its item with the continuation behind it and, where that fails, rewinds and takes the continuation alone,
-  which is that alternation tried in that order. So nothing has to be known about what follows.
+  `OptTree` tries its item with the continuation behind it and, where that fails, rewinds and takes the continuation
+  alone, which is that alternation tried in that order. So nothing has to be known about what follows.
 
   A run over a character class is a scan and not a way, and the interpreter now draws that line where the grammar does.
   Such a run is single-outcome by construction — only ever followed by something off its own set — so it is taken whole
   and judged whole, which is what `s-indent-le`'s "the maximal run, and then its length against `n`" needs: falling back
   to a shorter run would let an over-indented line pass as if it had none. `span-consumes` writes each as the one scan
-  it is — `x*` a `ConsumeSpan`, `x+` the character and that span behind it, 56 in all — and a counted one the same way:
-  `x{n}` over a character class is a run of up to `n` characters of the set and the guard asking whether it reached `n`,
-  a count the parse works out being the two ways it is. Seven of those, and `Rep` is gone from the grammar with them.
+  it is — `x*` a `ConsumeSpanAction`, `x+` the character and that span behind it, 56 in all — and a counted one the same
+  way: `x{n}` over a character class is a run of up to `n` characters of the set and the guard asking whether it reached
+  `n`, a count the parse works out being the two ways it is. Seven of those, and `RepTree` is gone from the grammar with
+  them.
 
   A repetition of a way is said as the ways it is, and `lower-runs` says both spellings that way: a turn, a recursion
   taking the rest, and a settled region around the turns after the first. Every turn takes a character, a turn taking
@@ -361,10 +363,10 @@ All notable changes to this project are documented here. The format follows
   is what takes it over, read at none over all seventeen stages before a wrapper came off and named by every step that
   takes one: a scope opened on a way is closed on that way, the ways of a choice agree on what they leave open, a run's
   turn leaves none since a second turn would open it again, and a lookaround is probed and given back so what is inside
-  one touches nothing. It covers the four pairs a normalized grammar can carry — `PushIndent`/`PopIndent`,
-  `PushCode`/`PopCode`, `PushMessage`/`PopMessage`, `OpenWindow`/`CloseWindow` — and the indent pair had never been held
-  to it. It is not vacuous: dropping the pops from a production reports both the scope left open and the ways that no
-  longer agree.
+  one touches nothing. It covers the four pairs a normalized grammar can carry — `PushIndentAction`/`PopIndentAction`,
+  `PushCodeAction`/`PopCodeAction`, `PushMessageAction`/`PopMessageAction`, `OpenWindowAction`/`CloseWindowAction` — and
+  the indent pair had never been held to it. It is not vacuous: dropping the pops from a production reports both the
+  scope left open and the ways that no longer agree.
 
   The markers are not that. A pair of them crosses productions by design — `b-chomped-last` emits `end-scalar` for a
   `begin-scalar` opened elsewhere — so a per-way rule is the wrong one for them, and `check_markers`, which does prove
@@ -422,8 +424,8 @@ All notable changes to this project are documented here. The format follows
   one, and until the alternatives are made a production of its own is what a recovery is. `lower-bind` takes the last
   binding, the block header's `Bind(ns-dec-digit, m, atoi(match))`, and writes it as the match and the write that
   follows it: an identity the interpreter states twice over, what a binding does once its condition has matched being
-  exactly what a `SetVar` does, down to undoing the write where what follows fails so the condition can try its next
-  way.
+  exactly what a `SetVarAction` does, down to undoing the write where what follows fails so the condition can try its
+  next way.
 
   `no-item-holds-a-match` is none from there, over 532 productions: every item standing in a way is a call, an action, a
   guard, a character taken or nothing at all. What the count itself got wrong is worth keeping — it did not know a
@@ -435,10 +437,10 @@ All notable changes to this project are documented here. The format follows
   parse carries and tests at every start of line while it stands, so what it asks has to be answerable where it is asked
   — and four of them ask it by name, `c-forbidden`, which a guard would have to run a parse to answer.
   `bound-exclusions` writes what they ask as what it denotes: at a line start, `---` or `...` and then a break, a space,
-  a tab or the end — two `LiteralPeek`s of three characters with one follow class between them, which the parser's own
-  fill already guarantees. The reading is a peek's: a name is read through, an annotation is dead, and the follow test
-  distributes over the two runs because a question is probed and given back, so what is duplicated is a test rather than
-  a match.
+  a tab or the end — two `LiteralPeekGuard`s of three characters with one follow class between them, which the parser's
+  own fill already guarantees. The reading is a peek's: a name is read through, an annotation is dead, and the follow
+  test distributes over the two runs because a question is probed and given back, so what is duplicated is a test rather
+  than a match.
 
   The count stops at 3, and they are the phase's declared debt rather than its oversight: those exclusions also ask
   whether the line stands at this indentation with content, which is a run of spaces with no bound — a condition on a
@@ -453,10 +455,10 @@ All notable changes to this project are documented here. The format follows
   productions becoming 740. Binarization is no step of its own: the one way with three calls falls out with the rest.
 
   What that breaks is the scope net's reading, not the pairs it proves. `every-scope-closes-on-its-own-way` was a
-  per-way rule, and a way that hands control on is half of a path: `s-indent-le_reads` keeps its `PushCode` while its
-  `PopCode` rides into the continuation, which is exactly the cut phase 6 moved the pairs onto the parse's own stack
-  for. So the invariant is re-derived rather than lapsed — `every-scope-closes-on-the-path-that-opens-it` — and reads
-  none at every stage, before the split and after it.
+  per-way rule, and a way that hands control on is half of a path: `s-indent-le_reads` keeps its `PushCodeAction` while
+  its `PopCodeAction` rides into the continuation, which is exactly the cut phase 6 moved the pairs onto the parse's own
+  stack for. So the invariant is re-derived rather than lapsed — `every-scope-closes-on-the-path-that-opens-it` — and
+  reads none at every stage, before the split and after it.
 
   Working it out took one thing, and it is what the machine runs on: a call is a **unit**, standing for what it does
   relative to its own entry. Both of a way's calls are on the path, the one it comes back from as much as the one it
@@ -508,18 +510,18 @@ All notable changes to this project are documented here. The format follows
   count, the nullability, the split saying which ways a production has, the left corner the cycle check walks. A choice
   says its ways as `alternatives` where it is the machine's and as `items` where it is the tree's, and an alternative
   says its parts by name where a sequence says them in a row — so one reading of each says both and the walks ask it.
-  The one that bit was an `Alt` reaching the helper written for the machine's spelling and getting itself back as its
-  own only way, which is a walk that never ends rather than an answer that is wrong. The per-way scope walk went with
-  the rewrite, 85 lines of it, the path check having replaced what it read.
+  The one that bit was an `AltTree` reaching the helper written for the machine's spelling and getting itself back as
+  its own only way, which is a walk that never ends rather than an answer that is wrong. The per-way scope walk went
+  with the rewrite, 85 lines of it, the path check having replaced what it read.
 
   Phase 10 is the gate. A machine that never backtracks takes a way by looking at the character in front of it, so
   `every-way-gated` counts the ways a parse would have to try and give back: 372 of the 600 alternatives that make a
   decision, the last way of each choice being exempt as the unconditional fallthrough and a body with one way being no
   decision at all. `gate-hoist` is the first of the hoists that reduce it, and the one with no analysis behind it: a way
-  whose first action takes a character is entered on that character, so the set rises into the gate and a `ConsumeChar`
-  stands where it did, taking the one the gate has already found. It is done in every alternative rather than only where
-  a choice needs telling apart — a way whose first action is a set fails there where the set is not, gate or no gate —
-  and it takes the count to 324.
+  whose first action takes a character is entered on that character, so the set rises into the gate and a
+  `ConsumeCharAction` stands where it did, taking the one the gate has already found. It is done in every alternative
+  rather than only where a choice needs telling apart — a way whose first action is a set fails there where the set is
+  not, gate or no gate — and it takes the count to 324.
 
   What is left says what the rest of the phase is: 272 of them begin with a call, and what a call can start with is an
   entry set the grammar has never computed; 47 begin with an action the gate has to look past, which it may, an action
@@ -558,7 +560,7 @@ All notable changes to this project are documented here. The format follows
   through a call that can take nothing as well, what enters the way then being what that call can start on *and* what
   stands behind it. It stops at a commit, which is `gate-hoist-call`'s refusal one call deeper: a `(cut)`, an `(error)`
   or a region opened before the question makes failing there an error rather than a refusal, and a gate that keeps the
-  way from being entered turns that error into a way not taken. `hoist-guards` puts a leading `EndOfStream` or
+  way from being entered turns that error into a way not taken. `hoist-guards` puts a leading `EndOfStreamGuard` or
   look-behind in the gate beside the peek, both being questions the machine can put where it stands — and
   `every-way-gated` says so too now, a way entered at the end of the input having no character to be asked about at all.
   Together: 372 ungated ways down to **36**.
@@ -666,19 +668,19 @@ All notable changes to this project are documented here. The format follows
   actions is a question asked a moment too late — reached only by entering the way, when entering the way is what it
   could have decided — so it moves to the gate, where the machine asks it. Which guards move is the whole of the step: a
   guard about the input alone passes any action, since none of them writes where the parse stands or what surrounds it;
-  a comparison passes only actions that do not write what it reads, an indentation test behind a `PushIndent` reading
-  what the parse has not done yet; and nothing passes a commit — a `Cut`, an `Error`, a `PushMessage` — past which
-  failing is an error rather than a refusal, so a gate that keeps the way from being entered would turn a parse that
-  stopped into one that took another way. `no-guard-left-among-the-actions` counts what is still owed and settles at
-  none.
+  a comparison passes only actions that do not write what it reads, an indentation test behind a `PushIndentAction`
+  reading what the parse has not done yet; and nothing passes a commit — a `CutAction`, an `ErrorAction`, a
+  `PushMessageAction` — past which failing is an error rather than a refusal, so a gate that keeps the way from being
+  entered would turn a parse that stopped into one that took another way. `no-guard-left-among-the-actions` counts what
+  is still owed and settles at none.
 
   A test spelled as a call is one the way cannot be entered on either, and the same step lifts those: a production of
   one way that holds no action, makes no call and carries on nowhere *is* its gate, so entering it is asking that gate.
   Eight ways handed control to one such production — the sweep had merged every zero-width end-of-stream helper into a
-  single `EndOfStream`, which kept the block header's name — and the call becomes the guard, said where the call stood.
-  Lifting and hoisting feed each other, a callee left holding nothing but its gate being one its own callers can lift,
-  so both run until neither finds anything; each round drops a call or moves a guard, and there are finitely many of
-  both.
+  single `EndOfStreamGuard`, which kept the block header's name — and the call becomes the guard, said where the call
+  stood. Lifting and hoisting feed each other, a callee left holding nothing but its gate being one its own callers can
+  lift, so both run until neither finds anything; each round drops a call or moves a guard, and there are finitely many
+  of both.
 
   An empty match among a way's actions is swept away with them, which is what let the eight through: `<empty>` is
   dropped from a sequence and a way's actions are a tuple on an alternative rather than a sequence, so the litter sat
@@ -751,8 +753,8 @@ All notable changes to this project are documented here. The format follows
   to **108** — on a grammar that got *smaller*, 819 productions to 798.
 
   The six left are one thing: a way handing control to a production that answers a character it cannot start on with an
-  error rather than a refusal, each guarded by a `NegLook`, all of them the auto-detected-indent copies of the block
-  scalar's content.
+  error rather than a refusal, each guarded by a `NegLookGuard`, all of them the auto-detected-indent copies of the
+  block scalar's content.
 
   The same flattening for a called run of items is written and not landed. It hands `splice-conflicts` a way carrying a
   recovery, and that step builds the spliced way with the callee's recovery, dropping the caller's — a latent bug in
@@ -779,9 +781,9 @@ All notable changes to this project are documented here. The format follows
 
   What it found on landing: `is_one_char` carried a `(case)` branch nothing has ever reached, and `_is_actions_alone`
   claimed all 73 kinds while eleven reach it. Two overlaps that the order of a test chain had been settling silently now
-  say which way they go — `Error` and `PushMessage` are actions and commits both, and a walk looking for what a way can
-  be refused at must stop at them rather than step over them. And stripping "the scopes written around a match" turns
-  out to strip only a `(token)`; no `(max)`, `(recover)` or `(wrap)` ever reaches it.
+  say which way they go — `ErrorAction` and `PushMessageAction` are actions and commits both, and a walk looking for
+  what a way can be refused at must stop at them rather than step over them. And stripping "the scopes written around a
+  match" turns out to strip only a `(token)`; no `(max)`, `(recover)` or `(wrap)` ever reaches it.
 
   Three readings answer with a named `Verdict` rather than a value, which is what lets a walk over a way's items be a
   table as well: take the item, step over it, stop, follow the call it makes, follow what it holds, or treat it as the
@@ -1087,10 +1089,10 @@ All notable changes to this project are documented here. The format follows
   the zeroed one, so trailing content it cannot parse recovers rather than the interpreter asserting the root is total.
 
 - Two invariants say what they are about. `every-end-of-stream-gates-a-leaf-way` asked two things at once: that an
-  `EndOfStream` stands in a gate, and that the way it gates calls nothing. The second is untrue — a way that reaches the
-  end still has the wrapping up to do and may hand it on, a continuation being where a callee left off and not a call
-  made where nothing is left to give it — and it fired twenty times the moment a callee's ways were written into a
-  caller that had one. What is left is `every-end-of-stream-stands-in-a-gate`, the same shape as
+  `EndOfStreamGuard` stands in a gate, and that the way it gates calls nothing. The second is untrue — a way that
+  reaches the end still has the wrapping up to do and may hand it on, a continuation being where a callee left off and
+  not a call made where nothing is left to give it — and it fired twenty times the moment a callee's ways were written
+  into a caller that had one. What is left is `every-end-of-stream-stands-in-a-gate`, the same shape as
   `every-consume-is-protected-by-a-gate`: whether a character is there is a question, so it belongs where a way's
   questions are asked and nowhere else.
 
@@ -1130,11 +1132,12 @@ All notable changes to this project are documented here. The format follows
   step onward now, and a reading that cannot answer there is a fault.
 
 - Every gate reads what stands in front of it at most once. Two peeks in one gate are one question said twice — two
-  `Look`s are the set they both admit, a `Look` beside a `NegLook` the set the first admits and the second does not —
-  and the hoists are what bring them together, one moving a question to where another already stands. So
-  `every-gate-looks-ahead-at-most-once` is established where ways with gates are built, each hoist declares its lapse of
-  it, and a `merge-gate-peeks` behind each says the sets as one. A gate mixing kinds that cannot fold into one set — an
-  `EndOfStream`, which holds no set, or a `LiteralPeek`, which holds a run — raises rather than being stepped over.
+  `LookGuard`s are the set they both admit, a `LookGuard` beside a `NegLookGuard` the set the first admits and the
+  second does not — and the hoists are what bring them together, one moving a question to where another already stands.
+  So `every-gate-looks-ahead-at-most-once` is established where ways with gates are built, each hoist declares its lapse
+  of it, and a `merge-gate-peeks` behind each says the sets as one. A gate mixing kinds that cannot fold into one set —
+  an `EndOfStreamGuard`, which holds no set, or a `LiteralPeekGuard`, which holds a run — raises rather than being
+  stepped over.
 
 - A call is written into the way that calls it where doing so pays, and the site itself is what says so. What decides is
   what the site would leave, not what it was handed: one way nothing has gated goes, the callee's ways stand where the
@@ -1156,7 +1159,7 @@ All notable changes to this project are documented here. The format follows
   `True`, `False`, or nothing at all, an unnamed pair refusing the move *and* being recorded — so that "no" and "not
   yet" cannot be mistaken for each other. Nothing called `unnamed()` or `unconsulted()`, so the difference existed and
   was never reported: a walk took an unnamed pair for a worked-out refusal and looked settled while it was only
-  ignorant. Wired to the gate, it named `Look` in front of `OpenWindow` at once — the pair that was holding a flow
+  ignorant. Wired to the gate, it named `LookGuard` in front of `OpenWindow` at once — the pair that was holding a flow
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
@@ -1166,9 +1169,9 @@ All notable changes to this project are documented here. The format follows
   failure edge in the machine that no question stood in front of. `x{n}` is now a run of up to `n` of the class, which
   takes what is there and says whether it reached the limit, and the guard behind it asks. The taking always matches,
   the refusing is a question like any other, and `ConsumeCountedSpan` is gone from the IR. The shape is `x+`'s, which
-  the pipeline already wrote: a scan that may take none, made to take one by the `Look` in front of it. So the split on
-  the count is made where the run and its guard are minted, and `split-counted-spans-on-the-count` — which gated the
-  scan afterwards — is gone with the kind it gated.
+  the pipeline already wrote: a scan that may take none, made to take one by the `LookGuard` in front of it. So the
+  split on the count is made where the run and its guard are minted, and `split-counted-spans-on-the-count` — which
+  gated the scan afterwards — is gone with the kind it gated.
 
 - **A reading says what it has not met, and answers for it or does not.** `ir.Reading` took `NEVER` for a kind a wide
   group named but the reading never meets, which claimed an impossibility nobody had proved. Two lists replace it, and
@@ -1176,7 +1179,8 @@ All notable changes to this project are documented here. The format follows
   about — one that arrives is answered from the family, recorded, listed and fails the gate, so the decision is made
   rather than passed over — and `unknown` names one nothing answers for at all, which raises where it stands. Naming a
   kind untested that no group of the reading names is refused: there is no answer to call untested. Splitting the two
-  standing uses proved the distinction real — seven kinds their families answer for, and `Choice`, which nothing does.
+  standing uses proved the distinction real — seven kinds their families answer for, and `ChoiceState`, which nothing
+  does.
 
 - **What a run reaches is recorded by the run.** Coverage was collected by rebinding `interpreter.match` and
   `interpreter.evaluate`, so a handler reaching a production any other way was missed and the report read exactly like a
@@ -1190,17 +1194,37 @@ All notable changes to this project are documented here. The format follows
   reading them together found two that did not match their own words: the scan family left out the trimmed scan while
   saying "a scan of a character class, which may be asked for none at all", and the zero-width family left out the
   gate's literal form though it matches without consuming, which `validate_grammar` had been patching around inline. A
-  third, `TAKES_CHARACTERS`, was `CONSUMING` narrowed to the spellings one phase uses — it made a way holding a `Char`
-  count as taking nothing, and is gone. What a family is called now says which category its kinds are drawn from, and
-  `ZERO_WIDTH` is `ASKED_NOT_TAKEN_NODES`: taking nothing is what every action and guard does, and holding characters
-  that are asked about and never taken is what those five have.
+  third, `TAKES_CHARACTERS`, was `CONSUMING` narrowed to the spellings one phase uses — it made a way holding a
+  `OneCharSet` count as taking nothing, and is gone. What a family is called now says which category its kinds are drawn
+  from, and `ZERO_WIDTH` is `ASKED_NOT_TAKEN_NODES`: taking nothing is what every action and guard does, and holding
+  characters that are asked about and never taken is what those five have.
 
 - `no-empty-nodes`, settled by `build-alternatives`. A way is its gate, its actions and the calls it hands control to,
   and an empty match is none of the three — a way matching the empty input is the way with no gate, no action and no
   call — so there is nowhere in the machine's own words for one to stand. The lowerings mint them freely, 5 in the base
   grammar rising to 160, and the last 99 go where the ways are built.
 
-- `Lt` and `Le` are `ColumnLt` and `ColumnLe`, which is what they compare.
+- `Lt` and `Le` are `ColumnLtGuard` and `ColumnLeGuard`, which is what they compare.
+
+- **A kind's name says the category it is in.** An action, a guard, a call, a wrapper, a character set, a tree the
+  lowerings remove, a state the machine has, a value the parse works out, a part a node holds: every kind ends in the
+  one it belongs to, so a use site says which without being read against the families in `ir.py`. `CharSet` and
+  `Wrapper` needed nothing, their names already ending in their category, and `Char` is `OneCharSet` — the set of one,
+  `CharSet` being taken by the one holding spans. `GUARD_CROSSES_ACTION` keys its pairs by `type(node).__name__`, so its
+  68 answers are renamed with the classes: left behind, the table would name no pair at all, and an unnamed pair refuses
+  the move exactly as a worked-out no does. That is what the step-changed-nothing assertion caught.
+
+- `every-span-question-follows-its-run`, established where the run and the question about it are made. The guard reads
+  what the action in front of it did, so that action has to be the run: the item before it among the things a way
+  performs, or — where minting the guard states makes it the head of a state — the last thing every way calling that
+  state performs, the call being the first that way makes. A call made past another call is entered wherever that one
+  left off, and what the run did has been taken away by whatever the callee performed. The interpreter already refused
+  this where it happened; asked of the grammar instead, a step that moves the two apart is a fault where it stands.
+
+- A `Prod` is no kind of node and is not among them. `KINDS` is every kind of thing that stands inside a body, and a
+  production is what a body hangs off — a name, a parameter list and a body — so no walk of a body meets one, which is
+  why it alone fell into no category. A reading naming it is refused now, a table answering for it being one that
+  answers for what no walk asks.
 
 ### Changed
 
