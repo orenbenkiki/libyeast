@@ -41,8 +41,8 @@ def _emitted_by_what_it_holds(node):
     return [code for child in chars.children(node) for code in emitted(child)]
 
 
-# Only the kinds an annotated grammar is written in, this reading the vendored source before any lowering.
-_EMITTED = ir.Reading(
+# Only the kinds an annotated grammar is written in, this question the vendored source before any lowering.
+_EMITTED = ir.Question(
     "the list of token codes a node emits, in the order it emits them and with repeats",
     {
         ir.TokenWrapper: lambda node: [node.code, *emitted(node.item)],
@@ -64,7 +64,6 @@ _EMITTED = ir.Reading(
         ir.CharSet,
         ir.ConsumeCharAction,
         ir.ConsumeLimitedSpanAction,
-        ir.ConsumeLiteralAction,
         ir.ConsumePeekedAction,
         ir.ConsumeSpanAction,
         ir.ConsumeTrimmedSpanAction,

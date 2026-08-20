@@ -62,7 +62,7 @@ def _held_by(label):
     assert rather than infer.
 
     Read off the step table, so what the interpreter checks at run time is what the pipeline claims and not what the
-    grammar's shape happens to say. Reading it off the shape would only repeat the static count; told, the parse is an
+    grammar's shape happens to say. Question it off the shape would only repeat the static count; told, the parse is an
     independent witness to it — a gate that is present and *wrong* is a thing no static count can see.
     """
     held = set()
@@ -239,7 +239,7 @@ def _check(does_bisect=False, hint=None):
     if asked:
         errors.append(f"[global] {asked} read(s) answered from a stack a single slot could not have stood for")
 
-    # Every reading that answered a kind it had called untested, and which kind — each pair a decision now owed, which
+    # Every question that answered a kind it had called untested, and which kind — each pair a decision now owed, which
     # is whether the family naming that kind is the right thing to say of it. The answer stood for the run, so whatever
     # the corpus did above is what put it to the test: it says here whether the run held, since a run that broke has
     # these as its first suspects and one that held has them as answers borne out. Said whatever happened and before the
@@ -247,13 +247,13 @@ def _check(does_bisect=False, hint=None):
     owed = ir.owed()
     pairs = [f"{what} — {kind}" for what, kinds in owed.items() for kind in kinds]
     _say(
-        f"{len(pairs)} reading answer(s) taken on a family's word and never before tested, against a corpus that "
+        f"{len(pairs)} question answer(s) taken on a family's word and never before tested, against a corpus that "
         f"{'did not hold' if corpus else 'held'}: " + ("; ".join(pairs) or "none")
     )
     for what, kinds in owed.items():
         for kind in kinds:
             errors.append(
-                f"[reading] the reading of {what} calls {kind} untested and it has arrived: say whether the family "
+                f"[question] the question of {what} calls {kind} untested and it has arrived: say whether the family "
                 f"naming it answers for it, and take it off that list or name a family that tells the two apart"
             )
 
@@ -285,12 +285,12 @@ def _check(does_bisect=False, hint=None):
         f"    {len(exempt)} of {len(normalize.STEPS)} step(s) have no invariant to carry and say why: "
         f"{', '.join(exempt)}"
     )
-    # A reading's handler nothing reached. Read here and nowhere else: a kind is exercised by the inputs that reach it,
+    # A question's handler nothing reached. Read here and nowhere else: a kind is exercised by the inputs that reach it,
     # so only a run over the whole corpus can say a handler is dead — and a dead one is a guess about the grammar that
-    # held, either a kind that cannot occur where the reading is asked or a shape the corpus does not reach.
+    # held, either a kind that cannot occur where the question is asked or a shape the corpus does not reach.
     unused = ir.unexercised()
     print(
-        f"    {sum(len(kinds) for kinds in unused.values())} reading handler(s) nothing reached: "
+        f"    {sum(len(kinds) for kinds in unused.values())} question handler(s) nothing reached: "
         + ("; ".join(f"{what} — {', '.join(kinds)}" for what, kinds in unused.items()) or "none")
     )
     # What the final grammar still breaks, whatever the steps settle between them — each one a step not yet written, and

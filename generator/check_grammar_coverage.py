@@ -80,7 +80,6 @@ ALWAYS = (
 NEVER_SURE = (
     ir.OneCharSet,
     ir.CharSet,  # a set says no where the character is not one of its own
-    ir.ConsumeLiteralAction,  # a fixed sequence says no where the input does not spell it
     ir.ColumnLeGuard,
     ir.ColumnLtGuard,
     ir.DiffSet,
@@ -137,7 +136,7 @@ def _a_way_is_total(node, grammar, seen):
     return all(is_total(part, grammar, seen) for part in parts)
 
 
-_IS_TOTAL = ir.Reading(
+_IS_TOTAL = ir.Question(
     "whether a match is total — matching at every position and for every parameter value",
     {
         ALWAYS: True,

@@ -307,6 +307,11 @@ entered somewhere. `check_spaces` judges the algebra by the states it holds — 
 alphabet spanning each boundary its cases name, and comparing the operations against set arithmetic on the enumerations
 — because an algebra checked against itself proves nothing.
 
+The two are read from different halves of a way, which is what makes their agreement mean something: the gated subspace
+from its guards, the accepted subspace from its consumes and calls, and neither from the other's. Every consume names
+the set it consumes and consumes it — no consume has ever consumed nothing, at any stage, over the whole corpus — so a
+gate moving to a caller takes nothing away from what the way says it does.
+
 `normalize._admits` reads each guard as one of these, and `accepted_spaces` says where each production can begin taking
 a character: a least fixpoint from nothing, the walk over a way carrying what it can still stand in having taken
 nothing, so that a guard past a take — which asks about a later position — narrows nothing. It is **sound rather than
@@ -328,7 +333,7 @@ production it enters. Not every way: `l-document-prefix` offers one that takes a
 nothing, and the path reaching it at the end of the stream can take only the second, there being no mark there. A path
 reaching none of them is a call no input completes, and that is what is counted.
 
-**Every question about a node is asked through `ir.Reading`**, a table from node kind to what to do about it, because
+**Every question about a node is asked through `ir.Question`**, a table from node kind to what to do about it, because
 the alternative — a chain of `isinstance` tests ending in a fallthrough — answers permissively for whatever spelling its
 author did not think of, and reports its own blindness as a property of the grammar. A kind the table was not told about
 raises, naming the reading; a handler nothing ever reaches is reported by `unexercised` once the whole corpus has run,
@@ -339,10 +344,10 @@ of it that cannot arrive — checked rather than believed, since reaching one ra
 build: the groups overlap — `Error` and `PushMessage` are actions and commits both — and a chain of tests settles that
 by its order with nothing saying which order was meant.
 
-**So a question about the grammar is decided, never recognised.** A reading that matches shapes and answers for whatever
-it did not match is wrong in a way that hides: every step which rewrites a shape silently changes its answer.
+**So a question about the grammar is decided, never recognised.** A question that matches shapes and answers for
+whatever it did not match is wrong in a way that hides: every step which rewrites a shape silently changes its answer.
 `_takes_none_only_at_the_end` admitted as much in its own docstring — *"recognised rather than decided"* — and the
-`l-recover` circuit it reported read none, then twenty, then none again, each number saying something about the reading
+`l-recover` circuit it reported read none, then twenty, then none again, each number saying something about the question
 rather than about the grammar. The permissive polarity is worse still: a walk answering "yes, this may move" for a shape
 nobody classified is a transformation nobody checked. What tells a recognizer from an honest conclusion is where the
 decision is made — a recognizer decides per node with an untyped tail, a conclusion decides every node through a total
@@ -357,9 +362,9 @@ as empty again, a hoisted `EndOfStream` went invisible and a recovery circuit ap
 `_parts_of_way` is the accessor for a question — the gate's guards, then what the way performs, in the order the parse
 meets them. Either rule may be broken with a written reason at the site; neither may be broken silently.
 
-A reading answers with whatever the question wants: `_is_one_char` a yes-or-no, `_split` the pair of halves a match has,
-`_peek_spans` the codepoint intervals a question admits or nothing where its set is not pinned down. What every one of
-them shares is the dispatch, not the answer.
+A question answers with whatever is asked of it: `_is_one_char` a yes-or-no, `_split` the pair of halves a match has,
+`_peek_spans` the codepoint intervals a set admits or nothing where it is not pinned down. What every one of them shares
+is the dispatch, not the answer.
 
 Not every scope is a pair. What answers for a failed cut rides the edge an alternative already has — `recover` beside
 the call it protects — so a rewrite that moves the way moves the handler with it, and there is nothing to open and

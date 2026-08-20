@@ -592,7 +592,7 @@ def _evaluated_call(node, emitter, grammar):
 
 # `AutoDetectIndentValue` is absent and raises: the official grammar spells it, libyeast's own reads `ColumnValue` where
 # it stands, and a value invented for it here would be a lookahead the parser cannot make.
-_EVALUATE = ir.Reading(
+_EVALUATE = ir.Question(
     "the value an expression works out: an indentation or length as an integer, a finite parameter as its string, or "
     "`None` where the parameter it reads holds nothing",
     {
@@ -1064,9 +1064,16 @@ def _matched_way(node, emitter, grammar, k):
 
 
 def _matched_gated_char(node, emitter, grammar, k):
-    """The character the gate found, taken on the gate's word."""
+    """
+    The character the gate found, held to the set the consume names.
+
+    The gate is what decides, so a character outside that set is a gate that did not do its job rather than a match to
+    refuse — and the consume carrying the set is what lets the run say so wherever the gate has since moved to.
+    """
     if emitter.position >= len(emitter.chars):
         raise AssertionError("a gated character is not there: the gate let through what it should have refused")
+    if not _probe(node.set, emitter, grammar):
+        raise AssertionError("a gated character is not the consume's own set: the gate admitted what it should not")
     checkpoint = emitter.checkpoint()
     if emitter.consume() and k():
         return True
@@ -1095,24 +1102,6 @@ def _matched_gated_literal(node, emitter, grammar, k):
     return False
 
 
-def _matched_literal(node, emitter, grammar, k):
-    """
-    A fixed sequence: the whole of it or none of it.
-
-    One comparison of a few characters, which either stands or leaves nothing taken. Each character is matched as
-    itself, so the start-of-line guard applies exactly as it would alone.
-    """
-    checkpoint = emitter.checkpoint()
-    for codepoint in node.text:
-        if not match(ir.OneCharSet(codepoint), emitter, grammar, _accept):
-            emitter.give_back(checkpoint)
-            return False
-    if k():
-        return True
-    emitter.give_back(checkpoint)
-    return False
-
-
 def _matched_limited_span(node, emitter, grammar, k):
     """
     Up to `limit` characters of the set, taken in one scan, and whether the limit was reached left behind it.
@@ -1126,6 +1115,8 @@ def _matched_limited_span(node, emitter, grammar, k):
     taken = 0
     while taken < limit and match(node.set, emitter, grammar, _accept):
         taken += 1
+    if taken == 0:
+        raise AssertionError("a limited run consumed nothing: the gate let through what it should have refused")
     emitter.did_fill_span = taken >= limit
     if k():
         return True
@@ -1141,10 +1132,21 @@ def _matched_did_fill_span(node, emitter, grammar, k):
 
 
 def _matched_span(node, emitter, grammar, k):
-    """A maximal run of the set, which is a `StarTree` over a character class as the canonical form spells it."""
-    if "every-consume-is-protected-by-a-gate" in emitter.holding and not _probe(node.set, emitter, grammar):
-        raise AssertionError("a gated run is not there: the gate let through what it should have refused")
-    return _repeat(node.set, emitter, grammar, k)
+    """
+    A maximal run of the set, which is a `StarTree` over a character class as the canonical form spells it.
+
+    Held to consuming a character, read off what the run did rather than off what the set would match: the gate in front
+    of it is what says the set is there, so a run that consumed nothing is that gate having let through what it should
+    have refused.
+    """
+    started = emitter.position
+
+    def consumed():
+        if emitter.position == started:
+            raise AssertionError("a run of a class consumed nothing: the gate let through what it should have refused")
+        return k()
+
+    return _repeat(node.set, emitter, grammar, consumed)
 
 
 def _matched_trimmed_run(node, emitter, grammar, k):
@@ -1730,11 +1732,11 @@ def _matched_switch(node, emitter, grammar, k):
 
 
 # The step the machine takes for each kind. This is the machine itself rather than a question asked about the grammar,
-# so it is a step to take rather than an `ir.Reading` to consult: a reading is called through its type where a function
-# is called directly, which costs C stack, and a few thousand of those nested is all any stack holds — far short of what
-# a parse of a real input reaches. Everything a way performs, bar the one scan whose answer a guard is waiting to read.
-# A guard is not among them: a question asked between the scan and the guard about it leaves what the scan did standing,
-# which is what lets a gate tell the two ways apart.
+# so it is a step to take rather than an `ir.Question` to consult: a question is called through its type where a
+# function is called directly, which costs C stack, and a few thousand of those nested is all any stack holds — far
+# short of what a parse of a real input reaches. Everything a way performs, bar the one scan whose answer a guard is
+# waiting to read. A guard is not among them: a question asked between the scan and the guard about it leaves what the
+# scan did standing, which is what lets a gate tell the two ways apart.
 _TAKES_THE_ANSWER_AWAY = frozenset(ir.PERFORMED_NODES) - {ir.ConsumeLimitedSpanAction}
 
 _MATCHED = {
@@ -1755,7 +1757,6 @@ _MATCHED = {
     ir.AlternativeState: _matched_way,
     ir.ConsumeCharAction: _matched_gated_char,
     ir.ConsumePeekedAction: _matched_gated_literal,
-    ir.ConsumeLiteralAction: _matched_literal,
     ir.ConsumeLimitedSpanAction: _matched_limited_span,
     ir.DidMatchFullSpanGuard: _matched_did_fill_span,
     ir.ConsumeSpanAction: _matched_span,
@@ -1851,9 +1852,9 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
     a grammar runs hybrid: committed where its decisions are proved, backtracking everywhere else. Empty backtracks all.
 
     `holding` names the invariants the caller says this grammar establishes. A run then asserts what they promise
-    instead of taking the promise back off the grammar — where `every-consume-is-protected-by-a-gate` is named, a run of
-    a class that finds none is a gate that lied rather than a match that declined, and it says so at once. Read off the
-    shape it would only repeat the static count; told, it is the parse checking what the count claims.
+    instead of taking the promise back off the grammar: read off the shape it would only repeat the static count; told,
+    it is the parse checking what the count claims. What a consume does is not among them — no action is ever handed
+    back, so every consume is held to consuming at whatever stage it is reached.
 
     `parameters` binds the production's parameters from the fixture's filename — `n`/`m` are integers and the finite
     `c`/`t`/`r`/`i` strings, and `o` says which column the run begins at rather than naming a parameter of anything. A
@@ -1883,10 +1884,6 @@ def run(grammar, production, data, parameters=None, deterministic=frozenset(), h
     emitter.holds_indent = any(
         isinstance(node, ir.PushIndentAction) for name in grammar for node in _nodes(grammar[name].body)
     )
-    # Whether every run of a class is entered under a gate that found that class — which a grammar says by having no way
-    # holding a `ConsumeSpanAction` without a `LookGuard` in its gate. Once a run of none or more has been said as the
-    # two ways it is, what is left takes at least one, and a run that finds none is a gate that lied rather than a match
-    # that declined. Before that step a span is a run of none or more and taking none is what it is for.
     emitter.holding = holding
     emitter.globals = tuple(
         name for name in ir.GLOBAL_PARAMS if not any(name in grammar[held].params for held in grammar)

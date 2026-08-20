@@ -41,7 +41,7 @@ def expr_yaml(e):
 
 # A kind named nowhere raises: one written back by accident would be spelled the way something else is, and the
 # roundtrip would compare the grammar against a reading of it rather than itself.
-_EXPR_YAML = ir.Reading(
+_EXPR_YAML = ir.Question(
     "what a value expression is written as in the annotated grammar: the string or number it spells, or the "
     "single-entry mapping its operator names",
     {
@@ -80,7 +80,7 @@ def _case_yaml(n):
 
 # A kind named nowhere raises: one written back by accident would be spelled the way something else is, and the
 # roundtrip would compare the grammar against a reading of it rather than itself.
-_NODE_YAML = ir.Reading(
+_NODE_YAML = ir.Question(
     "what a grammar node is written as in the annotated grammar: the character or name it spells, the pair of hex "
     "bounds a range spells, or the single-entry mapping its operator names",
     {

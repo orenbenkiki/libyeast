@@ -62,7 +62,7 @@ def _taken_by_what_it_holds(node, is_annotated, references):
 # Only the kinds an annotated grammar is written in: this reads the grammar as the vendored source says it, before any
 # lowering, so a canonical spelling arriving is a question about a grammar this was never asked about rather than one it
 # may answer by walking into.
-_CONSUMED = ir.Reading(
+_CONSUMED = ir.Question(
     "one boolean per character a node takes, each saying whether a token annotation covers that character",
     {
         ir.TokenWrapper: _taken_under_an_annotation,
@@ -86,7 +86,6 @@ _CONSUMED = ir.Reading(
         ir.CharSet,
         ir.ConsumeCharAction,
         ir.ConsumeLimitedSpanAction,
-        ir.ConsumeLiteralAction,
         ir.ConsumePeekedAction,
         ir.ConsumeSpanAction,
         ir.ConsumeTrimmedSpanAction,

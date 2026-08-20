@@ -125,7 +125,7 @@ def _effect_of_recovery(node, values, known):
 
 # A kind named nowhere raises: what its markers do is then something nothing has looked at, which is how a `(recover)`
 # once hid every marker inside it.
-_EFFECT = ir.Reading(
+_EFFECT = ir.Question(
     "a pair: the marker names a match closes without opening, and the names it leaves open",
     {
         ir.EmitAction: lambda node, values, known: marker(node.code),

@@ -89,19 +89,13 @@ def _denoted_choice(node, grammar, seen):
 # and holds nothing where it is a bare length note, so it is answered for on its own.
 _TAKES_WHAT_IT_HOLDS = (ir.CommitWrapper, ir.TokenWrapper, ir.Wrapper)
 
-# The guards that say which characters may stand in front: a set they must fall in, a set they must fall outside, a run
-# they must spell. `<end-of-stream>` is not one — it asks whether a character is there at all and names none — so a gate
-# holding one still says nothing about which character a consume beside it takes.
-_SAYS_WHAT_STANDS_AHEAD = (ir.LiteralPeekGuard, ir.LookGuard, ir.NegLookGuard)
-
 
 def _consumed_by_a_way(node, grammar, seen):
     """
     A way's: what it performs, where that is one character.
 
-    Its gate is not part of the answer — a guard takes nothing. The exception is `ConsumeCharAction`, which is defined
-    as the character the gate found, so the set it takes is the set the gate admits: one `LookGuard` and nothing else
-    reading ahead, which is what `every-gate-looks-ahead-at-most-once` leaves. A way that hands control on takes what it
+    Its gate is not part of the answer — a guard takes nothing, and every consume names the set it takes, so nothing
+    here has to be worked out from whichever guard stands in front of it. A way that hands control on takes what it
     calls. A span, a literal, a counted run, or two things taking at once take more than one character and name no set.
     """
     taking = [action for action in node.actions if isinstance(action, ir.CONSUMING)]
@@ -110,16 +104,13 @@ def _consumed_by_a_way(node, grammar, seen):
         return None
     if calls:
         return denote(grammar, calls[0], seen)
-    if not isinstance(taking[0], ir.ConsumeCharAction):
-        return denote(grammar, taking[0], seen)  # a set standing among the actions names itself; a run names nothing
-    ahead = [guard for guard in node.gate.guards if isinstance(guard, _SAYS_WHAT_STANDS_AHEAD)]
-    if len(ahead) != 1 or not isinstance(ahead[0], ir.LookGuard):
-        return None  # nothing says which character the gate found, or it says which ones it refused
-    return denote(grammar, ahead[0].item, seen)
+    # A set standing among the actions names itself; a consume of one names it as its `set`; a run names nothing.
+    taken = taking[0].set if isinstance(taking[0], ir.ConsumeCharAction) else taking[0]
+    return denote(grammar, taken, seen)
 
 
 # The three reasons a kind names no set of one character, each a different thing about it and each named here rather
-# than left as a list beside its answer. Only the kinds that reach this reading are in them: what is missing raises,
+# than left as a list beside its answer. Only the kinds that reach this question are in them: what is missing raises,
 # which is what says a kind nothing has asked this of has arrived.
 #
 # It takes a run rather than a character — as many turns as the input allows, as a count fixes, or one after another.
@@ -168,7 +159,7 @@ def _takes_no_single_character(node, grammar, seen):
 # The groups are the reasons, and every kind is decided against the one question rather than answered by the group it
 # happens to fall in. A kind absent from here has never been asked this, and it raises rather than being read as taking
 # nothing.
-_DENOTES = ir.Reading(
+_DENOTES = ir.Question(
     "the codepoints a node consumes as a denotation — `('literal', cp)`, `('range', lo, hi)`, `('union', parts)` or "
     "`('difference', base, minus)` — and `None` where it does not consume exactly one character",
     {

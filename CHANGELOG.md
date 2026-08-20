@@ -764,14 +764,14 @@ All notable changes to this project are documented here. The format follows
   keeps the return stack the pair needs — where each entered production carries on when it matches, pushed and taken
   back with the production trace, one for one.
 
-  **Every question about a node is asked through a table that cannot answer for a kind nobody named.** `ir.Reading` maps
-  node kinds to what to do about them, and holds itself to three rules: a kind it was not told about **raises**, naming
-  the reading; a handler nothing ever reaches is **reported** by `unexercised` after a whole-corpus run; and a kind
-  named twice will not build. The first two pin every table to exactly the kinds that occur — what is missing raises,
-  what is spare is reported — so a reading says nothing about what it cannot see, and a kind added to the IR touches
-  only the readings that actually meet it, on the day they do rather than never. `NEVER` is how a reading keeps a wide
-  group and takes back the part that cannot arrive, checked rather than believed. Thirteen readings are tables now, and
-  every one of them is exercised to the last handler.
+  **Every question about a node is asked through a table that cannot answer for a kind nobody named.** `ir.Question`
+  maps node kinds to what to do about them, and holds itself to three rules: a kind it was not told about **raises**,
+  naming the reading; a handler nothing ever reaches is **reported** by `unexercised` after a whole-corpus run; and a
+  kind named twice will not build. The first two pin every table to exactly the kinds that occur — what is missing
+  raises, what is spare is reported — so a reading says nothing about what it cannot see, and a kind added to the IR
+  touches only the readings that actually meet it, on the day they do rather than never. `NEVER` is how a reading keeps
+  a wide group and takes back the part that cannot arrive, checked rather than believed. Thirteen readings are tables
+  now, and every one of them is exercised to the last handler.
 
   It replaces a chain of `isinstance` tests ending in a fallthrough, which answers permissively for whatever spelling
   its author did not think of and reports its own blindness as a property of the grammar. That is not a hypothetical:
@@ -1163,6 +1163,35 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **No action is ever handed back; only a guard refuses.** A refusal is where a choice goes on to its next way, and an
+  action reached through a gate that admitted it does its work or the gate lied — which is a crash and not a parse.
+  `_can_be_refused` said exactly that in words and its table said otherwise, listing the consumes among the kinds an
+  input can hand back. It now says one thing: every action and every consume answers no, every guard answers yes, and a
+  set standing where a match is expected answers yes because it is a match rather than either.
+
+- **A consume names the set it consumes, and consumes it.** `ConsumeCharAction` was defined as "the character the gate
+  found", so a gate hoisted to a caller took the consume's meaning with it and what a way consumed had to be worked out
+  from whichever guard happened to stand in front. It carries its own `set` now. With that, the interpreter can ask of
+  each consume what it actually did — rather than re-probing the set, which answers a prediction instead of the event —
+  and the answer over every stage and the whole corpus is that **no consume ever consumed nothing**. A run of a class is
+  written as a gate that found the class beside a scan, so the scan always consumes; `ConsumeSpanAction`,
+  `ConsumeLimitedSpanAction` and `ConsumeTrimmedSpanAction` join `ALWAYS_CONSUMES`, and `_does_scan_read` — which
+  recovered that fact from the gate — goes, along with `_ahead_of_gate`, `_ahead_of_any`, `_ahead_of`,
+  `_narrowed_ahead`, `_entering_guards`, `_spans_meeting` and both scan splits.
+
+- **`ConsumeLiteralAction` is gone, never having been made.** Nothing in the generator ever constructed one — the whole
+  history has no call — because every literal the grammar spells, `---` and `...` and a directive's `YAML`, is consumed
+  by `ConsumePeekedAction` under the `LiteralPeekGuard` minted beside it. A kind every question had to answer for and no
+  input could reach.
+
+- **The two subspaces are read from different halves of a way.** `_accepted_way` intersected the way's own gate, so
+  `accept ⊆ gate` held by construction and the two could not disagree. It reads consumes and calls only now, the gated
+  subspace reads guards only, and their agreement is worth something. `accepted-and-gated-charsets-are-equal` compares
+  the union over the paths into a production rather than each path alone: `l-folded-content` decides whether a space
+  stands here and its two ways carry on into the same tail, so the branch that consumed a space reaches that tail
+  knowing nothing about the next character while the branch that found none still knows there is no space — one path
+  narrower than the tail consumes, and their union exactly what it consumes.
+
 - **A leaf way takes what it is entered on, and every path reaches one.** The ways holding no call answer entirely by
   their own actions, so the space a parse enters one in and the space it accepts can be held to each other before
   anything is moved. `_asked_where_entered` already gave the guards asked along each path into a production, gathered
@@ -1241,7 +1270,7 @@ All notable changes to this project are documented here. The format follows
   split on the count is made where the run and its guard are minted, and `split-counted-spans-on-the-count` — which
   gated the scan afterwards — is gone with the kind it gated.
 
-- **A reading says what it has not met, and answers for it or does not.** `ir.Reading` took `NEVER` for a kind a wide
+- **A question says what it has not met, and answers for it or does not.** `ir.Question` took `NEVER` for a kind a wide
   group named but the reading never meets, which claimed an impossibility nobody had proved. Two lists replace it, and
   they differ in whether there is an answer: `untested` names a kind a family answers for that nothing has ever asked
   about — one that arrives is answered from the family, recorded, listed and fails the gate, so the decision is made
@@ -1254,8 +1283,8 @@ All notable changes to this project are documented here. The format follows
   `interpreter.evaluate`, so a handler reaching a production any other way was missed and the report read exactly like a
   covered one. A run now fills an `interpreter.Coverage` where it enters and hands back productions, and the gate reads
   it: there is no outside to bypass. The same reasoning retires `interpreter.match`'s own dispatch chain — it is a table
-  over the kinds, but not an `ir.Reading`, since a reading is called through its type and a few thousand of those nested
-  is all a C stack holds, where this matcher recurses once per grammar step.
+  over the kinds, but not an `ir.Question`, since a question is called through its type and a few thousand of those
+  nested is all a C stack holds, where this matcher recurses once per grammar step.
 
 - **The families of node kinds are named in one place.** Every list of two or more kinds lived beside whichever reading
   used it, so the same idea had several memberships and nothing compared them. They are one section of `ir.py` now, and

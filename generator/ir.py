@@ -86,35 +86,35 @@ def is_one_char(node, grammar, seen=frozenset()):
     `x | <empty>` is not one; a `RefCall` is one when its production is.
 
     Every other kind that reaches here is named as not one, and a kind named nowhere raises: `_IS_ONE_CHAR` is a
-    `Reading`, so it answers only for what it has been told about and the corpus proves every answer is reached. A
+    `Question`, so it answers only for what it has been told about and the corpus proves every answer is reached. A
     silent `False` here would turn a scan into a way, and the run would gain an empty fallback nobody wrote.
     """
     return _IS_ONE_CHAR(node, grammar, seen)
 
 
-class Reading:
+class Question:
     """
     A total dispatch over node kinds: what to do for each, with nothing left to a default.
 
     The mechanism every question about a node is asked through, because the alternative — a chain of `isinstance` tests
     ending in a fallthrough — answers permissively for whatever spelling its author did not think of, and reports its
-    own blindness as a fact about the grammar. Three rules hold a reading to what it claims:
+    own blindness as a fact about the grammar. Three rules hold a question to what it claims:
 
-    - **A kind it was not told about raises**, naming the reading and the kind. There is no default and no way to write
-      one: a kind absent from the table is one the reading has never been asked to answer for, and answering anyway is
+    - **A kind it was not told about raises**, naming the question and the kind. There is no default and no way to write
+      one: a kind absent from the table is one the question has never been asked to answer for, and answering anyway is
       the whole of the failure this replaces.
     - **Every handler is used.** A kind whose handler nothing ever reaches is a guess about the grammar, and
       `unexercised` reports it once the whole corpus has run — only then, since a kind is exercised by the inputs that
       reach it and a partial run says nothing about the rest.
 
     Those two between them pin the table to exactly the kinds that occur: what is missing raises, what is spare is
-    reported. So a reading says nothing about kinds it cannot see, and a kind added to the IR touches only the readings
-    that actually meet it — on the day they do, loudly, rather than never.
+    reported. So a question says nothing about kinds it cannot see, and a kind added to the IR touches only the
+    questions that actually meet it — on the day they do, loudly, rather than never.
 
     Two lists say what has never arrived, and they differ in whether there is an answer for it. Intents come first: what
-    separates one answer from another is a real property of the kinds, and a reading only makes use of it — so a reading
-    names the family it means, which is a statement about the kinds themselves, and then says which part of that family
-    it has not met.
+    separates one answer from another is a real property of the kinds, and a question only makes use of it — so a
+    question names the family it means, which is a statement about the kinds themselves, and then says which part of
+    that family it has not met.
 
     - `untested` — a family names the kind and so answers for it, and nothing has ever put that answer to the test. One
       that arrives is answered, the family's word being a reasonable one to take, and is recorded as arrived: the run
@@ -130,10 +130,10 @@ class Reading:
       resolves that silently by its order, with nothing saying which resolution was meant. Here it is an error until
       someone writes the answer down.
 
-    Handlers take the node and whatever the caller threads through, and a reading is called the same way: `reading(node,
-    grammar, ways)` reaches `handler(node, grammar, ways)`. A handler that is not callable is the answer itself —
-    `Empty: True` rather than a lambda ignoring what it is given — and, being the one value every call gets back, it
-    should be one nothing mutates.
+    Handlers take the node and whatever the caller threads through, and a question is called the same way:
+    `question(node, grammar, ways)` reaches `handler(node, grammar, ways)`. A handler that is not callable is the answer
+    itself — `Empty: True` rather than a lambda ignoring what it is given — and, being the one value every call gets
+    back, it should be one nothing mutates.
     """
 
     _all = []
@@ -144,34 +144,34 @@ class Reading:
         for kinds, handler in over.items():
             for kind in kinds if isinstance(kinds, tuple) else (kinds,):
                 if kind in self._by_kind:
-                    raise TypeError(f"the reading of {what} names {kind.__name__} twice")
+                    raise TypeError(f"the question of {what} names {kind.__name__} twice")
                 self._by_kind[kind] = handler
         self._untested = frozenset(untested)
         self._unknown = frozenset(unknown)
         both = sorted(kind.__name__ for kind in self._untested & self._unknown)
         if both:
-            raise TypeError(f"the reading of {what} calls {', '.join(both)} both untested and unknown")
+            raise TypeError(f"the question of {what} calls {', '.join(both)} both untested and unknown")
         # An untested kind is one a family answers for, so there has to be a family that names it: without one there is
         # no answer to call untested, and what is meant is that nothing is known of it.
         idle = sorted(kind.__name__ for kind in self._untested if kind not in self._by_kind)
         if idle:
-            raise TypeError(f"the reading of {what} calls {', '.join(idle)} untested, which no group of it names")
+            raise TypeError(f"the question of {what} calls {', '.join(idle)} untested, which no group of it names")
         for kind in self._unknown:
             self._by_kind.pop(kind, None)  # nothing is known of it, whatever a family would have said
         stray = sorted(kind.__name__ for kind in (*self._by_kind, *self._untested, *self._unknown) if kind not in KINDS)
         if stray:
-            raise TypeError(f"the reading of {what} names {', '.join(stray)}, which are no kinds of node")
+            raise TypeError(f"the question of {what} names {', '.join(stray)}, which are no kinds of node")
         self._used = set()
         self._arrived = set()  # the untested kinds that have turned up, each one a decision now owed
-        Reading._all.append(self)
+        Question._all.append(self)
 
     def __call__(self, node, *carried):
         kind = type(node)
         if kind in self._unknown:
-            raise TypeError(f"the reading of {self.what} knows nothing of {kind.__name__}, and it has arrived")
+            raise TypeError(f"the question of {self.what} knows nothing of {kind.__name__}, and it has arrived")
         handler = self._by_kind.get(kind)
         if handler is None:
-            raise TypeError(f"the reading of {self.what} has not been told what {kind.__name__} means")
+            raise TypeError(f"the question of {self.what} has not been told what {kind.__name__} means")
         if kind in self._untested:
             self._arrived.add(kind)  # answered by its family, and that the family is right for it is what is owed
         else:
@@ -179,11 +179,11 @@ class Reading:
         return handler(node, *carried) if callable(handler) else handler
 
     def unused(self):
-        """The kinds this reading claims to handle and was never asked about — each one a guess nothing bore out."""
+        """The kinds this question claims to handle and was never asked about — each one a guess nothing bore out."""
         return sorted(kind.__name__ for kind in self._by_kind if kind not in self._used | self._untested)
 
     def arrived(self):
-        """The kinds this reading calls untested that have since arrived — each one a decision it now owes."""
+        """The kinds this question calls untested that have since arrived — each one a decision it now owes."""
         return sorted(kind.__name__ for kind in self._arrived)
 
 
@@ -247,44 +247,44 @@ def deepest_rounds():
 
 def unexercised():
     """
-    `{what: [kind]}` for every reading holding a handler nothing reached — meaningful only after the whole corpus has
+    `{what: [kind]}` for every question holding a handler nothing reached — meaningful only after the whole corpus has
     run, since a kind is exercised by the inputs that reach it and a partial run says nothing about the rest.
     """
-    return {reading.what: reading.unused() for reading in Reading._all if reading.unused()}
+    return {question.what: question.unused() for question in Question._all if question.unused()}
 
 
 def owed():
     """
-    `{what: [kind]}` for every reading whose untested part has arrived — a decision each one owes, and a run that met
+    `{what: [kind]}` for every question whose untested part has arrived — a decision each one owes, and a run that met
     one says so and fails rather than passing on the family's word.
     """
-    return {reading.what: reading.arrived() for reading in Reading._all if reading.arrived()}
+    return {question.what: question.arrived() for question in Question._all if question.arrived()}
 
 
 def what_was_reached():
     """
-    What this process has reached: the kinds each reading answered for, and how deep each fixpoint went.
+    What this process has reached: the kinds each question answered for, and how deep each fixpoint went.
 
     A check that shares its work out over the cores does it in forked children, and a child marks what it reached in its
     own copy of these. What it reached is still reached, so it comes back with the answers and is folded in here —
     otherwise `unexercised` would report every handler only a worker ever met.
     """
     return (
-        {reading.what: {kind.__name__ for kind in reading._used} for reading in Reading._all},
+        {question.what: {kind.__name__ for kind in question._used} for question in Question._all},
         dict(_DEEPEST),
-        {reading.what: {kind.__name__ for kind in reading._arrived} for reading in Reading._all},
+        {question.what: {kind.__name__ for kind in question._arrived} for question in Question._all},
     )
 
 
 def also_reached(held):
     """Fold what another process reached into this one's, as `what_was_reached` gave it."""
     used, deepest, arrived = held
-    for reading in Reading._all:
+    for question in Question._all:
         for kind in KINDS:
-            if kind.__name__ in used.get(reading.what, ()):
-                reading._used.add(kind)
-            if kind.__name__ in arrived.get(reading.what, ()):
-                reading._arrived.add(kind)
+            if kind.__name__ in used.get(question.what, ()):
+                question._used.add(kind)
+            if kind.__name__ in arrived.get(question.what, ()):
+                question._arrived.add(kind)
     for what, rounds in deepest.items():
         _DEEPEST[what] = max(_DEEPEST.get(what, 0), rounds)
 
@@ -783,13 +783,21 @@ class ConsumeCharAction:
     The one character the gate peeked, taken into the run. It consumes exactly one, always: the gate has already found
     it there, so a `ConsumeCharAction` that finds nothing is a gate that did not do its job, and the interpreter says so
     rather than matching nothing. The generated parser carries the same assertion.
+
+    `set` is the characters it consumes, kept although the gate asks the same question: a gate moves — hoisted to a
+    caller, spliced into another way, split from what it protected — and what the consume was written to take does not.
+    Carried here it is read off the consume itself wherever it has got to, so what a way consumes is never worked out
+    from whichever guard happens to stand in front of it.
     """
 
+    set: object
+
     def references(self):
-        return []
+        return _refs(self.set)
 
     def renamed(self, names):
-        return self
+        (set,) = _renamed(names, self.set)
+        return replace(self, set=set)
 
 
 @dataclass(frozen=True)
@@ -821,8 +829,8 @@ class ConsumePeekedAction:
     """
     The literal the gate's `LiteralPeekGuard` found, taken into the run. It consumes the literal's characters, always:
     the gate has already found them there, so finding otherwise is a gate that did not do its job — the interpreter says
-    so, and the generated parser advances without scanning the bytes a second time. `ConsumeLiteralAction` stays the
-    test-and-consume for a literal no gate vouches for.
+    so, and the generated parser advances without scanning the bytes a second time. Every literal the grammar spells —
+    `---`, `...`, a directive's `YAML` or `TAG` — is consumed through this pair, the gate asking and the action doing.
     """
 
     text: tuple
@@ -910,23 +918,6 @@ class ChoiceState:
     def renamed(self, names):
         (alternatives,) = _renamed(names, self.alternatives)
         return replace(self, alternatives=alternatives)
-
-
-@dataclass(frozen=True)
-class ConsumeLiteralAction:
-    """
-    A fixed sequence of characters, matched in one go and all or nothing — `---`, `...`, a directive's `YAML` or `TAG`.
-    What a run of literal characters in a sequence becomes in the canonical form: one comparison of a few bytes rather
-    than a state per character.
-    """
-
-    text: tuple  # the codepoints, in order
-
-    def references(self):
-        return []
-
-    def renamed(self, names):
-        return self
 
 
 @dataclass(frozen=True)
@@ -1768,10 +1759,10 @@ class Prod:
 
 # The families of kinds, and nothing else, so that what one says can be read against what its neighbours say. A family
 # is a statement about the kinds themselves — what an action is, what takes no character, what holds a match — and it is
-# families that separate one answer from another wherever the grammar is read: a reading names the family it means, and
+# families that separate one answer from another wherever the grammar is read: a question names the family it means, and
 # `untested` says which part of that family it has not met. Two families with the same members are one family under two
 # names, and two that differ by a kind are a question about that kind, so they are kept together where both can be seen.
-# A group that says only "the kinds this one reading meets" is no family and stays where it is used.
+# A group that says only "the kinds this one question meets" is no family and stays where it is used.
 
 # The nodes holding characters that are asked about and never taken. A lookaround asks where it stands — whether the set
 # is in front, whether it is not, whether it stood behind — and an exclusion asks at every take that follows, saying
@@ -1782,15 +1773,17 @@ class Prod:
 # about the input and is not one: it holds no characters to stop at. In alphabetical order.
 ASKED_NOT_TAKEN_NODES = (ExcludeAtAction, LiteralPeekGuard, LookGuard, LookBehindGuard, NegLookGuard)
 
-# What always takes at least one character where it matches, the counterpart of `TAKES_NOTHING`. A kind that reads on
+# What always takes at least one character where it matches, the counterpart of `CONSUMES_NOTHING`. A kind that reads on
 # one way and not on another — a run, a repetition, a choice — is neither, and is asked about its parts instead. In
 # alphabetical order.
-ALWAYS_READS = (
+ALWAYS_CONSUMES = (
     OneCharSet,
     CharSet,
     ConsumeCharAction,
-    ConsumeLiteralAction,
+    ConsumeLimitedSpanAction,
     ConsumePeekedAction,
+    ConsumeSpanAction,
+    ConsumeTrimmedSpanAction,
     DiffSet,
     InvalidSet,
     RangeSet,
@@ -1806,7 +1799,6 @@ CONSUMING = (
     CharSet,
     ConsumeCharAction,
     ConsumeLimitedSpanAction,
-    ConsumeLiteralAction,
     ConsumePeekedAction,
     ConsumeSpanAction,
     ConsumeTrimmedSpanAction,
@@ -1870,7 +1862,7 @@ PERFORMED_NODES = (*ACTIONS, *CONSUMING)
 # What takes no character at all: an action leaves something behind, a guard asks a question, an empty match does
 # neither. `<empty>` is both an action and a guard, doing nothing and always matching, so it is named where each of them
 # needs it. What stands behind one of these is what a match begins on.
-TAKES_NOTHING = (*ACTIONS, *GUARDS, EmptyTree)
+CONSUMES_NOTHING = (*ACTIONS, *GUARDS, EmptyTree)
 
 # A peek: a guard that holds its question about the input as an `item` and takes nothing, whether it asks about what
 # stands in front or what stands behind. `every-peek-is-a-character-set` is what these are held to. Not every guard that
@@ -1901,10 +1893,6 @@ REPETITIONS = (PlusTree, RepTree, StarTree)
 # A repetition the input ends rather than a count: it takes turns until what it repeats declines, where `REPETITIONS`
 # takes in the counted one as well. What the phases lower is these two, a count being a run of a length already fixed.
 RUNS = (PlusTree, StarTree)
-
-# A run of a character class said as the scan a parser makes of it, which may be asked for none at all and so forces no
-# character to be there. In alphabetical order.
-SCANS = (ConsumeLimitedSpanAction, ConsumeSpanAction, ConsumeTrimmedSpanAction)
 
 # A node that holds what it covers rather than bracketing it with a pair — what the wrappers phase takes apart. In
 # alphabetical order.
@@ -1970,7 +1958,7 @@ BODY_KINDS = (AltTree, ChoiceState, RecoverWrapper, SeqTree)
 # `every-exclusion-is-bounded` are what answer for those. Said as the two families and the call rather than as a list of
 # the spellings one phase reaches: a taking left out of the list is a step the machine has, read as a shape it has no
 # state for.
-LEAF_ITEMS = (*TAKES_NOTHING, *CONSUMING, RefCall)
+LEAF_ITEMS = (*CONSUMES_NOTHING, *CONSUMING, RefCall)
 
 # What a production may hold instead of a matcher: a value the parse works out — an indentation, a measured length, a
 # parameter, a switch over one. It matches nothing, so it takes no character and reads nowhere. In alphabetical order.
@@ -2014,7 +2002,6 @@ NOT_ONE_CHAR = (
     CommitProvisionalAction,
     ConsumeCharAction,
     ConsumeLimitedSpanAction,
-    ConsumeLiteralAction,
     ConsumePeekedAction,
     ConsumeSpanAction,
     ConsumeTrimmedSpanAction,
@@ -2073,18 +2060,18 @@ NOT_ONE_CHAR = (
 )
 
 # Every kind of node there is — every kind of thing that stands inside a body. `NOT_ONE_CHAR` names all but the eight
-# that can be one character, so the two between them are the whole of it, and a kind added to neither is one `Reading`
+# that can be one character, so the two between them are the whole of it, and a kind added to neither is one `Question`
 # refuses to be told about, since a table naming it would be naming what is no kind of node. What reads this is every
 # net that has to tell "a kind I know, which is not this" from "a kind nobody has named".
 #
 # A `Prod` is not one of them. It is a name, a parameter list and a body: the thing a body hangs off rather than
-# anything standing in one, so no walk of a body meets it and no reading is asked what it means.
+# anything standing in one, so no walk of a body meets it and no question is asked what it means.
 KINDS = NOT_ONE_CHAR + (AltTree, CaseTree, OneCharSet, CharSet, DiffSet, InvalidSet, RangeSet, RefCall)
 
-# What `is_one_char` answers, as the reading it is: the kinds it has been asked about and no others. A kind absent from
+# What `is_one_char` answers, as the question it is: the kinds it has been asked about and no others. A kind absent from
 # here is one nothing has ever asked this of, and arriving it raises rather than being answered for — which is the whole
-# of what a reading buys, and why the table is smaller than `KINDS`.
-_IS_ONE_CHAR = Reading(
+# of what a question buys, and why the table is smaller than `KINDS`.
+_IS_ONE_CHAR = Question(
     "whether a node matches exactly one character",
     {
         ALWAYS_ONE_CHAR: True,
@@ -2097,7 +2084,7 @@ _IS_ONE_CHAR = Reading(
         # Every kind that reaches here and is not one character: a repetition or a sequence takes a run rather than a
         # character, an action and a guard take none, a value expression is no match at all, and the canonical form's
         # own consumes are answered where they are made. Spelled out rather than taken from a wider group, since no
-        # other reading shares one — what is missing raises, and what is spare `unexercised` reports.
+        # other question shares one — what is missing raises, and what is spare `unexercised` reports.
         (
             AddValue,
             AlternativeState,
@@ -2173,10 +2160,8 @@ def repeated(node):
         return node.full
     if isinstance(node, REPETITIONS):
         return node.item
-    if isinstance(node, SCANS):
-        return None  # a run already said as its scan
     if isinstance(node, KINDS):
-        return None
+        return None  # a scan is among these: a run already said as the scan it is repeats nothing further
     raise TypeError(f"cannot tell whether {type(node).__name__} repeats anything")
 
 

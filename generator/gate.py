@@ -81,7 +81,7 @@ def spread(work, held, items, named=None):
     anywhere; only each answer comes back. And forked from whichever thread calls this, so that thread's stack goes with
     them — which is what keeps a check that recurses deeply from running out of stack in a worker.
 
-    What a worker reached comes back with its answer. A reading marks the kinds it answered for in the process that ran
+    What a worker reached comes back with its answer. A question marks the kinds it answered for in the process that ran
     it, so a kind only a worker ever met would be reported as one nothing reached; folded in here, what was reached is
     reached whoever did it.
 
