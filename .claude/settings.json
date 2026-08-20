@@ -9,6 +9,12 @@
             "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/no-shell-file-writes.sh\"",
             "timeout": 10,
             "statusMessage": "checking for shell file writes"
+          },
+          {
+            "type": "agent",
+            "prompt": "You are gating a commit. The tool call is: $ARGUMENTS\n\nIf its command does not run `git commit`, reply exactly ALLOW and stop — do no other work, read nothing, run nothing.\n\nOtherwise review the staged change against the four checks the repository owner requires of EVERY commit. Read `git diff --cached` and whatever files you need.\n\n1. Every comment and docstring is consistent with the code it stands over — including comments the change made stale but did not touch, and names that describe what the code no longer does.\n2. DESIGN.md describes the current state, CHANGELOG.md is the history, PLAN.md is what is left to do, and none encroaches on another's domain. In particular PLAN.md must not describe something the change just built.\n3. Every number in the comments and in the documents is current — counts, enumerations, and figures quoted in the changelog entry.\n4. `make pc` passes. Do not run it; check that a `.stamps/` entry is newer than every staged source file, and treat it as failed if it is not.\n\nReply exactly ALLOW if all four hold. Otherwise reply BLOCK, then one line per failure naming the check number, the file, and what is wrong. Judge only the staged change; do not review the repository at large, and do not comment on style or design.",
+            "timeout": 180,
+            "statusMessage": "reviewing the commit against the four checks"
           }
         ]
       }
