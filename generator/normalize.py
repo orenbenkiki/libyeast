@@ -2847,16 +2847,29 @@ def accepted_spaces(grammar):
 
     A least fixed point from `NOWHERE`, so a production reaching back to itself contributes nothing until some way of it
     says otherwise: every cycle in the grammar takes a character somewhere inside it, so the take is what lifts the
-    cycle and the rounds settle. Starting anywhere else would have a cycle answer for itself — an unknown treated as a
+    cycle and the answers settle. Starting anywhere else would have a cycle answer for itself — an unknown treated as a
     poison never lifts, and everywhere as a start would say a production accepts what nothing in it takes.
+
+    Worked out from a list of what is left to do rather than by sweeping every production per round: a production's
+    answer can only change where a callee's has, so a callee that has just grown puts its callers back on the list and
+    nothing else is asked again. The answer is the sweep's, one name at a time and in whatever order the list gives
+    them, a least fixed point being what it is however it is reached.
     """
     ways = _split_ways(grammar)
+    callers = {}
+    for name, production in grammar.items():
+        for node in _held(production.body):
+            if isinstance(node, ir.RefCall) and node.name in grammar:
+                callers.setdefault(node.name, set()).add(name)
     known = {name: spaces.NOWHERE for name in grammar}
-    for _round in ir.rounds("what each production accepts"):
-        settled = {name: _accepted_body(production.body, grammar, known, ways) for name, production in grammar.items()}
-        if settled == known:
-            return known
-        known = settled
+    pending = set(grammar)
+    while pending:
+        name = pending.pop()
+        space = _accepted_body(grammar[name].body, grammar, known, ways)
+        if space != known[name]:
+            known[name] = space
+            pending |= callers.get(name, set())
+    return known
 
 
 def _can_be_refused(node, grammar, seen=frozenset()):
@@ -3406,6 +3419,117 @@ def _every_conditional_way_is_gated(grammar):
 
 
 EVERY_CONDITIONAL_WAY_IS_GATED = Invariant("every-conditional-way-is-gated", _every_conditional_way_is_gated)
+
+
+# What the two readings below share, per grammar they have been asked about: the grammar itself, so the key cannot be
+# reused under it, and the three tables. Each is a fixed point over the whole grammar and both invariants are read at
+# every stage, so working them out per invariant per stage is the whole cost of the counting pass.
+_TABLES = {}
+
+
+def _leaf_tables(grammar):
+    """
+    `(accepted, ways, entering)` — what each production begins taking, which of the two each can do, and what is asked
+    where each is entered, worked out once for a grammar and kept.
+    """
+    held = _TABLES.get(id(grammar))
+    if held is None or held[0] is not grammar:
+        tables = (accepted_spaces(grammar), _split_ways(grammar), _asked_where_entered(grammar))
+        _TABLES[id(grammar)] = held = (grammar, tables)
+    return held[1]
+
+
+def _leaf_ways(grammar):
+    """
+    The ways that hold no call, as `(name, way)` pairs.
+
+    Everything such a way does is its own actions, so what it takes is read off those and nothing has to be followed,
+    which is what makes it the first shape the two spaces are held to each other over.
+    """
+    return [
+        (name, way)
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.ChoiceState)
+        for way in production.body.alternatives
+        if way.first is None and way.second is None
+    ]
+
+
+def _gated_by(path, way, grammar):
+    """
+    The states a parse may enter `way` in along one path into its production, as a `spaces.SubSpace`.
+
+    A path is what `_asked_where_entered` hands back: the guards the ways leading here asked, gathered from the last
+    take onward, a caller that consumed before its call asking about somewhere else. The way's own gate is asked at that
+    same position and is part of what admits it, so the two are met.
+    """
+    space = spaces.EVERYWHERE
+    for guard in (*path, *way.gate.guards):
+        space = space & _admits(guard, grammar)
+    return space
+
+
+def _accepted_and_gated_charsets_are_equal(grammar):
+    """
+    Check that a leaf way takes exactly the characters it is entered on, along every path into it.
+
+    Where the two differ the way is entered on a character it cannot take, or takes one nothing brings it. Asked of the
+    characters alone and standing by standing: a path may reach a way under fewer standings than the way has an opinion
+    about — a caller knowing it stands at a line start where the way asks only about the character — and that is the
+    caller knowing more, not the two disagreeing. So a standing the path cannot reach is not compared, and one it can is
+    compared on its characters.
+
+    A way that takes no character is not asked: there are no characters for its gate to be equal to.
+    """
+    accepted, ways, entering = _leaf_tables(grammar)
+    faults = []
+    for name, way in _leaf_ways(grammar):
+        if _is_nullable(way, grammar, ways):
+            continue
+        accept = _accepted_way(way, grammar, accepted, ways)
+        for path in entering[name]:
+            gated = _gated_by(path, way, grammar)
+            for standing in spaces.STANDINGS:
+                entered, taken = gated.under(standing), accept.under(standing)
+                if entered and (entered.spans, entered.is_at_end) != (taken.spans, taken.is_at_end):
+                    faults.append(f"{name}: a leaf way is entered on characters it does not take")
+                    break
+    return faults
+
+
+ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL = Invariant(
+    "accepted-and-gated-charsets-are-equal", _accepted_and_gated_charsets_are_equal
+)
+
+
+def _every_path_reaches_a_leaf_way(grammar):
+    """
+    Check that every path into a production of leaf ways reaches one of them.
+
+    A path gathers the guards asked on the way here, and a way's own gate is asked with them, so a way whose gate cannot
+    hold beside them is one that path never takes. That by itself is ordinary: `l-document-prefix` offers a way that
+    takes a byte order mark and a way that takes nothing, and the path reaching it at the end of the stream can only
+    ever take the second — there is no mark there to take. What is not ordinary is a path that can take *none* of them,
+    which is a call no input can complete, and that is what this counts.
+
+    Asked of the productions every way of which is a leaf way, the ones that answer entirely by themselves; a way whose
+    gate a path rules out is counted as reached by its production wherever some other way of it is. One taking no
+    character is asked as much as one taking a run: what makes a path impossible is the questions along it, and what a
+    way does once reached has no part in that.
+    """
+    _accepted, _ways, entering = _leaf_tables(grammar)
+    faults = []
+    for name, production in grammar.items():
+        ways = production.body.alternatives if isinstance(production.body, ir.ChoiceState) else ()
+        if not ways or any(way.first is not None or way.second is not None for way in ways):
+            continue
+        for path in entering[name]:
+            if not any(_gated_by(path, way, grammar) for way in ways):
+                faults.append(f"{name}: a path into it reaches no way it offers")
+    return faults
+
+
+EVERY_PATH_REACHES_A_LEAF_WAY = Invariant("every-path-reaches-a-leaf-way", _every_path_reaches_a_leaf_way)
 
 
 class Crossing:
@@ -5666,7 +5790,13 @@ STEPS = [
     # input says. The questions exist now, and this is where they move — out of a callee that offers one way and into
     # the choice that has to tell its ways apart. What the callee gave up it is still entered under, which is what
     # `_asked_where_entered` says and what keeps the take it protected still protected. The steps here only lower the
-    # count, and what stands at the end is what `unsettled_invariants` reports — the phase is not finished.
+    # count, and what stands at the end is what `unsettled_invariants` reports — the phase is not finished. The leaf
+    # ways answer first, being the ways that answer entirely by themselves: what one takes is its own actions and
+    # nothing has to be followed, so the space it is entered in and the space it accepts can be held to each other
+    # before anything is moved. Claims rather than transforms — the grammar arrives holding both, and the steps below
+    # are held to keeping them.
+    Step("leaf-charsets-agree", establishes=ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL),
+    Step("leaf-paths-reach-a-way", establishes=EVERY_PATH_REACHES_A_LEAF_WAY),
     Step("expand-called-ways", expand_called_ways, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
     Step(
         "hoist-guards-to-callers",

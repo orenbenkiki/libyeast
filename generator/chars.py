@@ -295,6 +295,21 @@ def merged_spans(intervals):
     return merged
 
 
+def intersected_spans(intervals, others):
+    """The intervals both `intervals` and `others` hold, both being sorted and disjoint, as sorted disjoint pairs."""
+    kept, here, there = [], 0, 0
+    while here < len(intervals) and there < len(others):
+        low = max(intervals[here][0], others[there][0])
+        high = min(intervals[here][1], others[there][1])
+        if low <= high:
+            kept.append((low, high))
+        if intervals[here][1] < others[there][1]:
+            here += 1
+        else:
+            there += 1
+    return kept
+
+
 def subtracted_spans(intervals, minus):
     """`intervals` with every interval of `minus` removed."""
     for low, high in minus:

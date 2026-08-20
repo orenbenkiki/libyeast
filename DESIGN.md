@@ -318,6 +318,16 @@ way can take nothing is `_split_ways`' answer and is not folded in — a product
 anywhere, which is true and says nothing, and holding the two apart is what keeps it from spreading through the
 fixpoint.
 
+What the two are held to so far is the leaf ways — the ways holding no call, which answer entirely by their own actions.
+`_asked_where_entered` gives the guards asked along each path into a production, gathered from the last take onward, and
+met with a way's own gate those are the states a parse may enter it in. Two things are read of every leaf way:
+`accepted-and-gated-charsets-are-equal`, that it takes exactly the characters it is entered on, compared standing by
+standing so that a caller knowing more than the way asks — that it stands at a line start where the way asks only about
+the character — is not a disagreement; and `every-path-reaches-a-leaf-way`, that a path reaches some way of the
+production it enters. Not every way: `l-document-prefix` offers one that takes a byte order mark and one that takes
+nothing, and the path reaching it at the end of the stream can take only the second, there being no mark there. A path
+reaching none of them is a call no input completes, and that is what is counted.
+
 **Every question about a node is asked through `ir.Reading`**, a table from node kind to what to do about it, because
 the alternative — a chain of `isinstance` tests ending in a fallthrough — answers permissively for whatever spelling its
 author did not think of, and reports its own blindness as a property of the grammar. A kind the table was not told about

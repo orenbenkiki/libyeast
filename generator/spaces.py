@@ -67,7 +67,11 @@ class SubSpace:
     regions: tuple = ()
 
     def __post_init__(self):
-        object.__setattr__(self, "regions", tuple(sorted(region for region in self.regions if region)))
+        regions = tuple(sorted(region for region in self.regions if region))
+        object.__setattr__(self, "regions", regions)
+        # The regions by standing, so `under` is a lookup rather than a scan. Not a field: it is what `regions` already
+        # says, and two subspaces holding the same states must stay equal.
+        object.__setattr__(self, "_by_standing", {region.standing: region for region in regions})
 
     def __bool__(self):
         """Whether the subspace holds a state at all."""
@@ -75,11 +79,26 @@ class SubSpace:
 
     def __or__(self, other):
         """The states either subspace holds."""
-        return SubSpace(_combined(self, other, _unioned))
+        if self is other:
+            return self
+        if not self.regions:
+            return other
+        if not other.regions:
+            return self
+        standings = self._by_standing.keys() | other._by_standing.keys()
+        return SubSpace(_unioned(self.under(standing), other.under(standing)) for standing in standings)
 
     def __and__(self, other):
         """The states both subspaces hold."""
-        return SubSpace(_combined(self, other, _intersected))
+        if self is other:
+            return self
+        if not self.regions:
+            return self
+        if not other.regions:
+            return other
+        # Only a standing both admit under can hold a state both hold; the rest are empty and are dropped anyway.
+        standings = self._by_standing.keys() & other._by_standing.keys()
+        return SubSpace(_intersected(self.under(standing), other.under(standing)) for standing in standings)
 
     def holds(self, other):
         """Whether every state `other` holds is one this subspace holds."""
@@ -87,10 +106,7 @@ class SubSpace:
 
     def under(self, standing):
         """The characters this subspace admits under `standing`, as a `Region`, empty where it admits none."""
-        for region in self.regions:
-            if region.standing == standing:
-                return region
-        return Region(standing)
+        return self._by_standing.get(standing) or Region(standing)
 
 
 NOWHERE = SubSpace()
@@ -131,11 +147,6 @@ def where(**asked):
     return SubSpace(Region(standing, ALL_CHARACTERS, True) for standing in matched)
 
 
-def _combined(one, other, combine):
-    """The regions of `one` and `other` combined standing by standing."""
-    return [combine(one.under(standing), other.under(standing)) for standing in STANDINGS]
-
-
 def _unioned(one, other):
     """The characters either region admits."""
     merged = chars.merged_spans([*one.spans, *other.spans])
@@ -143,7 +154,6 @@ def _unioned(one, other):
 
 
 def _intersected(one, other):
-    """The characters both regions admit — what one admits, less everything the other does not."""
-    outside = chars.subtracted_spans(list(ALL_CHARACTERS), list(other.spans))
-    kept = chars.subtracted_spans(list(one.spans), outside)
+    """The characters both regions admit."""
+    kept = chars.intersected_spans(one.spans, other.spans)
     return Region(one.standing, tuple(tuple(span) for span in kept), one.is_at_end and other.is_at_end)

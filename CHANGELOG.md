@@ -1163,6 +1163,25 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A leaf way takes what it is entered on, and every path reaches one.** The ways holding no call answer entirely by
+  their own actions, so the space a parse enters one in and the space it accepts can be held to each other before
+  anything is moved. `_asked_where_entered` already gave the guards asked along each path into a production, gathered
+  from the last take onward; met with a way's own gate those are the states it may be entered in, and two invariants
+  read them. `accepted-and-gated-charsets-are-equal` compares standing by standing rather than whole subspaces: a caller
+  knowing it stands at a line start where the way asks only about the character knows more than the way asks, which is
+  not the two disagreeing — 68 leaf ways take a character, over 78 paths, and the characters agree on every one.
+  `every-path-reaches-a-leaf-way` asks for some way rather than every way, `l-document-prefix` offering one that takes a
+  byte order mark and one that takes nothing where the path reaching it at the end of the stream can take only the
+  second. Read the stronger way it called that a fault, which is how the relaxation was found.
+
+- **The subspace algebra stops being the cost of asking.** Reading the two invariants at every stage put
+  `accepted_spaces` on the counting pass, where it took twenty seconds and tripped the watchdog that refuses an
+  invariant slower than ten. Three things were wrong and none of them was the shape: `under` scanned the regions for a
+  standing where a lookup answers, and was called fifteen million times; an intersection was computed as the complement
+  of one side subtracted from the other, where `chars.intersected_spans` merges the two directly; and the fixpoint swept
+  every production every round, where a production's answer can only change when a callee's has, which is a list of what
+  is left to do. Together 20s to 1.6s, the same answer to the span.
+
 - **A match nothing makes says so.** A `(case)` on a finite parameter named some of its values and was silent about the
   rest, which its own reading takes as declining them — so what a production did under such a value was read off an
   absence, and "it matches nothing" and "nobody asks" are two different things an absence cannot tell apart. The
