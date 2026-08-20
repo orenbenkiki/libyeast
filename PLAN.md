@@ -28,19 +28,24 @@ The oracles and what each judges are `DESIGN.md`'s. Three things are owed on top
   the production stack reaches — one cap over all three rather than a depth cap of its own. What the threat model owes
   is the argument that one cap is the right shape, and the cases that show it.
 
-## §4 — Implementation phases
+## §4 — Implementation milestones
 
-Phases are ordered by dependency. **Phase 02 is a gate**: the grammar and its fixtures are made spec-complete and
-enforcing before the transformation touches them, so Phase 03 never has to go back to the grammar. The deepest research
-risk then lives in **phase 03** (the normalization pipeline, where determinization happens); the semantic decisions that
-feed it are settled in phase 02. The rest — codegen and the ABI layer — is well-trodden compiler work.
+A milestone is a body of work the project is delivered in; a *phase* is the normalization pipeline's own unit, one
+invariant driven to none, and the two are different things — §4's numbers are milestones and `normalize.STEPS`'s are
+phases.
 
-Phases 01 and 02 — the reference interpreter, and the grammar and fixtures made spec-complete — are done, and what they
-built is DESIGN.md's to describe. Two things they leave to be scoped when something needs them: the interpreter's
+Milestones are ordered by dependency. **Milestone 02 is a gate**: the grammar and its fixtures are made spec-complete
+and enforcing before the transformation touches them, so Milestone 03 never has to go back to the grammar. The deepest
+research risk then lives in **milestone 03** (the normalization pipeline, where determinization happens); the semantic
+decisions that feed it are settled in milestone 02. The rest — codegen and the ABI layer — is well-trodden compiler
+work.
+
+Milestones 01 and 02 — the reference interpreter, and the grammar and fixtures made spec-complete — are done, and what
+they built is DESIGN.md's to describe. Two things they leave to be scoped when something needs them: the interpreter's
 committed mode, wanted where the grammar it judges is one the pipeline has transformed; and the yeast→HTML debug view,
 bootstrapped on YamlReference's `yaml2html`, with the differential fuzz corpus CI would run beside the fold.
 
-### Phase 03 — Normalize · the grammar-to-canonical pipeline, every decision committed
+### Milestone 03 — Normalize · the grammar-to-canonical pipeline, every decision committed
 
 *Risk: High — the prize.* This is where the backtracking grammar becomes a committed one, done not as one leap but as a
 **series of small, individually-provable, semantics-preserving transformations** carrying the IR to a canonical form a
@@ -50,65 +55,25 @@ establishes an invariant the steps after it may lean on. What each phase owns an
 
 **The order of the work, and each item is a gate on the next.**
 
-1. **Give every way the space of states it may be entered in.** Every guard the grammar carries is a question about one
-   axis of a small multidimensional space, and what a parse stands in when it decides is one point of it. A
-   **`SubSpace`** is a set of such points, and two of them answer for every way and every production:
+1. **Hold every gate to what stands behind it.** The space a decision stands in and what each production accepts of it
+   are `DESIGN.md`'s, being built; what is owed is the other direction and the law between them.
 
-   - **The accepted space** — the states the way itself takes, read from below: its own gate and guards, intersected
-     with what its actions consume and what its callees accept, as a least fixpoint from the empty space. The walk over
-     a way's parts carries `alive`, the states at which it can still stand having taken nothing: a part that must take
-     contributes `alive ∩ its own space` and ends the walk, one that may take nothing contributes the same and leaves
-     `alive` standing, and a call contributes `alive ∩ what the callee accepts` and narrows `alive` to the states that
-     callee can pass taking nothing.
-   - **The gated space** — the states a parse may enter it in, read from above and **per call site**: the caller's own
-     gated space narrowed by the gate standing where the call is, as a greatest fixpoint from the whole space.
-
-   **`gated ⊆ accepted`, per way, and that is the whole law.** Where it breaks, something enters a way in a state
-   nothing behind it takes — the backtracking the shape exists to remove — and the fault is named at the call site that
-   admits the state rather than at the way that fails on it. Where the gated space is empty, nothing enters the way at
-   all. That is a different question from `every-option-is-reachable`, which asks whether a way in front can be refused,
-   and neither answers the other.
-
-   **The axes, read off the guards the grammar already carries.**
-
-   | Axis                   | Its values                                                                             |
-   | ---------------------- | -------------------------------------------------------------------------------------- |
-   | the character in front | one of 57 literals, one of 8 classes, or the end of the stream                         |
-   | the character behind   | `ns-char` or not — the one set all 8 look-behinds ask about                            |
-   | the line start         | standing at one, or not                                                                |
-   | the indentation        | `n == 0` or not, and seven further comparisons relating `n` to `len`, `column` and `m` |
-   | the parse's own state  | `EndMustConsume` and `DidMatchFullSpan`, a bit each                                    |
-
-   Counted over the grammar's ways: 717 carry no gate at all and 982 a gate asking the character in front alone; then 94
-   ask the indentation with it, 94 the parse's state, 52 the indentation alone, 18 the line start, 8 the character
-   behind with it, 6 the parse's state with it, and 4 the line start with it — 1975 in all. So a single gate is one box,
-   but **82 productions offer ways constraining different axes**, and one box cannot hold a production's space. A
-   `SubSpace` is a *set* of boxes.
-
-   **Every axis is finite, so a `SubSpace` is exact.** The character axis is not a codepoint range: `chars.Model.key`
-   gives every codepoint one word, and the tables generated from it name 57 literals and 8 classes over 20 sets — which
-   is the alphabet the emitted parser itself tests, one bit against the key the decoder already made. So the analysis
-   speaks the machine's own alphabet: every distinction it can draw the parser can test, and there is none it can draw
-   that the parser cannot. Nothing is approximated in either direction, which is what makes the law a law rather than a
-   heuristic with a chosen failure mode.
-
-   **It is computed, not carried.** Nothing in the IR holds a `SubSpace`. A stored one is stale the moment a step
-   splices a way, and a derived field that takes part in identity stops the sweep merging productions that behave alike.
-   It is computed over the grammar a stage has produced, once the sweep has settled it, and computed again for the next
-   — a value the grammar decides, not a claim a step leaves behind. Nor is it a `CharSet`: a `CharSet` is something the
-   machine runs, and splicing a description in as a match is the mistake the separate type prevents.
-
-   **What the walk asks rather than decides.** Whether a way can take nothing is `_is_nullable`'s answer and is read
-   from there, the space needing it to know when to carry on past a part. The end of the stream is a value on the
-   character axis, the base grammar naming `<end-of-stream>`, not a flag beside it.
-
-   **The corpus is the independent witness.** An invariant that recomputes what it checks proves nothing. The
-   interpreter knows the state each way was actually entered in, so it asserts membership in that way's gated space at
-   every entry, which is what catches a space computed too narrow; too wide is what the law catches.
-
-   **The order of the work.** The `SubSpace` type and its operations first, then the accepted space from below, then the
-   gated space from above, then the law over the two with the interpreter's assertion beside it. Each stands on its own
-   and is gated before the next.
+   - **The gated space** — the states a parse may enter a way in, read from above and **per call site**: the caller's
+     own gated space narrowed by the gate standing where the call is, as a greatest fixpoint from the whole space. Per
+     site rather than per production, because that is what makes a fault attributable: the caller admitting the state is
+     named, not the way that fails on it.
+   - **The law, `gated ⊆ accepted` per way.** Where it breaks, something enters a way in a state nothing behind it
+     takes, which is the backtracking the shape exists to remove. Because the accepted space is sound, every violation
+     is a hole the grammar really has, and the count is a meter to drive to none. Where a gated space is empty nothing
+     enters the way at all — a different question from `every-option-is-reachable`, which asks whether a way in front
+     can be refused, and neither answers the other.
+   - **The corpus is the independent witness.** An invariant that recomputes what it checks proves nothing. The
+     interpreter knows the state each way was actually entered in, so it asserts membership in that way's gated space at
+     every entry, which is what catches a space computed too narrow; too wide is what the law catches.
+   - **The other direction, as a count rather than a law.** That a gate never refuses a state a way behind it would have
+     taken is a lost parse rather than a backtrack, and the two spaces answer it the same way. While a parse may fail
+     and be handed back, a production refusing what it could have taken is a way its caller declines to offer, and only
+     a committed machine makes that a fault.
 
 1. **Settle `every-conditional-way-is-gated`.** It stands at 58 — every one a way something decides to enter that
    carries no question the machine can ask before entering it, which is the backtracking the whole shape exists to
@@ -132,9 +97,9 @@ establishes an invariant the steps after it may lean on. What each phase owns an
    gate out to the ways that call it carries a guard over what the caller performs before the call, which nothing can do
    until the gate and the call are made adjacent. The design for the rest — the block-structure factoring, the
    speculations and the one vocabulary they spend — is *Determinize, what remains* and *The provisional mechanism*
-   below. **At none, the grammar is deterministic**, and that is what Phase 04 needs.
+   below. **At none, the grammar is deterministic**, and that is what Milestone 04 needs.
 
-1. **Adapt the C parser to it** (Phase 04), and what follows from there.
+1. **Adapt the C parser to it** (Milestone 04), and what follows from there.
 
 One invariant is owed and belongs to no phase: `no-conditional-production-matches-empty` — that no production something
 decides to enter matches empty. No step in the pipeline carries it, and no phase above claims it. **215 ways something
@@ -217,13 +182,6 @@ point, and any residual logged as an assurance gap. Last, every terminal is asse
    - *What it would guard is guarded without it.* That no way carries on over a call taking an indentation off is read
      off the grammar, so it stands while a call is still a field. The machine's kind assertions are the stronger answer
      and arrive with the machine; until then nothing rests on a probe.
-
-1. *The other direction of the gate, once the spaces stand.* Item 1's law is that a gate never admits a state the way
-   behind it refuses. The reverse — that a gate never refuses a state a way behind it would have taken — is a lost parse
-   rather than a backtrack, and the spaces answer it the same way, a way's gated space against what its own parts
-   accept. It is a count and not yet a law: while a parse may fail and be handed back, a production refusing what it
-   could have taken is a way its caller declines to offer, and only a committed machine makes that a fault. It runs
-   beside the law, on the same two computations.
 
 1. *Splitting `monomorphize`, noted so it is not rediscovered.* It specializes `c`, `t` and `r` in one pass over their
    combinations, where three passes of the one generic operation would give the same grammar with three
@@ -623,9 +581,9 @@ not commit-safe — the one thing the structural invariants and the backtracking
 
 **Exit** — a canonical grammar the validator passes, on which the interpreter agrees in both modes across the corpus,
 every speculation resolving its run correctly with the deferral exercised deliberately, so that emitting the C state
-machine (Phase 04) is mechanical rather than clever.
+machine (Milestone 04) is mechanical rather than clever.
 
-### Phase 04 — C codegen · Emit the C library
+### Milestone 04 — C codegen · Emit the C library
 
 *Risk: Low · ~1–2 mo.* The easy end of every compiler. Turn the lowered IR into a switch-on-state character loop with
 arena allocation.
@@ -647,7 +605,7 @@ arena allocation.
 
 **Exit** — a self-contained C `.so`, plus the bundled `yaml2html` tool, passing suite + differential + fuzz.
 
-### Phase 05 — ABI layer · Drop-in for libyamlstar
+### Milestone 05 — ABI layer · Drop-in for libyamlstar
 
 *Risk: Low · ~3–5 wks.* The existing YAMLStar ABI was designed as a swappable seam — thin, JSON-string in/out, no
 exposed structs — so this is nearly free. Every existing binding works unchanged.
@@ -664,7 +622,7 @@ exposed structs — so this is nearly free. Every existing binding works unchang
 
 **Exit** — the new `.so` slots in where the GraalVM blob sat; all bindings green.
 
-### Phase 06 — Harden · Fuzz, tune, and reach libyaml-class speed
+### Milestone 06 — Harden · Fuzz, tune, and reach libyaml-class speed
 
 *Risk: Medium · ~2–4 mo.* Correct-but-slow is not the goal. Close the algorithmic gaps naive codegen leaves and prove
 robustness under hostile input.
@@ -681,14 +639,14 @@ robustness under hostile input.
 
 ## §5 — Risk register
 
-| Risk                                                                 | Phase   | Severity | Mitigation                                                                                                                                                                                                                                                                |
-| -------------------------------------------------------------------- | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Malicious input triggers memory-unsafety or resource-exhaustion DoS  | all     | ▪▪▪▪     | Hardening flags on the release build; ASan/UBSan on every run; structure-aware fuzzing; `ys_options::max_bytes` bounding the input, the tokens held with it and the depth together; billion-laughs / recursive-alias guards; continuous security audit, not a final pass. |
-| A step in the normalization pipeline silently changes the language   | 03      | ▪▪▪▪     | Reference IR interpreter diffs the token stream before and after every step; the committed mode catches an unsafe gate the backtracking mode cannot; dual differential oracles against YamlReference and YAMLStar; log assurance gaps.                                    |
-| Naive codegen is correct but super-linear                            | 03 / 06 | ▪▪▪      | Commit-safety discharged per decision point in phase 03; profiling and hot-state tuning in phase 06.                                                                                                                                                                      |
-| A pipeline step is subtly non-semantics-preserving and slips the net | 03      | ▪▪▪      | Keep every step small enough to prove by eye; assert its structural post-condition; the interpreter corpus-diff is the behavioural backstop.                                                                                                                              |
-| Arena/backtracking scratch leaks or corrupts                         | 04      | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                                              |
-| Incumbency: 1.1 quirks are load-bearing in real configs              | —       | ▪▪       | Out of scope to "fix" silently; position as a conformance upgrade, document behavioural deltas from libyaml/1.1.                                                                                                                                                          |
+| Risk                                                                 | Milestone | Severity | Mitigation                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------------- | --------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Malicious input triggers memory-unsafety or resource-exhaustion DoS  | all       | ▪▪▪▪     | Hardening flags on the release build; ASan/UBSan on every run; structure-aware fuzzing; `ys_options::max_bytes` bounding the input, the tokens held with it and the depth together; billion-laughs / recursive-alias guards; continuous security audit, not a final pass. |
+| A step in the normalization pipeline silently changes the language   | 03        | ▪▪▪▪     | Reference IR interpreter diffs the token stream before and after every step; the committed mode catches an unsafe gate the backtracking mode cannot; dual differential oracles against YamlReference and YAMLStar; log assurance gaps.                                    |
+| Naive codegen is correct but super-linear                            | 03 / 06   | ▪▪▪      | Commit-safety discharged per decision point in phase 03; profiling and hot-state tuning in phase 06.                                                                                                                                                                      |
+| A pipeline step is subtly non-semantics-preserving and slips the net | 03        | ▪▪▪      | Keep every step small enough to prove by eye; assert its structural post-condition; the interpreter corpus-diff is the behavioural backstop.                                                                                                                              |
+| Arena/backtracking scratch leaks or corrupts                         | 04        | ▪▪       | Input-bounded lifetimes; ASan/UBSan in CI; discard provisional state through the arena only.                                                                                                                                                                              |
+| Incumbency: 1.1 quirks are load-bearing in real configs              | —         | ▪▪       | Out of scope to "fix" silently; position as a conformance upgrade, document behavioural deltas from libyaml/1.1.                                                                                                                                                          |
 
 ## §6 — Future work
 

@@ -131,6 +131,16 @@
 #   * <empty>
 #     Always matches.
 #
+#   * <fail>
+#     Never matches, and is handed back wherever it stands. Its twin: <empty>
+#     is what every input makes taking nothing, this is what none makes at all.
+#
+#     What a (case) says where it declines a value of a finite parameter, so
+#     that a case names a branch for every value its parameter takes and the
+#     decline is written rather than left to an absent branch. l-recover-entry
+#     under a policy that does not recover here is one; s-line-prefix in a
+#     context no rule invokes it under is another.
+#
 #   * <start-of-line>
 #     Current parse position is at the start of a line.
 #
@@ -1393,6 +1403,8 @@ s-line-prefix:
     "block-out": { s-block-line-prefix: n }
     "flow-in": { s-flow-line-prefix: n }
     "flow-out": { s-flow-line-prefix: n }
+    "block-key": <fail>
+    "flow-key": <fail>
 
 
 
@@ -2144,6 +2156,8 @@ nb-double-text:
     "flow-in": { nb-double-multi-line: n }
     "flow-key": nb-double-one-line
     "flow-out": { nb-double-multi-line: n }
+    "block-in": <fail>
+    "block-out": <fail>
 
 
 
@@ -2331,6 +2345,8 @@ nb-single-text:
     "flow-in": { nb-single-multi-line: n }
     "flow-key": nb-single-one-line
     "flow-out": { nb-single-multi-line: n }
+    "block-in": <fail>
+    "block-out": <fail>
 
 
 
@@ -2433,6 +2449,8 @@ ns-plain-safe:
     "flow-in": ns-plain-safe-in
     "flow-key": ns-plain-safe-in
     "flow-out": ns-plain-safe-out
+    "block-in": <fail>
+    "block-out": <fail>
 
 
 
@@ -2499,6 +2517,8 @@ ns-plain:
         "flow-in": { ns-plain-multi-line: [ n, c ] }
         "flow-key": { ns-plain-one-line: c }
         "flow-out": { ns-plain-multi-line: [ n, c ] }
+        "block-in": <fail>
+        "block-out": <fail>
 
 
 
@@ -4399,6 +4419,8 @@ l-recover-entry:
   (case):
     var: r
     "i": { l-unparsed: [ n, r ] }
+    "d": <fail>
+    "n": <fail>
 
 
 

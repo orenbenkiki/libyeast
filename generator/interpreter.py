@@ -1743,6 +1743,9 @@ _MATCHED = {
     ir.RangeSet: _matched_range,
     ir.InvalidSet: _matched_invalid,
     ir.EmptyTree: lambda node, emitter, grammar, k: k(),
+    # The twin of the empty match: it is handed back wherever it stands, so a choice holding one goes on to its next way
+    # and a run holding one never matches.
+    ir.FailTree: lambda node, emitter, grammar, k: False,
     ir.RefCall: _matched_call,
     ir.SeqTree: _matched_sequence,
     ir.AltTree: _matched_alternation,

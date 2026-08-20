@@ -169,7 +169,7 @@ All notable changes to this project are documented here. The format follows
   `else` the commit, and the parser's `(commit)` is the same hard cut everywhere. `(case)` grew that `else` for it.
   Nothing declares, passes or reads `t` or `i` from there on.
 
-  Phase 1 is the character questions. A set of characters is written many ways and asked in several — a character, a
+  Phase 2 is the character questions. A set of characters is written many ways and asked in several — a character, a
   range, a union of them, a base with exclusions, a reference, the item a lookaround peeks — and all of them come to the
   one bit the parser tests. A difference is one of them only where both its sides are sets, and at four sites it was
   not: `ns-double-char`, `ns-single-char` and the two `ns-tag-char` copies each take whitespace or an indicator out of
@@ -193,7 +193,7 @@ All notable changes to this project are documented here. The format follows
   own work: two productions denoting the same characters differently are structurally unequal and do not merge, the
   merge reading shape rather than extension.
 
-  Phase 2 is the block scalar's leading-empty floor. `clear-f` gives the value an end — the production that reads it,
+  Phase 3 is the block scalar's leading-empty floor. `clear-f` gives the value an end — the production that reads it,
   `s-indent-floor`, clears it where it returns, the reader and not the writer, since the floor is measured deep inside
   the leading empties and handed up to the one thing that asks about it — and `read-global-f` takes the declaration off
   every production and the argument off every call, each read becoming a `GlobalValue`. The reads hide where the generic
@@ -204,7 +204,7 @@ All notable changes to this project are documented here. The format follows
   where the two differ are counted over the whole corpus. The gate holds that at none — and made to nest, the same net
   reports 21.
 
-  Phase 3 is the detected indent, and `clear-m` and `read-global-m` do what `f`'s pair did. What made it possible is
+  Phase 4 is the detected indent, and `clear-m` and `read-global-m` do what `f`'s pair did. What made it possible is
   that nothing reads the value twice over a region something else can write in: the block header measures it and the
   scalar that asked reads it, one construct at a time. A block collection did read it on every turn of its loop, which
   is a value no single slot can hold — every collection or block scalar the loop entered detected one of its own in
@@ -214,7 +214,7 @@ All notable changes to this project are documented here. The format follows
   however it is spelled, and a block header's indicator sets the detected indent through one, so a global written that
   way had been invisible to the net.
 
-  Phase 4 is the indentation, and it is not one of the parse's own values: a nested collection's entries are measured
+  Phase 5 is the indentation, and it is not one of the parse's own values: a nested collection's entries are measured
   against their own, so it goes on the parse's stack rather than into a slot. `push-indents` puts a push before every
   call measured against an indentation other than the one in force and a pop behind it — both halves in one way of one
   production, the level being known nowhere else — and `read-indents` then takes the parameter off every declaration,
@@ -236,7 +236,7 @@ All notable changes to this project are documented here. The format follows
   indentation in force: where the level is the parameter itself the two differ there and nowhere else, which is the same
   exemption the arguments of a call already had.
 
-  Phase 5 is the empties, and `lower-optionals` is its first step: `x?` becomes `x | <empty>`, the empty way standing
+  Phase 6 is the empties, and `lower-optionals` is its first step: `x?` becomes `x | <empty>`, the empty way standing
   beside the one that reads rather than hidden inside a node. It is the same match and the interpreter says so — an
   `OptTree` tries its item with the continuation behind it and, where that fails, rewinds and takes the continuation
   alone, which is that alternation tried in that order. So nothing has to be known about what follows.
@@ -329,7 +329,7 @@ All notable changes to this project are documented here. The format follows
   matches nowhere, which no fixture could reach before it was split either.
 
   `dissolve-residues` writes what is left taking no character into the call sites that enter it — 50 productions at 329
-  call sites, `e-node` at twenty-six of them — and Phase 5 is finished: `only-root-empties` goes from 50 to none, and
+  call sites, `e-node` at twenty-six of them — and Phase 6 is finished: `only-root-empties` goes from 50 to none, and
   the six productions still matching empty are the root and the recovery under each resume policy, which a parse enters
   by name. Once the two ways are told apart, what still matches empty is what only ever took nothing: the residue a
   split named, and the five that were actions alone. A name is worth having where it stands for a decision, and there is
@@ -447,7 +447,7 @@ All notable changes to this project are documented here. The format follows
   line start rather than a question about what follows one. It lands where the block-structure work makes a line start a
   decision the grammar spells.
 
-  Phase 8 is the call. An edge of the machine is one push and one jump — the push says where to come back to, the jump
+  Phase 9 is the call. An edge of the machine is one push and one jump — the push says where to come back to, the jump
   goes — so a way is what it does before it hands control on, the call it hands it to, and the one production that
   carries on: `a P1 b P2 c` is `a`, the call `P1`, and a production holding `b P2 c`, which splits the same way until
   nothing stands past a call. `a-way-is-actions-a-call-and-a-continuation` reads 227, being 189 ways that go on doing
@@ -493,7 +493,7 @@ All notable changes to this project are documented here. The format follows
   balanced by anything the grammar writes. Holding it to the pairs on its own path would hold it to something nothing
   does.
 
-  Phase 9 says every body in the machine's own words, and `every-body-is-a-choice-a-run-or-a-set` reads 697. A terminal
+  Phase 10 says every body in the machine's own words, and `every-body-is-a-choice-a-run-or-a-set` reads 697. A terminal
   is a set of characters. A loop is not among them: a repetition was said as ways where it was lowered, so the state it
   jumps back to the top of is a production like any other and what stops it is a guard like any other. Everything else
   is an ordered list of alternatives, each a gate to enter on, the actions it performs, the call it hands control to,
@@ -514,7 +514,7 @@ All notable changes to this project are documented here. The format follows
   its own only way, which is a walk that never ends rather than an answer that is wrong. The per-way scope walk went
   with the rewrite, 85 lines of it, the path check having replaced what it read.
 
-  Phase 10 is the gate. A machine that never backtracks takes a way by looking at the character in front of it, so
+  Phase 11 is the gate. A machine that never backtracks takes a way by looking at the character in front of it, so
   `every-way-gated` counts the ways a parse would have to try and give back: 372 of the 600 alternatives that make a
   decision, the last way of each choice being exempt as the unconditional fallthrough and a body with one way being no
   decision at all. `gate-hoist` is the first of the hoists that reduce it, and the one with no analysis behind it: a way
@@ -1162,6 +1162,41 @@ All notable changes to this project are documented here. The format follows
   ignorant. Wired to the gate, it named `LookGuard` in front of `OpenWindow` at once — the pair that was holding a flow
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
+
+- **A match nothing makes says so.** A `(case)` on a finite parameter named some of its values and was silent about the
+  rest, which its own reading takes as declining them — so what a production did under such a value was read off an
+  absence, and "it matches nothing" and "nobody asks" are two different things an absence cannot tell apart. The
+  specialization made that silence an alternation of no ways, and every walk past it had to read an emptiness as a
+  refusal: `_split_ways` reported `l-recover-entry` as having no empty way, which is true of a production with no ways
+  at all and means the opposite of what it reads as. Now `<fail>` is the twin of `<empty>` — one is what every input
+  makes taking nothing, the other what none makes at all — the six cases that were silent name every value of their
+  parameter, and `validate_grammar.check_total_cases` holds every case to that, so the specialization raises where a
+  value has no branch instead of minting the emptiness.
+
+- **The ways nothing takes come out, and nothing after sees one.** `prune-failures` is a phase of its own behind the
+  specialization, which is the earliest it could be: until the case is specialized a `<fail>` is a branch, and what a
+  branch says is not yet what a production does. A choice drops the ways nothing enters and is itself one where that
+  leaves none; a run holding one never matches; a call of a production that matches nothing matches nothing; and a
+  recovery whose handler nothing enters is no recovery, the cut going on unwinding to the handler above as it did with
+  one that never matched. A commit keeps what stands under it, a refusal there being the error it names rather than the
+  choice's. Twelve declines go to one at the specialization and to none at the phase, the grammar loses 21 productions
+  nothing could reach, and `no-fails` reads none from there on. Dropping the dead recovery stopped the non-recovering
+  policies' compact mappings merging with the indentation-bounded one's, which showed the corpus had no `r=i` fixture
+  holding a compact mapping — a hole the merge had been hiding, and `l-yeast-stream.recover-compact.r=i` closes it.
+  `generator/regen_fixture.py` is what wrote it: a fixture's stream comes from the interpreter, an indent or a white
+  token carrying trailing spaces that a hand loses.
+
+- **A guard says which states it lets a parse through in.** `normalize._admits` reads every guard as a
+  `spaces.SubSpace`, and `accepted_spaces` says where each production can begin taking a character — the walk over a way
+  carrying what it can still stand in having taken nothing, so that a guard past a take, which asks about a later
+  position, narrows nothing. Sound rather than decisive: a comparison between two of the parse's own values fixes no
+  coordinate and admits everywhere, which is true of it, and a literal's first character is a constraint where the rest
+  of the literal is a residual the axes never speak for. So a state a gate admits that the space refuses is a hole the
+  grammar really has. Of 1370 guards in the final grammar 1316 name a coordinate, the 54 that do not being the
+  indentation comparisons that relate `n`, the column, a match's length and the floor to each other; and 959 of 1055
+  productions carry a real character set. Whether a way can take nothing stays `_split_ways`' answer and is not folded
+  in: a production that succeeds taking nothing succeeds anywhere, which is true and says nothing, and holding the two
+  apart is what stops it poisoning every caller through the fixpoint.
 
 - **A subspace says which states a parse can decide in.** Every guard asks about one axis of a small space — the
   character in front, the character behind, whether the parse stands at a line start, whether it stands under

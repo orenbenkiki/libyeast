@@ -576,6 +576,25 @@ class EmptyTree:
 
 
 @dataclass(frozen=True)
+class FailTree:
+    """
+    `<fail>`: the match no input makes, and the twin of `<empty>`, which every input makes taking nothing.
+
+    Where a `(case)` declines a value of a finite parameter — `l-recover-entry` under a policy that does not recover
+    here, `s-line-prefix` in a context no rule invokes it under — the branch says so with this rather than by being
+    absent. Every case names every value of its parameter, which `validate_grammar.check_total_cases` holds it to, so a
+    walk over one meets a node saying the decline instead of an emptiness it has to read as refusal, and the
+    specialization has no value left to have no branch for.
+    """
+
+    def references(self):
+        return []
+
+    def renamed(self, names):
+        return self
+
+
+@dataclass(frozen=True)
 class StartOfLineGuard:
     """`<start-of-line>`: a zero-width assertion that the parser is at the start of a line."""
 
@@ -1899,6 +1918,7 @@ TREES = (
     BindTree,
     CaseTree,
     EmptyTree,
+    FailTree,
     OptTree,
     PlusTree,
     RepTree,
@@ -2006,6 +2026,7 @@ NOT_ONE_CHAR = (
     EndOfStreamGuard,
     ErrorAction,
     ExcludeAtAction,
+    FailTree,
     FlipValue,
     GatePart,
     GlobalValue,
@@ -2101,6 +2122,7 @@ _IS_ONE_CHAR = Reading(
             EndOfStreamGuard,
             ErrorAction,
             ExcludeAtAction,
+            FailTree,
             GatePart,
             GlobalValue,
             IncreaseAction,

@@ -296,6 +296,28 @@ needs is narrower: not whether some input refuses the way, but what the characte
 `_ahead_of_gate`. Whether every way something decides to enter carries a gate at all is
 `every-conditional-way-is-gated`, asked from where the gates exist.
 
+**The states a decision stands in are a small finite space.** Every guard asks about one axis of it: the character in
+front of the parse, the character behind, whether it stands at a line start, whether it stands under indentation, and
+two bits of its own bookkeeping — what the last limited scan did, and whether the region a `StartMustConsume` opened has
+taken anything. Five of those are booleans, so a *standing* is one of 32 assignments to them, and `spaces.SubSpace` is a
+set of states: the characters admitted under each standing it admits anything under. Every axis being finite, union,
+intersection and containment are computed standing by standing and nothing is widened to make an answer fit. The end of
+the stream is the character axis's own value rather than the absence of a character, a way entered there being a way
+entered somewhere. `check_spaces` judges the algebra by the states it holds — enumerating every standing over an
+alphabet spanning each boundary its cases name, and comparing the operations against set arithmetic on the enumerations
+— because an algebra checked against itself proves nothing.
+
+`normalize._admits` reads each guard as one of these, and `accepted_spaces` says where each production can begin taking
+a character: a least fixpoint from nothing, the walk over a way carrying what it can still stand in having taken
+nothing, so that a guard past a take — which asks about a later position — narrows nothing. It is **sound rather than
+decisive**. A comparison between two of the parse's own values fixes no coordinate and admits everywhere, which is true
+of it rather than a shrug; a literal's first character is a real constraint where the rest of the literal is a residual
+the axes never speak for. So what the space refuses, the grammar refuses, and three residuals stay runtime tests by
+design: the indentation comparisons, a literal past its first character, and a literal peek's follow class. Whether a
+way can take nothing is `_split_ways`' answer and is not folded in — a production that succeeds taking nothing succeeds
+anywhere, which is true and says nothing, and holding the two apart is what keeps it from spreading through the
+fixpoint.
+
 **Every question about a node is asked through `ir.Reading`**, a table from node kind to what to do about it, because
 the alternative — a chain of `isinstance` tests ending in a fallthrough — answers permissively for whatever spelling its
 author did not think of, and reports its own blindness as a property of the grammar. A kind the table was not told about

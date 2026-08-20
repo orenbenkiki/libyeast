@@ -36,6 +36,7 @@ SILENT = (
     ir.EmptyTree,
     ir.EndOfStreamGuard,
     ir.ErrorAction,
+    ir.FailTree,
     ir.FlipValue,
     ir.IncreaseAction,
     ir.InvalidSet,

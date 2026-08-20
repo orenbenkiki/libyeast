@@ -7,7 +7,7 @@ it stands at a line start, whether it stands under indentation, and two bits of 
 stands in when it decides is one point of that space, and what a gate admits, what a way takes and what a call site can
 reach are each a subset of it — a `SubSpace`.
 
-Four of the axes are booleans, so a standing is one of the 32 assignments to them, and a `SubSpace` is the characters
+Five of the axes are booleans, so a standing is one of the 32 assignments to them, and a `SubSpace` is the characters
 admitted under each. That is exact: the axes are finite, union, intersection and containment are computed per standing,
 and nothing is widened or narrowed to make an answer fit. A comparison relating two of the parse's own values — `n`
 against a measured length, a column or the auto-detected indent — is no axis here, standing between quantities rather
@@ -95,12 +95,25 @@ class SubSpace:
 
 NOWHERE = SubSpace()
 EVERYWHERE = SubSpace(Region(standing, ALL_CHARACTERS, True) for standing in STANDINGS)
+# Every state a character can be taken in, which is every one but the end of the stream: taking is what the end has none
+# of, so a way that must take is a way no parse standing there enters.
+ANY_CHARACTER = SubSpace(Region(standing, ALL_CHARACTERS) for standing in STANDINGS)
 
 
 def characters(spans=(), is_at_end=False):
     """The subspace admitting `spans`, and the end of the stream where `is_at_end`, wherever the parse stands."""
     admitted = tuple(tuple(span) for span in chars.merged_spans(spans))
     return SubSpace(Region(standing, admitted, is_at_end) for standing in STANDINGS)
+
+
+def not_characters(spans):
+    """
+    The subspace admitting every character `spans` does not, and the end of the stream.
+
+    A negative lookahead is what this says: it refuses the characters it names and passes where there is no character at
+    all, the end of the input matching nothing being how it passes for free.
+    """
+    return characters(chars.subtracted_spans(list(ALL_CHARACTERS), list(spans)), is_at_end=True)
 
 
 def where(**asked):

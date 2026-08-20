@@ -168,9 +168,43 @@ def check_renaming(grammar):
     return errors
 
 
+# The values each finite parameter takes, which is what a case on one has to name in full. `annotated2ir` keeps the
+# lists for exactly this: a gate holding the grammar to every value needs them enumerated somewhere.
+FINITE_VALUES = {
+    "c": annotated2ir.CONTEXTS,
+    "i": annotated2ir.INDENT_MODES,
+    "r": annotated2ir.RESUMES,
+    "t": annotated2ir.CHOMPINGS,
+}
+
+
+def check_total_cases(grammar):
+    """
+    Check that every case on a finite parameter names a branch for every value it takes, or carries a default.
+
+    A case silent about a value declines it, so what the production does there is read off an absence — and the two
+    things an absence can mean, "it matches nothing" and "nobody asks", are not the same and cannot be told apart. Named
+    in full, a decline is `<fail>` and says which it is. This is what lets the specialization raise where a value has no
+    branch instead of minting a match nothing makes.
+    """
+    errors = []
+    for name, production in grammar.items():
+        for node in walk(production.body):
+            if not isinstance(node, ir.CaseTree) or node.default is not None:
+                continue
+            if node.var not in FINITE_VALUES:
+                errors.append(f"{name}: the case is on {node.var}, whose values nothing enumerates")
+                continue
+            named = {branch.value for branch in node.branches}
+            missing = [value for value in FINITE_VALUES[node.var] if value not in named]
+            if missing:
+                errors.append(f"{name}: the case on {node.var} names no branch for {', '.join(missing)}")
+    return errors
+
+
 def validate(grammar):
     """Return a list of human-readable validation errors (empty if the grammar is clean)."""
-    errors = check_annotated(grammar) + check_matches(grammar) + check_renaming(grammar)
+    errors = check_annotated(grammar) + check_matches(grammar) + check_renaming(grammar) + check_total_cases(grammar)
     referenced = set()
     for name, prod in grammar.items():
         for ref in (n for n in walk(prod.body) if isinstance(n, ir.RefCall)):

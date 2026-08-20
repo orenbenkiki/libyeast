@@ -36,9 +36,10 @@ INDENT_MODES = ("given", "detected")  # whether a block scalar's indicator gave 
 HEX = re.compile(r"^x[0-9A-Fa-f]+$")
 REP = re.compile(r"^\(\{(.+)\}\)$")  # ({2}) / ({n})
 INT = re.compile(r"^-?[0-9]+$")
-SPECIAL = re.compile(r"^<(.+)>$")  # <empty>, <start-of-line>, <end-of-stream>, <auto-detect-indent>
+SPECIAL = re.compile(r"^<(.+)>$")  # <empty>, <fail>, <start-of-line>, <end-of-stream>, <auto-detect-indent>
 SPECIALS = {
     "empty": ir.EmptyTree,
+    "fail": ir.FailTree,
     "start-of-line": ir.StartOfLineGuard,
     "end-of-stream": ir.EndOfStreamGuard,
     "invalid": ir.InvalidSet,

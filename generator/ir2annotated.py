@@ -88,6 +88,7 @@ _NODE_YAML = ir.Reading(
         ir.RangeSet: lambda n: [hex_text(n.lo), hex_text(n.hi)],
         ir.RefCall: lambda n: n.name if not n.args else {n.name: args_yaml(n.args)},
         ir.EmptyTree: "<empty>",
+        ir.FailTree: "<fail>",
         ir.StartOfLineGuard: "<start-of-line>",
         ir.EndOfStreamGuard: "<end-of-stream>",
         ir.InvalidSet: "<invalid>",

@@ -125,7 +125,8 @@ def _consumed_by_a_way(node, grammar, seen):
 # It takes a run rather than a character — as many turns as the input allows, as a count fixes, or one after another.
 _TAKES_MORE_THAN_ONE = (*ir.REPETITIONS, ir.OptTree, ir.SeqTree)
 # It takes no character at all: a guard reads and gives back, an action leaves something behind, an empty match does
-# neither, and a comparison of two counts asks about neither the input nor a character.
+# neither, a match nothing makes takes nothing because it is never made, and a comparison of two counts asks about
+# neither the input nor a character.
 _TAKES_NONE = (
     ir.ColumnLeGuard,
     ir.ColumnLtGuard,
@@ -134,6 +135,7 @@ _TAKES_NONE = (
     ir.EmptyTree,
     ir.EndOfStreamGuard,
     ir.ErrorAction,
+    ir.FailTree,
     ir.ExcludeAtAction,
     ir.IncreaseAction,
     ir.LookGuard,

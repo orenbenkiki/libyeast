@@ -19,8 +19,22 @@ import validate_grammar
 VENDORED = os.path.join(annotated2ir.TREE, "third_party", "yaml-grammar", "yaml-spec-1.2.yaml")
 
 # Where libyeast departs from the official grammar, and why. A deviation is a decision, not an escape: nothing belongs
-# here that could be fixed by correcting the grammar instead.
+# here that could be fixed by correcting the grammar instead. The same reason for every case libyeast completes: the
+# official grammar leaves a context out and libyeast spells the decline. Shared rather than repeated, so the five read
+# as the one departure they are.
+_TOTAL_CASE = (
+    "the official grammar's case names some of its parameter's values and is silent about the rest, which its own "
+    "reading takes as declining them. libyeast names every value and says the decline with <fail>, so a walk over the "
+    "case meets a branch saying what it does rather than an absence it has to read as refusal — the same language, "
+    "with what was left implicit written down"
+)
+
 DEVIATIONS = {
+    "s-line-prefix": _TOTAL_CASE,
+    "nb-double-text": _TOTAL_CASE,
+    "nb-single-text": _TOTAL_CASE,
+    "ns-plain-safe": _TOTAL_CASE,
+    "ns-plain": _TOTAL_CASE,
     "c-indentation-indicator": (
         'the official grammar sets m to the string "auto-detect", and then computes n + m — an integer plus a string, '
         "which nothing in it ever redeems. libyeast sets m to <auto-detect-indent>, the marker the official grammar "
