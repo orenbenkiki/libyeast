@@ -3525,62 +3525,48 @@ GUARD_CROSSES_ACTION = Crossing(
         ("NegLookGuard", "CloseWindowAction"): True,
         ("LookGuard", "OpenWindowAction"): True,
         # A variable is the parse's own working. A lookaround reads the input and not a variable, so the question is the
-        # same either side. A comparison does read one, and no way asks a comparison in front of a write.
+        # same either side. A comparison can read one, and the two the parse holds are the block scalar's floor and the
+        # detected indent; every comparison names the indentation, a literal or the length of a match instead.
         ("LookGuard", "ClearVarAction"): True,
+        ("ColumnLeGuard", "SetVarAction"): True,
+        ("ColumnLtGuard", "SetVarAction"): True,
+        ("LookGuard", "SetVarAction"): True,
+        ("NegLookGuard", "SetVarAction"): True,
         # Taking a character moves the parse: a lookaround asked in front of one asks about a different character, and a
         # comparison of a length about a different length.
         ("LookGuard", "ConsumeCharAction"): False,
         ("NegLookGuard", "ConsumeCharAction"): False,
+        ("LookGuard", "ConsumeSpanAction"): False,
+        ("NegLookGuard", "ConsumeSpanAction"): False,
         # What a run of a limited span took is what the guard behind it asks about, and in front of that run there is no
         # answer for it: it would be reading what some earlier run did, or nothing at all.
         ("DidMatchFullSpanGuard", "ConsumeLimitedSpanAction"): False,
-        # A code is the token being built and a turn that must take a character is a bracket around one: neither is a
-        # run, so what a run took is the same question either side of them, and asked in front is asked of its own run.
-        ("DidMatchFullSpanGuard", "PushCodeAction"): True,
-        ("DidMatchFullSpanGuard", "StartMustConsumeAction"): True,
-        ("ColumnLeGuard", "ConsumeSpanAction"): False,
-        ("LookGuard", "ConsumeSpanAction"): False,
-        ("ColumnLtGuard", "ConsumeSpanAction"): False,
-        ("NegLookGuard", "ConsumeSpanAction"): False,
         # A committed region is a scope and not a point: inside it, failing is the error it names rather than a refusal
         # handed back. `PushMessageAction` and `PopMessageAction` are its two ends and a `CutAction` says the same at a
         # point, so a guard crossing any of them is asked on the other side of that line — before the region opened, or
         # while it is still open — and its refusal changes from the one to the other.
         ("LookGuard", "CutAction"): False,
-        ("ColumnLeGuard", "PopMessageAction"): False,
-        ("ColumnLtGuard", "PopMessageAction"): False,
+        ("LookGuard", "PopMessageAction"): False,
+        ("ColumnLeGuard", "PushMessageAction"): False,
+        ("LookGuard", "PushMessageAction"): False,
         # What the parse hands back, which nothing asked of the input or of a count reads.
         ("EndOfStreamGuard", "EmitAction"): True,
         ("LiteralPeekGuard", "EmitAction"): True,
         ("LookGuard", "EmitAction"): True,
-        ("ColumnLtGuard", "EmitAction"): True,
         ("NegLookGuard", "EmitAction"): True,
         ("StartOfLineGuard", "EmitAction"): True,
-        # A code is the token being built. It is neither the input nor a count, so every guard passes it.
+        # A code is the token being built. It is neither the input nor a count, so a guard that only reads passes either
+        # end of one.
         ("ColumnLeGuard", "PopCodeAction"): True,
-        ("LiteralPeekGuard", "PopCodeAction"): True,
-        ("LookGuard", "PopCodeAction"): True,
         ("ColumnLtGuard", "PopCodeAction"): True,
+        ("LookGuard", "PopCodeAction"): True,
         ("NegLookGuard", "PopCodeAction"): True,
-        ("StartOfLineGuard", "PopCodeAction"): True,
-        # The indentation the parse carries: a lookaround reads the input and not that, so it passes either end of a
-        # push; a comparison reads exactly what these write, so it does not.
-        ("LookGuard", "PopIndentAction"): True,
-        ("LookGuard", "PopMessageAction"): False,
         ("ColumnLeGuard", "PushCodeAction"): True,
+        ("ColumnLtGuard", "PushCodeAction"): True,
         ("LiteralPeekGuard", "PushCodeAction"): True,
         ("LookGuard", "PushCodeAction"): True,
-        ("ColumnLtGuard", "PushCodeAction"): True,
         ("NegLookGuard", "PushCodeAction"): True,
         ("StartOfLineGuard", "PushCodeAction"): True,
-        ("LookGuard", "PushIndentAction"): True,
-        # A comparison reads the indentation, which this writes: asked in front of it, it reads the one before.
-        ("ColumnLtGuard", "PushIndentAction"): False,
-        ("NegLookGuard", "PushIndentAction"): True,
-        ("ColumnLeGuard", "PushMessageAction"): False,
-        ("LookGuard", "PushMessageAction"): False,
-        ("LookGuard", "SetVarAction"): True,
-        ("NegLookGuard", "SetVarAction"): True,
         # A turn that must take a character records where it began. Nothing about the input, a count, the indentation or
         # the token is written, and the region decides nothing until its close — so a guard asked either side of the
         # open asks the same question of the same character, whatever it asks about.
@@ -3594,32 +3580,36 @@ GUARD_CROSSES_ACTION = Crossing(
         ("LiteralPeekGuard", "PopBackTrackAction"): True,
         ("LookGuard", "PopBackTrackAction"): True,
         # A turn that must take a character asks where the parse stands against where its own open stood. Whatever takes
-        # a character moves it, so the question is a different one on the other side; a marker or a code moves nothing,
-        # and it is the same one. An inner turn's open standing between the two is not passed either: asked in front of
-        # one, the question is answered before that turn has run.
-        ("EndMustConsumeGuard", "ConsumeCharAction"): False,
-        # Nor a committed region's close, which is the line a refusal changes meaning across, as it is for every guard.
-        ("EndMustConsumeGuard", "PopMessageAction"): False,
-        ("EndMustConsumeGuard", "ConsumePeekedAction"): False,
+        # a character moves it, so the question is a different one on the other side; a marker moves nothing, and it is
+        # the same one. An inner turn's open standing between the two is not passed either: asked in front of one, the
+        # question is answered before that turn has run.
+        #
+        # The question is asked by taking that open off the parse's stack, so it is refused wherever something else
+        # still stands above it. A code closed behind the guard was opened in front of it and is exactly that: asked
+        # early, the open it reaches for is the code's and not its own. A code opened behind it is no such thing, the
+        # stack standing as it did. Nor a committed region's close, which is the line a refusal changes meaning across,
+        # as it is for every guard.
         ("EndMustConsumeGuard", "ConsumeSpanAction"): False,
         ("EndMustConsumeGuard", "EmitAction"): True,
-        ("EndMustConsumeGuard", "PopCodeAction"): True,
+        ("EndMustConsumeGuard", "PopCodeAction"): False,
+        ("EndMustConsumeGuard", "PopMessageAction"): False,
         ("EndMustConsumeGuard", "PushCodeAction"): True,
         ("EndMustConsumeGuard", "StartMustConsumeAction"): False,
-        # An error token is what the parse hands back, as a marker is: nothing asked of the input or of a count reads
-        # one.
-        ("EndOfStreamGuard", "ErrorAction"): True,
-        ("LiteralPeekGuard", "ErrorAction"): True,
-        ("LookGuard", "ErrorAction"): True,
-        # The indentation the parse carries is not the input, which is what these two read.
+        # The indentation the parse carries is neither the input nor where the parse stands in the line, which is what
+        # these read.
         ("EndOfStreamGuard", "PushIndentAction"): True,
         ("LiteralPeekGuard", "PushIndentAction"): True,
+        ("LookGuard", "PushIndentAction"): True,
+        ("NegLookGuard", "PushIndentAction"): True,
+        ("StartOfLineGuard", "PushIndentAction"): True,
         # What may not match at a start of line is read by whatever matches there, and a `LiteralPeekGuard` matches its
         # characters through the same refusal a `LookGuard` matches its item through — so each reads the set standing
-        # where it is asked. Whether a character is there at all matches nothing and reads none of it.
+        # where it is asked. Whether a character is there at all, and where the parse stands in the line, match nothing
+        # and read none of it.
         ("EndOfStreamGuard", "SetForbiddenAction"): True,
         ("LiteralPeekGuard", "SetForbiddenAction"): False,
         ("LookGuard", "SetForbiddenAction"): False,
+        ("StartOfLineGuard", "SetForbiddenAction"): True,
     }
 )
 
@@ -4126,32 +4116,6 @@ def _asked_by_every_way(name, grammar):
     return shared
 
 
-def _carrying_on_to(way, tail, owner, grammar, namer, minted, named=None):
-    """
-    `way` with `tail` behind everything it already does — the one place the slots are dealt with.
-
-    A way holds a call and a continuation and no more, so where to put `tail` depends on what is already there. Nothing
-    where it carries on: `tail` becomes that. A continuation and no call: what it carried on to becomes the call and
-    `tail` what follows it, the same two matches in the same order. Both: there is no slot left, so what it carried on
-    to and then `tail` are given a state of their own and the way carries on to that.
-
-    The middle case is left alone where the way holds a recovery. A recovery rides the push its call makes, and making a
-    call of what was a continuation would have it ride a push that was not there before.
-    """
-    if way.second is None:
-        return dataclasses.replace(way, second=tail)
-    if way.first is None and way.recover is None:
-        return dataclasses.replace(way, first=way.second, second=tail)
-    body = ir.ChoiceState(alternatives=(ir.AlternativeState(gate=ir.GatePart(), first=way.second, second=tail),))
-    named = {} if named is None else named
-    held = named.get((owner, body))
-    if held is None or held not in grammar:
-        held = held or namer.fresh(owner)
-        named[owner, body] = held
-        minted[held] = ir.Prod(grammar[owner].number, held, (), body)
-    return dataclasses.replace(way, second=ir.RefCall(name=held, args=()))
-
-
 def _inlined_called_ways(grammar, namer=None):
     """
     Put a production offering one way where the call to it stands: `A = |gA actA →B sA|` with `B = |actB fB sB|` becomes
@@ -4239,99 +4203,6 @@ def _inlined_called_ways(grammar, namer=None):
     return {**written, **minted}
 
 
-def expand_called_ways(grammar, namer):
-    """
-    Offer a callee's ways where the call stood: `A = |gA →B cont| |…|` with `B = |g0 …| |g1 …|` becomes `A = |gA g0 …
-    cont| |gA g1 … cont| |…|`.
-
-    A way whose gate says nothing about it and whose callee's ways each say something of their own cannot take those
-    questions by hoisting — they differ, which is what tells the callee's ways apart, and there is no one guard the
-    callee is entered on. Written out where the call stood, each way keeps its own question and the caller has as many
-    ways as the callee offered, each of them gated.
-
-    In place and in order. The callee's ways stand where the call did, in the order it offered them, so the parse falls
-    between them exactly where it fell before.
-
-    Not where the way holds a committed region open at the call. A failure that reaches a `PushMessageAction` with its
-    region unclosed carries the message the region names, so the callee's choice must stand *inside* the continuation
-    that push runs; copied out, each way is its own continuation, the first to fail is the error, and the ways behind it
-    are never reached.
-
-    Not where a recovery rides the call, which would then ride each copy. And what a way carries on to is placed as
-    `_carrying_on_to` places it — behind the callee's own continuation, in a state of its own where both are there.
-
-    Run until nothing moves. A way written out here is one its own callers can write out in turn, so the questions come
-    up a level at a time until they reach a way that performs something no guard may cross. What ends it is that every
-    site taken leaves one fewer way nothing has gated: a site is judged by what it would leave, and one that leaves a
-    way still ungated is not taken at all. So the count falls with every site and the walk has a floor to reach.
-    """
-    named = {}  # kept across the rounds, so a site taken twice names what it needs the same both times
-    for _round in ir.rounds("expand-called-ways"):
-        settled = cleaned(_expanded_once(grammar, namer, named), namer)
-        namer.sees(settled)
-        if settled == grammar:
-            return grammar
-        grammar = settled
-
-
-def _expanded_once(grammar, namer, named=None):
-    """One pass of `expand-called-ways`: every call whose callee's ways may stand where it does, written out."""
-    minted = {}
-    named = {} if named is None else named
-
-    def told(owner, way):
-        held = way.first if isinstance(way.first, ir.RefCall) else (way.second if way.first is None else None)
-        if way.gate.guards or not isinstance(held, ir.RefCall) or way.recover is not None:
-            return (way,)
-        body = grammar[held.name].body
-        if not isinstance(body, ir.ChoiceState) or len(body.alternatives) < 2:
-            return (way,)
-        # A way asks its gate before it performs anything, so a callee's guard written in here is asked in front of what
-        # the caller performs rather than behind it. That is the crossing the table answers, and every guard of every
-        # way has to be admitted — one that is not leaves the whole call where it stands.
-        if not all(
-            [
-                GUARD_CROSSES_ACTION.may_cross(guard, action)
-                for one in body.alternatives
-                for guard in one.gate.guards
-                for action in way.actions
-            ]
-        ):
-            return (way,)
-        carries = way.second if way.first is not None else None
-        opened = []
-        for one in body.alternatives:
-            standing = dataclasses.replace(one, actions=(*way.actions, *one.actions))
-            if carries is not None:
-                standing = _carrying_on_to(standing, carries, owner, grammar, namer, minted, named)
-            # A gated way that acts and then calls is one edge the machine runs. An ungated one is a way still to be
-            # given a gate, and no guard of its callee can reach it past what it performs.
-            if not standing.gate.guards and standing.actions and standing.first is not None:
-                return (way,)
-            opened.append(standing)
-        # What this site is worth, read off what it would leave rather than off what it was handed: one way nothing has
-        # gated goes, and whatever comes out ungated stands in its place. Where they all come out gated the site pays
-        # and the ways stand here, which is what lets every paying site be taken at once.
-        if not all(one.gate.guards for one in opened):
-            return (way,)
-        return tuple(opened)
-
-    written = {
-        name: (
-            production
-            if not isinstance(production.body, ir.ChoiceState)
-            else dataclasses.replace(
-                production,
-                body=ir.ChoiceState(
-                    alternatives=tuple(one for way in production.body.alternatives for one in told(name, way))
-                ),
-            )
-        )
-        for name, production in grammar.items()
-    }
-    return {**written, **minted}
-
-
 def hoist_guards_to_callers(grammar, namer):
     """
     Ask a callee's guards where its caller is entered rather than where the call is made: `A = |gA actA →B|` with `B =
@@ -4409,6 +4280,123 @@ def _hoisted_once(grammar, namer):
             if not isinstance(production.body, ir.ChoiceState)
             else dataclasses.replace(
                 production, body=ir.ChoiceState(alternatives=tuple(told(way) for way in production.body.alternatives))
+            )
+        )
+        for name, production in grammar.items()
+    }
+    return {**written, **minted}
+
+
+def flatten_ungated_call_trees(grammar, namer):
+    """
+    Say a way nothing has gated as the paths it is, one gated way for each: `A = |actA →B contA| |…|` with `B = |gB actB
+    fB contB|` becomes `A = |gB actA actB fB M| |…|`, `M` being where `contB` and then `contA` are run.
+
+    A way with no gate hands control on, and what it hands control to is a choice whose ways carry gates. Walking from
+    the way through what it calls and what it carries on to, every path reaches a gate — the first question asked past
+    the way is the question the way is entered on, however many calls down it is asked. Each path written out here is
+    that gate, everything performed on the way to it, and where the path goes from there.
+
+    The walk goes through the continuations as well as the calls. A way holding no call is not the end of a path: what
+    runs next is the innermost thing still pending, and the gate stands in there. A path ends only where a way carries a
+    gate, and one ending anywhere else — with nothing pending, on a body that is not a choice, or back at a production
+    already entered — is a tree this cannot flatten and is raised rather than passed over.
+
+    In order, so the parse falls where it fell. The paths stand where the way stood, depth first and left to right,
+    which is the order the machine would have reached those gates in.
+
+    Behind the gate goes everything the path performed in front of it, which is a move and not a copy: `GUARD_CROSSES_
+    ACTION` says whether a guard may be asked in front of an action rather than behind it. A way holding one path whose
+    gate may not come up stays as it stands — the paths are what the one way becomes, so it is all of them or none.
+
+    What is left over is run in a state of its own. Past the leaf's own call comes the leaf's continuation, then each
+    pending continuation innermost first, ending with the one the way it started from carried — a chain of states each
+    holding one call and where to go after it, shared between the paths that end the same way.
+    """
+    minted, named = {}, {}
+    wanted = {id(way) for _name, way in _ungated_ways(grammar)}
+
+    def spine(calls, owner):
+        """`calls` run one after another, said as the single call a way carries on to."""
+        if len(calls) < 2:
+            return calls[0] if calls else None
+        body = ir.ChoiceState(
+            alternatives=(ir.AlternativeState(gate=ir.GatePart(), first=calls[0], second=spine(calls[1:], owner)),)
+        )
+        held = named.get(body)
+        if held is None:
+            held = named[body] = namer.fresh(owner)
+            minted[held] = ir.Prod(grammar[owner].number, held, (), body)
+        return ir.RefCall(name=held, args=())
+
+    def paths(owner, way):
+        """Every path out of `way`, as `(what it performs before the gate, the gated way, what is left pending)`."""
+        found = []
+
+        def walk(one, entered, performed, pending):
+            if one.recover is not None:
+                raise ValueError(f"{owner}: a recovery rides a call a way nothing has gated reaches")
+            if one.gate.guards:
+                found.append((performed, one, pending))
+                return
+            done = (*performed, *one.actions)
+            carried = (*pending, one.second) if one.first is not None and one.second is not None else pending
+            call = one.first if one.first is not None else one.second
+            if call is None:
+                if not carried:
+                    raise ValueError(f"{owner}: a path reaching no gate at all, with nothing left pending")
+                call, carried = carried[-1], carried[:-1]
+            if call.name in entered:
+                raise ValueError(f"{owner}: a path reaching {call.name} a second time before any gate")
+            body = grammar[call.name].body
+            if not isinstance(body, ir.ChoiceState):
+                raise ValueError(f"{owner}: a path reaching {call.name}, which offers no ways to be gated")
+            for opened in body.alternatives:
+                walk(opened, entered | {call.name}, done, carried)
+
+        walk(way, frozenset({owner}), (), ())
+        return found
+
+    def told(owner, way):
+        if id(way) not in wanted:
+            return (way,)
+        walked = paths(owner, way)
+        # Every action is asked about, and the answers taken together afterwards: stopping at the first refusal would
+        # leave the pairs behind it unconsulted, and what the table is missing is what its faults are for saying.
+        if not all(
+            [
+                GUARD_CROSSES_ACTION.may_cross(guard, action)
+                for performed, leaf, _pending in walked
+                for guard in leaf.gate.guards
+                for action in performed
+            ]
+        ):
+            return (way,)
+
+        def flattened(performed, leaf, pending):
+            """One path as the way it is: its gate, everything it performs, its call, and what is left to run."""
+            calls = [held for held in (leaf.second, *reversed(pending)) if held is not None]
+            first = leaf.first
+            # A leaf that only carries on has a slot free, and the head of the chain belongs in it: a question about a
+            # run is asked by the first call a way makes, and left in the chain it would be asked a state further on,
+            # where what the run did has been taken away.
+            if first is None and len(calls) > 1:
+                first, calls = calls[0], calls[1:]
+            return dataclasses.replace(
+                leaf, actions=(*performed, *leaf.actions), first=first, second=spine(calls, owner)
+            )
+
+        return tuple(flattened(*held) for held in walked)
+
+    written = {
+        name: (
+            production
+            if not isinstance(production.body, ir.ChoiceState)
+            else dataclasses.replace(
+                production,
+                body=ir.ChoiceState(
+                    alternatives=tuple(one for way in production.body.alternatives for one in told(name, way))
+                ),
             )
         )
         for name, production in grammar.items()
@@ -5665,18 +5653,12 @@ STEPS = [
     # nothing has to be followed, so the space it is entered in and the space it accepts can be held to each other
     # before anything is moved. Claims rather than transforms — the grammar arrives holding both, and the steps below
     # are held to keeping them.
+    #
+    # Two steps do the moving, and they move in opposite directions: a guard climbs to the callers that enter it, and a
+    # way nothing has gated reaches down for the gates of everything it can run. What the second reaches is a whole tree
+    # at once, so nothing here writes a callee's ways out a level at a time.
     Step("consumed-charsets-agree", establishes=ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL),
     Step("leaf-paths-reach-a-way", establishes=EVERY_PATH_REACHES_A_LEAF_WAY),
-    Step("expand-called-ways", expand_called_ways, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
-    Step(
-        "hoist-guards-to-callers",
-        hoist_guards_to_callers,
-        reduces=EVERY_CONDITIONAL_WAY_IS_GATED,
-        lapses={
-            "every-gate-looks-ahead-at-most-once": "a guard taken up to a caller stands beside whatever that caller's "
-            "gate already asked, the same two questions about one character as when it moved into a gate below"
-        },
-    ),
-    Step("merge-gate-peeks-2", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
-    Step("expand-called-ways-2", expand_called_ways, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
+    Step("hoist-guards-to-callers", hoist_guards_to_callers, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
+    Step("flatten-ungated-call-trees", flatten_ungated_call_trees, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
 ]

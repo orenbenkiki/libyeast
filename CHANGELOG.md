@@ -1163,6 +1163,39 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A way nothing has gated is said as the paths it is.** `flatten-ungated-call-trees` walks such a way through what it
+  calls *and* what it carries on to, and every path reaches a gate: 710 of them, none running out, none circling, none
+  ending on a body that is not a choice. A way holding no call is not the end of a path — what runs next is the
+  innermost thing still pending, and the gate stands in there, which is what a walk that stopped at the missing call
+  reported as 83 paths reaching nothing. Each path becomes one way: the gate it found, everything the path performed in
+  front of that gate, the call standing there, and a chain of states running what is left — the leaf's own continuation
+  first, then each pending one innermost outward. Where the leaf only carries on, the head of that chain takes the free
+  slot rather than being buried a state deeper, since a question about a limited run is asked by the first call a way
+  makes and one state further on the run has been taken away. `every-conditional-way-is-gated` reads **7** over 1324
+  productions, where it read 58.
+
+  The seven are one refused crossing each. Four reach gates asking a lookaround behind a `SetForbiddenAction`, three a
+  turn's close behind its own open. Nothing splits a gate — every one of the 710 holds a single guard — so asking the
+  guards that may come up here and the rest a state deeper, which would gate a way on part of its question, has no case
+  in this grammar and is not written.
+
+- **`expand-called-ways` is gone, and the two steps that served it with it.** Writing a callee's ways where the call
+  stood is one level of what the flattening does over the whole tree, and the count lands at 7 either way. What it was
+  worth was size — 1165 productions against 1297 — and what it cost was hiding a defect: with the expansions out,
+  `hoist-guards-to-callers` breaks the corpus by itself. `merge-gate-peeks-2` had nothing left to merge and
+  `hoist-guards-to-callers` no longer lapses `every-gate-looks-ahead-at-most-once`. The pipeline is 41 steps.
+
+- **A turn's close is asked by taking its own open off the stack, so a code standing above it refuses the question.**
+  `GUARD_CROSSES_ACTION` let an `EndMustConsumeGuard` cross a `PopCodeAction`, reasoning only about where the parse
+  stands — a code being neither the input nor a count. But the guard *pops*, and a code closed behind it was opened in
+  front of it: asked early, the open it reaches for is the code's. `hoist-guards-to-callers` moved one into a gate in
+  front of exactly such a pop, and `b-l-folded` crashed on it. The pair says `False`.
+
+  Four pairs the table had never been asked are named — a comparison in front of a `SetVarAction`, which reads the
+  indentation, a literal or a match's length and never the two variables the parse holds; and a `StartOfLineGuard` in
+  front of a `PushIndentAction` or a `SetForbiddenAction`, neither of which is where the parse stands in its line.
+  Thirteen pairs only the expansion ever asked are gone, the table staying pinned to what occurs.
+
 - **No action is ever handed back; only a guard refuses.** A refusal is where a choice goes on to its next way, and an
   action reached through a gate that admitted it does its work or the gate lied — which is a crash and not a parse.
   `_can_be_refused` said exactly that in words and its table said otherwise, listing the consumes among the kinds an

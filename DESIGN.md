@@ -468,10 +468,10 @@ transformation producing one has produced something the parser cannot run whatev
 **And every push is written down.** There is no call, and so nothing a call implicitly pushes or pops: a production that
 goes on to another pushes where to carry on and jumps, and where it carries on from is what a pop takes. Reading a call
 as "push a continuation, then go" is what keeps the stack safe to transform. A value riding on something a call pushes
-is a footgun, because the pipeline inlines — the sweep splices do-nothing calls, and `expand-called-ways` writes a
-callee's ways where the call stood — and a value living on what they remove has nowhere to go and no gate that could see
-it coming. Written as actions, an inlining deletes a continuation push and a jump and touches nothing else, because
-nothing was ever riding them.
+is a footgun, because the pipeline inlines — the sweep splices do-nothing calls, and `flatten-ungated-call-trees` writes
+the gates a way reaches where that way stood — and a value living on what they remove has nowhere to go and no gate that
+could see it coming. Written as actions, an inlining deletes a continuation push and a jump and touches nothing else,
+because nothing was ever riding them.
 
 ```
 call P, carry on at Q       PushContinuation(Q) ; GOTO P
