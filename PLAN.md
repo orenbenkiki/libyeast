@@ -75,29 +75,26 @@ establishes an invariant the steps after it may lean on. What each phase owns an
      and be handed back, a production refusing what it could have taken is a way its caller declines to offer, and only
      a committed machine makes that a fault.
 
-1. **Settle `every-conditional-way-is-gated`.** It stands at **7** — every one a way something decides to enter that
+1. **Settle `every-conditional-way-is-gated`.** It stands at **3** — every one a way something decides to enter that
    carries no question the machine can ask before entering it, which is the backtracking the whole shape exists to
-   remove. All seven are in `l-yaml-stream` and `l-explicit-document`, and each is one guard standing behind one action
-   `GUARD_CROSSES_ACTION` refuses. **4** reach gates asking a `LookGuard` or a `LiteralPeekGuard` behind a
-   `SetForbiddenAction`: a lookaround matches through what may not match at a start of line, so asked in front of the
-   write it reads the set the document had not yet installed. **3** reach a gate asking an `EndMustConsumeGuard` behind
-   the `StartMustConsumeAction` that is its own open, which is not a question at all until that open has been made.
+   remove. All three are in `l-yaml-stream`, and all three are one shape: a gate asking an `EndMustConsumeGuard` behind
+   the `StartMustConsumeAction` that is its own open. The guard is answered by taking that open off the parse's stack,
+   so in front of the open there is nothing there to take, and no reading of the two instances makes it the same
+   question.
 
    Two shapes aimed at ways whose callee offers some gated ways and some not are kept in `junk-lowering-gates.py`,
    removed from the pipeline as dead rather than lost — one puts the caller's continuation inside the callee, the other
    sends the tail down into the callee instead of copying the ways out.
 
-   Three routes past the seven, none taken. **A finer crossing.** The table answers per pair of kinds, and a lookaround
-   that reads none of the forbidden set is a question about the *instance* the pair cannot ask. **A partial lift.**
-   Where only some of a gate's guards may come up, the rest can be asked in a state of its own entered past the actions:
-   the way is then entered on part of the question and refused inside on the remainder, which gates it without making it
-   decisive. Nothing exercises this today — every one of the 710 gates the flattening reaches holds a single guard, so
-   no gate splits. **A minted gate.** With the accepted space computed, a gate is minted from what a way accepts rather
-   than hoisted from a guard that happened to be reachable — which is what the pipeline cannot do today. Every gating
-   step it has *relocates* a guard: `hoist-guards-to-gates` and `hoist-guards-to-callers` move guards up,
-   `merge-gate-peeks` merges them, `split-consumes-into-gates` mints one from a set standing in the way itself, and
-   `flatten-ungated-call-trees` reaches down for the gates of everything a way can run. None computes what a call can
-   begin with.
+   Two routes past the three, neither taken. **A partial lift.** Where only some of a gate's guards may come up, the
+   rest can be asked in a state of its own entered past the actions: the way is then entered on part of the question and
+   refused inside on the remainder, which gates it without making it decisive. Nothing exercises this today — every gate
+   the flattening reaches holds a single guard, so no gate splits. **A minted gate.** With the accepted space computed,
+   a gate is minted from what a way accepts rather than hoisted from a guard that happened to be reachable — which is
+   what the pipeline cannot do today. Every gating step it has *relocates* a guard: `hoist-guards-to-gates` and
+   `hoist-guards-to-callers` move guards up, `merge-gate-peeks` merges them, `split-consumes-into-gates` mints one from
+   a set standing in the way itself, and `flatten-ungated-call-trees` reaches down for the gates of everything a way can
+   run. None computes what a call can begin with.
 
 1. **Settle `every-choice-is-deterministic`.** With the ways gated, what remains is the choices no character tells
    apart. `every-called-alternative-is-unconditional` belongs here rather than to the gating phase: taking a callee's

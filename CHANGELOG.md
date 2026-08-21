@@ -1163,6 +1163,18 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A crossing the kinds cannot answer is answered of the two in hand.** Whether a lookaround may be asked in front of
+  the write that says what may not match at a start of line depends on which lookaround and which set: it matches its
+  item through that refusal, so it reads the set standing where it is asked — but where the states it admits and the
+  states what is forbidden can begin taking a character in do not meet, no position answers it differently either side.
+  A `Crossing` entry may now name a question rather than an answer, and `_reads_none_of_the_forbidden` is the one that
+  does, meeting `_admits` with the accepted space. Named with a question, the pair is worked out — the instance decides
+  — so it is neither of the table's two faults. `l-explicit-document` forbids `---` and `...`, whose accepted space is
+  `-` and `.`, and the gates its ungated way reaches ask about a space, a tab, a carriage return, a line feed and a
+  `\r\n`: disjoint, so the write cannot change one of their answers. `every-conditional-way-is-gated` reads **3**, where
+  it read 7, and the three left are one shape — a turn's close behind its own open, which in front of that open has
+  nothing to take off the stack at all.
+
 - **A way nothing has gated is said as the paths it is.** `flatten-ungated-call-trees` walks such a way through what it
   calls *and* what it carries on to, and every path reaches a gate: 710 of them, none running out, none circling, none
   ending on a body that is not a choice. A way holding no call is not the end of a path — what runs next is the

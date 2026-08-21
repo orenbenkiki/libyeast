@@ -3477,12 +3477,12 @@ EVERY_PATH_REACHES_A_LEAF_WAY = Invariant("every-path-reaches-a-leaf-way", _ever
 
 class Crossing:
     """
-    Whether a guard may be asked before an action that stood in front of it, one answer per pair of kinds.
+    Whether a guard may be asked before an action that stood in front of it, one entry per pair of kinds.
 
-    Three values and not two. A pair the table names is `True` where asking early is the same question and `False` where
-    it is not; a pair it does not name is one nobody has worked out, and the difference between "no" and "not yet" is
-    the whole point — a walk that took an unnamed pair for `False` would look settled while it was only ignorant. So an
-    unnamed pair refuses the move *and* is recorded, and both of these are faults the gate reports:
+    Named or not, and that is the first thing an entry says. A pair the table names has been worked out; a pair it does
+    not name is one nobody has, and the difference between "no" and "not yet" is the whole point — a walk that took an
+    unnamed pair for `False` would look settled while it was only ignorant. So an unnamed pair refuses the move *and* is
+    recorded, and both of these are faults the gate reports:
 
     - **a pair consulted with nothing recorded**, which says the table is behind what the grammar holds;
     - **a pair recorded that nothing consulted**, which says the table claims to know something it was never asked —
@@ -3490,6 +3490,11 @@ class Crossing:
 
     Between them the table is pinned to the pairs that occur: what is missing is reported and what is spare is reported,
     so it never quietly grows a claim.
+
+    What a named pair says is `True` where asking early is the same question, `False` where it is not, and a question of
+    its own where the kinds do not settle it — what the two do to each other depending on which guard and which action.
+    That last is worked out like any other entry, and what it was worked out to is that the instances decide, so it is
+    neither of the faults above.
     """
 
     def __init__(self, told):
@@ -3497,14 +3502,15 @@ class Crossing:
         self._asked = set()
         self._unnamed = set()
 
-    def may_cross(self, guard, action):
+    def may_cross(self, guard, action, grammar):
         """Whether `guard` may be asked before `action`, recording the pair either way."""
         pair = (type(guard).__name__, type(action).__name__)
         if pair not in self._told:
             self._unnamed.add(pair)
             return False
         self._asked.add(pair)
-        return self._told[pair]
+        held = self._told[pair]
+        return held(guard, action, grammar) if callable(held) else held
 
     def unnamed(self):
         """The pairs something consulted and the table does not name."""
@@ -3515,8 +3521,28 @@ class Crossing:
         return sorted(set(self._told) - self._asked)
 
 
+def _reads_none_of_the_forbidden(guard, action, grammar):
+    """
+    Whether `guard` reads none of what `action` forbids, and so may be asked in front of it.
+
+    What may not match at a start of line is asked of every character taken at one, and a lookaround matches its item
+    through that same refusal — so in general it reads the set standing where it is asked, and moving it across the
+    write changes which set that is. Which set it reads is a fact about the two instances: where the states the guard
+    admits and the states what is forbidden can begin taking a character in do not meet, no position answers the guard
+    differently either side of the write.
+
+    The accepted space errs wide, so two that do not meet in it do not meet at all. A write that forbids nothing is
+    refused: what it displaces is whatever was standing, which is not this action's to say.
+    """
+    if action.item is None:
+        return False
+    accepted, _ways, _entering = _leaf_tables(grammar)
+    return not (_admits(guard, grammar) & _accepted_part(action.item, grammar, accepted))
+
+
 # What a guard may be asked in front of: each entry is `(guard, action)` to whether asking the guard there is the same
-# question. A pair not here is one nobody has worked out, and consulting it is a fault rather than a no.
+# question, or to what says so of the two the walk is holding. A pair not here is one nobody has worked out, and
+# consulting it is a fault rather than a no.
 GUARD_CROSSES_ACTION = Crossing(
     {
         # A window bounds what a committed consume may take and nothing else: a lookaround reads past its edge freely,
@@ -3603,12 +3629,12 @@ GUARD_CROSSES_ACTION = Crossing(
         ("NegLookGuard", "PushIndentAction"): True,
         ("StartOfLineGuard", "PushIndentAction"): True,
         # What may not match at a start of line is read by whatever matches there, and a `LiteralPeekGuard` matches its
-        # characters through the same refusal a `LookGuard` matches its item through — so each reads the set standing
-        # where it is asked. Whether a character is there at all, and where the parse stands in the line, match nothing
-        # and read none of it.
+        # characters through the same refusal a `LookGuard` matches its item through — so which set each reads is the
+        # question `_reads_none_of_the_forbidden` answers of the two in hand. Whether a character is there at all, and
+        # where the parse stands in the line, match nothing and read none of it.
         ("EndOfStreamGuard", "SetForbiddenAction"): True,
-        ("LiteralPeekGuard", "SetForbiddenAction"): False,
-        ("LookGuard", "SetForbiddenAction"): False,
+        ("LiteralPeekGuard", "SetForbiddenAction"): _reads_none_of_the_forbidden,
+        ("LookGuard", "SetForbiddenAction"): _reads_none_of_the_forbidden,
         ("StartOfLineGuard", "SetForbiddenAction"): True,
     }
 )
@@ -3689,7 +3715,7 @@ def fold_literals_into_gates(grammar, namer):
         at, length = found
         text = tuple(action.spans[0][0] for action in way.actions[at : at + length])
         asked = ir.LiteralPeekGuard(text=text, then=None, barrier=None)
-        if not all([GUARD_CROSSES_ACTION.may_cross(asked, action) for action in way.actions[:at]]):
+        if not all([GUARD_CROSSES_ACTION.may_cross(asked, action, grammar) for action in way.actions[:at]]):
             return way
         return dataclasses.replace(
             way,
@@ -4060,7 +4086,7 @@ def split_consumes_into_gates(grammar, namer):
         if at is None:
             return way
         asked = ir.LookGuard(item=way.actions[at])
-        if not all([GUARD_CROSSES_ACTION.may_cross(asked, action) for action in way.actions[:at]]):
+        if not all([GUARD_CROSSES_ACTION.may_cross(asked, action, grammar) for action in way.actions[:at]]):
             return way
         return dataclasses.replace(
             way,
@@ -4264,7 +4290,7 @@ def _hoisted_once(grammar, namer):
         taken = frozenset(
             guard
             for guard in _asked_by_every_way(called, grammar)
-            if all([GUARD_CROSSES_ACTION.may_cross(guard, action) for action in way.actions])
+            if all([GUARD_CROSSES_ACTION.may_cross(guard, action, grammar) for action in way.actions])
         )
         if not taken:
             return way
@@ -4365,7 +4391,7 @@ def flatten_ungated_call_trees(grammar, namer):
         # leave the pairs behind it unconsulted, and what the table is missing is what its faults are for saying.
         if not all(
             [
-                GUARD_CROSSES_ACTION.may_cross(guard, action)
+                GUARD_CROSSES_ACTION.may_cross(guard, action, grammar)
                 for performed, leaf, _pending in walked
                 for guard in leaf.gate.guards
                 for action in performed
