@@ -242,7 +242,7 @@ before anything that reads a grammar without resolving a call, the character que
 a set a context picks denotes nothing until a caller is known, the scopes become pairs before a way is cut into a call
 and a continuation, and the gates come last because there is nothing to gate until a body is an ordered list of ways.
 `invariant_faults` holds the whole list to the law, and `unsettled_invariants` names what the final grammar still breaks
-— one count, `every-conditional-way-is-gated`, which the last phase lowers and does not finish.
+— none, every count the phases carry standing at none where the pipeline ends.
 
 **The shape comes before the determinizing, and the reasons are structural rather than a preference.**
 
@@ -292,9 +292,9 @@ A way is refused where a character it needs is not there, where a guard it asks 
 away. It is not refused past a `(cut)`, nor inside a committed region, a failure there being the message that region
 names rather than a way handed back. That is one question — whether *some* input refuses the way — and `_can_be_refused`
 is the one reading that answers it, `every-option-is-reachable` being what holds the grammar to it. What a gate hoist
-needs is narrower: not whether some input refuses the way, but what the character in front of it can be, which is
-`_ahead_of_gate`. Whether every way something decides to enter carries a gate at all is
-`every-conditional-way-is-gated`, asked from where the gates exist.
+needs is narrower: not whether some input refuses the way, but what it can begin taking, which `accepted_spaces` says.
+Whether every way something decides to enter carries a gate at all is `every-conditional-way-is-gated`, asked from where
+the gates exist.
 
 **The states a decision stands in are a small finite space.** Every guard asks about one axis of it: the character in
 front of the parse, the character behind, whether it stands at a line start, whether it stands under indentation, and

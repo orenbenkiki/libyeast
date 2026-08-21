@@ -75,27 +75,6 @@ establishes an invariant the steps after it may lean on. What each phase owns an
      and be handed back, a production refusing what it could have taken is a way its caller declines to offer, and only
      a committed machine makes that a fault.
 
-1. **Settle `every-conditional-way-is-gated`.** It stands at **3** — every one a way something decides to enter that
-   carries no question the machine can ask before entering it, which is the backtracking the whole shape exists to
-   remove. All three are in `l-yaml-stream`, and all three are one shape: a gate asking an `EndMustConsumeGuard` behind
-   the `StartMustConsumeAction` that is its own open. The guard is answered by taking that open off the parse's stack,
-   so in front of the open there is nothing there to take, and no reading of the two instances makes it the same
-   question.
-
-   Two shapes aimed at ways whose callee offers some gated ways and some not are kept in `junk-lowering-gates.py`,
-   removed from the pipeline as dead rather than lost — one puts the caller's continuation inside the callee, the other
-   sends the tail down into the callee instead of copying the ways out.
-
-   Two routes past the three, neither taken. **A partial lift.** Where only some of a gate's guards may come up, the
-   rest can be asked in a state of its own entered past the actions: the way is then entered on part of the question and
-   refused inside on the remainder, which gates it without making it decisive. Nothing exercises this today — every gate
-   the flattening reaches holds a single guard, so no gate splits. **A minted gate.** With the accepted space computed,
-   a gate is minted from what a way accepts rather than hoisted from a guard that happened to be reachable — which is
-   what the pipeline cannot do today. Every gating step it has *relocates* a guard: `hoist-guards-to-gates` and
-   `hoist-guards-to-callers` move guards up, `merge-gate-peeks` merges them, `split-consumes-into-gates` mints one from
-   a set standing in the way itself, and `flatten-ungated-call-trees` reaches down for the gates of everything a way can
-   run. None computes what a call can begin with.
-
 1. **Settle `every-choice-is-deterministic`.** With the ways gated, what remains is the choices no character tells
    apart. `every-called-alternative-is-unconditional` belongs here rather than to the gating phase: taking a callee's
    gate out to the ways that call it carries a guard over what the caller performs before the call, which nothing can do
@@ -103,11 +82,17 @@ establishes an invariant the steps after it may lean on. What each phase owns an
    speculations and the one vocabulary they spend — is *Determinize, what remains* and *The provisional mechanism*
    below. **At none, the grammar is deterministic**, and that is what Milestone 04 needs.
 
+   Every gate the pipeline makes *relocates* a guard: `hoist-guards-to-gates` and `hoist-guards-to-callers` move guards
+   up, `merge-gate-peeks` merges them, `split-consumes-into-gates` mints one from a set standing in the way itself, and
+   `flatten-ungated-call-trees` reaches down for the gates of everything a way can run. None mints one from what a way
+   accepts, so a choice is told apart by whichever guards its ways happened to carry rather than by what they take —
+   which is the gap to close where two gates admit the same character and the spaces behind them do not.
+
 1. **Adapt the C parser to it** (Milestone 04), and what follows from there.
 
 One invariant is owed and belongs to no phase: `no-conditional-production-matches-empty` — that no production something
-decides to enter matches empty. No step in the pipeline carries it, and no phase above claims it. **215 ways something
-decides to enter can match empty**, in 196 productions, and 63 of those carry a gate already — a gate decides and the
+decides to enter matches empty. No step in the pipeline carries it, and no phase above claims it. **178 ways something
+decides to enter can match empty**, in 153 productions, and 33 of those carry a gate already — a gate decides and the
 way then takes nothing, which is not itself a fault. What it costs is tightness: a way that may take none makes its
 caller's accepted space the union of its own and its continuation's, so the spaces widen wherever one stands.
 
@@ -115,8 +100,9 @@ A phase re-implements what it needs rather than inheriting it: a step is kept on
 ones between the phases' goals are derived when their phase arrives.
 
 **The two questions, in order.** A machine that never backtracks needs each way of a choice to carry a gate it can ask
-before entering it, and then it needs the gates to be exclusive. They are separate problems: the first is item 2 above,
-the second is item 3, and what follows here is the design for the second.
+before entering it, and then it needs the gates to be exclusive. They are separate problems: the first is settled,
+`every-conditional-way-is-gated` reading none where the pipeline ends, and the second is item 2 above, whose design is
+what follows here.
 
 **Where the gate lift belongs.** `every-called-alternative-is-unconditional` — a way calling, where its own gate stood,
 a production that offers one way and asks something of its own — is item 2's rather than the gating phase's. The caller

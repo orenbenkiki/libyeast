@@ -3607,8 +3607,7 @@ GUARD_CROSSES_ACTION = Crossing(
         ("LookGuard", "PopBackTrackAction"): True,
         # A turn that must take a character asks where the parse stands against where its own open stood. Whatever takes
         # a character moves it, so the question is a different one on the other side; a marker moves nothing, and it is
-        # the same one. An inner turn's open standing between the two is not passed either: asked in front of one, the
-        # question is answered before that turn has run.
+        # the same one.
         #
         # The question is asked by taking that open off the parse's stack, so it is refused wherever something else
         # still stands above it. A code closed behind the guard was opened in front of it and is exactly that: asked
@@ -3620,7 +3619,6 @@ GUARD_CROSSES_ACTION = Crossing(
         ("EndMustConsumeGuard", "PopCodeAction"): False,
         ("EndMustConsumeGuard", "PopMessageAction"): False,
         ("EndMustConsumeGuard", "PushCodeAction"): True,
-        ("EndMustConsumeGuard", "StartMustConsumeAction"): False,
         # The indentation the parse carries is neither the input nor where the parse stands in the line, which is what
         # these read.
         ("EndOfStreamGuard", "PushIndentAction"): True,
@@ -4313,6 +4311,24 @@ def _hoisted_once(grammar, namer):
     return {**written, **minted}
 
 
+def _closes_an_empty_turn(performed, way):
+    """
+    Whether `way`'s gate closes a turn that `performed` opened and took nothing in.
+
+    A turn that must take a character is a pair of writes, and its close asks whether anything was taken since its own
+    open — which is what stops a run over a body matching empty from spinning. Where that open stands among the actions
+    a path performed and nothing between the two takes a character, the answer is no whatever the input is, so the gate
+    refuses every input and the path is one no parse takes.
+    """
+    for guard in way.gate.guards:
+        if not isinstance(guard, ir.EndMustConsumeGuard):
+            continue
+        for at, action in enumerate(performed):
+            if isinstance(action, ir.StartMustConsumeAction) and action.pair == guard.pair:
+                return not any(isinstance(held, ir.CONSUMING) for held in performed[at + 1 :])
+    return False
+
+
 def flatten_ungated_call_trees(grammar, namer):
     """
     Say a way nothing has gated as the paths it is, one gated way for each: `A = |actA →B contA| |…|` with `B = |gB actB
@@ -4334,6 +4350,12 @@ def flatten_ungated_call_trees(grammar, namer):
     Behind the gate goes everything the path performed in front of it, which is a move and not a copy: `GUARD_CROSSES_
     ACTION` says whether a guard may be asked in front of an action rather than behind it. A way holding one path whose
     gate may not come up stays as it stands — the paths are what the one way becomes, so it is all of them or none.
+
+    A path whose gate closes a turn the path itself opened and took nothing in is dropped rather than written out. The
+    close asks whether anything was taken since that open, so on such a path it refuses whatever the input is, and the
+    way it stands in fails there and falls to the one behind it — which is what happens with the path gone, one refusal
+    sooner. Dropped and not passed over: what refuses everything is the turn's whole point, and cancelling the two would
+    make the path succeed and a run over a body matching empty spin.
 
     What is left over is run in a state of its own. Past the leaf's own call comes the leaf's continuation, then each
     pending continuation innermost first, ending with the one the way it started from carried — a chain of states each
@@ -4362,6 +4384,8 @@ def flatten_ungated_call_trees(grammar, namer):
         def walk(one, entered, performed, pending):
             if one.recover is not None:
                 raise ValueError(f"{owner}: a recovery rides a call a way nothing has gated reaches")
+            if _closes_an_empty_turn(performed, one):
+                return
             if one.gate.guards:
                 found.append((performed, one, pending))
                 return
@@ -4387,6 +4411,10 @@ def flatten_ungated_call_trees(grammar, namer):
         if id(way) not in wanted:
             return (way,)
         walked = paths(owner, way)
+        # A way every one of whose paths is dropped stands as it is: nothing at all is a body no choice can offer, and a
+        # way no input takes is one the pruning is for rather than the flattening.
+        if not walked:
+            return (way,)
         # Every action is asked about, and the answers taken together afterwards: stopping at the first refusal would
         # leave the pairs behind it unconsulted, and what the table is missing is what its faults are for saying.
         if not all(
@@ -5686,5 +5714,5 @@ STEPS = [
     Step("consumed-charsets-agree", establishes=ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL),
     Step("leaf-paths-reach-a-way", establishes=EVERY_PATH_REACHES_A_LEAF_WAY),
     Step("hoist-guards-to-callers", hoist_guards_to_callers, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
-    Step("flatten-ungated-call-trees", flatten_ungated_call_trees, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
+    Step("flatten-ungated-call-trees", flatten_ungated_call_trees, settles=EVERY_CONDITIONAL_WAY_IS_GATED),
 ]

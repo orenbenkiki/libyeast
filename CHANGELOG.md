@@ -1163,6 +1163,17 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A turn that closes where it opened takes a path no input takes, and the path goes.**
+  `every-conditional-way-is- gated` is **settled**, where it stood at 58 when the phase began. The three ways left were
+  one shape: a path opening a turn that must take a character and reaching that same turn's close — the same `pair` on
+  both — with nothing between them that takes one. The close asks whether anything was taken since its own open, so on
+  such a path it refuses whatever the input is; the way it stands in fails there and falls to the one behind it, which
+  is what happens with the path dropped, one refusal sooner. Dropped and not cancelled: what refuses everything is the
+  turn's whole point, and annulling the open against the close would make the path *succeed* and a run over a body
+  matching empty spin. `l-yaml-stream` wraps `l-document-prefix`, whose two halves each offer an empty way, which is why
+  the shape arises there and only there. `("EndMustConsumeGuard", "StartMustConsumeAction")` is gone from the crossing
+  table with the paths that asked it.
+
 - **A crossing the kinds cannot answer is answered of the two in hand.** Whether a lookaround may be asked in front of
   the write that says what may not match at a start of line depends on which lookaround and which set: it matches its
   item through that refusal, so it reads the set standing where it is asked — but where the states it admits and the
