@@ -1163,6 +1163,22 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **One `Characters` per distinct answer, so the algebra costs what the sets number rather than what the standings do.**
+  A `SubSpace` held one `Region` dataclass per standing it admitted anything under, sorted into a canonical tuple and
+  indexed by a dict built beside it — so an intersection built 32 objects, a dict and a sort, and every one of those
+  costs would have been paid again for every standing added. It holds one answer per standing now, positionally, and the
+  answers come out of a table: equal ones are the same object, equality is identity, and what two of them come to is
+  remembered against the pair rather than worked out. The grammar holds 418 distinct sets, met in 128 pairs and joined
+  in 944 — three small tables where the arithmetic had been done tens of thousands of times.
+
+  An intersection is **7.0µs where it was 78.9µs** and a union 6.9µs where it was 72.3µs; the tables the two leaf
+  invariants read take 0.4s where they took 1.1s. What that buys is not the second: the standings are free to grow with
+  the questions the guards ask, which is what a space that can put a comparison of two of the parse's own values will
+  need. `check_spaces` holds the table to its own promise by asking for one set of states spelled several ways — out of
+  order, cut in two where the halves close up, a span repeated — and holding all of them to being the one answer. A
+  table keyed on what it was handed rather than on what that comes to is how identity stops answering equality, and two
+  spellings of one set become two sets the algebra reads as different.
+
 - **A comparison is named for comparing, not for a column.** `ColumnLtGuard` and `ColumnLeGuard` hold two values and
   assert an order between them. The column appears in 12 of the 70 the grammar holds and is never the left operand; 58
   mention no column at all, relating `n`, the block scalar's floor, the length of a match and the literal zero. The

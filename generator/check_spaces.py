@@ -43,29 +43,57 @@ def cases():
     ]
 
 
-def held(subspace):
+def states_of(subspace):
     """The states `subspace` holds, as a set of `(standing, codepoint or END_OF_STREAM)` pairs."""
     states = set()
     for standing in spaces.STANDINGS:
-        region = subspace.under(standing)
-        states |= {(standing, code) for code in ALPHABET if any(low <= code <= high for low, high in region.spans)}
-        if region.is_at_end:
+        admitted = subspace.under(standing)
+        states |= {(standing, code) for code in ALPHABET if any(low <= code <= high for low, high in admitted.spans)}
+        if admitted.is_at_end:
             states.add((standing, END_OF_STREAM))
     return states
 
 
 def check_canonical(named):
-    """Check that a subspace's regions are ordered, unrepeated, non-empty and coalesced."""
+    """Check that a subspace says one thing per standing, and that what it says is coalesced."""
     errors = []
     for name, subspace in named:
-        standings = [region.standing for region in subspace.regions]
-        if standings != sorted(set(standings)):
-            errors.append(f"{name}: regions are unordered or a standing appears twice")
-        for region in subspace.regions:
-            if not region:
-                errors.append(f"{name}: an empty region stands under {region.standing}")
-            if list(region.spans) != [tuple(span) for span in chars.merged_spans(region.spans)]:
-                errors.append(f"{name}: the spans under {region.standing} are unsorted or adjacent")
+        if len(subspace.admitted) != len(spaces.STANDINGS):
+            errors.append(f"{name}: {len(subspace.admitted)} answers for {len(spaces.STANDINGS)} standings")
+            continue
+        for standing in spaces.STANDINGS:
+            spans = subspace.under(standing).spans
+            if list(spans) != [tuple(span) for span in chars.merged_spans(spans)]:
+                errors.append(f"{name}: the spans under {standing} are unsorted or adjacent")
+    return errors
+
+
+# One set of states, spelled several ways: out of order, cut in two at a boundary that closes up, and a span repeated.
+# The table is asked for each and must hand back the one answer, since the algebra reads two answers as two sets.
+SPELLINGS = (
+    ("a run given whole", [(0x41, 0x5A)]),
+    ("the same run cut in two", [(0x41, 0x4F), (0x50, 0x5A)]),
+    ("the same run out of order", [(0x50, 0x5A), (0x41, 0x4F)]),
+    ("the same run said twice", [(0x41, 0x5A), (0x45, 0x50), (0x41, 0x5A)]),
+)
+
+
+def check_table():
+    """
+    Check that the table hands out one `Characters` per set of states, whatever spelling asks for it.
+
+    Equality being identity is what the algebra rests on: two answers holding the same characters must be one object, or
+    a subspace built one way compares unequal to a subspace built another and the two are read as different sets. A
+    table keyed on what it was handed rather than on what that comes to is how that breaks, so the spellings above are
+    asked for and held to being the one answer.
+    """
+    errors = []
+    wanted = spaces.held(SPELLINGS[0][1])
+    for said, spans in SPELLINGS[1:]:
+        if spaces.held(spans) is not wanted:
+            errors.append(f"{said}: the table hands out a second answer for the states {SPELLINGS[0][0]} names")
+    if spaces.held([(0x41, 0x5A)], is_at_end=True) is wanted:
+        errors.append("the end of the stream: the table hands out one answer whether it is admitted or not")
     return errors
 
 
@@ -74,13 +102,13 @@ def check_operations(named):
     errors = []
     for (one_name, one), (other_name, other) in itertools.product(named, repeat=2):
         pair = f"{one_name} against {other_name}"
-        if held(one | other) != held(one) | held(other):
+        if states_of(one | other) != states_of(one) | states_of(other):
             errors.append(f"{pair}: the union does not hold both")
-        if held(one & other) != held(one) & held(other):
+        if states_of(one & other) != states_of(one) & states_of(other):
             errors.append(f"{pair}: the intersection does not hold what both hold")
-        if one.holds(other) != (held(other) <= held(one)):
+        if one.holds(other) != (states_of(other) <= states_of(one)):
             errors.append(f"{pair}: containment disagrees with the states held")
-        if bool(one) != bool(held(one)):
+        if bool(one) != bool(states_of(one)):
             errors.append(f"{one_name}: emptiness disagrees with the states held")
     return errors
 
@@ -121,7 +149,7 @@ def check_axes():
 
 def main():
     named = cases()
-    errors = check_canonical(named) + check_operations(named) + check_laws(named) + check_axes()
+    errors = check_canonical(named) + check_table() + check_operations(named) + check_laws(named) + check_axes()
     gate.report(
         errors,
         "subspace error(s)",

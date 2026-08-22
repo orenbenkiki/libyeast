@@ -300,12 +300,21 @@ the gates exist.
 front of the parse, the character behind, whether it stands at a line start, whether it stands under indentation, and
 two bits of its own bookkeeping — what the last limited scan did, and whether the region a `StartMustConsume` opened has
 taken anything. Five of those are booleans, so a *standing* is one of 32 assignments to them, and `spaces.SubSpace` is a
-set of states: the characters admitted under each standing it admits anything under. Every axis being finite, union,
-intersection and containment are computed standing by standing and nothing is widened to make an answer fit. The end of
-the stream is the character axis's own value rather than the absence of a character, a way entered there being a way
-entered somewhere. `check_spaces` judges the algebra by the states it holds — enumerating every standing over an
-alphabet spanning each boundary its cases name, and comparing the operations against set arithmetic on the enumerations
-— because an algebra checked against itself proves nothing.
+set of states: what it admits under each standing, one answer apiece. Every axis being finite, union, intersection and
+containment are computed standing by standing and nothing is widened to make an answer fit. The end of the stream is the
+character axis's own value rather than the absence of a character, a way entered there being a way entered somewhere.
+
+An answer is a `spaces.Characters`, and there is one of each: they are handed out of a table rather than built, so equal
+answers are the same object, equality is identity, and what two of them come to is remembered against the pair. The
+grammar holds 418 distinct ones, met in 128 pairs and joined in 944, so the algebra costs what the *sets* number rather
+than what the standings do — which is what lets the standings grow with the questions the guards ask.
+
+`check_spaces` judges the algebra by the states it holds — enumerating every standing over an alphabet spanning each
+boundary its cases name, and comparing the operations against set arithmetic on the enumerations — because an algebra
+checked against itself proves nothing. It holds the table to its own promise besides, asking for one set of states
+spelled several ways — out of order, cut in two where the halves close up, a span repeated — and holding all of them to
+being the one answer. A table keyed on what it was handed rather than on what that comes to is how identity stops
+answering equality, and two spellings of one set become two sets the algebra reads as different.
 
 The two are read from different halves of a way, which is what makes their agreement mean something: the gated subspace
 from its guards, the accepted subspace from its consumes and calls, and neither from the other's. Every consume names
