@@ -800,48 +800,6 @@ class ConsumeCharAction:
         return replace(self, set=set)
 
 
-@dataclass(frozen=True)
-class LiteralPeekGuard:
-    """
-    A gate's literal form: the alternative is entered where the input begins with `text` and the first character after
-    it passes the follow test — `then`, a class it must belong to, or `barrier`, a class it must not; at most one is
-    given, and the end of the input passes either for free, being no character at all. Both `None` where the literal
-    alone decides. The polarity is each literal's own: the document markers are followed by white or a break —
-    `c-forbidden`'s trailing class, spelled positively — where a directive keyword must not go on as a name. Tested
-    without consuming, as every gate part is, and bounded by the longest literal the grammar holds, it lowers to the
-    generated parser's single comparison — where a per-character split would spend a state on each.
-    """
-
-    text: tuple
-    then: object
-    barrier: object
-
-    def references(self):
-        return _refs(self.then, self.barrier)
-
-    def renamed(self, names):
-        then, barrier = _renamed(names, self.then, self.barrier)
-        return replace(self, then=then, barrier=barrier)
-
-
-@dataclass(frozen=True)
-class ConsumePeekedAction:
-    """
-    The literal the gate's `LiteralPeekGuard` found, taken into the run. It consumes the literal's characters, always:
-    the gate has already found them there, so finding otherwise is a gate that did not do its job — the interpreter says
-    so, and the generated parser advances without scanning the bytes a second time. Every literal the grammar spells —
-    `---`, `...`, a directive's `YAML` or `TAG` — is consumed through this pair, the gate asking and the action doing.
-    """
-
-    text: tuple
-
-    def references(self):
-        return []
-
-    def renamed(self, names):
-        return self
-
-
 def _asked_in_order(guard):
     """What orders a gate's guards: the kind, then the whole of the question. Total, and the same from run to run."""
     return type(guard).__name__, repr(guard)
@@ -1771,7 +1729,7 @@ class Prod:
 #
 # Taking nothing is not what makes one of these — every action and every guard takes nothing too. `<end-of-stream>` asks
 # about the input and is not one: it holds no characters to stop at. In alphabetical order.
-ASKED_NOT_TAKEN_NODES = (ExcludeAtAction, LiteralPeekGuard, LookGuard, LookBehindGuard, NegLookGuard)
+ASKED_NOT_TAKEN_NODES = (ExcludeAtAction, LookGuard, LookBehindGuard, NegLookGuard)
 
 # What always takes at least one character where it matches, the counterpart of `CONSUMES_NOTHING`. A kind that reads on
 # one way and not on another — a run, a repetition, a choice — is neither, and is asked about its parts instead. In
@@ -1781,7 +1739,6 @@ ALWAYS_CONSUMES = (
     CharSet,
     ConsumeCharAction,
     ConsumeLimitedSpanAction,
-    ConsumePeekedAction,
     ConsumeSpanAction,
     ConsumeTrimmedSpanAction,
     DiffSet,
@@ -1799,7 +1756,6 @@ CONSUMING = (
     CharSet,
     ConsumeCharAction,
     ConsumeLimitedSpanAction,
-    ConsumePeekedAction,
     ConsumeSpanAction,
     ConsumeTrimmedSpanAction,
     DiffSet,
@@ -1848,7 +1804,6 @@ GUARDS = (
     DidMatchFullSpanGuard,
     EndMustConsumeGuard,
     EndOfStreamGuard,
-    LiteralPeekGuard,
     LookGuard,
     LookBehindGuard,
     NegLookGuard,
@@ -1866,14 +1821,13 @@ CONSUMES_NOTHING = (*ACTIONS, *GUARDS, EmptyTree)
 
 # A peek: a guard that holds its question about the input as an `item` and takes nothing, whether it asks about what
 # stands in front or what stands behind. `every-peek-is-a-character-set` is what these are held to. Not every guard that
-# reads the input is one — `<end-of-stream>` asks whether a character is there at all and holds no question, and the
-# literal form holds a run of characters rather than a set.
+# reads the input is one — `<end-of-stream>` asks whether a character is there at all and holds no question.
 PEEKS = (LookGuard, LookBehindGuard, NegLookGuard)
 
-# The guards that read what stands in front of the parse: whether a character is there at all, whether it begins a
-# literal, whether it falls in a set, whether it falls outside one. What stands behind is not one of these, and neither
-# is where the parse is in the line or how the indentation compares.
-LOOKS_AHEAD = (EndOfStreamGuard, LiteralPeekGuard, LookGuard, NegLookGuard)
+# The guards that read what stands in front of the parse: whether a character is there at all, whether it falls in a
+# set, whether it falls outside one. What stands behind is not one of these, and neither is where the parse is in the
+# line or how the indentation compares.
+LOOKS_AHEAD = (EndOfStreamGuard, LookGuard, NegLookGuard)
 
 # What a peek holds that shapes the output rather than the question: the run's code and the markers. A lookaround is
 # probed and given back, so none of it reaches the stream and none of it is part of what the peek asks. In alphabetical
@@ -2002,7 +1956,6 @@ NOT_ONE_CHAR = (
     CommitProvisionalAction,
     ConsumeCharAction,
     ConsumeLimitedSpanAction,
-    ConsumePeekedAction,
     ConsumeSpanAction,
     ConsumeTrimmedSpanAction,
     CutAction,
@@ -2022,7 +1975,6 @@ NOT_ONE_CHAR = (
     InjectBeforeAction,
     LenValue,
     LitValue,
-    LiteralPeekGuard,
     LookGuard,
     LookBehindGuard,
     MarkProvisionalAction,
@@ -2099,7 +2051,6 @@ _IS_ONE_CHAR = Question(
             CommitWrapper,
             ConsumeCharAction,
             ConsumeLimitedSpanAction,
-            ConsumePeekedAction,
             ConsumeSpanAction,
             CutAction,
             DidMatchFullSpanGuard,
@@ -2115,7 +2066,6 @@ _IS_ONE_CHAR = Question(
             IncreaseAction,
             IndentValue,
             LenValue,
-            LiteralPeekGuard,
             MatchValue,
             MaxWrapper,
             OpenWindowAction,

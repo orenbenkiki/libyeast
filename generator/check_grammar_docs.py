@@ -64,10 +64,8 @@ _EMITTED = ir.Question(
         ir.CharSet,
         ir.ConsumeCharAction,
         ir.ConsumeLimitedSpanAction,
-        ir.ConsumePeekedAction,
         ir.ConsumeSpanAction,
         ir.ConsumeTrimmedSpanAction,
-        ir.LiteralPeekGuard,
     ),
 )
 

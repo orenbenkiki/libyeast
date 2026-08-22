@@ -337,15 +337,16 @@ gate moving to a caller takes nothing away from what the way says it does.
 
 `normalize._admits` reads each guard as one of these, and `accepted_spaces` says where each production can begin taking
 a character: a least fixpoint from nothing, the walk over a way carrying what it can still stand in having taken
-nothing, so that a guard past a take — which asks about a later position — narrows nothing. It is **sound rather than
-decisive**: a literal's first character is a real constraint where the rest of the literal is a residual the axes never
-speak for, one state being no place to ask about a later position. So what the space refuses, the grammar refuses, and
-two residuals stay runtime tests by design: a literal past its first character, and a literal peek's follow class. A
-comparison is neither — every one the grammar makes is an axis, and one it does not make raises where it is asked rather
-than being admitted everywhere, since a guard admitted everywhere meets every other and would report the space's
-blindness as a decision the grammar cannot make. Whether a way can take nothing is `_split_ways`' answer and is not
-folded in — a production that succeeds taking nothing succeeds anywhere, which is true and says nothing, and holding the
-two apart is what keeps it from spreading through the fixpoint.
+nothing, so that a guard past a take — which asks about a later position — narrows nothing. It is **exact of the grammar
+as it stands**: every question a gate asks is a set of characters at this position met with where the parse stands, a
+standing holds both without approximation, and no guard the grammar holds is admitted everywhere — which is counted
+rather than assumed. Two kinds could be and neither occurs: a peek whose set is not pinned down, which `_peek_spans`
+answers `None` for, and a look-behind at any set but `ns-char`, the one the standing carries. A comparison is neither —
+every one the grammar makes is an axis, and one it does not make raises where it is asked rather than being admitted
+everywhere, since a guard admitted everywhere meets every other and would report the space's blindness as a decision the
+grammar cannot make. Whether a way can take nothing is `_split_ways`' answer and is not folded in — a production that
+succeeds taking nothing succeeds anywhere, which is true and says nothing, and holding the two apart is what keeps it
+from spreading through the fixpoint.
 
 What the two are held to so far is the leaf ways — the ways holding no call, which answer entirely by their own actions.
 `_asked_where_entered` gives the guards asked along each path into a production, gathered from the last take onward, and
@@ -462,7 +463,7 @@ alternatives, and an alternative is `gate  actions…  [P1  actions…]  [P2]`:
 - The **gate** is a conjunction tested without consuming, as above. An empty gate is the unconditional fallthrough,
   allowed only as the last alternative.
 - **actions** operate on the parse's own state. Taking the peeked character is itself an action rather than part of the
-  gate — `ConsumePeeked` likewise takes a peeked literal on the gate's word, the bytes never scanned twice.
+  gate, taken on the gate's word and never scanned twice.
 - **P1, P2** are zero, one or two productions the alternative hands control to. Two means run P1 and carry on at P2:
   push P2 as where to carry on, go to P1 — so P1 is the call, P2 the continuation, and there is at most one push per
   edge. One is a tail goto. Nothing follows P2, so a sequence of three splits through a helper, `A → B A₁` with
@@ -471,10 +472,11 @@ alternatives, and an alternative is `gate  actions…  [P1  actions…]  [P2]`:
 Alternatives are asked in order and the first whose gate holds is the one taken. Two alternatives may share a gate;
 order resolves the overlap, and proving the earlier one safe to commit to is the whole of determinization.
 
-**No unbounded lookahead survives.** A `Look`, `NegLook`, `LookBehind` or `(exclude)` over more than one character is
-transformed away — into a character-set gate, a literal peek, a cheap guard, or a speculation — so the canonical grammar
-holds none of them. The one bounded exception is the gate's own `LiteralPeek`: the longest literal plus one character of
-follow test, within the window the parser's fill already guarantees, lowered to a single comparison.
+**No lookahead past one character survives.** A `Look`, `NegLook`, `LookBehind` or `(exclude)` over more than one
+character is transformed away — into a character-set gate, a cheap guard, or a speculation — so the canonical grammar
+holds none of them, and every gate asks about the one character in front of the parse. A run the grammar spells as
+literal text is that many gates and that many takes, one state each: the machine reads a character, and what it does
+with it is where it goes next.
 
 ## What the parse may hold
 

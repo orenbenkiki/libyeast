@@ -1081,27 +1081,6 @@ def _matched_gated_char(node, emitter, grammar, k):
     return False
 
 
-def _matched_gated_literal(node, emitter, grammar, k):
-    """
-    The literal the gate found, taken on the gate's word.
-
-    This slow oracle re-checks the word, so a gate that lies is a crash here rather than a wrong parse; the generated
-    parser advances without a second look.
-    """
-    for offset, codepoint in enumerate(node.text):
-        if emitter.position + offset >= len(emitter.chars) or emitter.chars[emitter.position + offset] != codepoint:
-            raise AssertionError("a gated literal is not there: the gate let through what it should have refused")
-    checkpoint = emitter.checkpoint()
-    for _codepoint in node.text:
-        if not emitter.consume():
-            emitter.give_back(checkpoint)
-            return False
-    if k():
-        return True
-    emitter.give_back(checkpoint)
-    return False
-
-
 def _matched_limited_span(node, emitter, grammar, k):
     """
     Up to `limit` characters of the set, taken in one scan, and whether the limit was reached left behind it.
@@ -1636,21 +1615,6 @@ def _matched_window(node, emitter, grammar, k):
         emitter.ceiling_message = None
 
 
-def _matched_peeked_literal(node, emitter, grammar, k):
-    """
-    The literal ahead and its follow test, as one bounded zero-width question.
-
-    Spelled here as the lookahead it means: each literal character as itself, a `then` as end-of-input-or-the-class, a
-    `barrier` as a negative look, which passes at the end of the input on its own.
-    """
-    pattern = tuple(ir.OneCharSet(cp=codepoint) for codepoint in node.text)
-    if node.then is not None:
-        pattern += (ir.AltTree(items=(ir.EndOfStreamGuard(), ir.LookGuard(node.then))),)
-    if node.barrier is not None:
-        pattern += (ir.NegLookGuard(node.barrier),)
-    return k() if _probe(ir.SeqTree(items=pattern), emitter, grammar) else False
-
-
 def _matched_exclusion(node, emitter, grammar, k):
     """What may not stand from here on, added to what already may not: in scope until the production returns."""
     saved_forbidden = emitter.forbidden
@@ -1756,7 +1720,6 @@ _MATCHED = {
     ir.ChoiceState: _matched_choice,
     ir.AlternativeState: _matched_way,
     ir.ConsumeCharAction: _matched_gated_char,
-    ir.ConsumePeekedAction: _matched_gated_literal,
     ir.ConsumeLimitedSpanAction: _matched_limited_span,
     ir.DidMatchFullSpanGuard: _matched_did_fill_span,
     ir.ConsumeSpanAction: _matched_span,
@@ -1785,7 +1748,6 @@ _MATCHED = {
     ir.EndOfStreamGuard: lambda node, emitter, grammar, k: k() if emitter.position == len(emitter.chars) else False,
     ir.LookGuard: lambda node, emitter, grammar, k: k() if _probe(node.item, emitter, grammar) else False,
     ir.NegLookGuard: lambda node, emitter, grammar, k: k() if not _probe(node.item, emitter, grammar) else False,
-    ir.LiteralPeekGuard: _matched_peeked_literal,
     ir.ExcludeAtAction: _matched_exclusion,
     ir.LookBehindGuard: _matched_look_behind,
     ir.TokenWrapper: _matched_token,

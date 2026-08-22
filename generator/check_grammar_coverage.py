@@ -50,7 +50,6 @@ ALWAYS = (
     ir.CloseWindowAction,
     ir.CommitProvisionalAction,
     ir.ConsumeCharAction,  # the gate found the character, so taking it cannot fail
-    ir.ConsumePeekedAction,  # the gate found the literal, so taking it cannot fail
     ir.CutAction,
     ir.EmitAction,
     ir.EmptyTree,
@@ -86,7 +85,6 @@ NEVER_SURE = (
     ir.EndMustConsumeGuard,  # a turn that took no character says no, which is what ends the run holding it
     ir.EndOfStreamGuard,
     ir.InvalidSet,
-    ir.LiteralPeekGuard,  # a gate's literal form says no where the input does not begin it
     ir.LookGuard,
     ir.LookBehindGuard,
     ir.NegLookGuard,

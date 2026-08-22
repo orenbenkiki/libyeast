@@ -1390,8 +1390,6 @@ def as_char_set(node, grammar):
     is read through here rather than left standing: in a peek it is the question "is the character one of these", not
     the hold on a production a match needs, and an alternation of such references is one set like any other.
     """
-    if isinstance(node, ir.LiteralPeekGuard):
-        return node  # several characters, of which only the first is the dispatch — no set says that
     if not ir.is_one_char(node, grammar):
         return node
     spans = _peek_spans(node, grammar)
@@ -2263,19 +2261,10 @@ def _parts_only_match_and_ask(node):
 _ONLY_MATCHES_AND_ASKS = ir.Question(
     "whether what an exclusion forbids only matches and asks",
     {
-        # A match takes characters and says whether they were there, which is the whole of what the probe wants. A
-        # literal taken on the gate's word is one of them, its characters found before it ran.
-        (
-            ir.OneCharSet,
-            ir.CharSet,
-            ir.ConsumeCharAction,
-            ir.ConsumePeekedAction,
-            ir.ConsumeSpanAction,
-            ir.RangeSet,
-        ): True,
-        # A guard reads where the parse stands and leaves it there, and an empty match does neither. A literal peek is
-        # one of them: it asks whether the input begins with its text and takes nothing either way.
-        (ir.IsLessEqualGuard, ir.EmptyTree, ir.EndOfStreamGuard, ir.LiteralPeekGuard, ir.StartOfLineGuard): True,
+        # A match takes characters and says whether they were there, which is the whole of what the probe wants.
+        (ir.OneCharSet, ir.CharSet, ir.ConsumeCharAction, ir.ConsumeSpanAction, ir.RangeSet): True,
+        # A guard reads where the parse stands and leaves it there, and an empty match does neither.
+        (ir.IsLessEqualGuard, ir.EmptyTree, ir.EndOfStreamGuard, ir.StartOfLineGuard): True,
         ir.RefCall: True,
         # A shape that holds parts is what its parts are — a difference and a lookaround among them, each asking about a
         # match of its own.
@@ -2597,12 +2586,13 @@ def _admits(guard, grammar):
     hole the grammar really has.
 
     Two things are admitted everywhere and both are losses rather than truths, the guard constraining something the
-    answer does not say. A set a peek does not pin down: `_peek_spans` answers `None` for it, so the blindness is
-    counted off the question that has it. And a literal, of which only the first character is a state the parse stands
-    in — what follows it is a question about a later position, which no axis of one state can hold.
+    answer does not say: a set a peek does not pin down, `_peek_spans` answering `None` for it, and a look-behind at any
+    set but `ns-char`, which is the one the standing carries. A comparison is neither — every one the grammar makes is
+    an axis, and one it does not make raises where it is asked rather than being admitted everywhere.
 
-    A comparison is neither. Every one the grammar makes is an axis, and one it does not make raises where it is asked
-    rather than being admitted everywhere.
+    Neither loss is in the grammar as it stands: every peek pins its set down and both look-behinds ask about `ns-char`,
+    so nothing it holds is admitted everywhere. That is a fact about the grammar and not about this, and what says it is
+    counting the guards that answer `EVERYWHERE` rather than assuming there are none.
     """
     return _ADMITS(guard, grammar)
 
@@ -2617,14 +2607,6 @@ def _refused_admits(guard, grammar):
     """A negative lookahead's: every character its set does not hold, and everywhere where it is not pinned down."""
     spans = _peek_spans(guard.item, grammar)
     return spaces.EVERYWHERE if spans is None else spaces.not_characters(spans)
-
-
-def _literal_admits(guard, grammar):
-    """
-    A literal gate's: the character its text begins with. What follows the text is a question about a later position and
-    no part of where the parse stands, so it says nothing here.
-    """
-    return spaces.characters([(guard.text[0], guard.text[0])]) if guard.text else spaces.EVERYWHERE
 
 
 def _behind_admits(guard, grammar):
@@ -2705,7 +2687,6 @@ _ADMITS = ir.Question(
     {
         ir.LookGuard: _peeked_admits,
         ir.NegLookGuard: _refused_admits,
-        ir.LiteralPeekGuard: _literal_admits,
         ir.LookBehindGuard: _behind_admits,
         ir.IsLessThanGuard: _is_less_than_admits,
         ir.IsLessEqualGuard: _is_less_equal_admits,
@@ -2734,11 +2715,6 @@ def _accepted_set(part, grammar, known):
     return spaces.ANY_CHARACTER if spans is None else spaces.characters(spans)
 
 
-def _accepted_literal(part, grammar, known):
-    """A consume of a run of characters: the one its text begins with, which is where it is entered."""
-    return spaces.characters([(part.text[0], part.text[0])]) if part.text else spaces.NOWHERE
-
-
 _ACCEPTED_PART = ir.Question(
     "the states a part of a way consumes a character in, as a `spaces.SubSpace`",
     {
@@ -2753,7 +2729,6 @@ _ACCEPTED_PART = ir.Question(
             ir.ConsumeSpanAction,
             ir.ConsumeTrimmedSpanAction,
         ): _accepted_set,
-        ir.ConsumePeekedAction: _accepted_literal,
     },
 )
 
@@ -2892,7 +2867,6 @@ _CAN_BE_REFUSED = ir.Question(
             *ir.ACTIONS,
             ir.ConsumeCharAction,
             ir.ConsumeLimitedSpanAction,
-            ir.ConsumePeekedAction,
             ir.ConsumeSpanAction,
             ir.ConsumeTrimmedSpanAction,
             ir.EmptyTree,
@@ -3273,9 +3247,8 @@ def merge_gate_peeks(grammar, _namer):
     parse is in the line, how the indentation compares — each of those being about something other than this character.
 
     A gate reading ahead twice in a way this cannot say as one set is a fault and not a shape to leave alone: an
-    `EndOfStreamGuard` holds no set and a `LiteralPeekGuard` holds a run rather than one character, so neither can be
-    folded into a `LookGuard`, and neither can stand beside one — the parse would be asked twice about a character it
-    reads once, with no saying which answer the machine acts on.
+    `EndOfStreamGuard` holds no set, so it cannot be folded into a `LookGuard` and cannot stand beside one — the parse
+    would be asked twice about a character it reads once, with no saying which answer the machine acts on.
     """
 
     def merged(way):
@@ -3535,9 +3508,10 @@ def _no_choice_ways_partially_overlap(grammar):
     that — what it is entered in is whatever the ways in front were not, which is a shape rather than a question. What a
     machine has to tell apart is the ways it decides between, and the else is what it does when it has not.
 
-    Two ways whose gates the space cannot tell apart exactly are read as it can. A literal's subspace is its first
-    character where the guard asks for more, so two ways it separates may be read as together — which is the safe way
-    round, being work handed to the determinizing rather than a decision made here.
+    Read exactly, of this grammar. `_admits` puts every guard it holds without approximation — a gate being a set of
+    characters at this position met with where the parse stands, and a standing holding both — so a pair read together
+    is together rather than a guess the determinizing would inherit. What would make it a guess is a guard admitted
+    everywhere, and there are none; `_admits` says which two kinds could be.
     """
     _accepted, _ways, entering = _leaf_tables(grammar)
     faults = []
@@ -3707,7 +3681,6 @@ GUARD_CROSSES_ACTION = Crossing(
         ("LookGuard", "PushMessageAction"): False,
         # What the parse hands back, which nothing asked of the input or of a count reads.
         ("EndOfStreamGuard", "EmitAction"): True,
-        ("LiteralPeekGuard", "EmitAction"): True,
         ("LookGuard", "EmitAction"): True,
         ("NegLookGuard", "EmitAction"): True,
         ("StartOfLineGuard", "EmitAction"): True,
@@ -3719,7 +3692,6 @@ GUARD_CROSSES_ACTION = Crossing(
         ("NegLookGuard", "PopCodeAction"): True,
         ("IsLessEqualGuard", "PushCodeAction"): True,
         ("IsLessThanGuard", "PushCodeAction"): True,
-        ("LiteralPeekGuard", "PushCodeAction"): True,
         ("LookGuard", "PushCodeAction"): True,
         ("NegLookGuard", "PushCodeAction"): True,
         ("StartOfLineGuard", "PushCodeAction"): True,
@@ -3727,13 +3699,11 @@ GUARD_CROSSES_ACTION = Crossing(
         # the token is written, and the region decides nothing until its close — so a guard asked either side of the
         # open asks the same question of the same character, whatever it asks about.
         ("IsLessEqualGuard", "StartMustConsumeAction"): True,
-        ("LiteralPeekGuard", "StartMustConsumeAction"): True,
         ("LookGuard", "StartMustConsumeAction"): True,
         ("IsLessThanGuard", "StartMustConsumeAction"): True,
         ("NegLookGuard", "StartMustConsumeAction"): True,
         ("StartOfLineGuard", "StartMustConsumeAction"): True,
         # A settled region's close says where a later failure goes and nothing about what any guard reads.
-        ("LiteralPeekGuard", "PopBackTrackAction"): True,
         ("LookGuard", "PopBackTrackAction"): True,
         # A turn that must take a character asks where the parse stands against where its own open stood. Whatever takes
         # a character moves it, so the question is a different one on the other side; a marker moves nothing, and it is
@@ -3766,101 +3736,6 @@ GUARD_CROSSES_ACTION = Crossing(
 )
 
 
-def _run_of_one_character_sets(actions):
-    """
-    Where a run of two or more sets each holding one codepoint begins among `actions`, and how long it is — or `None`.
-
-    Adjacent and nothing between them: characters taken one after another with no action in the middle are one literal
-    the input either begins with or does not. Where an action stands between two of them they belong to different
-    tokens, and folding them would make one token of two.
-    """
-    at = None
-    for index, action in enumerate(actions):
-        is_one = isinstance(action, ir.CharSet) and len(action.spans) == 1 and action.spans[0][0] == action.spans[0][1]
-        if not is_one:
-            if at is not None and index - at > 1:
-                return at, index - at
-            at = None
-        elif at is None:
-            at = index
-    return (at, len(actions) - at) if at is not None and len(actions) - at > 1 else None
-
-
-def _one_character_called(node, grammar):
-    """The set a call names, where what it calls is one character and nothing else — else `None`."""
-    if not isinstance(node, ir.RefCall) or node.name not in grammar:
-        return None
-    body = grammar[node.name].body
-    return (
-        body if isinstance(body, ir.CharSet) and len(body.spans) == 1 and body.spans[0][0] == body.spans[0][1] else None
-    )
-
-
-def _characters_pulled_in(way, grammar):
-    """
-    `way` with a call to a one-character production standing where the character does, or `way` unchanged.
-
-    The base grammar mirrors the official one, which gives some characters a rule of their own: a directive's `YAML` is
-    four characters said outright, where another rule spells the same kind of thing as calls to the rules naming them. A
-    literal is what the machine wants of either — so the calls are pulled in first and the run is looked for once.
-
-    Only where the way performs nothing of its own. What a way does comes before what it calls, so a call pulled in
-    ahead of an action would be taken before the action rather than after it.
-    """
-    if way.actions or way.recover is not None:
-        return way
-    held = [one for one in (way.first, way.second) if one is not None]
-    taken = [_one_character_called(one, grammar) for one in held]
-    if len(held) < 2 or any(one is None for one in taken):
-        return way
-    return dataclasses.replace(way, actions=tuple(taken), first=None, second=None)
-
-
-def fold_literals_into_gates(grammar, namer):
-    """
-    Say a run of single characters as the literal it is: `A = |g '-' '-' '-' rest|` becomes `A = |g <"---">
-    ConsumePeeked("---") rest|`.
-
-    Three sets taken one after another are three decisions where the input offers one: either it begins with `---` or it
-    does not. Asked as a literal the gate holds the whole of it, and the generated parser answers with a single
-    comparison where a per-character split would spend a state on each — which is what `LiteralPeekGuard` was written
-    for.
-
-    Only where the sets are adjacent. An action between two of them means they are taken into different tokens, and one
-    literal in their place would make one token of two.
-
-    Where the run is not the first thing the way does, the question moves in front of whatever stood before it, and
-    `GUARD_CROSSES_ACTION` says whether it may.
-    """
-
-    def told(way):
-        way = _characters_pulled_in(way, grammar)
-        found = _run_of_one_character_sets(way.actions)
-        if found is None:
-            return way
-        at, length = found
-        text = tuple(action.spans[0][0] for action in way.actions[at : at + length])
-        asked = ir.LiteralPeekGuard(text=text, then=None, barrier=None)
-        if not all([GUARD_CROSSES_ACTION.may_cross(asked, action, grammar) for action in way.actions[:at]]):
-            return way
-        return dataclasses.replace(
-            way,
-            gate=ir.GatePart(guards=(*way.gate.guards, asked)),
-            actions=(*way.actions[:at], ir.ConsumePeekedAction(text=text), *way.actions[at + length :]),
-        )
-
-    return {
-        name: (
-            production
-            if not isinstance(production.body, ir.ChoiceState)
-            else dataclasses.replace(
-                production, body=ir.ChoiceState(alternatives=tuple(told(way) for way in production.body.alternatives))
-            )
-        )
-        for name, production in grammar.items()
-    }
-
-
 def _every_way_takes_at_most_once(grammar):
     """
     Check that a way takes characters at most once, so that what it takes is what its own gate found.
@@ -3890,7 +3765,21 @@ def mint_consume_states(grammar, namer):
     one is a question the way's gate cannot ask however the table answers — the way holds two entries and has one gate.
     Given the rest of it a state of its own, the second take is entered where its own gate can be asked, and
     `split-consumes-into-gates` puts the question there.
+
+    Run until nothing moves. A cut leaves what stood past the second take in the state it mints, and a run of three
+    characters has a third take standing there — so the state minted for a cut is a way to cut again, one take at a
+    time, until every way holds one.
     """
+    for _round in ir.rounds("mint-consume-states"):
+        settled = cleaned(_minted_consume_states(grammar, namer), namer)
+        namer.sees(settled)
+        if settled == grammar:
+            return grammar
+        grammar = settled
+
+
+def _minted_consume_states(grammar, namer):
+    """One pass of `mint-consume-states`: every way holding a second take cut where that take stands."""
     minted = {}
 
     def told(name, way):
@@ -4091,8 +3980,8 @@ EVERY_SPAN_QUESTION_FOLLOWS_ITS_RUN = Invariant(
 
 def _every_consume_is_protected_by_a_gate(grammar):
     """
-    Check that every take is protected by a gate that found what it takes — a `LookGuard` or a `LiteralPeekGuard`, in
-    the way's own gate or in one asked wherever the way is entered.
+    Check that every take is protected by a gate that found what it takes — a `LookGuard`, in the way's own gate or in
+    one asked wherever the way is entered.
 
     A take that nothing vouched for is a match the parse has to try and give back, which is the backtracking the shape
     is for removing. The gate is where the input is asked, and what it found is what the take is entitled to.
@@ -4121,10 +4010,7 @@ def _every_consume_is_protected_by_a_gate(grammar):
                 isinstance(item, ir.CONSUMING)
                 and not isinstance(item, ir.CharSet)
                 and not all(
-                    any(
-                        isinstance(guard, (ir.LookGuard, ir.LiteralPeekGuard))
-                        for guard in _guards_in_force(parts, at, path)
-                    )
+                    any(isinstance(guard, ir.LookGuard) for guard in _guards_in_force(parts, at, path))
                     for path in entering[name] or ({},)
                 )
                 for at, item in enumerate(parts)
@@ -5121,8 +5007,8 @@ _SPLIT = ir.Question(
             ir.EmptyTree(),
         ),
     },
-    # The provisional actions and the literal questions belong to phases past the empties, and a split of them would be
-    # a rewrite of a shape that is not there yet.
+    # The provisional actions belong to phases past the empties, and a split of them would be a rewrite of a shape that
+    # is not there yet.
     untested=(
         ir.CommitProvisionalAction,
         ir.InjectBeforeAction,
@@ -5811,14 +5697,8 @@ STEPS = [
     # Phase 13 establishes `NO_CHAR_SET_IS_AN_ITEM` and `EVERY_CONSUME_IS_PROTECTED_BY_A_GATE`: the asking and the
     # taking are two things, the question in the gate where a caller can see it and the taking on the gate's word. This
     # is where the gates come from — a hoist moves a question that exists, and until this has run there are barely any
-    # to move. Four steps, in the order they run: a run of single characters is the literal it is, a way that would take
-    # a second character on the strength of the first is cut, what is left is one set each, and a counted run says the
-    # two ways its count makes it.
-    Step(
-        "fold-literals-into-gates",
-        fold_literals_into_gates,
-        reduces=(NO_CHAR_SET_IS_AN_ITEM, EVERY_CONDITIONAL_WAY_IS_GATED),
-    ),
+    # to move. Two steps: a way that would take a second character on the strength of the first is cut until every way
+    # takes once, and what is left is one set each with the question put where the way is entered.
     Step("mint-consume-states", mint_consume_states, settles=EVERY_WAY_TAKES_AT_MOST_ONCE),
     Step(
         "split-consumes-into-gates",

@@ -1163,6 +1163,30 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A gate asks about one character, so a literal is the characters it is.** `fold-literals-into-gates` said a run of
+  single characters as a `LiteralPeekGuard` — `---` as one comparison rather than three states, decided before anything
+  was consumed. What it bought in states it cost in truth: a literal's subspace is its first character where the guard
+  asks for several, and one state is no place to ask about a later position, so it was the last guard the space could
+  not put exactly. That is what would have stopped the step settling `no-choice-ways-partially-overlap` — 26 pairs stood
+  half apart with a literal on a side, and splitting them by subspace would make pieces that *read* identical while one
+  really wanted `---` and the other only `-`. Settling those wanted a negated literal peek: a new kind through the
+  interpreter, the crossing table and every total question over guards, and a literal coordinate the space cannot hold,
+  in both the invariant and the step.
+
+  Said per character the question does not arise. The step is gone and with it `LiteralPeekGuard` and
+  `ConsumePeekedAction`, which nothing else ever built — their `then` and `barrier` fields were already dead, the fold
+  having always passed `None`. `mint-consume-states` runs to a fixpoint for it: it cuts a way at its second take and
+  mints a state for the rest, and that state is where a third take stands, so a run of three needs three rounds.
+
+  It costs **23 productions** (1448 to 1471), five distinct character sets in gates (69 to 74) and forty lookaheads (717
+  to 757). The decoder is untouched, building from the authored grammar rather than the normalized one. What is given up
+  is deciding `---` before consuming: per character the way takes `-`, finds no second one and hands it back, which is a
+  backtrack the literal hid rather than removed and which the determinizing has to answer for either way. What is bought
+  is that no guard the grammar holds is admitted everywhere, counted rather than assumed, so a pair of ways is read
+  apart or together and never guessed at. `_admits` names the two kinds that could be and neither occurs: a peek whose
+  set is not pinned down, and a look-behind at any set but `ns-char`. The count itself does not move — the invariant
+  reads 345 either way — what moves is whether it can be believed.
+
 - **A break is a line feed, or a carriage return with a line feed after it if there is one.** The official grammar's
   `b-break` is three ways — carriage return with line feed, carriage return alone, line feed alone — of which the first
   two begin the same way. A parse standing at a carriage return can only tell them apart by taking the longer and
