@@ -1696,8 +1696,8 @@ def span_consumes(grammar, namer):
                 return taking if node.count.value > 0 else ir.EmptyTree()
             return ir.AltTree(
                 items=(
-                    ir.SeqTree(items=(ir.ColumnLtGuard(a=ir.LitValue(value=0), b=node.count), taking)),
-                    ir.ColumnLeGuard(a=node.count, b=ir.LitValue(value=0)),
+                    ir.SeqTree(items=(ir.IsLessThanGuard(a=ir.LitValue(value=0), b=node.count), taking)),
+                    ir.IsLessEqualGuard(a=node.count, b=ir.LitValue(value=0)),
                 )
             )
         if isinstance(node, ir.RUNS) and ir.is_one_char(node.item, grammar):
@@ -2271,7 +2271,7 @@ _ONLY_MATCHES_AND_ASKS = ir.Question(
         ): True,
         # A guard reads where the parse stands and leaves it there, and an empty match does neither. A literal peek is
         # one of them: it asks whether the input begins with its text and takes nothing either way.
-        (ir.ColumnLeGuard, ir.EmptyTree, ir.EndOfStreamGuard, ir.LiteralPeekGuard, ir.StartOfLineGuard): True,
+        (ir.IsLessEqualGuard, ir.EmptyTree, ir.EndOfStreamGuard, ir.LiteralPeekGuard, ir.StartOfLineGuard): True,
         ir.RefCall: True,
         # A shape that holds parts is what its parts are — a difference and a lookaround among them, each asking about a
         # match of its own.
@@ -2635,20 +2635,20 @@ def _is_the_indentation(value):
     return value == ir.IndentValue() or value == ir.ParamValue(name="n")
 
 
-def _under_indentation_admits(guard, grammar):
+def _is_less_than_admits(guard, grammar):
     """
-    A `<`'s: `0 < n` is standing under indentation. Any other comparison stands between two of the parse's own values —
-    the column, the length of a match, the floor — which are integers of no fixed range, so it fixes no coordinate and
-    admits everywhere.
+    A `<`'s: `0 < n` is standing under indentation, which the standing carries. Any other pair — the column, the length
+    of a match, the block scalar's floor — is two integers of no fixed range, and no coordinate holds where one stands
+    against the other, so it admits everywhere.
     """
     stands = guard.a == ir.LitValue(value=0) and _is_the_indentation(guard.b)
     return spaces.where(is_indented=True) if stands else spaces.EVERYWHERE
 
 
-def _outside_indentation_admits(guard, grammar):
+def _is_less_equal_admits(guard, grammar):
     """
-    A `<=`'s: `n <= 0` is standing under no indentation, the exact complement of the `<` above. Any other comparison
-    stands between two of the parse's own values and admits everywhere.
+    A `<=`'s: `n <= 0` is standing under no indentation, the exact complement of the `<` above. Any other pair admits
+    everywhere, for the reason that one does.
     """
     stands = _is_the_indentation(guard.a) and guard.b == ir.LitValue(value=0)
     return spaces.where(is_indented=False) if stands else spaces.EVERYWHERE
@@ -2661,8 +2661,8 @@ _ADMITS = ir.Question(
         ir.NegLookGuard: _refused_admits,
         ir.LiteralPeekGuard: _literal_admits,
         ir.LookBehindGuard: _behind_admits,
-        ir.ColumnLtGuard: _under_indentation_admits,
-        ir.ColumnLeGuard: _outside_indentation_admits,
+        ir.IsLessThanGuard: _is_less_than_admits,
+        ir.IsLessEqualGuard: _is_less_equal_admits,
         ir.StartOfLineGuard: lambda guard, grammar: spaces.where(is_at_line_start=True),
         ir.EndOfStreamGuard: lambda guard, grammar: spaces.characters(is_at_end=True),
         ir.DidMatchFullSpanGuard: lambda guard, grammar: spaces.where(did_match_full_span=True),
@@ -3521,6 +3521,27 @@ class Crossing:
         return sorted(set(self._told) - self._asked)
 
 
+def _names_the_slot(node, param):
+    """Whether `node` reads the slot `param` names, as the parse's one value or as a parameter a call carries."""
+    if isinstance(node, (ir.GlobalValue, ir.ParamValue)):
+        return node.name == param
+    return dataclasses.is_dataclass(node) and any(
+        _names_the_slot(getattr(node, field.name), param) for field in dataclasses.fields(node)
+    )
+
+
+def _reads_nothing_the_write_writes(guard, action, grammar):
+    """
+    Whether `guard` reads none of what `action` writes, and so may be asked in front of it.
+
+    A comparison names two of the parse's own values and a write names one slot. Where the guard names that slot, it
+    reads one thing in front of the write and another behind it; where it does not, what the write does is none of its
+    business. Which of the two it is is a fact about the pair in hand and not about their kinds — the block scalar's
+    floor is read by two of the comparison shapes the grammar holds and written by the only writes there are.
+    """
+    return not _names_the_slot(guard, action.param)
+
+
 def _reads_none_of_the_forbidden(guard, action, grammar):
     """
     Whether `guard` reads none of what `action` forbids, and so may be asked in front of it.
@@ -3551,11 +3572,11 @@ GUARD_CROSSES_ACTION = Crossing(
         ("NegLookGuard", "CloseWindowAction"): True,
         ("LookGuard", "OpenWindowAction"): True,
         # A variable is the parse's own working. A lookaround reads the input and not a variable, so the question is the
-        # same either side. A comparison can read one, and the two the parse holds are the block scalar's floor and the
-        # detected indent; every comparison names the indentation, a literal or the length of a match instead.
+        # same either side. A comparison can read one — the block scalar's floor is named by two of the shapes the
+        # grammar holds and is one of the two slots there are to write — so which it is is asked of the pair in hand.
         ("LookGuard", "ClearVarAction"): True,
-        ("ColumnLeGuard", "SetVarAction"): True,
-        ("ColumnLtGuard", "SetVarAction"): True,
+        ("IsLessEqualGuard", "SetVarAction"): _reads_nothing_the_write_writes,
+        ("IsLessThanGuard", "SetVarAction"): _reads_nothing_the_write_writes,
         ("LookGuard", "SetVarAction"): True,
         ("NegLookGuard", "SetVarAction"): True,
         # Taking a character moves the parse: a lookaround asked in front of one asks about a different character, and a
@@ -3573,7 +3594,7 @@ GUARD_CROSSES_ACTION = Crossing(
         # while it is still open — and its refusal changes from the one to the other.
         ("LookGuard", "CutAction"): False,
         ("LookGuard", "PopMessageAction"): False,
-        ("ColumnLeGuard", "PushMessageAction"): False,
+        ("IsLessEqualGuard", "PushMessageAction"): False,
         ("LookGuard", "PushMessageAction"): False,
         # What the parse hands back, which nothing asked of the input or of a count reads.
         ("EndOfStreamGuard", "EmitAction"): True,
@@ -3583,12 +3604,12 @@ GUARD_CROSSES_ACTION = Crossing(
         ("StartOfLineGuard", "EmitAction"): True,
         # A code is the token being built. It is neither the input nor a count, so a guard that only reads passes either
         # end of one.
-        ("ColumnLeGuard", "PopCodeAction"): True,
-        ("ColumnLtGuard", "PopCodeAction"): True,
+        ("IsLessEqualGuard", "PopCodeAction"): True,
+        ("IsLessThanGuard", "PopCodeAction"): True,
         ("LookGuard", "PopCodeAction"): True,
         ("NegLookGuard", "PopCodeAction"): True,
-        ("ColumnLeGuard", "PushCodeAction"): True,
-        ("ColumnLtGuard", "PushCodeAction"): True,
+        ("IsLessEqualGuard", "PushCodeAction"): True,
+        ("IsLessThanGuard", "PushCodeAction"): True,
         ("LiteralPeekGuard", "PushCodeAction"): True,
         ("LookGuard", "PushCodeAction"): True,
         ("NegLookGuard", "PushCodeAction"): True,
@@ -3596,10 +3617,10 @@ GUARD_CROSSES_ACTION = Crossing(
         # A turn that must take a character records where it began. Nothing about the input, a count, the indentation or
         # the token is written, and the region decides nothing until its close — so a guard asked either side of the
         # open asks the same question of the same character, whatever it asks about.
-        ("ColumnLeGuard", "StartMustConsumeAction"): True,
+        ("IsLessEqualGuard", "StartMustConsumeAction"): True,
         ("LiteralPeekGuard", "StartMustConsumeAction"): True,
         ("LookGuard", "StartMustConsumeAction"): True,
-        ("ColumnLtGuard", "StartMustConsumeAction"): True,
+        ("IsLessThanGuard", "StartMustConsumeAction"): True,
         ("NegLookGuard", "StartMustConsumeAction"): True,
         ("StartOfLineGuard", "StartMustConsumeAction"): True,
         # A settled region's close says where a later failure goes and nothing about what any guard reads.
@@ -4947,8 +4968,8 @@ def _split_counted(node, taken, grammar, ways):
     # The reading way says the turn it takes rather than leaning on the count that admitted it, so what it is stands in
     # the shape: the count is positive, one turn is taken, and the rest of them follow.
     rest = dataclasses.replace(node, count=ir.SubValue(a=node.count, b=ir.LitValue(value=1)))
-    reading = ir.SeqTree(items=(ir.ColumnLtGuard(a=ir.LitValue(value=0), b=node.count), taken, rest))
-    return reading, ir.ColumnLeGuard(a=node.count, b=ir.LitValue(value=0))
+    reading = ir.SeqTree(items=(ir.IsLessThanGuard(a=ir.LitValue(value=0), b=node.count), taken, rest))
+    return reading, ir.IsLessEqualGuard(a=node.count, b=ir.LitValue(value=0))
 
 
 def _lifted_commit(body, grammar):

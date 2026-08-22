@@ -1163,6 +1163,21 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A comparison is named for comparing, not for a column.** `ColumnLtGuard` and `ColumnLeGuard` hold two values and
+  assert an order between them. The column appears in 12 of the 70 the grammar holds and is never the left operand; 58
+  mention no column at all, relating `n`, the block scalar's floor, the length of a match and the literal zero. The
+  docstrings said "the first indentation is less than the second", wrong the same way — two of the eight shapes name
+  neither an indentation nor a column. They are `IsLessThanGuard` and `IsLessEqualGuard`, spelled `(<)` and `(<=)` where
+  the grammar writes them, and the two `_admits` handlers, each named for one shape out of the four it answers, are
+  `_is_less_than_admits` and `_is_less_equal_admits`.
+
+  The crossing table said a comparison crosses a `SetVarAction` because "every comparison names the indentation, a
+  literal or the length of a match". It does not: `f <= column` and `f <= n` name the floor, which is one of the two
+  slots such a write writes. No instance collides, so the grammar was never wrong — but the entry licensed one that
+  would be, the same shape that crashed `b-l-folded` when a turn's close was let past a code's pop. It is asked of the
+  two in hand now, `_reads_nothing_the_write_writes` reading the operands for the slot; `_is_using` cannot answer it,
+  looking for a `ParamValue` where a read of `f` is a `GlobalValue` by then.
+
 - **A turn that closes where it opened takes a path no input takes, and the path goes.**
   `every-conditional-way-is- gated` is **settled**, where it stood at 58 when the phase began. The three ways left were
   one shape: a path opening a turn that must take a character and reaching that same turn's close — the same `pair` on

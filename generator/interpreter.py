@@ -1774,10 +1774,10 @@ _MATCHED = {
     ir.ClearVarAction: _matched_clear,
     ir.IncreaseAction: _matched_raise,
     ir.BindTree: _matched_binding,
-    ir.ColumnLtGuard: lambda node, emitter, grammar, k: (
+    ir.IsLessThanGuard: lambda node, emitter, grammar, k: (
         k() if evaluate(node.a, emitter, grammar) < evaluate(node.b, emitter, grammar) else False
     ),
-    ir.ColumnLeGuard: lambda node, emitter, grammar, k: (
+    ir.IsLessEqualGuard: lambda node, emitter, grammar, k: (
         k() if evaluate(node.a, emitter, grammar) <= evaluate(node.b, emitter, grammar) else False
     ),
     ir.MaxWrapper: _matched_window,

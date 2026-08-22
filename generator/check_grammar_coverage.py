@@ -80,8 +80,8 @@ ALWAYS = (
 NEVER_SURE = (
     ir.OneCharSet,
     ir.CharSet,  # a set says no where the character is not one of its own
-    ir.ColumnLeGuard,
-    ir.ColumnLtGuard,
+    ir.IsLessEqualGuard,
+    ir.IsLessThanGuard,
     ir.DiffSet,
     ir.EndMustConsumeGuard,  # a turn that took no character says no, which is what ends the run holding it
     ir.EndOfStreamGuard,

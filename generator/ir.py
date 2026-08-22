@@ -1075,8 +1075,8 @@ class MaxWrapper:
 
 
 @dataclass(frozen=True)
-class ColumnLtGuard:
-    """`(<)`: assert the first indentation is less than the second."""
+class IsLessThanGuard:
+    """`(<)`: assert the first value is less than the second, whichever two the parse works out."""
 
     a: object
     b: object
@@ -1090,8 +1090,8 @@ class ColumnLtGuard:
 
 
 @dataclass(frozen=True)
-class ColumnLeGuard:
-    """`(<=)`: assert the first indentation is less than or equal to the second."""
+class IsLessEqualGuard:
+    """`(<=)`: assert the first value is no greater than the second, whichever two the parse works out."""
 
     a: object
     b: object
@@ -1843,8 +1843,8 @@ ACTIONS = (
 # one of these — it takes nothing either, but it commits the parse rather than asking it anything, and it stands with
 # the actions. In alphabetical order.
 GUARDS = (
-    ColumnLeGuard,
-    ColumnLtGuard,
+    IsLessEqualGuard,
+    IsLessThanGuard,
     DidMatchFullSpanGuard,
     EndMustConsumeGuard,
     EndOfStreamGuard,
@@ -1996,8 +1996,8 @@ NOT_ONE_CHAR = (
     ClearVarAction,
     CloseWindowAction,
     ColumnValue,
-    ColumnLeGuard,
-    ColumnLtGuard,
+    IsLessEqualGuard,
+    IsLessThanGuard,
     CommitWrapper,
     CommitProvisionalAction,
     ConsumeCharAction,
@@ -2094,8 +2094,8 @@ _IS_ONE_CHAR = Question(
             ClearVarAction,
             CloseWindowAction,
             ColumnValue,
-            ColumnLeGuard,
-            ColumnLtGuard,
+            IsLessEqualGuard,
+            IsLessThanGuard,
             CommitWrapper,
             ConsumeCharAction,
             ConsumeLimitedSpanAction,

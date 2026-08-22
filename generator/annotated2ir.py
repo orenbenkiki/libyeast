@@ -165,9 +165,9 @@ def node(x):
                 return ir.MaxWrapper(expr(value[0]), value[1], node(value[2]))
             return ir.MaxWrapper(expr(value))
         if op == "(<)":
-            return ir.ColumnLtGuard(expr(value[0]), expr(value[1]))
+            return ir.IsLessThanGuard(expr(value[0]), expr(value[1]))
         if op == "(<=)":
-            return ir.ColumnLeGuard(expr(value[0]), expr(value[1]))
+            return ir.IsLessEqualGuard(expr(value[0]), expr(value[1]))
         if op == "(case)":
             default = node(value["else"]) if "else" in value else None
             return ir.CaseTree(value["var"], branches(value, node), default)

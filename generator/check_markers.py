@@ -29,8 +29,8 @@ INDENT_MODES = annotated2ir.INDENT_MODES
 SILENT = (
     ir.OneCharSet,
     ir.CharSet,
-    ir.ColumnLeGuard,
-    ir.ColumnLtGuard,
+    ir.IsLessEqualGuard,
+    ir.IsLessThanGuard,
     ir.CutAction,
     ir.DiffSet,
     ir.EmptyTree,

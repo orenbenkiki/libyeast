@@ -119,8 +119,8 @@ _TAKES_MORE_THAN_ONE = (*ir.REPETITIONS, ir.OptTree, ir.SeqTree)
 # neither, a match nothing makes takes nothing because it is never made, and a comparison of two counts asks about
 # neither the input nor a character.
 _TAKES_NONE = (
-    ir.ColumnLeGuard,
-    ir.ColumnLtGuard,
+    ir.IsLessEqualGuard,
+    ir.IsLessThanGuard,
     ir.CutAction,
     ir.EmitAction,
     ir.EmptyTree,
