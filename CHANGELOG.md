@@ -1163,6 +1163,30 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A comparison of two of the parse's own quantities is an axis, and the quantities are not.** The indentation, the
+  column, the length of the run just measured and the block scalar's floor are integers of no fixed range, so the space
+  held no coordinate for any of them and read all 30 comparisons standing between two as admitting everywhere — and
+  everywhere meets everything, so the one sentence the space exists to say could not be said wherever one stood. But no
+  guard reads a quantity. Every one asks how two of them stand, and the grammar asks six such questions, so those six
+  are the axes and the magnitudes never appear. **No guard admits everywhere now**, where 30 did.
+
+  Six free booleans would carry states no parse is in — an ordering is transitive, and `f <= n` with `n < column`
+  settles `f < column` — so the standings are enumerated from the quantities rather than assigned: every ordering some
+  integers make, under four facts true of every parse. A line start is column zero and anywhere else at least one, which
+  the interpreter says outright, setting `is_sol` to `column == 0`. The indentation reaches one below zero, the root
+  being entered where nothing has been pushed. A length is not negative. And the measured run stands within its line, so
+  it is no longer than the column — every site reading it measures `s-space*` under a `(token): indent`, and a space is
+  neither a break, which would reset the column under it, nor a byte-order mark, which would take no column of its own.
+  That last one alone takes the orderings at a line start from 15 to 7.
+
+  Two more bound the other axes: nothing an `ns-char` names stands behind a line start, what is behind one being a
+  break, a byte-order mark or nothing at all; and a run that took its whole limit leaves the parse mid-line, every
+  limited run in the grammar taking spaces or hex digits and no consume ever consuming nothing. **174 standings**
+  result, where 32 did — and the pipeline takes 5.3s where it took 5.1s, the interning below having made the count of
+  standings something the algebra no longer pays for. `check_spaces` judges them in both directions, walking the
+  quantities over a wider range than `spaces` walks them: a standing no parse reaches says the enumeration is not what
+  it claims, and a state no standing names is a hole a subspace would say nothing about.
+
 - **One `Characters` per distinct answer, so the algebra costs what the sets number rather than what the standings do.**
   A `SubSpace` held one `Region` dataclass per standing it admitted anything under, sorted into a canonical tuple and
   indexed by a dict built beside it — so an intersection built 32 objects, a dict and a sort, and every one of those

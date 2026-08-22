@@ -2588,13 +2588,17 @@ def _admits(guard, grammar):
 
     A guard is zero-width, so what it says is about the state the parse stands in and nothing else, which is what makes
     a subspace the whole of what the axes can hold of it. Sound rather than decisive: every constraint the answer
-    carries is one the guard really makes, and a guard the axes cannot put admits everywhere, which is true of it rather
-    than a shrug. So a way's accepted space holds every state the way can succeed in and may hold more, and a state a
-    gate admits that the space refuses is a hole the grammar really has.
+    carries is one the guard really makes, and a guard the axes cannot put admits everywhere. So a way's accepted space
+    holds every state the way can succeed in and may hold more, and a state a gate admits that the space refuses is a
+    hole the grammar really has.
 
-    A set a peek does not pin down admits everywhere too, and that one is a loss rather than a truth: the guard does
-    constrain the character axis and the answer does not say how. `_peek_spans` is where that shows, answering `None`
-    for it, so the blindness is counted off the question that has it rather than guessed at from here.
+    Two things are admitted everywhere and both are losses rather than truths, the guard constraining something the
+    answer does not say. A set a peek does not pin down: `_peek_spans` answers `None` for it, so the blindness is
+    counted off the question that has it. And a literal, of which only the first character is a state the parse stands
+    in — what follows it is a question about a later position, which no axis of one state can hold.
+
+    A comparison is neither. Every one the grammar makes is an axis, and one it does not make raises where it is asked
+    rather than being admitted everywhere.
     """
     return _ADMITS(guard, grammar)
 
@@ -2630,28 +2634,66 @@ def _behind_admits(guard, grammar):
     return spaces.where(is_after_ns_char=True) if admits else spaces.EVERYWHERE
 
 
-def _is_the_indentation(value):
-    """Whether `value` reads the indentation — the register the parse carries, or the parameter it arrived as."""
-    return value == ir.IndentValue() or value == ir.ParamValue(name="n")
+def _quantity(value):
+    """
+    Which of the parse's quantities `value` reads, said in words, or `None` where it reads none of them.
+
+    Two of them are read either as the register the parse carries or as the parameter a call carried before the lowering
+    that made it a register, and both spellings are the same quantity.
+    """
+    if value == ir.LitValue(value=0):
+        return "zero"
+    if value in (ir.IndentValue(), ir.ParamValue(name="n")):
+        return "the indentation"
+    if value == ir.ColumnValue():
+        return "the column"
+    if value == ir.LenValue(arg=ir.MatchValue()):
+        return "the measured run"
+    if value in (ir.GlobalValue(name="f"), ir.ParamValue(name="f")):
+        return "the floor"
+    return None
+
+
+# Which axis each comparison the grammar makes is, and which side of it that comparison admits. Every one of the eight
+# is here and every one is exact: a standing says how the quantities stand, so the states a comparison lets a parse
+# through in are the standings that answer it, no more and no fewer.
+_COMPARES = {
+    ("zero", "<", "the indentation"): ("is_indented", True),
+    ("the indentation", "<=", "zero"): ("is_indented", False),
+    ("the indentation", "<", "the column"): ("is_not_too_indented", False),
+    ("the indentation", "<", "the measured run"): ("is_measured_past_the_indent", True),
+    ("the measured run", "<=", "the indentation"): ("is_measured_past_the_indent", False),
+    ("the measured run", "<", "the indentation"): ("is_measured_under_the_indent", True),
+    ("the floor", "<=", "the column"): ("is_column_at_least_the_floor", True),
+    ("the floor", "<=", "the indentation"): ("is_indent_at_least_the_floor", True),
+}
+
+
+def _compared_admits(guard, said, grammar):
+    """
+    A comparison's: the standings that answer it as it asks.
+
+    A shape `_COMPARES` does not name raises rather than admitting everywhere. The quantities are unbounded and none of
+    them is a coordinate, so an axis exists only where the grammar asks for one — and a comparison asked here that no
+    axis carries is a question the space cannot put, which is news about the space rather than a fact about the grammar.
+    A guard admitted everywhere meets every other, so read as one it would report that blindness as a decision the
+    grammar cannot make.
+    """
+    shape = (_quantity(guard.a), said, _quantity(guard.b))
+    if shape not in _COMPARES:
+        raise ValueError(f"no axis says whether {shape[0]} is {said} {shape[2]}")
+    axis, answered = _COMPARES[shape]
+    return spaces.where(**{axis: answered})
 
 
 def _is_less_than_admits(guard, grammar):
-    """
-    A `<`'s: `0 < n` is standing under indentation, which the standing carries. Any other pair — the column, the length
-    of a match, the block scalar's floor — is two integers of no fixed range, and no coordinate holds where one stands
-    against the other, so it admits everywhere.
-    """
-    stands = guard.a == ir.LitValue(value=0) and _is_the_indentation(guard.b)
-    return spaces.where(is_indented=True) if stands else spaces.EVERYWHERE
+    """A `(<)`'s, which is `_compared_admits` under the axis its two quantities name."""
+    return _compared_admits(guard, "<", grammar)
 
 
 def _is_less_equal_admits(guard, grammar):
-    """
-    A `<=`'s: `n <= 0` is standing under no indentation, the exact complement of the `<` above. Any other pair admits
-    everywhere, for the reason that one does.
-    """
-    stands = _is_the_indentation(guard.a) and guard.b == ir.LitValue(value=0)
-    return spaces.where(is_indented=False) if stands else spaces.EVERYWHERE
+    """A `(<=)`'s, which is `_compared_admits` under the axis its two quantities name."""
+    return _compared_admits(guard, "<=", grammar)
 
 
 _ADMITS = ir.Question(

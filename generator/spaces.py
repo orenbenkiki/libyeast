@@ -3,15 +3,22 @@
 The space of states a parse can decide in, and the subsets of it a grammar's guards name.
 
 Every guard asks about one axis of a small space: the character in front of the parse, the character behind it, whether
-it stands at a line start, whether it stands under indentation, and two bits of its own bookkeeping. So what a parse
-stands in when it decides is one point of that space, and what a gate admits, what a way takes and what a call site can
-reach are each a subset of it — a `SubSpace`.
+it stands at a line start, two bits of its own bookkeeping, and how the parse's own quantities stand against each other.
+So what a parse stands in when it decides is one point of that space, and what a gate admits, what a way takes and what
+a call site can reach are each a subset of it — a `SubSpace`.
 
-Five of the axes are booleans, so a standing is one of the 32 assignments to them, and a `SubSpace` is the characters
-admitted under each. That is exact: the axes are finite, union, intersection and containment are computed per standing,
-and nothing is widened or narrowed to make an answer fit. A comparison relating two of the parse's own values — `n`
-against a measured length, a column or the auto-detected indent — is no axis here, standing between quantities rather
-than fixing one, so a guard asking it constrains nothing and its way is admitted under every standing.
+All but the character axis are booleans, so a *standing* is an assignment to them, and a `SubSpace` is what it admits
+under each. That is exact: the axes are finite, union, intersection and containment are computed per standing, and
+nothing is widened or narrowed to make an answer fit.
+
+**A comparison of two of the parse's own quantities is an axis, and the quantities are not.** The indentation, the
+column, the length of the run just measured and the block scalar's floor are integers of no fixed range, so none of them
+is a coordinate — but no guard reads one. Every one asks how two of them stand, and there are six such questions in the
+grammar, so those six are the axes and the magnitudes never appear.
+
+Six free booleans would carry states no parse can be in: an ordering is transitive, and a column is never negative while
+a line start is column zero. So the standings are not every assignment — they are the assignments some integers make,
+enumerated once from the quantities themselves. That is where the arithmetic is done and the only place it is.
 
 The characters are `chars.py`'s spans, the invalid byte among them as the `(-1, -1)` interval it already is. The end of
 the stream is not one of them and is not the absence of them either: it is the axis's own value, carried beside the
@@ -26,7 +33,6 @@ of standings, which is free to grow with the questions the guards ask.
 """
 
 import dataclasses
-import itertools
 
 import chars
 
@@ -35,16 +41,84 @@ ALL_CHARACTERS = ((-1, chars.MAX_CODEPOINT),)  # the invalid byte and every code
 
 @dataclasses.dataclass(frozen=True, order=True)
 class Standing:
-    """Where a parse stands, as the booleans every guard but the character ones ask about."""
+    """
+    Where a parse stands, as the booleans every guard but the character ones ask about.
+
+    Four of them say where it is and what it has just done; six say how its own quantities stand — the indentation `n`,
+    the column, the length of the run just measured, and the block scalar's leading-empty floor `f`. Those four
+    quantities are integers of no fixed range and none of them is a coordinate here; what the guards ask is only ever
+    how two of them compare, and these six are every such question the grammar has.
+    """
 
     is_at_line_start: bool
     is_after_ns_char: bool
-    is_indented: bool
     did_match_full_span: bool
     did_consume_since_open: bool
+    is_indented: bool  # 0 < n
+    is_not_too_indented: bool  # column <= n
+    is_measured_past_the_indent: bool  # n < len(match)
+    is_measured_under_the_indent: bool  # len(match) < n
+    is_column_at_least_the_floor: bool  # f <= column
+    is_indent_at_least_the_floor: bool  # f <= n
 
 
-STANDINGS = tuple(Standing(*values) for values in itertools.product((False, True), repeat=5))
+# How far the quantities are enumerated below. Five ranks tell any four of them apart, and the count stops growing well
+# inside this: `check_spaces` enumerates wider and holds what it finds to what stands here.
+_RANKS = 8
+
+
+def _compared(is_at_line_start):
+    """
+    Every way the parse's quantities can stand against each other, as `(the six axes above)` tuples.
+
+    Worked out from the quantities rather than declared, so the answers are consistent by construction: an ordering is
+    transitive and no set of integers makes a tuple that is not here. Four facts bound them, each true of every parse
+    rather than of the grammar's current shape:
+
+    - **A column is where the parse stands in its line, and a line start is column zero.** So the column is zero at a
+      line start and at least one anywhere else — the interpreter says exactly this, setting `is_sol` to `column == 0`.
+    - **The indentation reaches one below zero.** The root is entered at `-1`, where nothing has been pushed, and
+      `0 < n` tells that apart from a pushed zero.
+    - **The measured run and the floor are lengths**, so neither is negative.
+    - **The measured run stands within the line the parse is on**, so it is no longer than the column. Every site
+      reading it measures `s-space*` under a `(token): indent`, and a space is neither a break — which would reset the
+      column under it — nor a byte-order mark, which would take no column of its own.
+    """
+    columns = (0,) if is_at_line_start else range(1, _RANKS)
+    return sorted(
+        {
+            (0 < n, column <= n, n < measured, measured < n, floor <= column, floor <= n)
+            for n in range(-1, _RANKS)
+            for column in columns
+            for measured in range(0, column + 1)
+            for floor in range(0, _RANKS)
+        }
+    )
+
+
+def _standings():
+    """
+    Every standing a parse can be in: the orderings above under each way the four other axes can stand.
+
+    Two of those four are not free either, and both are facts about what the parse has just done:
+
+    - **Nothing an `ns-char` names stands behind a line start.** What is behind one is a break, a byte-order mark, or
+      nothing at all, and `ns-char` holds none of the three.
+    - **A run that took its whole limit leaves the parse mid-line.** Every limited run the grammar makes takes spaces
+      or hex digits, neither holding a break, and no consume ever consumes nothing — so having taken one is standing
+      past it, on the line it was taken on.
+    """
+    return tuple(
+        Standing(is_at_line_start, is_after_ns_char, did_match_full_span, did_consume_since_open, *compared)
+        for is_at_line_start in (False, True)
+        for is_after_ns_char in ((False,) if is_at_line_start else (False, True))
+        for did_match_full_span in ((False,) if is_at_line_start else (False, True))
+        for did_consume_since_open in (False, True)
+        for compared in _compared(is_at_line_start)
+    )
+
+
+STANDINGS = _standings()
 
 AXES = tuple(field.name for field in dataclasses.fields(Standing))
 
