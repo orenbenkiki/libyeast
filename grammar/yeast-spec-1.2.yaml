@@ -763,11 +763,10 @@ nb-char:
 
 b-break:
   (any):
+  - b-line-feed
   - (all):
     - b-carriage-return
-    - b-line-feed
-  - b-carriage-return
-  - b-line-feed
+    - (???): b-line-feed
 
 
 

@@ -777,14 +777,18 @@ def invariant_faults(stages):
 
 def unsettled_invariants(grammar):
     """
-    Every invariant the pipeline names that `grammar` still breaks, as `[(name, count)]` worst first.
+    Every invariant the pipeline names or owes that `grammar` still breaks, as `[(name, count)]` worst first.
 
     What the steps settle between them is not the same question as what is true at the end: an invariant settled early
     and broken later under a declared lapse is unsettled all the same, and a lapse is a reason rather than an excuse.
     Each one standing is work still owed — a step that has not been written — so this is the list the pipeline is
     finished by emptying, and it says so mechanically instead of leaving it to be noticed.
+
+    `OWED` is read beside the steps' own, so an invariant no phase has taken on yet is counted here rather than written
+    down somewhere by hand and left to go stale.
     """
     named = {held.name: held for step in STEPS for held in step.invariants}
+    named.update({held.name: held for held in OWED})
     standing = [(name, len(test(grammar))) for name, test in sorted(named.items())]
     return sorted(((name, count) for name, count in standing if count), key=lambda held: -held[1])
 
@@ -3337,20 +3341,34 @@ EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE = Invariant(
 )
 
 
+def _decided_ways(grammar):
+    """
+    The ways something decides between, as `{name: ways}`.
+
+    A body offering one way is no decision — a caller reaches it by calling it rather than by picking it — and the last
+    way of a choice is that choice's else, entered where every way in front of it refused rather than on anything of its
+    own. What is left is what a machine has to tell apart, and it is said once here for everything that asks.
+    """
+    return {
+        name: production.body.alternatives[:-1]
+        for name, production in grammar.items()
+        if isinstance(production.body, ir.ChoiceState) and len(production.body.alternatives) > 1
+    }
+
+
 def _ungated_ways(grammar):
     """
     The ways something decides to enter that carry no gate, as `(name, way)` pairs.
 
-    What "ungated" is, asked once and read by everything that asks it: a way of a choice that offers more than one, not
-    the last of them, whose own gate holds no guard and where not every path into the production asked one — a guard
-    asked where the production is entered being asked where the way is.
+    What "ungated" is, asked once and read by everything that asks it: a way something decides between whose own gate
+    holds no guard and where not every path into the production asked one — a guard asked where the production is
+    entered being asked where the way is.
     """
     entering = _asked_where_entered(grammar)
     return [
         (name, way)
-        for name, production in grammar.items()
-        if isinstance(production.body, ir.ChoiceState) and len(production.body.alternatives) > 1
-        for way in production.body.alternatives[:-1]
+        for name, ways in _decided_ways(grammar).items()
+        for way in ways
         if not way.gate.guards and not all(entering[name])
     ]
 
@@ -3485,6 +3503,55 @@ def _accepted_and_gated_charsets_are_equal(grammar):
 ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL = Invariant(
     "accepted-and-gated-charsets-are-equal", _accepted_and_gated_charsets_are_equal
 )
+
+
+def _entered_in(name, way, grammar, entering):
+    """The states a parse may enter `way` in, as a `spaces.SubSpace` — its gate met with every path that reaches it."""
+    held = spaces.NOWHERE
+    for path in entering[name]:
+        held = held | _gated_by(path, way, grammar)
+    return held
+
+
+def _no_choice_ways_partially_overlap(grammar):
+    """
+    Check that two ways something decides between are entered in the same states or in none of the same.
+
+    Three ways two of them can stand and only two are of any use. **Apart**, where no state enters both and the input
+    itself says which to take. **Together**, where every state enters both and the input says nothing, so what tells
+    them apart has to be something else. And **half apart**, where a state in the overlap has to be told from one just
+    outside it — which is the shape that makes a machine ask two questions where it should ask one, and which every
+    later step would have to carry.
+
+    Driving this to none leaves one shape behind: two ways entered in exactly the same states. That is what the
+    determinizing has to answer for, and it can answer for it once rather than once per way it half-covers.
+
+    Read as `accepted-and-gated-charsets-are-equal` reads a way's gate: what the way's own gate admits, met with what is
+    asked along each path into its production, taken over the paths together. A guard asked one call up is asked where
+    the way is, and it narrows every way of the choice alike — so an overlap outside it is one no parse reaches.
+
+    The choice's else is not one of the two and is not asked about. It carries no gate, so it admits every state there
+    is: asked, it would half overlap every way in front of it that asks anything, and no splitting could ever settle
+    that — what it is entered in is whatever the ways in front were not, which is a shape rather than a question. What a
+    machine has to tell apart is the ways it decides between, and the else is what it does when it has not.
+
+    Two ways whose gates the space cannot tell apart exactly are read as it can. A literal's subspace is its first
+    character where the guard asks for more, so two ways it separates may be read as together — which is the safe way
+    round, being work handed to the determinizing rather than a decision made here.
+    """
+    _accepted, _ways, entering = _leaf_tables(grammar)
+    faults = []
+    for name, ways in _decided_ways(grammar).items():
+        held = [_entered_in(name, way, grammar, entering) for way in ways]
+        faults += [
+            f"{name}: a way is entered in some of the states a way behind it is entered in, and not all of them"
+            for at, space in enumerate(held)
+            if any(space & other and space != other for other in held[at + 1 :])
+        ]
+    return faults
+
+
+NO_CHOICE_WAYS_PARTIALLY_OVERLAP = Invariant("no-choice-ways-partially-overlap", _no_choice_ways_partially_overlap)
 
 
 def _every_path_reaches_a_leaf_way(grammar):
@@ -3685,16 +3752,14 @@ GUARD_CROSSES_ACTION = Crossing(
         # The indentation the parse carries is neither the input nor where the parse stands in the line, which is what
         # these read.
         ("EndOfStreamGuard", "PushIndentAction"): True,
-        ("LiteralPeekGuard", "PushIndentAction"): True,
         ("LookGuard", "PushIndentAction"): True,
         ("NegLookGuard", "PushIndentAction"): True,
         ("StartOfLineGuard", "PushIndentAction"): True,
-        # What may not match at a start of line is read by whatever matches there, and a `LiteralPeekGuard` matches its
-        # characters through the same refusal a `LookGuard` matches its item through — so which set each reads is the
-        # question `_reads_none_of_the_forbidden` answers of the two in hand. Whether a character is there at all, and
-        # where the parse stands in the line, match nothing and read none of it.
+        # What may not match at a start of line is read by whatever matches there, and a lookahead matches its item
+        # through that same refusal — so which set it reads is the question `_reads_none_of_the_forbidden` answers of
+        # the two in hand. Whether a character is there at all, and where the parse stands in the line, match nothing
+        # and read none of it.
         ("EndOfStreamGuard", "SetForbiddenAction"): True,
-        ("LiteralPeekGuard", "SetForbiddenAction"): _reads_none_of_the_forbidden,
         ("LookGuard", "SetForbiddenAction"): _reads_none_of_the_forbidden,
         ("StartOfLineGuard", "SetForbiddenAction"): True,
     }
@@ -3735,9 +3800,9 @@ def _characters_pulled_in(way, grammar):
     """
     `way` with a call to a one-character production standing where the character does, or `way` unchanged.
 
-    The base grammar mirrors the official one, which gives some characters a rule of their own: `b-break` is `CR LF`
-    said as two calls, where `c-directives-end` is `---` said as three characters. The two spell the same kind of thing,
-    and a literal is what the machine wants of either — so the calls are pulled in first and the run is looked for once.
+    The base grammar mirrors the official one, which gives some characters a rule of their own: a directive's `YAML` is
+    four characters said outright, where another rule spells the same kind of thing as calls to the rules naming them. A
+    literal is what the machine wants of either — so the calls are pulled in first and the run is looked for once.
 
     Only where the way performs nothing of its own. What a way does comes before what it calls, so a call pulled in
     ahead of an action would be taken before the action rather than after it.
@@ -4088,10 +4153,10 @@ def split_consumes_into_gates(grammar, namer):
     `GUARD_CROSSES_ACTION` says whether it may. One set per way per pass: a second would have to cross the take the
     first left behind, and a character already taken is a different position.
 
-    A call to a production that is a character set is the same thing said one call away — `b-break`'s second way is
-    `b-carriage-return`, which is `CR` and nothing else. The set stands where the call did and is then split like any
-    other. The production stays as it is: a scan names it as what it runs over and an exclusion as what it forbids, and
-    there it is the class rather than a match.
+    A call to a production that is a character set is the same thing said one call away — `b-break`'s first way is
+    `b-line-feed`, which is `LF` and nothing else. The set stands where the call did and is then split like any other.
+    The production stays as it is: a scan names it as what it runs over and an exclusion as what it forbids, and there
+    it is the class rather than a match.
     """
 
     wrapped = {}
@@ -5779,3 +5844,9 @@ STEPS = [
     Step("hoist-guards-to-callers", hoist_guards_to_callers, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
     Step("flatten-ungated-call-trees", flatten_ungated_call_trees, settles=EVERY_CONDITIONAL_WAY_IS_GATED),
 ]
+
+# What the pipeline owes and no phase has taken on: counted at the end beside what the steps carry, and named on the
+# steps that serve it once a phase pursues it, which is where it comes out of here. Not claimed at the door instead: a
+# claim there would put every step from the first under the law of a question the pipeline is not asking yet, costing a
+# lapse on each one that touches a gate — noise about the declarations rather than news about the grammar.
+OWED = (NO_CHOICE_WAYS_PARTIALLY_OVERLAP,)

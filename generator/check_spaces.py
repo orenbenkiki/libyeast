@@ -112,6 +112,8 @@ def check_operations(named):
             errors.append(f"{pair}: the union does not hold both")
         if states_of(one & other) != states_of(one) & states_of(other):
             errors.append(f"{pair}: the intersection does not hold what both hold")
+        if states_of(one - other) != states_of(one) - states_of(other):
+            errors.append(f"{pair}: the difference does not hold what only the first holds")
         if one.holds(other) != (states_of(other) <= states_of(one)):
             errors.append(f"{pair}: containment disagrees with the states held")
         if bool(one) != bool(states_of(one)):
@@ -127,6 +129,10 @@ def check_laws(named):
             errors.append(f"{name}: is changed by the empty union or the whole intersection")
         if subspace & spaces.NOWHERE != spaces.NOWHERE:
             errors.append(f"{name}: meets the empty subspace somewhere")
+        if subspace - subspace != spaces.NOWHERE or subspace - spaces.NOWHERE != subspace:
+            errors.append(f"{name}: taking itself away leaves something, or taking nothing away changes it")
+        if (subspace & spaces.EVERYWHERE) | (spaces.EVERYWHERE - subspace) != spaces.EVERYWHERE:
+            errors.append(f"{name}: it and what is left of the whole space without it are not the whole space")
         if not spaces.EVERYWHERE.holds(subspace) or not subspace.holds(spaces.NOWHERE):
             errors.append(f"{name}: is not between the empty subspace and the whole one")
         if not subspace.holds(subspace):

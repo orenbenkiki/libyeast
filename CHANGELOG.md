@@ -1163,6 +1163,30 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A break is a line feed, or a carriage return with a line feed after it if there is one.** The official grammar's
+  `b-break` is three ways — carriage return with line feed, carriage return alone, line feed alone — of which the first
+  two begin the same way. A parse standing at a carriage return can only tell them apart by taking the longer and
+  handing it back, and every rule that consumes a break inherits that: 140 pairs of ways stood on `CRLF` where one
+  wanted both characters and the other only the first, one nested inside the other while reading identical to the
+  subspace, which sees a literal as its first character. Said as `LF | CR LF?` the same three matches come out with
+  nothing to back out of, and no input tells the two readings apart. Declared beside the other deviations from the
+  official BNF, `c-b-block-header`'s being the same shape of change.
+
+- **A way half overlapping a way behind it is a count, and it reads 345.** Three relations are possible between the
+  states two ways are entered in and only two are of use: apart, where the input says which to take, and together, where
+  it says nothing and something else must. Half apart is the third — a state in the overlap has to be told from one just
+  outside it — and it is what makes a machine ask two questions where it should ask one.
+  `no-choice-ways-partially-overlap` counts the ways it happens to — one per way that half overlaps a way behind it, as
+  `every-conditional-way-is-gated` counts ways rather than the pairs they make — and reads **345**. What it reads them
+  by is what `accepted-and-gated-charsets-are-equal` reads a gate by: the way's own gate met with what is asked along
+  each path into its production, over the paths together. Said as pairs, the 204 choices that decide between more than
+  one way hold 3271 standing apart, 1676 half apart and 702 together.
+
+  It belongs to no step yet, so `OWED` is where it stands — counted at the end beside what the steps carry rather than
+  written into a document by hand. `spaces.SubSpace` gains the difference the refinement will want, judged by the states
+  it holds as the union and the intersection already are, and `_decided_ways` says what a choice decides between — the
+  last way being its else — once, for this and for `every-conditional-way-is-gated` alike.
+
 - **A comparison of two of the parse's own quantities is an axis, and the quantities are not.** The indentation, the
   column, the length of the run just measured and the block scalar's floor are integers of no fixed range, so the space
   held no coordinate for any of them and read all 30 comparisons standing between two as admitting everywhere — and

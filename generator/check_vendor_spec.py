@@ -77,6 +77,13 @@ DEVIATIONS = {
         "the sequence's twin: the first entry's own run of spaces is the indent token and <column> is the n+m the "
         "entries are measured against, l-block-map-entries running them at it"
     ),
+    "b-break": (
+        "the official grammar's break is three ways, a carriage return with a line feed, a carriage return alone and a "
+        "line feed alone. The first two begin the same way, so a parse standing at a carriage return can only tell "
+        "them apart by trying the longer one and handing it back — and every rule that consumes a break inherits that. "
+        "libyeast says the same three matches as a line feed or a carriage return with a line feed after it if there "
+        "is one, which no input tells apart from the official reading and no parse has to back out of"
+    ),
     "c-b-block-header": (
         "the official grammar's header is two orderings, indent-then-chomp or chomp-then-indent, that begin the same "
         "way, so it can only tell them apart by backtracking and can never call a header malformed. libyeast guards "

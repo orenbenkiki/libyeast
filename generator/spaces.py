@@ -146,6 +146,7 @@ class Characters:
 _KNOWN = {}
 _MET = {}  # what two of them hold in common, per pair
 _JOINED = {}  # what either of them holds, per pair
+_DROPPED = {}  # what the first holds and the second does not, per pair
 
 
 def held(spans=(), is_at_end=False):
@@ -171,6 +172,20 @@ def _met(one, other):
     if known is None:
         _MET[one, other] = known = held(
             chars.intersected_spans(one.spans, other.spans), one.is_at_end and other.is_at_end
+        )
+    return known
+
+
+def _dropped(one, other):
+    """What the first admits and the second does not, remembered against the pair."""
+    if one is other or one is NONE:
+        return NONE
+    if other is NONE:
+        return one
+    known = _DROPPED.get((one, other))
+    if known is None:
+        _DROPPED[one, other] = known = held(
+            chars.subtracted_spans(list(one.spans), list(other.spans)), one.is_at_end and not other.is_at_end
         )
     return known
 
@@ -220,6 +235,12 @@ class SubSpace:
         if self is other:
             return self
         return SubSpace(tuple(map(_met, self.admitted, other.admitted)))
+
+    def __sub__(self, other):
+        """The states this subspace holds and `other` does not."""
+        if self is other:
+            return NOWHERE
+        return SubSpace(tuple(map(_dropped, self.admitted, other.admitted)))
 
     def holds(self, other):
         """Whether every state `other` holds is one this subspace holds."""
