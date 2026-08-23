@@ -242,7 +242,9 @@ before anything that reads a grammar without resolving a call, the character que
 a set a context picks denotes nothing until a caller is known, the scopes become pairs before a way is cut into a call
 and a continuation, and the gates come last because there is nothing to gate until a body is an ordered list of ways.
 `invariant_faults` holds the whole list to the law, and `unsettled_invariants` names what the final grammar still breaks
-— none, every count the phases carry standing at none where the pipeline ends.
+— every count the phases carry stands at none where the pipeline ends, and what is left is what `OWED` names: an
+invariant no phase has taken on, carrying a test of its own so its count is read here beside them rather than written
+into a document by hand and left to go stale.
 
 **The shape comes before the determinizing, and the reasons are structural rather than a preference.**
 

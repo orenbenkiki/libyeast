@@ -777,14 +777,18 @@ def invariant_faults(stages):
 
 def unsettled_invariants(grammar):
     """
-    Every invariant the pipeline names that `grammar` still breaks, as `[(name, count)]` worst first.
+    Every invariant the pipeline names or owes that `grammar` still breaks, as `[(name, count)]` worst first.
 
     What the steps settle between them is not the same question as what is true at the end: an invariant settled early
     and broken later under a declared lapse is unsettled all the same, and a lapse is a reason rather than an excuse.
     Each one standing is work still owed — a step that has not been written — so this is the list the pipeline is
     finished by emptying, and it says so mechanically instead of leaving it to be noticed.
+
+    `OWED` is read beside the steps' own, so an invariant no phase has taken on yet is counted here rather than written
+    down somewhere by hand and left to go stale.
     """
     named = {held.name: held for step in STEPS for held in step.invariants}
+    named.update({held.name: held for held in OWED})
     standing = [(name, len(test(grammar))) for name, test in sorted(named.items())]
     return sorted(((name, count) for name, count in standing if count), key=lambda held: -held[1])
 
@@ -3548,6 +3552,38 @@ def _no_choice_ways_partially_overlap(grammar):
 NO_CHOICE_WAYS_PARTIALLY_OVERLAP = Invariant("no-choice-ways-partially-overlap", _no_choice_ways_partially_overlap)
 
 
+def _every_choice_way_is_different(grammar):
+    """
+    Check that no two ways something decides between are entered in the same states.
+
+    Where two are, the input says nothing about which to take: a machine reading one character and asking one question
+    of it has the same answer for both, so it takes the one standing first and gives it back where that was wrong. That
+    is the backtracking the whole shape exists to remove, and what is left of it once every way carries a gate.
+
+    Two ways being entered in the same states is the only way they can meet at all — `no-choice-ways-partially-overlap`
+    is what says so, and it is what makes this the simple question it is. Without it a way could be entered in some of
+    another's states and not the rest, and telling those apart would be a question about the overlap rather than about
+    the ways.
+
+    Counted per way rather than per pair, as the gating count is: a way entered where a way behind it is entered is one
+    the machine cannot be told to take, and settling it is settling that way. The choice's else is not asked about,
+    being what happens where no way in front was taken rather than a way the input picks.
+    """
+    _accepted, _ways, entering = _leaf_tables(grammar)
+    faults = []
+    for name, ways in _decided_ways(grammar).items():
+        held = [_entered_in(name, way, grammar, entering) for way in ways]
+        faults += [
+            f"{name}: a way is entered in the states a way behind it is entered in"
+            for at, space in enumerate(held)
+            if space and any(space == other for other in held[at + 1 :])
+        ]
+    return faults
+
+
+EVERY_CHOICE_WAY_IS_DIFFERENT = Invariant("every-choice-way-is-different", _every_choice_way_is_different)
+
+
 def _every_path_reaches_a_leaf_way(grammar):
     """
     Check that every path into a production of leaf ways reaches one of them.
@@ -5979,3 +6015,9 @@ STEPS = [
     ),
     Step("merge-gate-peeks-2", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
 ]
+
+# What the pipeline owes and no phase has taken on, counted at the end beside what the steps carry and named on the
+# steps that serve it once a phase pursues it — which is when it comes out of here. Not claimed at the door instead: a
+# claim there would put every step from the first under the law of a question the pipeline is not asking yet, costing a
+# lapse on each one that touches a gate, which is noise about the declarations rather than news about the grammar.
+OWED = (EVERY_CHOICE_WAY_IS_DIFFERENT,)

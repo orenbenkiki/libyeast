@@ -1163,6 +1163,23 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **What is left of the backtracking is a count, and it reads 995.** With every way gated and no two half overlapping,
+  two ways of a choice can meet in only one way: by being entered in exactly the same states. There the input says
+  nothing about which to take — a machine reading one character and asking one question of it has the same answer for
+  both, so it takes the one standing first and gives it back where that was wrong. `every-choice-way-is-different`
+  counts the ways that happens to, one per way entered where a way behind it is entered, as the gating count counts ways
+  rather than the pairs they make. It reads **995**, worst in the block-indented flattening and the stream's document
+  loop, and no way of a choice is entered nowhere at all — so what it counts is ambiguity rather than ways nothing
+  reaches.
+
+  Where it stands is the split working rather than the split costing. Cutting a way by the atoms of its choice turns
+  every pair that half overlapped into pieces that are apart or the same, so a shape wanting a state in an overlap told
+  from one just outside it is now a pair of ways the input cannot tell apart at all. The work did not grow; it became
+  the one kind the determinizing knows how to answer.
+
+  `OWED` comes back with it, having gone out empty one change ago: an invariant carrying a test but no phase is counted
+  at the end beside what the steps carry, and this is one.
+
 - **The ways of a choice are entered in the same states or in none of the same.** `no-choice-ways-partially-overlap` is
   **settled**, where it read 345. `split-overlapping-ways` refines the states the ways of a choice are entered in into
   atoms — pieces no two of which meet, covering between them what the ways cover — and each way becomes one way per atom

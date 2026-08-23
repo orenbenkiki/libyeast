@@ -75,18 +75,24 @@ establishes an invariant the steps after it may lean on. What each phase owns an
      and be handed back, a production refusing what it could have taken is a way its caller declines to offer, and only
      a committed machine makes that a fault.
 
-1. **Settle `every-choice-is-deterministic`.** With the ways gated, what remains is the choices no character tells
-   apart. `every-called-alternative-is-unconditional` belongs here rather than to the gating phase: taking a callee's
-   gate out to the ways that call it carries a guard over what the caller performs before the call, which nothing can do
-   until the gate and the call are made adjacent. The design for the rest — the block-structure factoring, the
-   speculations and the one vocabulary they spend — is *Determinize, what remains* and *The provisional mechanism*
-   below. **At none, the grammar is deterministic**, and that is what Milestone 04 needs.
+1. **Settle `every-choice-way-is-different`.** With the ways gated and no two of them half overlapping, what remains is
+   the ways the input cannot tell apart at all: two entered in exactly the same states, where a machine reading one
+   character has the same answer for both and takes the one standing first. Being entered in the same states is now the
+   only way two can meet, which is what makes this the simple question it is — the shape that needed telling a state in
+   an overlap from one just outside it is gone.
+
+   `every-called-alternative-is-unconditional` belongs here rather than to the gating phase: taking a callee's gate out
+   to the ways that call it carries a guard over what the caller performs before the call, which nothing can do until
+   the gate and the call are made adjacent. The design for the rest — the block-structure factoring, the speculations
+   and the one vocabulary they spend — is *Determinize, what remains* and *The provisional mechanism* below. **At none,
+   the grammar is deterministic**, and that is what Milestone 04 needs.
 
    Every gate the pipeline makes *relocates* a guard: `hoist-guards-to-gates` and `hoist-guards-to-callers` move guards
-   up, `merge-gate-peeks` merges them, `split-consumes-into-gates` mints one from a set standing in the way itself, and
-   `flatten-ungated-call-trees` reaches down for the gates of everything a way can run. None mints one from what a way
-   accepts, so a choice is told apart by whichever guards its ways happened to carry rather than by what they take —
-   which is the gap to close where two gates admit the same character and the spaces behind them do not.
+   up, `merge-gate-peeks` merges them, `split-consumes-into-gates` mints one from a set standing in the way itself,
+   `flatten-ungated-call-trees` reaches down for the gates of everything a way can run, and `split-overlapping-ways`
+   cuts a way by the atoms its choice is refined into. None mints one from what a way *accepts*, so a choice is told
+   apart by whichever guards its ways happened to carry rather than by what they take — which is the gap to close where
+   two gates admit the same character and the spaces behind them do not.
 
 1. **Adapt the C parser to it** (Milestone 04), and what follows from there.
 
