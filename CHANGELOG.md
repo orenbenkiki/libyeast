@@ -1163,6 +1163,23 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **Two ways that do the same thing are not two ways to tell apart.** Both counts over the ways of a choice compared the
+  states each is entered in and never asked whether the two *do* anything different. A machine takes the first way whose
+  gate holds and does not come back, so two ways alike in everything but their gates are one way reached two ways:
+  whichever gate answers first, the same actions run and the same productions are called, and the same input is read.
+  `s-separate-lines` reaches its flow prefix both at a line start and at the end of the stream, by two such ways. There
+  is nothing for the input to decide, and what the two gates cannot be is one gate — a gate is every guard holding at
+  once, and this is either holding. `_does_the_same` says it, and `no-choice-ways-partially-overlap` and
+  `every-choice-way-is-different` both ask it before counting a pair or cutting one.
+
+  That also fixes a bug in `split-overlapping-ways`: it made 38 pairs of ways alike in every part, where the grammar
+  handed it none. Two ways alike but for their gates are each cut on account of *other* ways they half overlap, and the
+  atom where their own gates meet then gives each a piece narrowed to the same gate — pieces agreeing in every part, the
+  gate included. One of them is the way and the other is it said twice, so the second is not written out.
+
+  `every-choice-way-is-different` reads **957** where it read 995: six ways were never a conflict, and thirty-two were
+  the step's own duplicates.
+
 - **What is left of the backtracking is a count, and it reads 995.** With every way gated and no two half overlapping,
   two ways of a choice can meet in only one way: by being entered in exactly the same states. There the input says
   nothing about which to take — a machine reading one character and asking one question of it has the same answer for

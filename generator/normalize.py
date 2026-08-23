@@ -3502,6 +3502,19 @@ ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL = Invariant(
 )
 
 
+def _does_the_same(one, other):
+    """
+    Whether two ways of a choice do the same thing, whichever of them is entered.
+
+    A machine takes the first way whose gate holds and does not come back, so two ways alike in everything but their
+    gates are one way reached two ways — `s-separate-lines` runs its flow prefix at a line start and at the end of the
+    stream, by two ways performing the same actions and calling the same productions. Whichever gate answers first, the
+    same thing happens and the same input is read, so there is nothing for the input to decide and nothing to tell
+    apart. What the two gates cannot be is one gate: a gate is every guard holding at once, and this is either holding.
+    """
+    return dataclasses.replace(one, gate=ir.GatePart()) == dataclasses.replace(other, gate=ir.GatePart())
+
+
 def _entered_in(name, way, grammar, entering):
     """The states a parse may enter `way` in, as a `spaces.SubSpace` — its gate met with every path that reaches it."""
     held = spaces.NOWHERE
@@ -3544,7 +3557,10 @@ def _no_choice_ways_partially_overlap(grammar):
         faults += [
             f"{name}: a way is entered in some of the states a way behind it is entered in, and not all of them"
             for at, space in enumerate(held)
-            if any(space & other and space != other for other in held[at + 1 :])
+            if any(
+                space & other and space != other and not _does_the_same(ways[at], ways[behind])
+                for behind, other in enumerate(held[at + 1 :], at + 1)
+            )
         ]
     return faults
 
@@ -3576,7 +3592,11 @@ def _every_choice_way_is_different(grammar):
         faults += [
             f"{name}: a way is entered in the states a way behind it is entered in"
             for at, space in enumerate(held)
-            if space and any(space == other for other in held[at + 1 :])
+            if space
+            and any(
+                space == other and not _does_the_same(ways[at], ways[behind])
+                for behind, other in enumerate(held[at + 1 :], at + 1)
+            )
         ]
     return faults
 
@@ -4718,9 +4738,18 @@ def split_overlapping_ways(grammar, namer):
     def told(name, production):
         ways = production.body.alternatives[:-1]
         held = [_entered_in(name, way, grammar, entering) for way in ways]
-        if not any((one & other) and one != other for at, one in enumerate(held) for other in held[at + 1 :]):
+        # Only the ways something has to be told apart from cut anything. Two alike but for their gates are one way
+        # reached two ways, so where they meet there is nothing to decide, and cutting them there would say the same
+        # thing twice.
+        cutting = {
+            at
+            for at, one in enumerate(held)
+            for other, two in enumerate(held)
+            if at != other and (one & two) and one != two and not _does_the_same(ways[at], ways[other])
+        }
+        if not cutting:
             return production
-        parts = _atoms(held)
+        parts = _atoms([held[at] for at in sorted(cutting)])
         opened = []
         for way, space in zip(ways, held):
             inside = [atom for atom in parts if (atom & space) == atom and atom]
@@ -4732,7 +4761,12 @@ def split_overlapping_ways(grammar, namer):
                     continue
                 cut = _taking(way, atom, name, grammar, namer, minted)
                 guards = _gate_for(atom, space, grammar)
-                opened.append(dataclasses.replace(cut, gate=ir.GatePart(guards=(*cut.gate.guards, *guards))))
+                piece = dataclasses.replace(cut, gate=ir.GatePart(guards=(*cut.gate.guards, *guards)))
+                # A piece already standing here is this one. Two ways alike but for their gates are cut by the atom
+                # where those gates meet into pieces alike in every part, the gate included — one way reached two ways,
+                # said once here rather than twice.
+                if piece not in opened:
+                    opened.append(piece)
         return dataclasses.replace(
             production, body=ir.ChoiceState(alternatives=(*opened, production.body.alternatives[-1]))
         )
