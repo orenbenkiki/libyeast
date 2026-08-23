@@ -3682,6 +3682,118 @@ def _every_conflict_is_a_tail_call(grammar):
 EVERY_CONFLICT_IS_A_TAIL_CALL = Invariant("every-conflict-is-a-tail-call", _every_conflict_is_a_tail_call)
 
 
+def _reached_by_ways(grammar):
+    """`{name: {name}}` — the productions each one hands control to through its ways, and everything those reach."""
+    calls = {
+        name: {
+            call.name
+            for way in _offered_ways(production.body)
+            for call in (way.first, way.second)
+            if call is not None and call.name in grammar
+        }
+        for name, production in grammar.items()
+    }
+    callers = {name: set() for name in grammar}
+    for name, called in calls.items():
+        for one in called:
+            callers[one].add(name)
+    reaches, worklist = {name: set(called) for name, called in calls.items()}, list(grammar)
+    while worklist:
+        name = worklist.pop()
+        grown = reaches[name] | {far for near in calls[name] for far in reaches[near]}
+        if grown != reaches[name]:
+            reaches[name] = grown
+            worklist.extend(callers[name])
+    return reaches
+
+
+def _leaf_conflicts(held, reaches):
+    """
+    Which of `held` have no conflict anywhere below them.
+
+    A conflict standing over another calls one, so a copy of it holds that call again: moving a continuation into it
+    trades one call site for as many copies of the sites standing inside it. A leaf holds none of those, so its copies
+    hold none either, and moving a continuation in is a call site gone and nothing put back.
+    """
+    return {name for name in held if not ((reaches[name] - {name}) & held)}
+
+
+def lower_continuations_into_conflicts(grammar, namer):
+    """
+    Say a call of something conflicting that carries on somewhere as a call of that thing with the carrying-on inside
+    it: `A = |actA →B contA| |…|` with `B` conflicting becomes `A = |actA →B′|`, `B′` being `B` with `contA` run past
+    everything `B` does.
+
+    What the machine cannot be told its way through is told by what comes after it, and what comes after it is the
+    caller's until it is moved. Moved, every way of the copy ends where the whole call ends, so the gate telling those
+    ways apart stands inside the production holding them instead of a frame up where nothing they do can reach it.
+
+    The continuation is recursed into the callee rather than pushed in front of it. A way of `B` ending in nothing
+    carries on to `contA`, and a way ending in `R` carries on to `R` with `contA` inside it the same way — so a tail
+    stays a tail and no frame is added. Every copy a pass makes carries the same continuation, which is what holds the
+    copies to one per production and continuation rather than one per stack a parse could stand on, and it is what ends
+    the recursion through the ways: a copy is made once for a name and a continuation, so a way reaching a name already
+    being copied under the same continuation takes the copy already begun. A terminal offers no way to carry on from and
+    so cannot be copied, which is raised on rather than written as the push it would have to be.
+
+    Into the conflicts nothing conflicting stands under. One standing over another calls it, and a copy would call it
+    again — so moving a continuation there trades a call site for a copy of every site inside, and there is one inside
+    for every conflict below. A leaf has none below it and so none inside, and the move is a site gone.
+
+    A call whose continuation reaches what it calls is left as it stands. The copy would hold a call of that same
+    production behind a continuation minted here, which is a call standing in front of what decides it — the shape this
+    exists to remove, put back one level down.
+
+    A way carrying a recovery is left alone: the recovery rides the push, and what a cut unwinding out of the call stops
+    at is a property of the frame this would take away.
+
+    One pass over the grammar it is handed. Which ways conflict and what reaches what are each read once here, both
+    being questions over the whole grammar, and the copies are minted against those readings rather than against a
+    grammar that changes underfoot.
+    """
+    reaches = _reached_by_ways(grammar)
+    leaves = _leaf_conflicts(_conflicting(grammar), reaches)
+    minted, made = {}, {}
+
+    def variant(name, tail):
+        """`name` with `tail` run past everything it does, minted once per pair and shared by every site wanting it."""
+        if (name, tail) in made:
+            return made[name, tail]
+        made[name, tail] = fresh = namer.fresh(name)
+        held = grammar[name]
+        ways = _offered_ways(held.body)
+        if not ways:
+            raise ValueError(f"{name}: a copy wanted of a terminal, which holds no way for a continuation to end")
+        minted[fresh] = ir.Prod(
+            held.number, fresh, (), ir.ChoiceState(alternatives=tuple(after(way, tail) for way in ways))
+        )
+        return fresh
+
+    def after(way, tail):
+        """`way` with `tail` run past where it ends — carried on to where it ends in nothing, recursed in otherwise."""
+        carried = tail if way.second is None else variant(way.second.name, tail)
+        return dataclasses.replace(way, second=ir.RefCall(name=carried, args=()))
+
+    def told(way):
+        if way.first is None or way.second is None or way.recover is not None:
+            return way
+        if way.first.name not in leaves or way.first.name in {way.second.name, *reaches[way.second.name]}:
+            return way
+        return dataclasses.replace(
+            way, first=ir.RefCall(name=variant(way.first.name, way.second.name), args=()), second=None
+        )
+
+    written = {
+        name: (
+            dataclasses.replace(production, body=ir.ChoiceState(alternatives=tuple(told(way) for way in ways)))
+            if (ways := _offered_ways(production.body))
+            else production
+        )
+        for name, production in grammar.items()
+    }
+    return {**written, **minted}
+
+
 def _every_path_reaches_a_leaf_way(grammar):
     """
     Check that every path into a production of leaf ways reaches one of them.
@@ -6126,10 +6238,18 @@ STEPS = [
         },
     ),
     Step("merge-gate-peeks-2", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
+    # Phase 16 pursues `EVERY_CONFLICT_IS_A_TAIL_CALL`: a production the machine cannot be told its way through is
+    # entered only at the end of a way, so what decides between its ways stands inside it. It follows the splitting
+    # because what a conflict is rests on two ways being entered in exactly the same states, which is what the splitting
+    # leaves, and it comes before anything that tells those ways apart because what tells them apart is the continuation
+    # this moves.
+    Step(
+        "lower-continuations-into-conflicts", lower_continuations_into_conflicts, reduces=EVERY_CONFLICT_IS_A_TAIL_CALL
+    ),
 ]
 
 # What the pipeline owes and no phase has taken on, counted at the end beside what the steps carry and named on the
 # steps that serve it once a phase pursues it — which is when it comes out of here. Not claimed at the door instead: a
 # claim there would put every step from the first under the law of a question the pipeline is not asking yet, costing a
 # lapse on each one that touches a gate, which is noise about the declarations rather than news about the grammar.
-OWED = (EVERY_CHOICE_WAY_IS_DIFFERENT, EVERY_CONFLICT_IS_A_TAIL_CALL)
+OWED = (EVERY_CHOICE_WAY_IS_DIFFERENT,)

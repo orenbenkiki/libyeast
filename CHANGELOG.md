@@ -1163,6 +1163,32 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A conflict entered at the end of a way holds what decides it.** `lower-continuations-into-conflicts` takes
+  `every-conflict-is-a-tail-call` from 516 to **467**. A call of a conflict that carries on somewhere becomes a call of
+  that conflict with the carrying-on inside it: `A = |actA →B contA|` with `B` conflicting becomes `A = |actA →B′|`,
+  `B′` being `B` with `contA` run past everything `B` does. Every way of `B′` ends where the whole call ends, so the
+  gate telling those ways apart stands inside the production holding them rather than a frame up where nothing they do
+  can reach it.
+
+  The continuation is recursed into the callee rather than pushed in front of it — a way ending in nothing carries on to
+  `contA`, and a way ending in `R` carries on to `R` with `contA` inside it the same way. A tail stays a tail, no frame
+  is added, and every copy carries the same continuation, which holds the copies to one per production and continuation
+  rather than one per stack a parse could stand on — and is what ends the recursion through the ways, a way reaching a
+  name already being copied under the same continuation taking the copy already begun.
+
+  Only into the conflicts nothing conflicting stands under, and that restriction is what makes the count fall rather
+  than rise. One conflict standing over another calls it, so a copy of it holds that call again: the move trades one
+  call site for a copy of every site standing inside, and there is one inside for every conflict below. Without the
+  restriction the count reads 763, 667 or 980 depending on how the copies are folded, every one of them above the 516 it
+  started from. A leaf has nothing below it and so nothing inside, so each site it moves is a site gone with nothing put
+  back, and 49 of them go. Two kinds of call are not moved at all: one whose continuation reaches what it calls, where
+  the copy would hold a call of that same production behind a continuation minted for it — the very shape this removes,
+  put back one level down; and one carrying a recovery, since what a cut unwinding out of the call stops at is a
+  property of the frame the move takes away.
+
+  `every-choice-way-is-different` reads 994 where it read 957, over 1564 productions where there were 1481: a copy of a
+  conflict is a conflict, and what answers for that is the step that tells the copies' ways apart rather than this one.
+
 - **A conflict decided by what follows it has to hold what follows it.** `every-conflict-is-a-tail-call` counts the call
   sites where a production the machine cannot be told its way through is entered with something behind it, and reads
   **516**. What cannot be decided where it stands is decided by what comes after it, and what comes after it can only be
