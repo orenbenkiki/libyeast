@@ -1163,6 +1163,22 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **A conflict decided by what follows it has to hold what follows it.** `every-conflict-is-a-tail-call` counts the call
+  sites where a production the machine cannot be told its way through is entered with something behind it, and reads
+  **516**. What cannot be decided where it stands is decided by what comes after it, and what comes after it can only be
+  looked at from inside the call — a way calling one and carrying on holds that continuation in its own frame, out of
+  reach of everything the call does, so the choice is made in front of the thing that decides it. That is the
+  backtracking `every-choice-way-is-different` counts, standing one frame up.
+
+  Being a conflict carries to whatever ends in one. A way ending in a call hands its own end to what it called, so a
+  call the machine cannot be told through is a way it cannot be told through, and the production holding that way is one
+  too. Reaching one anywhere else does not carry: a call with something behind it comes back, and what it comes back to
+  is the way's own.
+
+  Which ways conflict is now one reading, `_conflicting_ways`, since two questions ask it — this counts the call sites
+  of the productions holding them, where `every-choice-way-is-different` counts the ways themselves. No phase has taken
+  it on, so it stands in `OWED` beside that one, its count read at the end with the ones the steps carry.
+
 - **Two ways that do the same thing are not two ways to tell apart.** Both counts over the ways of a choice compared the
   states each is entered in and never asked whether the two *do* anything different. A machine takes the first way whose
   gate holds and does not come back, so two ways alike in everything but their gates are one way reached two ways:

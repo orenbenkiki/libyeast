@@ -3568,6 +3568,46 @@ def _no_choice_ways_partially_overlap(grammar):
 NO_CHOICE_WAYS_PARTIALLY_OVERLAP = Invariant("no-choice-ways-partially-overlap", _no_choice_ways_partially_overlap)
 
 
+def _conflicting_ways(grammar):
+    """
+    The ways something decides between that a way behind them is entered in exactly the same states as, as `(name, way)`
+    pairs.
+
+    Said once here because two questions read it: `every-choice-way-is-different` counts these, and
+    `every-conflict-is-a-tail-call` asks where the productions holding them are called from.
+    """
+    _accepted, _ways, entering = _leaf_tables(grammar)
+    held = []
+    for name, ways in _decided_ways(grammar).items():
+        spaced = [_entered_in(name, way, grammar, entering) for way in ways]
+        for at, space in enumerate(spaced):
+            if space and any(
+                space == other and not _does_the_same(ways[at], ways[behind])
+                for behind, other in enumerate(spaced[at + 1 :], at + 1)
+            ):
+                held.append((name, ways[at]))
+    return held
+
+
+def _ends_in(way):
+    """What a way hands its end to — where it carries on, or what it calls where nothing follows it."""
+    return way.second or way.first
+
+
+def _offered_ways(body):
+    """The ways a body offers the machine to decide between, none where it is the characters a terminal takes."""
+    return _OFFERED_WAYS(body)
+
+
+_OFFERED_WAYS = ir.Question(
+    "the ways a canonical body offers, as a tuple",
+    {
+        ir.ChoiceState: lambda node: node.alternatives,
+        ir.CharSet: lambda _node: (),
+    },
+)
+
+
 def _every_choice_way_is_different(grammar):
     """
     Check that no two ways something decides between are entered in the same states.
@@ -3585,23 +3625,61 @@ def _every_choice_way_is_different(grammar):
     the machine cannot be told to take, and settling it is settling that way. The choice's else is not asked about,
     being what happens where no way in front was taken rather than a way the input picks.
     """
-    _accepted, _ways, entering = _leaf_tables(grammar)
-    faults = []
-    for name, ways in _decided_ways(grammar).items():
-        held = [_entered_in(name, way, grammar, entering) for way in ways]
-        faults += [
-            f"{name}: a way is entered in the states a way behind it is entered in"
-            for at, space in enumerate(held)
-            if space
-            and any(
-                space == other and not _does_the_same(ways[at], ways[behind])
-                for behind, other in enumerate(held[at + 1 :], at + 1)
-            )
-        ]
-    return faults
+    return [
+        f"{name}: a way is entered in the states a way behind it is entered in"
+        for name, _way in _conflicting_ways(grammar)
+    ]
 
 
 EVERY_CHOICE_WAY_IS_DIFFERENT = Invariant("every-choice-way-is-different", _every_choice_way_is_different)
+
+
+def _conflicting(grammar):
+    """
+    The productions a machine cannot be told its way through, as names.
+
+    One holding two ways entered in the same states is one, and so is one whose way ends in one: a way ending in a call
+    hands its own end to what it called, so a call the machine cannot be told through is a way it cannot be told
+    through. Reaching one anywhere else does not carry — a call with something behind it comes back, and what it comes
+    back to is the way's own.
+    """
+    held = {name for name, _way in _conflicting_ways(grammar)}
+    while True:
+        grew = {
+            name
+            for name, production in grammar.items()
+            if name not in held
+            for way in _offered_ways(production.body)
+            if _ends_in(way) is not None and _ends_in(way).name in held
+        }
+        if not grew:
+            return held
+        held |= grew
+
+
+def _every_conflict_is_a_tail_call(grammar):
+    """
+    Check that something the machine cannot be told its way through is only ever reached at the end of a way.
+
+    What cannot be decided where it stands has to be decided by what comes after it, and what comes after it can only be
+    looked at where it is inside the call. A way calling one and carrying on holds that continuation in its own frame,
+    out of reach of everything the call does — so the choice is made in front of the thing that decides it, which is the
+    backtracking `every-choice-way-is-different` counts, standing one frame up.
+
+    Counted per call site, which is what a step moves: the continuation is lowered into what the way calls and the call
+    becomes the way's end. Reached only at the end, a conflict carries its own future, and the gate telling its ways
+    apart is one the flattening can walk to.
+    """
+    conflicting = _conflicting(grammar)
+    return [
+        f"{name}: a way carries on past {way.first.name}, which the machine cannot be told its way through"
+        for name, production in grammar.items()
+        for way in _offered_ways(production.body)
+        if way.first is not None and way.second is not None and way.first.name in conflicting
+    ]
+
+
+EVERY_CONFLICT_IS_A_TAIL_CALL = Invariant("every-conflict-is-a-tail-call", _every_conflict_is_a_tail_call)
 
 
 def _every_path_reaches_a_leaf_way(grammar):
@@ -6054,4 +6132,4 @@ STEPS = [
 # steps that serve it once a phase pursues it — which is when it comes out of here. Not claimed at the door instead: a
 # claim there would put every step from the first under the law of a question the pipeline is not asking yet, costing a
 # lapse on each one that touches a gate, which is noise about the declarations rather than news about the grammar.
-OWED = (EVERY_CHOICE_WAY_IS_DIFFERENT,)
+OWED = (EVERY_CHOICE_WAY_IS_DIFFERENT, EVERY_CONFLICT_IS_A_TAIL_CALL)
