@@ -469,8 +469,10 @@ alternatives, and an alternative is `gate  actions…  [P1  actions…]  [P2]`:
   edge. One is a tail goto. Nothing follows P2, so a sequence of three splits through a helper, `A → B A₁` with
   `A₁ → C D`, and the `_<N>` suffix names where it came from.
 
-Alternatives are asked in order and the first whose gate holds is the one taken. Two alternatives may share a gate;
-order resolves the overlap, and proving the earlier one safe to commit to is the whole of determinization.
+Alternatives are asked in order and the first whose gate holds is the one taken. Two alternatives are entered in the
+same states or in none of the same, never in some of the same — `no-choice-ways-partially-overlap` is what says so, and
+what a state in the overlap of two half-overlapping gates would need is a question the machine asks twice. Where two
+share their states, order resolves it, and proving the earlier one safe to commit to is the whole of determinization.
 
 **No lookahead past one character survives.** A `Look`, `NegLook`, `LookBehind` or `(exclude)` over more than one
 character is transformed away — into a character-set gate, a cheap guard, or a speculation — so the canonical grammar

@@ -90,23 +90,13 @@ establishes an invariant the steps after it may lean on. What each phase owns an
 
 1. **Adapt the C parser to it** (Milestone 04), and what follows from there.
 
-Two invariants are owed and belong to no phase, and each wants a phase to take it on.
-
-**`no-choice-ways-partially-overlap`** — the step is what is owed, the count being read already. It splits each way by
-the atoms of its choice's subspaces, which needs no guard the grammar does not already spell: the character axis takes a
-`LookGuard` or its negation, the line start a `StartOfLineGuard` or `0 < <column>`, and each comparison its own operands
-swapped. Splitting a way costs nothing that was not there — the pieces cover it exactly, so no state is lost — and the
-atoms measured are each one set of characters over the standings they admit, so a gate can be built for each. What is
-not yet known is whether a piece narrower in characters than its way breaks `accepted-and-gated-charsets-are-equal`,
-which holds a leaf way to consuming exactly what it is entered on.
-
-**`no-conditional-production-matches-empty`** — that no production something decides to enter matches empty. It carries
-no test, so its measure is by hand until it gets one: **179 ways something decides to enter can match empty**, in 154
-productions, and 33 of those carry a gate already — a gate decides and the way then takes nothing, which is not itself a
-fault. What it costs is tightness: a way that may take none makes its caller's accepted space the union of its own and
-its continuation's, so the spaces widen wherever one stands. It is also what leaves a gate saying nothing about the
-input: a way whose callee matches empty is entered on where the parse stands and accepts whatever is there, so it half
-overlaps every way of its choice that asks about a character — which is why the two are owed together.
+One invariant is owed and belongs to no phase: **`no-conditional-production-matches-empty`** — that no production
+something decides to enter matches empty. It carries no test, so its measure is by hand until it gets one: **219 ways of
+a choice can match empty**, in 154 productions, and 73 of those carry a gate already — a gate decides and the way then
+takes nothing, which is not itself a fault. What it costs is tightness: a way that may take none makes its caller's
+accepted space the union of its own and its continuation's, so the spaces widen wherever one stands. It is also what
+leaves a gate saying nothing about the input: a way whose callee matches empty is entered on where the parse stands and
+accepts whatever is there, so it says nothing about which way of the choice the input wants.
 
 A phase re-implements what it needs rather than inheriting it: a step is kept only where it earns its place, and the
 ones between the phases' goals are derived when their phase arrives.

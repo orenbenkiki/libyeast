@@ -777,18 +777,14 @@ def invariant_faults(stages):
 
 def unsettled_invariants(grammar):
     """
-    Every invariant the pipeline names or owes that `grammar` still breaks, as `[(name, count)]` worst first.
+    Every invariant the pipeline names that `grammar` still breaks, as `[(name, count)]` worst first.
 
     What the steps settle between them is not the same question as what is true at the end: an invariant settled early
     and broken later under a declared lapse is unsettled all the same, and a lapse is a reason rather than an excuse.
     Each one standing is work still owed — a step that has not been written — so this is the list the pipeline is
     finished by emptying, and it says so mechanically instead of leaving it to be noticed.
-
-    `OWED` is read beside the steps' own, so an invariant no phase has taken on yet is counted here rather than written
-    down somewhere by hand and left to go stale.
     """
     named = {held.name: held for step in STEPS for held in step.invariants}
-    named.update({held.name: held for held in OWED})
     standing = [(name, len(test(grammar))) for name, test in sorted(named.items())]
     return sorted(((name, count) for name, count in standing if count), key=lambda held: -held[1])
 
@@ -2646,13 +2642,37 @@ def _quantity(value):
 _COMPARES = {
     ("zero", "<", "the indentation"): ("is_indented", True),
     ("the indentation", "<=", "zero"): ("is_indented", False),
+    ("zero", "<", "the column"): ("is_at_line_start", False),
     ("the indentation", "<", "the column"): ("is_not_too_indented", False),
     ("the indentation", "<", "the measured run"): ("is_measured_past_the_indent", True),
     ("the measured run", "<=", "the indentation"): ("is_measured_past_the_indent", False),
     ("the measured run", "<", "the indentation"): ("is_measured_under_the_indent", True),
+    ("the indentation", "<=", "the measured run"): ("is_measured_under_the_indent", False),
     ("the floor", "<=", "the column"): ("is_column_at_least_the_floor", True),
     ("the floor", "<=", "the indentation"): ("is_indent_at_least_the_floor", True),
 }
+
+# What each quantity is written as, for a comparison minted rather than read. One spelling each: the indentation and the
+# floor are read either as the register the parse carries or as the parameter a call carried, and by the time anything
+# mints one the parameters are gone.
+_QUANTITY_NODES = {
+    "zero": ir.LitValue(value=0),
+    "the indentation": ir.IndentValue(),
+    "the column": ir.ColumnValue(),
+    "the measured run": ir.LenValue(arg=ir.MatchValue()),
+    "the floor": ir.GlobalValue(name="f"),
+}
+
+
+def _says(axis, answered):
+    """The one guard saying `axis` is `answered`, or `None` where nothing the grammar can spell says it."""
+    if (axis, answered) == ("is_at_line_start", True):
+        return ir.StartOfLineGuard()
+    for (first, said, second), held in _COMPARES.items():
+        if held == (axis, answered):
+            kind = ir.IsLessThanGuard if said == "<" else ir.IsLessEqualGuard
+            return kind(a=_QUANTITY_NODES[first], b=_QUANTITY_NODES[second])
+    return None
 
 
 def _compared_admits(guard, said, grammar):
@@ -4472,6 +4492,226 @@ def flatten_ungated_call_trees(grammar, namer):
     return {**written, **minted}
 
 
+def _atoms(held):
+    """
+    The pieces `held`'s subspaces cut each other into: pairwise apart, and covering between them what they cover.
+
+    Every one of the given spaces is the union of the pieces inside it, so a way standing on one becomes a way per piece
+    and gives up no state. Built by cutting rather than by enumerating: each space in turn splits every piece it meets
+    into what it holds and what it does not, and what is left of it stands as a piece of its own.
+    """
+    parts = []
+    for space in held:
+        fresh, rest = [], space
+        for part in parts:
+            met = part & space
+            if met:
+                fresh += [one for one in (met, part - space) if one]
+                rest = rest - part
+            else:
+                fresh.append(part)
+        parts = fresh + [rest] if rest else fresh
+    return parts
+
+
+def _told_apart(spans):
+    """
+    `spans` with the invalid byte told from the characters again.
+
+    A subspace holds the byte that begins no character as the unit it is, beside the codepoints, and coalesces what runs
+    together — so the byte and codepoint zero come out as one interval. A set the parser asks keeps them apart, a run
+    starting at zero saying that a character is accepted there where the byte is not one.
+    """
+    return [
+        held
+        for low, high in spans
+        for held in (((-1, -1), (0, high)) if low < 0 <= high else ((-1, -1),) if low < 0 else ((low, high),))
+    ]
+
+
+def _pinned(space):
+    """The axes every standing `space` admits agrees on, as `{axis: answer}` — what a gate for it would have to say."""
+    stands = [standing for standing in spaces.STANDINGS if space.under(standing)]
+    return {
+        axis: getattr(stands[0], axis)
+        for axis in spaces.AXES
+        if stands and all(getattr(standing, axis) == getattr(stands[0], axis) for standing in stands)
+    }
+
+
+def _gate_for(atom, standing_in, grammar):
+    """
+    The guards to add to a gate admitting `standing_in` so that it admits exactly `atom`, which is inside it.
+
+    Synthesised and then held to what it came out as: the guards are read back through `_admits` and their meet with
+    what the way already admits must be the atom itself. An atom that cannot be said raises rather than being
+    approximated — a gate wider than the atom would leave the ways it was cut from overlapping, which is the thing being
+    removed, and reporting that as done would be worse than not doing it.
+
+    Two kinds of thing are said. The axes the atom pins that the way does not, each by the one guard that says it — an
+    axis is not asked for where the way already stands under it, and an axis nothing can say is left to the check. And
+    the characters, as the lookahead that holds them, its refusal where the atom is what a set does not hold, or the
+    end-of-stream question where the atom is only there.
+    """
+    admitted = next(iter({one for one in atom.admitted if one}), None)
+    if admitted is None:
+        raise ValueError("an atom holding no state at all")
+    # One axis at a time, keeping only what narrows. An atom pins every axis its standings agree on, and the standings
+    # carry what each quantity's order settles about the others — so `n <= 0` already says `n <= len(match)`, a length
+    # being never negative. Asked again it tells the ways of the choice nothing apart and puts a question at run time
+    # whose answer is settled.
+    asked, held = (), standing_in
+    for axis, answered in _pinned(atom).items():
+        guard = _says(axis, answered) if _pinned(held).get(axis) != answered else None
+        if guard is not None:
+            asked, held = (*asked, guard), held & _admits(guard, grammar)
+    others = chars.subtracted_spans(list(spaces.ALL_CHARACTERS), list(admitted.spans))
+    for held in ((), (ir.LookGuard(item=_spans_node(_told_apart(admitted.spans))),), (ir.EndOfStreamGuard(),)) + (
+        ((ir.NegLookGuard(item=_spans_node(_told_apart(others))),),) if others else ()
+    ):
+        guards = asked + held
+        space = standing_in
+        for guard in guards:
+            space = space & _admits(guard, grammar)
+        if space == atom:
+            return guards
+    raise ValueError(f"no gate says the states {atom} and no others")
+
+
+def _taking(way, atom, owner, grammar, namer, minted):
+    """
+    `way` with its take narrowed to what `atom` admits, or `way` unchanged where the atom takes nothing away.
+
+    A take of one character names its own set, and the gate found the character, so the set is the atom's and the way
+    stands as it did. A run is not narrowed: what it takes past its first character is the run's own set, and a set cut
+    down would be a different run. Its first character is peeled off instead — one character from the atom, then the run
+    again or nothing, which is the same maximal run said in two places, since a run takes at least one character and
+    stops only where its set does.
+
+    Anything else raises. A limited run is the one other take a way of a choice holds, and peeling a character from
+    under a limit would leave the limit counting what it no longer bounds.
+    """
+    admitted = next(iter({one for one in atom.admitted if one}))
+    at = next((index for index, action in enumerate(way.actions) if isinstance(action, ir.CONSUMING)), None)
+    if at is None:
+        return way
+    taken = way.actions[at]
+    spans = _peek_spans(taken.set, grammar)
+    if spans is None or tuple(map(tuple, spans)) == admitted.spans:
+        return way
+    if isinstance(taken, ir.ConsumeCharAction):
+        narrowed = dataclasses.replace(taken, set=_spans_node(admitted.spans))
+        return dataclasses.replace(way, actions=(*way.actions[:at], narrowed, *way.actions[at + 1 :]))
+    if not isinstance(taken, ir.ConsumeSpanAction):
+        raise ValueError(f"{owner}: a {type(taken).__name__} is entered on fewer characters than it takes")
+    rest = ir.ChoiceState(
+        alternatives=(
+            ir.AlternativeState(
+                gate=ir.GatePart(guards=(ir.LookGuard(item=_spans_node(spans)),)),
+                actions=(taken, *way.actions[at + 1 :]),
+                first=way.first,
+                second=way.second,
+                recover=way.recover,
+            ),
+            ir.AlternativeState(
+                gate=ir.GatePart(),
+                actions=way.actions[at + 1 :],
+                first=way.first,
+                second=way.second,
+                recover=way.recover,
+            ),
+        )
+    )
+    held = namer.fresh(owner)
+    minted[held] = ir.Prod(grammar[owner].number, held, (), rest)
+    return dataclasses.replace(
+        way,
+        actions=(*way.actions[:at], ir.ConsumeCharAction(set=_spans_node(admitted.spans))),
+        first=None,
+        second=ir.RefCall(name=held, args=()),
+        recover=None,
+    )
+
+
+def _reaches_nothing(way, atom, grammar):
+    """
+    Whether `way`, entered in `atom` and taking nothing before it calls, calls a production no way of which it can
+    reach.
+
+    Such a way is entered and always fails. It was there before the cutting, inside a way whose gate said less: what a
+    piece asks is asked along the path into what it calls, so a piece pinning an axis the whole way left open can rule
+    out every way of its callee where the whole way ruled out none. Dropping it takes nothing away — the parse reaches
+    the same way behind it, one refusal sooner — and leaving it in would be a call the machine makes knowing it fails.
+
+    Only where nothing is taken first. Past a take the parse stands somewhere else and the gate speaks for where it was,
+    so what the callee is entered on is not this to say.
+    """
+    if any(isinstance(action, ir.CONSUMING) for action in way.actions):
+        return False
+    called = way.first if way.first is not None else way.second
+    body = grammar[called.name].body if called is not None and called.name in grammar else None
+    if not isinstance(body, ir.ChoiceState):
+        return False
+    return not any(atom & _gated_by((), one, grammar) for one in body.alternatives)
+
+
+def split_overlapping_ways(grammar, namer):
+    """
+    Cut the ways of a choice apart where they half overlap, so that two of them are entered in the same states or in
+    none of the same.
+
+    The states the ways are entered in are refined into atoms — pieces no two of which meet, covering between them what
+    the ways cover — and each way becomes one way per atom inside it, keeping its own gate and gaining the guards that
+    say the atom. Every state the way was entered in is a state one of its pieces is entered in, so nothing is lost; and
+    every pair of pieces is apart or the same, because that is what an atom is.
+
+    Done over the whole choice at once rather than pair by pair. The pieces stand where the way stood, in the order the
+    atoms were cut in, so the first way admitting a state is the one that admitted it before and the parse falls where
+    it fell.
+
+    The choice's else is not cut and takes no part in the cutting. It carries no gate, so it is entered wherever the
+    ways in front of it were not — which is not a state a guard says and not one an atom can hold.
+
+    A way narrowed to fewer characters than it takes has its take narrowed with it, `_taking` saying how: the two are
+    held equal by `accepted-and-gated-charsets-are-equal`, and a gate that says less than the take does is a way entered
+    on a character it cannot begin with.
+    """
+    minted = {}
+    _accepted, _splits, entering = _leaf_tables(grammar)
+
+    def told(name, production):
+        ways = production.body.alternatives[:-1]
+        held = [_entered_in(name, way, grammar, entering) for way in ways]
+        if not any((one & other) and one != other for at, one in enumerate(held) for other in held[at + 1 :]):
+            return production
+        parts = _atoms(held)
+        opened = []
+        for way, space in zip(ways, held):
+            inside = [atom for atom in parts if (atom & space) == atom and atom]
+            if len(inside) < 2:
+                opened.append(way)
+                continue
+            for atom in inside:
+                if _reaches_nothing(way, atom, grammar):
+                    continue
+                cut = _taking(way, atom, name, grammar, namer, minted)
+                guards = _gate_for(atom, space, grammar)
+                opened.append(dataclasses.replace(cut, gate=ir.GatePart(guards=(*cut.gate.guards, *guards))))
+        return dataclasses.replace(
+            production, body=ir.ChoiceState(alternatives=(*opened, production.body.alternatives[-1]))
+        )
+
+    written = {
+        name: (
+            told(name, production)
+            if isinstance(production.body, ir.ChoiceState) and len(production.body.alternatives) > 1
+            else production
+        )
+        for name, production in grammar.items()
+    }
+    return {**written, **minted}
+
+
 def _unheld(node):
     """
     `node` with the scopes written around it stripped — what it does, whatever is spelled about it.
@@ -5723,10 +5963,19 @@ STEPS = [
     Step("leaf-paths-reach-a-way", establishes=EVERY_PATH_REACHES_A_LEAF_WAY),
     Step("hoist-guards-to-callers", hoist_guards_to_callers, reduces=EVERY_CONDITIONAL_WAY_IS_GATED),
     Step("flatten-ungated-call-trees", flatten_ungated_call_trees, settles=EVERY_CONDITIONAL_WAY_IS_GATED),
+    # Phase 15 establishes `NO_CHOICE_WAYS_PARTIALLY_OVERLAP`: two ways something decides between are entered in the
+    # same states or in none of the same. It follows the gating phase because a way with no gate is entered everywhere,
+    # so nothing could be cut apart from it, and it comes before anything determinizing because what determinizing has
+    # to answer for is the ways left standing together.
+    Step(
+        "split-overlapping-ways",
+        split_overlapping_ways,
+        settles=NO_CHOICE_WAYS_PARTIALLY_OVERLAP,
+        lapses={
+            "every-gate-looks-ahead-at-most-once": "a piece's gate gains the characters its atom holds beside "
+            "whatever its way already asked, and two questions about the character in front are one question until "
+            "they are said as one set"
+        },
+    ),
+    Step("merge-gate-peeks-2", merge_gate_peeks, settles=EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
 ]
-
-# What the pipeline owes and no phase has taken on: counted at the end beside what the steps carry, and named on the
-# steps that serve it once a phase pursues it, which is where it comes out of here. Not claimed at the door instead: a
-# claim there would put every step from the first under the law of a question the pipeline is not asking yet, costing a
-# lapse on each one that touches a gate — noise about the declarations rather than news about the grammar.
-OWED = (NO_CHOICE_WAYS_PARTIALLY_OVERLAP,)

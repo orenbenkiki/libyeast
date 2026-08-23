@@ -1163,6 +1163,39 @@ All notable changes to this project are documented here. The format follows
   mapping's implicit key ungated, and one the table already answers a line above, a window bounding what a committed
   consume may take and no lookaround at all. It named four cells nothing asks, which are gone.
 
+- **The ways of a choice are entered in the same states or in none of the same.** `no-choice-ways-partially-overlap` is
+  **settled**, where it read 345. `split-overlapping-ways` refines the states the ways of a choice are entered in into
+  atoms — pieces no two of which meet, covering between them what the ways cover — and each way becomes one way per atom
+  inside it, keeping its own gate and gaining the guards that say the atom. Every state a way was entered in is a state
+  one of its pieces is entered in, so nothing is lost, and every pair of pieces is apart or the same because that is
+  what an atom is. The pieces stand where the way stood, so the parse falls where it fell. The choice's else takes no
+  part: it carries no gate, so it is entered wherever the ways in front were not, which is not a state an atom holds.
+
+  No guard is minted that the grammar could not already spell. `_COMPARES` gains two rows — `0 < <column>` for standing
+  off a line start, and `n <= len(match)` for a measured run no shorter than the indentation — both said with comparison
+  kinds that already exist, so the interpreter runs them unchanged. A gate is synthesised and then held to what it came
+  out as: the guards are read back through `_admits` and their meet with what the way already admits must be the atom,
+  an atom that cannot be said raising rather than being approximated. All 1331 are said exactly.
+
+  Three things the design did not foresee. A subspace coalesces the byte that begins no character with codepoint zero
+  where a `CharSet` keeps them apart, so an atom turned back into a set dropped a run of characters until they were told
+  apart again. An atom pins every axis its standings agree on, including ones another pinned axis already forces —
+  `n <= 0` says `n <= len(match)`, a length being never negative — so the gate is built an axis at a time and keeps only
+  what narrows, or the split would carry questions whose answers are settled. And a way narrowed to fewer characters
+  than it takes has its take narrowed with it: a take of one character names the atom's set, and a run has its first
+  character peeled off into the gate with the rest of the run in a state of its own, the same maximal run said in two
+  places since a run takes at least one character and stops only where its set does.
+
+  Splitting also exposes a way that is entered and always fails — one gated on the indentation being none, calling a
+  rule that asks the measured run to be shorter than it. It behaved the same before, the parse reaching the same way
+  behind it, but the path into that rule carried nothing about the indentation so nothing could see it. Such a piece is
+  dropped rather than written out, `_reaches_nothing` saying which: a piece taking nothing whose callee offers no way
+  its states can reach is a call the machine would make knowing it fails.
+
+  The grammar goes from 1471 productions to **1481**, and `merge-gate-peeks` runs again behind the split — a piece's
+  gate gains the characters its atom holds beside whatever its way already asked, and two questions about one character
+  are one question until they are said as one set.
+
 - **A gate asks about one character, so a literal is the characters it is.** `fold-literals-into-gates` said a run of
   single characters as a `LiteralPeekGuard` — `---` as one comparison rather than three states, decided before anything
   was consumed. What it bought in states it cost in truth: a literal's subspace is its first character where the guard
