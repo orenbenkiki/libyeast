@@ -17,12 +17,12 @@ jobs:
       security-events: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install CMake
         run: sudo apt-get update && sudo apt-get install -y cmake
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: c-cpp
       - name: Build (library only)
         run: cmake -S . -B build -DYEAST_BUILD_TESTS=OFF && cmake --build build
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4

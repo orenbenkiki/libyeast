@@ -19,7 +19,7 @@ jobs:
           - { os: ubuntu-latest, cc: clang }
           - { os: macos-latest, cc: clang }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Update apt index
         if: runner.os == 'Linux'
         run: sudo apt-get update
