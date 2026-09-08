@@ -1,6 +1,6 @@
-name: vet
+# The "vet" sub-gate. Static code quality and packaging. A target, and a badge for it.
 
-# Static code quality + packaging: the "vet" sub-gate. One target, one badge.
+name: vet
 
 on:
   push:

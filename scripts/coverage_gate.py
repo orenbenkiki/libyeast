@@ -3,20 +3,20 @@
 """
 Enforce the coverage-annotation contract from a gcovr JSON report.
 
-Every executable line that tests do NOT cover must carry a `// UNTESTED` comment. Conversely, a `// UNTESTED` on a line
-that IS covered is stale. Either is an error, reported as `<path>:<line>: message` for editor go-to-line.
+An executable line that tests do NOT cover must have a `// UNTESTED` comment. A `// UNTESTED` on a line the tests DO
+cover is stale. Either is an error. The report prints `<path>:<line>: message` for an editor to go to.
 
-Usage: coverage_gate.py <gcovr-json>
+Usage: coverage_gate.py <gcovr-json>.
 """
 
 import json
 import os
 import sys
 
-MARKER = "// UNTESTED"
+_MARKER = "// UNTESTED"  # the marker an excused line takes. The marker sits on that line.
 
 
-def main():
+def main() -> int:
     if len(sys.argv) != 2:
         print("usage: coverage_gate.py <gcovr-json>", file=sys.stderr)
         return 2
@@ -24,8 +24,8 @@ def main():
     with open(sys.argv[1], encoding="utf-8") as handle:
         report = json.load(handle)
 
-    # A report covering nothing has nothing to complain about, and would pass — so the contract would evaporate in
-    # silence the day gcovr's filters stopped matching. There is always something to cover.
+    # A report covering nothing has nothing to complain about and would pass. The contract would evaporate in silence
+    # the day gcovr's filters stopped matching.
     if not report.get("files"):
         print("coverage gate: the report covers no files at all", file=sys.stderr)
         return 2
@@ -40,7 +40,7 @@ def main():
             source = source_handle.readlines()
 
         # A physical line can appear multiple times (macros/inlining); it counts as covered if any instance ran.
-        counts = {}
+        counts: dict[int, int] = {}
         for line in entry.get("lines", []):
             number = line.get("line_number")
             if number is None:
@@ -51,11 +51,11 @@ def main():
             if number < 1 or number > len(source):
                 continue
             text = source[number - 1]
-            is_annotated = MARKER in text
+            is_annotated = _MARKER in text
             if count == 0 and not is_annotated:
-                violations.append((path, number, f"uncovered line, needs a {MARKER} comment", text))
+                violations.append((path, number, f"uncovered line, needs a {_MARKER} comment", text))
             elif count > 0 and is_annotated:
-                violations.append((path, number, f"stale {MARKER} on a covered line", text))
+                violations.append((path, number, f"stale {_MARKER} on a covered line", text))
 
     # Editor-friendly `<path>:<line>: message` at column 0 (gcc/clang style).
     for path, number, reason, text in violations:
@@ -64,7 +64,7 @@ def main():
     if violations:
         print(f"coverage gate FAILED: {len(violations)} violation(s)", file=sys.stderr)
         return 1
-    print("coverage gate passed: every uncovered line annotated, no stale annotations")
+    print("coverage gate passed: the uncovered lines hold annotations, and the annotations are current")
     return 0
 
 

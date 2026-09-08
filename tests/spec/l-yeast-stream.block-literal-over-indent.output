@@ -15,7 +15,7 @@ L\x0a
 # B: 9, C: 9, L: 3, c: 0
 i  
 # B: 11, C: 11, L: 3, c: 2
-!A block scalar's content must be indented at least as far as its leading empty lines
+!A block scalar's content must reach at least as far in as its leading empty lines
 # B: 11, C: 11, L: 3, c: 2
 s
 # B: 11, C: 11, L: 3, c: 2

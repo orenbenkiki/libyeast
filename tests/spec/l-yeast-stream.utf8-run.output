@@ -1,5 +1,5 @@
 # B: 0, C: 0, L: 1, c: 0
-!A stream holds only documents, directives and comments
+!A stream holds documents, directives and comments and nothing besides
 # B: 0, C: 0, L: 1, c: 0
 ~\x80\x81\x82
 # B: 3, C: 3, L: 1, c: 3

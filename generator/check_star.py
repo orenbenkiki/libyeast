@@ -1,90 +1,92 @@
 # SPDX-License-Identifier: MIT
 """
-Fold libyeast's token stream up to the YAML Test Suite's events and check the two agree, case for case.
+Fold libyeast's token stream up to the YAML Test Suite's events. The check compares them case by case.
 
-The community suite (`third_party/yaml-test-suite/`) states, per case, an `in.yaml` and either the `test.event` a
-conformant parser produces or an `error` marker where it must reject. libyeast is a token parser, so the check is the
-deterministic fold `star` defines: a valid case must fold to its events, an error case must come back a rejection, each
-matched as far as the token layer settles them.
+The community suite (`third_party/yaml-test-suite/`) states an `in.yaml` per case. The suite also states either the
+`test.event` a conformant parser produces or an `error` marker where a parser must reject. libyeast is a token parser.
+The check is the deterministic fold `star` defines. A valid case must fold to its events. An error case must come back a
+rejection. The match reaches as far as the token layer settles it.
 
-A case libyeast does not agree with is either a bug or a difference we chose; a chosen one must be declared in
-DIVERGENCES, with its reason, or this fails. A declared case that agrees again is a stale declaration and fails too, the
-same way `check_vendor_spec` guards its deviations — libyeast follows the suite except where the spec, its source of
-truth, says otherwise.
+A case libyeast does not agree with is either a bug or a difference we chose. A difference we chose goes into
+DIVERGENCES with its reason, and this fails otherwise. A declared case that agrees again is a stale declaration and
+fails too. That is the same way `check_vendor_spec` guards its deviations. libyeast follows the suite except where the
+spec says otherwise. The spec is libyeast's source of truth.
 """
 
 import os
+from collections.abc import Sequence
 
 import annotated2ir
 import gate
 import ir
 import star
 
-# The suite cases libyeast folds differently from the suite, each by its `<ID>` and the reason the difference is the
-# spec's rather than a bug. A case not listed must agree; a listed one must not.
+# The suite cases libyeast folds differently from the suite, by `<ID>`, and why the difference is the spec's rather than
+# a bug. A case not listed must agree. A listed case must differ.
 DIVERGENCES = {
     "JEF9/02": (
-        "an empty kept block scalar whose input ends in no line break. The spec reads end-of-input as a line "
-        "break only in b-chomped-last, which an all-empty scalar never reaches: with no content line "
-        "l-literal-content skips that group, and l-keep-empty's l-empty needs a real b-break the input does not "
-        "have. So the spec folds it to the empty scalar; the suite's one line break is YAMLStar appending a "
-        "trailing break to the input, which the grammar does not"
+        "an empty kept block scalar whose input ends in no line break. the spec reads end-of-input as a line break "
+        "only in b-chomped-last. an empty scalar does not reach that rule. l-literal-content skips the group where "
+        "no content line appears. l-keep-empty's l-empty needs a real b-break, and the input holds none. the spec "
+        "therefore folds the scalar to the empty scalar. the suite's one line break comes from YAMLStar appending a "
+        "trailing break to the input, and the grammar appends none."
     ),
 }
 
 
-def _disagreement(grammar, directory, deterministic=frozenset()):
+def _disagreement(grammar: dict[str, ir.Prod], directory: str) -> str | None:
     """
-    How libyeast's fold of `<directory>/in.yaml` disagrees with the case, or `None` if it agrees. A valid case must fold
-    to its `test.event`; an error case must come back a rejection.
+    The way libyeast's fold of `<directory>/in.yaml` disagrees with the case, or `None` if it agrees. A valid case must
+    fold to its `test.event`. An error case must come back a rejection.
     """
     with open(os.path.join(directory, "in.yaml"), "rb") as handle:
         data = handle.read()
     is_error = os.path.exists(os.path.join(directory, "error"))
     try:
-        events = star.run_case(grammar, data, deterministic=deterministic)
-    except star.Incompatible:
+        events = star.run_case(grammar, data)
+    except star.Incompatible:  # failure-is-reported: as this case's verdict, a rejection being right for an error case
         return None if is_error else "libyeast rejects a case the suite accepts"
-    except Exception as error:  # noqa: BLE001 — a crash is a disagreement to report, not to abort the gate on
+    except Exception as error:  # noqa: BLE001  failure-is-reported: as this function's reason  # pylint: disable=W0718
         return f"crash: {type(error).__name__}: {error}"
     if is_error:
         return "libyeast accepts a case the suite rejects"
-    with open(os.path.join(directory, "test.event")) as handle:
+    with open(os.path.join(directory, "test.event"), encoding="utf-8") as handle:
         expected = star.parse_events(handle.read())
     folded = "\n".join(str(event) for event in events)
     wanted = "\n".join(str(event) for event in expected)
     return None if folded == wanted else "folds to events the suite does not expect"
 
 
-def _one_case(held, case):
-    """How `grammar` folds one case against what the suite says of it, or `None` where they agree."""
-    grammar, deterministic = held
-    return _disagreement(grammar, os.path.join(star.SUITE, case), deterministic=deterministic)
-
-
-def cases():
-    """The suite's case ids, `<ID>` or `<ID>/<part>`, sorted."""
-    return sorted(
-        os.path.relpath(root, star.SUITE) for root, _directories, files in os.walk(star.SUITE) if "in.yaml" in files
-    )
-
-
-def disagreements(grammar, suite=None, deterministic=frozenset()):
+def _one_case(held: tuple[dict[str, ir.Prod]], case: str) -> str | None:
     """
-    The suite cases `grammar` folds differently from the suite and does not declare, as error strings — empty when it
-    agrees green-or-declared. Takes the grammar as an argument, so a structurally-transformed grammar folds the whole
-    corpus to the same events the base one does. `deterministic` passes through to the interpreter, so a hybrid run is
-    held to the same events too.
+    A case folded and held to what the suite says of it. `None` comes back where the fold and the suite agree.
+
+    `held` holds what a run judges a case under, handed to a worker once. It is the grammar to fold the case with.
+    """
+    (grammar,) = held
+    return _disagreement(grammar, os.path.join(star.SUITE, case))
+
+
+def cases() -> list[str]:
+    """The suite's case ids in sorted order. A case id is `<ID>` or `<ID>/<part>`."""
+    return gate.cases_under(star.SUITE, "in.yaml")
+
+
+def disagreements(grammar: dict[str, ir.Prod], suite: Sequence[str] | None = None) -> list[str]:
+    """
+    The suite cases `grammar` folds differently from the suite and does not declare, as error strings. Empty where the
+    grammar agrees green-or-declared. Takes the grammar as an argument. A structurally-transformed grammar folds the
+    whole corpus to the same events the base grammar does.
     """
     if suite is None:
         suite = cases()
-    ir.say(f"        {len(suite)} suite case(s), spread over the cores")
-    found = gate.spread(_one_case, (grammar, deterministic), suite)
+    ir.say(f"        {len(suite)} suite case(s) spread over the cores")
+    found = gate.spread(_one_case, (grammar,), suite)
     errors = []
     for case, disagreement in zip(suite, found):
         if case in DIVERGENCES:
             if disagreement is None:
-                errors.append(f"{case}: declared as a divergence, but now agrees with the suite")
+                errors.append(f"{case}: declared as a divergence, and it agrees with the suite")
         elif disagreement is not None:
             errors.append(f"{case}: {disagreement}")
     for case in sorted(set(DIVERGENCES) - set(suite)):
@@ -92,12 +94,12 @@ def disagreements(grammar, suite=None, deterministic=frozenset()):
     return errors
 
 
-def main():
+def main() -> None:
     suite = cases()
     errors = disagreements(annotated2ir.load(), suite)
     gate.report(
         errors,
-        "case(s) that disagree with the suite and are not declared",
+        "case(s) that disagree with the suite and hold no declaration",
         f"YAML Test Suite folded: {len(suite)} cases, {len(DIVERGENCES)} declared divergence(s)",
     )
     for case in sorted(DIVERGENCES):

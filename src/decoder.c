@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: MIT
+// Decoding a UTF-8 character of 0x80 or above. Consuming a run of characters the grammar names. `ys_next_char` in the
+// header settles an ASCII byte from a table and hands a wider byte here.
+
 #include "decoder.h"
 #include <stdbool.h>
 
-// What a lead byte says about the sequence it begins: how many bytes it takes, and which bytes may follow it
-// immediately. That second range is what rejects an overlong encoding (0xE0 admits only 0xA0..0xBF), a surrogate (0xED
-// admits only 0x80..0x9F) and a codepoint beyond U+10FFFF (0xF4 admits only 0x80..0x8F) — none of which needs the
-// codepoint to be worked out. A length of zero marks a byte that cannot begin a sequence at all.
+// The shape a lead byte says the sequence it begins takes. The number of bytes, and the bytes that may follow it
+// immediately. That second range rejects an overlong encoding (0xE0 admits just 0xA0..0xBF), a surrogate (0xED admits
+// just 0x80..0x9F) and a codepoint beyond U+10FFFF (0xF4 admits just 0x80..0x8F). Such a rejection needs no working
+// out of the codepoint. A length of `0` marks a byte that cannot begin a sequence at all.
 typedef struct ys_lead {
     uint8_t length;
     uint8_t first_min;
     uint8_t first_max;
 } ys_lead;
 
-// The shape of the sequence `byte` begins. Fixed by RFC 3629; the grammar has no say in it.
+// The shape of the sequence `byte` begins. RFC 3629 fixes that shape, and the grammar has no say in it.
 static ys_lead lead_of(uint8_t byte) {
     if (byte >= 0xC2u && byte <= 0xDFu) {
         return (ys_lead){2, 0x80u, 0xBFu};
@@ -67,11 +70,9 @@ size_t ys_utf8_length(const uint8_t *bytes, size_t size) {
     return lead.length;
 }
 
-// Classify the character at the head of the window, which begins with a byte of 0x80 or above.
-//
-// A sequence running past the end of the window is invalid, which is the right answer at the true end of the input. A
-// buffer that hands the decoder a partial sequence anywhere else has a fault of its own, so there is no third answer
-// between "a character" and "not UTF-8".
+// A sequence running past the end of the window is invalid. That is the right answer at the true end of the input. A
+// buffer that hands the decoder a partial sequence anywhere else has a fault of its own. The decoder answers "a
+// character" or "not UTF-8", and it holds no further answer.
 ys_char ys_next_char_slow(const uint8_t *bytes, size_t size) {
     const ys_lead lead = lead_of(bytes[0]);
     if (lead.length == 0 || size < (size_t)lead.length) {
@@ -86,8 +87,9 @@ ys_char ys_next_char_slow(const uint8_t *bytes, size_t size) {
         }
     }
 
-    // Above ASCII the grammar names two characters, and withholds c-printable from two kinds. Everything else valid is
-    // ordinary content, whatever its length. The generator holds the grammar to exactly this grouping, so the ladder
+    // Above ASCII the grammar names a pair of characters, and withholds c-printable from a pair of kinds. The rest of
+    // what is valid is
+    // ordinary content, whatever its length. The generator holds the grammar to exactly this grouping. The ladder
     // cannot quietly fall out of step with it.
     if (lead.length == 2 && bytes[0] == 0xC2u) {
         if (bytes[1] == 0x85u) {
@@ -107,63 +109,62 @@ ys_char ys_next_char_slow(const uint8_t *bytes, size_t size) {
     return YS_KEY_CONTENT | YS_LENGTH_BITS(lead.length);
 }
 
-// Advance while the character is in `set`, stopping at the first character that is not — or at the end of the window.
-//
-// This is what a (***) or a (+++) over a character set compiles to. The bytes of a YAML document go into runs — plain
-// scalars, comment text, indentation, quoted content — and a run must not cost a classification per byte forever. The
-// ASCII loop is where the time goes, and where a vector kernel will go: a nibble-table lookup classifies sixteen bytes
-// at a time under SSSE3 or NEON, behind this same signature, without the generated parser changing a line.
-ys_run ys_scan_set(const uint8_t *bytes, size_t size, ys_set_id set) {
+// A (***) or a (+++) over a character set compiles to this. The parse consumes the bytes of a YAML document in
+// stretches. A stretch is a plain scalar or comment text. Indentation and quoted content are stretches as well.
+// Consuming a stretch must not cost a classification per byte forever. The ASCII loop is where the time goes, and the
+// place for a vector kernel. A nibble-table lookup classifies `16` bytes at a time under SSSE3 or NEON, behind this
+// same signature, without the generated parser changing a line.
+ys_consumed ys_consume_set(const uint8_t *bytes, size_t size, ys_set_id set) {
     const uint32_t wanted = YS_SET_BITS[set];
-    ys_run run = {0, 0};
-    while (run.bytes < size) {
-        if (bytes[run.bytes] < 0x80u) {
-            if ((YS_ASCII[bytes[run.bytes]] & wanted) == 0) {
+    ys_consumed taken = {0, 0};
+    while (taken.bytes < size) {
+        if (bytes[taken.bytes] < 0x80u) {
+            if ((YS_ASCII[bytes[taken.bytes]] & wanted) == 0) {
                 break;
             }
-            run.bytes += 1;
+            taken.bytes += 1;
         } else {
-            const ys_char character = ys_next_char_slow(bytes + run.bytes, size - run.bytes);
+            const ys_char character = ys_next_char_slow(bytes + taken.bytes, size - taken.bytes);
             if ((character & wanted) == 0) {
                 break;
             }
-            run.bytes += YS_LEN(character);
+            taken.bytes += YS_LEN(character);
         }
-        run.characters += 1;
+        taken.characters += 1;
     }
-    return run;
+    return taken;
 }
 
-// The two-set scan behind a trimmed run. It runs the `full` set exactly as `ys_scan_set` does, and alongside remembers
-// how far the last character not in `trim` reached: that is the span kept, and whatever `full` ran on past it is the
-// given-back trim. The same nibble-table kernel that vectorizes the one loop vectorizes this, testing two masks a block
-// at a time rather than one.
-ys_trim ys_span_trim_sets(const uint8_t *bytes, size_t size, ys_set_id full, ys_set_id trim) {
+// The consume behind a trimmed span. It takes the `full` set as `ys_consume_set` does. It also remembers how far the
+// last character not in `trim` reached. That is the span kept. The bytes `full` took past that point are the
+// given-back trim. The same nibble-table kernel that vectorizes a plain consume vectorizes this. That kernel tests a
+// pair of masks a block at a time.
+ys_trim ys_consume_trim_sets(const uint8_t *bytes, size_t size, ys_set_id full, ys_set_id trim) {
     const uint32_t in_full = YS_SET_BITS[full];
     const uint32_t in_trim = YS_SET_BITS[trim];
-    ys_run run = {0, 0};
-    ys_run span = {0, 0};
-    while (run.bytes < size) {
+    ys_consumed taken = {0, 0};
+    ys_consumed span = {0, 0};
+    while (taken.bytes < size) {
         uint32_t key;
-        if (bytes[run.bytes] < 0x80u) {
-            key = YS_ASCII[bytes[run.bytes]];
+        if (bytes[taken.bytes] < 0x80u) {
+            key = YS_ASCII[bytes[taken.bytes]];
             if ((key & in_full) == 0) {
                 break;
             }
-            run.bytes += 1;
+            taken.bytes += 1;
         } else {
-            const ys_char character = ys_next_char_slow(bytes + run.bytes, size - run.bytes);
+            const ys_char character = ys_next_char_slow(bytes + taken.bytes, size - taken.bytes);
             key = character;
             if ((key & in_full) == 0) {
                 break;
             }
-            run.bytes += YS_LEN(character);
+            taken.bytes += YS_LEN(character);
         }
-        run.characters += 1;
+        taken.characters += 1;
         if ((key & in_trim) == 0) {
-            span = run;
+            span = taken;
         }
     }
-    ys_trim result = {span, {run.bytes - span.bytes, run.characters - span.characters}};
+    ys_trim result = {span, {taken.bytes - span.bytes, taken.characters - span.characters}};
     return result;
 }

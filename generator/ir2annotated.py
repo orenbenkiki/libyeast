@@ -1,144 +1,163 @@
 # SPDX-License-Identifier: MIT
 """
-Regenerate the yaml-grammar notation from the typed IR — the inverse of `annotated2ir.py`.
+Regenerate the yaml-grammar notation from the typed IR. This is the inverse of `annotated2ir.py`.
 
-`check_annotated_roundtrip.py` uses this to prove the translation is lossless: `annotated2ir` then `ir2annotated` must
-reproduce the vendored source exactly. Run directly to dump the regenerated grammar as YAML.
+`check_annotated_roundtrip.py` uses this to prove the translation is lossless. `annotated2ir` then `ir2annotated` must
+reproduce libyeast's grammar exactly. Run directly to dump the regenerated grammar as YAML.
 
-Usage: `python3 generator/ir2annotated.py [spec.yaml] > regenerated.yaml`
+**Usage:** `python3 generator/ir2annotated.py [spec.yaml] > regenerated.yaml`.
 """
 
 import sys
+from collections.abc import Mapping, Sequence
 
-import ir
 import annotated2ir
+import ir
 
 import yaml
 
 
-def hex_text(cp):
-    """A codepoint as `xHH`, padded to 2/4/6 digits as the source does. Used for range endpoints (always hex)."""
-    width = 2 if cp <= 0xFF else 4 if cp <= 0xFFFF else 6
-    return f"x{cp:0{width}X}"
+def _hex_text(codepoint: int) -> str:
+    """
+    A codepoint as `xHH`. The padding runs to `2`, `4` or `6` digits, as the source does. A range's endpoints take this
+    form.
+    """
+    width = 2 if codepoint <= 0xFF else 4 if codepoint <= 0xFFFF else 6
+    return f"x{codepoint:0{width}X}"
 
 
-def char_text(cp):
-    """A single character literal: the printable-ASCII character itself, else its `xHH` spelling."""
-    return chr(cp) if 0x21 <= cp <= 0x7E else hex_text(cp)
+def _char_text(codepoint: int) -> str:
+    """
+    A single character literal. The printable-ASCII character comes out as itself. Anything else takes its `xHH` form.
+    """
+    return chr(codepoint) if 0x21 <= codepoint <= 0x7E else _hex_text(codepoint)
 
 
-def args_yaml(args):
-    """A reference's argument list: a bare expression for one argument, else a list."""
-    if len(args) == 1:
-        return expr_yaml(args[0])
-    return [expr_yaml(a) for a in args]
+def _args_yaml(arguments: Sequence[ir.Node]) -> object:
+    """
+    A reference's argument list. A single argument comes out as a bare expression. More than that comes out as a list.
+    """
+    if len(arguments) == 1:
+        return _expr_yaml(arguments[0])
+    return [_expr_yaml(argument) for argument in arguments]
 
 
-def expr_yaml(e):
+def _expr_yaml(value: ir.Node) -> object:
     """Regenerate a value/parameter expression."""
-    return _EXPR_YAML(e)
+    return _EXPR_YAML(value)
 
 
-# A kind named nowhere raises: one written back by accident would be spelled the way something else is, and the
-# roundtrip would compare the grammar against a reading of it rather than itself.
-_EXPR_YAML = ir.Question(
-    "what a value expression is written as in the annotated grammar: the string or number it spells, or the "
-    "single-entry mapping its operator names",
+_EXPR_YAML: ir.Question[object] = ir.Question(
+    "the annotated form of a value expression. a string or a number writes itself, and an operator writes a "
+    "single-entry mapping.",
     {
-        ir.ParamValue: lambda e: e.name,
-        ir.LitValue: lambda e: e.value,
+        ir.ParamValue: lambda value: value.name,
+        ir.LitValue: lambda value: value.value,
         ir.MatchValue: "(match)",
         ir.ColumnValue: "<column>",
-        ir.AutoDetectIndentValue: "<auto-detect-indent>",  # written back only where the vendored grammar is regenerated
-        ir.AddValue: lambda e: {"(+)": [expr_yaml(e.a), expr_yaml(e.b)]},
-        ir.SubValue: lambda e: {"(-)": [expr_yaml(e.a), expr_yaml(e.b)]},
-        ir.AtoiValue: lambda e: {"(atoi)": expr_yaml(e.arg)},
-        ir.LenValue: lambda e: {"(len)": expr_yaml(e.arg)},
-        ir.FlipValue: lambda e: {"(flip)": {"var": e.var, **{b.value: expr_yaml(b.item) for b in e.branches}}},
-        ir.RefCall: lambda e: {e.name: args_yaml(e.args)},
+        # `ir2spec` writes this back where it regenerates the vendored grammar.
+        ir.AutoDetectIndentValue: "<auto-detect-indent>",
+        ir.AddValue: lambda value: {"(+)": [_expr_yaml(value.a), _expr_yaml(value.b)]},
+        ir.SubValue: lambda value: {"(-)": [_expr_yaml(value.a), _expr_yaml(value.b)]},
+        ir.AtoiValue: lambda value: {"(atoi)": _expr_yaml(value.arg)},
+        ir.LenValue: lambda value: {"(len)": _expr_yaml(value.arg)},
+        ir.FlipValue: lambda value: {
+            "(flip)": {"var": value.var, **{branch.value: _expr_yaml(branch.item) for branch in value.branches}}
+        },
+        ir.RefCall: lambda value: {value.name: _args_yaml(value.args)},
     },
 )
 
 
-def node_yaml(n):
+def _node_yaml(node: ir.Node) -> object:
     """Regenerate a grammar node."""
-    return _NODE_YAML(n)
+    return _NODE_YAML(node)
 
 
-def _max_yaml(n):
-    """A `(max)`'s: the wrapping form spells what it covers, and the vendored grammar's bare form its limit alone."""
-    if n.item is not None:
-        return {"(max)": [expr_yaml(n.limit), n.message, node_yaml(n.item)]}
-    return {"(max)": expr_yaml(n.limit)}
+def _max_yaml(node: ir.MaxWrapper) -> dict[str, object]:
+    """
+    A `(max)`'s form. The wrapping form writes what the `(max)` covers. The vendored grammar's bare form writes just the
+    limit.
+    """
+    if node.item is not None:
+        return {"(max)": [_expr_yaml(node.limit), node.message, _node_yaml(node.item)]}
+    return {"(max)": _expr_yaml(node.limit)}
 
 
-def _case_yaml(n):
-    """A `(case)`'s: the variable it switches on, a branch per value, and the else where it has one."""
-    default = {"else": node_yaml(n.default)} if n.default is not None else {}
-    return {"(case)": {"var": n.var, **{b.value: node_yaml(b.item) for b in n.branches}, **default}}
+def _case_yaml(node: ir.CaseTree) -> dict[str, object]:
+    """
+    A `(case)`'s form. The variable the case switches on, a branch per value, and the else where a case has an else.
+    """
+    default = {"else": _node_yaml(node.default)} if node.default is not None else {}
+    branches = {branch.value: _node_yaml(branch.item) for branch in node.branches}
+    return {"(case)": {"var": node.var, **branches, **default}}
 
 
-# A kind named nowhere raises: one written back by accident would be spelled the way something else is, and the
-# roundtrip would compare the grammar against a reading of it rather than itself.
-_NODE_YAML = ir.Question(
-    "what a grammar node is written as in the annotated grammar: the character or name it spells, the pair of hex "
-    "bounds a range spells, or the single-entry mapping its operator names",
+_NODE_YAML: ir.Question[object] = ir.Question(
+    "the annotated form of a grammar node. a character or a name writes itself. a range writes a pair of hex bounds. "
+    "an operator writes a single-entry mapping.",
     {
-        ir.OneCharSet: lambda n: char_text(n.cp),
-        ir.RangeSet: lambda n: [hex_text(n.lo), hex_text(n.hi)],
-        ir.RefCall: lambda n: n.name if not n.args else {n.name: args_yaml(n.args)},
+        ir.OneCharSet: lambda node: _char_text(node.cp),
+        ir.RangeSet: lambda node: [_hex_text(node.lo), _hex_text(node.hi)],
+        ir.RefCall: lambda node: node.name if not node.args else {node.name: _args_yaml(node.args)},
         ir.EmptyTree: "<empty>",
         ir.FailTree: "<fail>",
         ir.StartOfLineGuard: "<start-of-line>",
         ir.EndOfStreamGuard: "<end-of-stream>",
         ir.InvalidSet: "<invalid>",
-        ir.SeqTree: lambda n: {"(all)": [node_yaml(i) for i in n.items]},
-        ir.AltTree: lambda n: {"(any)": [node_yaml(i) for i in n.items]},
-        ir.StarTree: lambda n: {"(***)": node_yaml(n.item)},
-        ir.PlusTree: lambda n: {"(+++)": node_yaml(n.item)},
-        ir.OptTree: lambda n: {"(???)": node_yaml(n.item)},
-        # The count is a number where it is fixed and the parameter's name where it is carried, which is how each of
-        # those is spelled as a value expression anyway.
-        ir.RepTree: lambda n: {f"({{{expr_yaml(n.count)}}})": node_yaml(n.item)},
-        ir.LookGuard: lambda n: {"(===)": node_yaml(n.item)},
-        ir.NegLookGuard: lambda n: {"(!==)": node_yaml(n.item)},
-        ir.LookBehindGuard: lambda n: {"(<==)": node_yaml(n.item)},
-        ir.DiffSet: lambda n: {"(---)": [node_yaml(n.base), *(node_yaml(m) for m in n.minus)]},
-        ir.ExcludeAtAction: lambda n: {"(exclude)": node_yaml(n.item)},
-        ir.SetVarAction: lambda n: {"(set)": [n.param, expr_yaml(n.value)]},
-        ir.IncreaseAction: lambda n: {"(increase)": n.param},
+        ir.SeqTree: lambda node: {"(all)": [_node_yaml(item) for item in node.items]},
+        ir.AltTree: lambda node: {"(any)": [_node_yaml(item) for item in node.items]},
+        ir.StarTree: lambda node: {"(***)": _node_yaml(node.item)},
+        ir.PlusTree: lambda node: {"(+++)": _node_yaml(node.item)},
+        ir.OptTree: lambda node: {"(???)": _node_yaml(node.item)},
+        # A fixed count comes out as a number. A parameterized count comes out as the parameter's name. A value
+        # expression writes either.
+        ir.RepTree: lambda node: {f"({{{_expr_yaml(node.count)}}})": _node_yaml(node.item)},
+        ir.LookGuard: lambda node: {"(===)": _node_yaml(node.item)},
+        ir.NegLookGuard: lambda node: {"(!==)": _node_yaml(node.item)},
+        ir.LookBehindGuard: lambda node: {"(<==)": _node_yaml(node.item)},
+        ir.DiffSet: lambda node: {
+            "(---)": [_node_yaml(node.base), *(_node_yaml(subtracted) for subtracted in node.minus)]
+        },
+        ir.ExcludeAtAction: lambda node: {"(exclude)": _node_yaml(node.item)},
+        ir.SetVarAction: lambda node: {"(set)": [node.param, _expr_yaml(node.value)]},
+        ir.IncreaseAction: lambda node: {"(increase)": node.param},
         ir.MaxWrapper: _max_yaml,
-        ir.IsLessThanGuard: lambda n: {"(<)": [expr_yaml(n.a), expr_yaml(n.b)]},
-        ir.IsLessEqualGuard: lambda n: {"(<=)": [expr_yaml(n.a), expr_yaml(n.b)]},
+        ir.IsLessThanGuard: lambda node: {"(<)": [_expr_yaml(node.a), _expr_yaml(node.b)]},
+        ir.IsLessEqualGuard: lambda node: {"(<=)": [_expr_yaml(node.a), _expr_yaml(node.b)]},
         ir.CaseTree: _case_yaml,
-        ir.FlipValue: lambda n: {"(flip)": {"var": n.var, **{b.value: expr_yaml(b.item) for b in n.branches}}},
-        ir.BindTree: lambda n: {"(if)": node_yaml(n.cond), "(set)": [n.param, expr_yaml(n.value)]},
-        ir.TokenWrapper: lambda n: {"(token)": [n.code, node_yaml(n.item)]},
-        ir.Wrapper: lambda n: {"(wrap)": [n.begin, n.end, node_yaml(n.item)]},
-        ir.EmitAction: lambda n: {"(emit)": n.code},
-        ir.CutAction: lambda n: {"(cut)": n.message},
-        ir.CommitWrapper: lambda n: {"(commit)": [n.message, node_yaml(n.item)]},
-        ir.ErrorAction: lambda n: {"(error)": n.message},
-        ir.RecoverWrapper: lambda n: {"(recover)": [node_yaml(n.recovery), node_yaml(n.item)]},
+        ir.FlipValue: lambda node: {
+            "(flip)": {"var": node.var, **{branch.value: _expr_yaml(branch.item) for branch in node.branches}}
+        },
+        ir.BindTree: lambda node: {"(if)": _node_yaml(node.cond), "(set)": [node.param, _expr_yaml(node.value)]},
+        ir.TokenWrapper: lambda node: {"(token)": [node.code, _node_yaml(node.item)]},
+        ir.Wrapper: lambda node: {"(wrap)": [node.begin, node.end, _node_yaml(node.item)]},
+        ir.EmitAction: lambda node: {"(emit)": node.code},
+        ir.CutAction: lambda node: {"(cut)": node.message},
+        ir.CommitWrapper: lambda node: {"(commit)": [node.message, _node_yaml(node.item)]},
+        ir.ErrorAction: lambda node: {"(error)": node.message},
+        ir.RecoverWrapper: lambda node: {"(recover)": [_node_yaml(node.recovery), _node_yaml(node.item)]},
     },
 )
 
 
-def regenerate(productions):
+def regenerate(productions: Mapping[str, ir.Prod]) -> dict[str, object]:
     """Rebuild the yaml-grammar mapping (index entries + definitions) from `{name: Prod}`."""
-    out = {}
-    for name, prod in productions.items():
-        out[f":{prod.number:03d}"] = name
-        body = node_yaml(prod.body)
-        if prod.params:
-            declared = prod.params[0] if len(prod.params) == 1 else list(prod.params)
-            out[name] = {"(...)": declared, **body}
+    regenerated: dict[str, object] = {}
+    for name, production in productions.items():
+        regenerated[f":{production.number:03d}"] = name
+        body = _node_yaml(production.body)
+        if production.params:
+            declared = production.params[0] if len(production.params) == 1 else list(production.params)
+            if not isinstance(body, dict):
+                raise ValueError(f"{name} declares parameters, and {body!r} is the annotated form of its body")
+            regenerated[name] = {"(...)": declared, **body}
         else:
-            out[name] = body
-    return out
+            regenerated[name] = body
+    return regenerated
 
 
-def main():
+def main() -> None:
     source = sys.argv[1] if len(sys.argv) > 1 else annotated2ir.DEFAULT_GRAMMAR
     yaml.safe_dump(regenerate(annotated2ir.load(source)), sys.stdout, sort_keys=False, allow_unicode=True)
 

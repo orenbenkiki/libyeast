@@ -23,7 +23,7 @@ b\x0a
 # B: 4, C: 4, L: 2, c: 0
 I-
 # B: 5, C: 5, L: 2, c: 1
-!A sequence entry is required after '-'
+!A sequence entry must follow `-`
 # B: 5, C: 5, L: 2, c: 1
 q
 # B: 5, C: 5, L: 2, c: 1

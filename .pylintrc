@@ -1,0 +1,44 @@
+# What pylint is asked of this tree. The default set is written for code of a shape this project does not have, so the
+# opinions about size are turned off and the rules that find faults are left on.
+#
+# `no-docstring-rgx` and `ignored-argument-names` both default to the leading underscore, which is this project's own
+# mark for a name nothing reads. A nested helper named `_walk` wants no docstring. An argument named `_grammar`
+# wants no use. Both rules stay on and the underscore is what quiets them.
+
+[MAIN]
+jobs = 0
+
+[BASIC]
+# A leading underscore is this project's mark for a name nothing outside reads, and pylint's own default for a
+# name that wants no docstring. `main` is added to it. Every module's `main` is its entry point, and the module
+# docstring above it is what describes the module.
+no-docstring-rgx = ^(_|main$)
+
+[FORMAT]
+max-line-length = 120
+
+[MESSAGES CONTROL]
+# Turned off, each an opinion about size rather than a fault:
+#   R0801 duplicate-code            the grammar steps repeat by design
+#   R0902 too-many-instance-attributes
+#   R0903 too-few-public-methods    the IR is dataclasses
+#   R0911 too-many-return-statements
+#   R0912 too-many-branches
+#   R0913 too-many-arguments
+#   R0914 too-many-locals
+#   R0915 too-many-statements
+#   R0917 too-many-positional-arguments
+#   R1702 too-many-nested-blocks
+#   C0302 too-many-lines
+disable =
+    R0801,
+    R0902,
+    R0903,
+    R0911,
+    R0912,
+    R0913,
+    R0914,
+    R0915,
+    R0917,
+    R1702,
+    C0302

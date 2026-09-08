@@ -2,15 +2,22 @@
 """
 Check that libyeast's conformance fixtures are intact and well-formed.
 
-Every `.input` in `tests/spec/` must pair with an `.output` and every `.output` with an `.input`; every filename must
-decode to a production the grammar still has, with the parameters it declares and well-formed values; and every output
-must parse as the wire format, with marks that chain and markers that balance. This guards the migrated suite against a
-fixture orphaned by a grammar change, a hand-edit that broke a name, and an output that is not a token stream — before
-the interpreter is ever asked to reproduce one.
+An `.input` in `tests/spec/` pairs with an `.output`, and an `.output` with an `.input`. A filename decodes to a
+production the grammar still has, with the parameters it declares and well-formed values. An output parses as the wire
+format, with marks that chain and markers that balance.
 
-The marker rule is what `check_markers` cannot reach: that gate settles the grammar's clean paths, and says nothing
-about what an error leaves behind. A fixture of the root is a whole parse and must balance exactly; one of a rule run by
-itself may close what its caller would have opened, but neither may leave a marker open.
+A fixture whose name calls its input invalid holds an invalid input. The production refuses that input, or stops short
+of the end. Either way the match fails.
+
+This guards the migrated suite against a fixture orphaned by a grammar change. The same guard covers a hand-edit that
+broke a name. It covers an output that is not a token stream. It covers a name that claims what the fixture does not
+show. The guard runs before anybody asks the interpreter to reproduce a fixture.
+
+The marker rule is what `check_markers` cannot reach. That gate settles the grammar's clean paths. That gate says
+nothing about what an error leaves behind.
+
+A fixture of the root is a whole parse and balances exactly. A fixture of a rule run outside the root may close what its
+caller would have opened. Neither may leave a marker open.
 """
 
 import os
@@ -22,14 +29,14 @@ import spec_tests
 import wire
 
 
-def main():
+def main() -> None:
     grammar = annotated2ir.load()
     fixtures = spec_tests.load()
 
     errors = []
 
     inputs = {os.path.basename(fixture.input_path)[: -len(".input")] for fixture in fixtures}
-    outputs = {name[: -len(".output")] for name in os.listdir(spec_tests.TESTS_DIR) if name.endswith(".output")}
+    outputs = {path.name[: -len(".output")] for path in gate.named_in(spec_tests.TESTS_DIR, ".output")}
     for stem in sorted(inputs - outputs):
         errors.append(f"{stem}.input: has no matching .output")
     for stem in sorted(outputs - inputs):
@@ -46,7 +53,7 @@ def main():
         tokens = wire.parse(fixture.expected)
         fault = wire.chain_fault(tokens) or wire.marker_fault(tokens, fixture.production == ir.ROOT)
         if fault is None and fixture.is_invalid and wire.is_clean(tokens, len(fixture.input)):
-            fault = "is named invalid, but the production matches the whole of it, cleanly"
+            fault = "the name says invalid, and the production matches the whole input cleanly"
         if fault is not None:
             errors.append(f"{name}: {fault}")
 

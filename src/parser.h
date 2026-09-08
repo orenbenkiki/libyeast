@@ -1,4 +1,16 @@
 // SPDX-License-Identifier: MIT
+// A single automaton parses. Characters drive it, and the automaton emits yeast tokens into a queue. `ys_parser` holds
+// the whole execution state. That state is a window over the input and a stack of the productions the parser is
+// inside. The state also holds a queue of the tokens the parser has built, and the state the automaton is in.
+//
+// The C call stack holds none of that state. ys_next_token() can therefore hand back a token from the middle of a
+// production and resume there on the next call.
+//
+// The parser has a single layer. A scanner emitting tokens for a parser to consume would need a vocabulary between the
+// scanner and the parser, and yeast writes none. The automaton's output already is the token stream. That stream is
+// the Begin/End markers and the classified spans of input. A hand-written scanner would also sit on the hot path, and
+// the grammar would not derive it.
+
 #ifndef YEAST_PARSER_H
 #define YEAST_PARSER_H
 
@@ -10,33 +22,27 @@
 #include <stdint.h>
 #include <yeast.h>
 
-// The parser is one automaton, driven by characters, emitting yeast tokens into a queue. Its whole execution state is
-// ys_parser: a window over the input, a stack of the productions it is inside, a queue of the tokens it has built, and
-// the state it is in. Nothing of it lives in the C call stack, and that is what lets ys_next_token() hand back a token
-// from the middle of a production and resume there on the next call.
-//
-// There is no second layer. A scanner emitting tokens for a parser to consume would need a vocabulary between them, and
-// yeast has none: the automaton's output already is the token stream — the Begin/End markers and the classified spans
-// of input. A hand-written scanner would also be the one thing on the hot path the grammar did not derive.
-
-// A state of the automaton. The states themselves are the grammar's, generated into parser_tables.h; this is only their
-// type. The automaton begins in state 0, which is the obligation that names it here rather than there.
+// A state of the automaton. The grammar gives the states themselves, and the generator writes them into
+// parser_tables.h. This is only their type. The automaton begins in the state `YS_STATE_START` names, and this file
+// writes that state rather than the generated tables.
 typedef uint16_t ys_state;
-#define YS_STATE_START ((ys_state)0)
+#define YS_STATE_START ((ys_state)0) // the state a parse opens in. This file names it rather than the generated tables.
 
-// --- The window over the input. ---
+// --- The window over the input.
 
 // The input, and where the parser has reached in it.
 //
-// A string parser's window is the caller's buffer: it is never copied, never grown and never freed, and it holds the
-// whole input from its first byte, so `base` stays 0 and the source has no reader to give it more. A stream parser's
-// window is the source's buffer, holding the bytes it has read and not yet discarded — it keeps every byte a token in
-// the queue still points at, and `base` says where in the input its first byte is.
+// A string parser's window is the caller's buffer. Nobody copies, grows or frees that buffer. The window holds the
+// whole input from its first byte. `base` stays `0`, and the source has no reader to give the window more.
+//
+// A stream parser's window is the source's buffer. That buffer holds the bytes the source has read and has not yet
+// discarded. It keeps a byte a token in the queue still points at. `base` says where in the input the buffer's first
+// byte sits.
 typedef struct ys_window {
-    const uint8_t *bytes; // the readable bytes: the caller's input, or the source's buffer once it has one
-    ys_source source;     // where more bytes come from, and the buffer they land in
-    size_t base;          // the offset, in the whole input, of bytes[0]
-    ys_mark mark;         // where the next unread character is, in the whole input
+    const uint8_t *bytes; // the readable bytes. That is the caller's input, or the buffer the source allocated.
+    ys_source source;     // the origin of more bytes, and the buffer those bytes land in.
+    size_t base;          // the offset of `bytes[0]` in the whole input.
+    ys_mark mark;         // the offset of the next unread character in the whole input.
 } ys_window;
 
 // The bytes the window has read and the parser has not yet consumed.
@@ -44,94 +50,103 @@ static inline size_t ys_window_readable(const ys_window *window) {
     return window->source.size - (window->mark.byte_offset - window->base);
 }
 
-// The first of them, which is where the next character is.
+// The first readable byte. The next character starts there.
 static inline const uint8_t *ys_window_at(const ys_window *window) {
     return window->bytes + (window->mark.byte_offset - window->base);
 }
 
-// Consume a run of characters, none of which is a line break — which is every run the grammar scans, as
-// generator/check_decoder.py holds it to.
-void ys_window_advance(ys_window *window, ys_run run);
+// Move past what a consume took. Such a consume holds no line break, and generator/check_decoder.py holds the grammar
+// to that.
+void ys_window_advance(ys_window *window, ys_consumed taken);
 
-// Consume a line break, which is one line break however many characters it spans: "\r\n" is two.
-void ys_window_break(ys_window *window, ys_run run);
+// Move past a line break. A break is a single break however many characters it spans. `\r\n` spans a pair.
+void ys_window_break(ys_window *window, ys_consumed taken);
 
-// --- The queue of tokens built but not yet handed back. ---
+// --- The queue of tokens built but not yet handed back.
 
-// A token the parser has built. It holds no text: the window's buffer moves as it grows and compacts, so a token's text
-// is worked out from its marks and the window at the moment it is handed back — which is the only moment it is valid.
-// An error's text is not in the input at all, and is the parser's own message.
+// A token the parser has built. It holds no text. The window's buffer moves as the buffer grows and compacts. The
+// parser works a token's text out from the token's marks and the window at the moment it hands the token back. The
+// text is valid then and no later. An error's text is not in the input at all, and is the parser's message.
 typedef struct ys_pending {
     ys_code code;
     ys_mark start;
     ys_mark end;
 } ys_pending;
 
-// The tokens the parser has built but not yet handed back. The first `resolved` of them are decided; the rest are the
-// open run, whose codes may still change and ahead of which a marker may still be injected.
+// The tokens the parser has built and has not yet handed back. The queue has decided the first `resolved` of them. The
+// tokens past that count are the open run. The parser may still change a run's codes, and may still inject a marker
+// ahead of the run.
 //
-// That the undecided tokens are a suffix is not an accident. Both runs that cause one — the empty lines that open a
-// block scalar, and the line of an implicit key — are decided by something that has not been read yet, and both resolve
-// the same way: the run's codes are rewritten, and a marker is injected ahead of the run (`end-scalar` for the block
-// scalar whose empty lines were chomped away, `begin-mapping` for the line that turned out to be a key). Only one run
-// is open at a time, since neither of the two nests inside the other.
+// The undecided tokens form a suffix, and that is no accident. A pair of runs make such a suffix. The empty lines that
+// open a block scalar are the first, and the line of an implicit key is the second. Input the parser has still to read
+// decides a run.
 //
-// The injected marker is `ahead`, a token of its own rather than one of `tokens`, and it needs no room made for it: it
-// always precedes every token in the queue, because the automaton runs only while the queue's first token is undecided,
-// so anything decided ahead of the run has already been handed back. Which is also why injecting one cannot fail for
-// want of memory — and it must not, since a run that could not be resolved would strand every token it had built.
+// A run resolves the same way. The parser rewrites the run's codes and injects a marker ahead of the run. That marker
+// is `end-scalar` for a block scalar whose empty lines the parser chomped away. It is `begin-mapping` for a line that
+// turned out to be a key. A single run is open at a time, and a run does not nest inside another run.
+//
+// The injected marker is `ahead`, a token of its own rather than a token `tokens` holds. The queue therefore needs no
+// room for it. The marker precedes what the queue holds. The automaton runs only while the queue's first token belongs
+// to the open run. A decided token ahead of the run has already gone back to the caller.
+//
+// Injecting a marker therefore cannot fail for want of memory. A run the parser could not resolve would strand the
+// tokens the run had built.
 typedef struct ys_queue {
     ys_pending *tokens;
-    size_t head;      // where the first token sits in `tokens`
-    size_t count;     // how many tokens there are
-    size_t resolved;  // how many of them are decided
-    size_t capacity;  // how many tokens `tokens` holds
-    bool is_run_open; // the tokens past `resolved` are undecided, and the next one emitted joins them
-    ys_pending ahead; // the marker injected ahead of them all
-    bool has_ahead;   // there is one
+    size_t head;      // the place the first token sits in `tokens`.
+    size_t count;     // the count of tokens in the queue.
+    size_t resolved;  // the count of tokens the queue has decided.
+    size_t capacity;  // the count of tokens `tokens` has room for.
+    bool is_run_open; // the tokens past `resolved` belong to the open run, and the next token the parser emits joins
+                      // them.
+    ys_pending ahead; // the marker the parser injected ahead of the queue.
+    bool has_ahead;   // `ahead` holds a marker.
 } ys_queue;
 
-// Whether a token is there to be handed back.
+// Whether the queue holds a token to hand back.
 static inline bool ys_queue_is_ready(const ys_queue *queue) {
     return queue->has_ahead || queue->resolved > 0;
 }
 
-// Add a token to the back of the queue. It is decided, unless a run is open, in which case it joins the run. False if
-// the cap or the allocator refused the room for it.
-bool ys_queue_emit(ys_memory *memory, ys_queue *queue, ys_code code, ys_mark start, ys_mark end);
+// Add a token to the back of the queue. The queue decides that token, unless a run is open. An open run takes the
+// token instead. YS_OK, or YS_FAILED_MEMORY where the cap or the allocator refused the room for it.
+int ys_queue_emit(ys_memory *memory, ys_queue *queue, ys_code code, ys_mark start, ys_mark end);
 
-// Open a run: the tokens emitted from now on are undecided.
+// Open a run. The run takes the tokens the parser emits from here on. The parser has still to decide those tokens.
 void ys_queue_open_run(ys_queue *queue);
 
-// The `count` tokens of the open run, whose codes the parser rewrites when it learns what they were. The pointer is
-// into the queue's own array, so emitting another token invalidates it: rewrite the run, then carry on.
+// The `count` tokens of the open run. The parser rewrites the codes of those tokens once the parser learns what the
+// run held. The pointer points into the queue's array. Emitting another token invalidates the pointer. Rewrite the
+// run, then continue.
 ys_pending *ys_queue_run(ys_queue *queue, size_t *count);
 
-// Put a decided token ahead of the run, and of everything else in the queue.
+// Put a decided token ahead of the run, and of the rest of the queue.
 void ys_queue_inject(ys_queue *queue, ys_code code, ys_mark start, ys_mark end);
 
-// Close the run: its tokens are decided, and may be handed back.
+// Close the run. The queue has decided the run's tokens, and hands them back on demand.
 void ys_queue_resolve_run(ys_queue *queue);
 
 // Take the token ys_queue_is_ready() says is there.
 ys_pending ys_queue_pop(ys_queue *queue);
 
-// --- The stack of productions the parser is inside. ---
+// --- The stack of productions the parser is inside.
 
 // The `n` of a production that has none.
 #define YS_NO_INDENT ((ptrdiff_t)-2)
 
-// A production the parser is inside. `indent` is its `n` — the grammar's one runtime parameter, the other being
-// resolved away when the parser is generated — and `return_state` is where the automaton resumes when the production
-// matches. The indentation is signed because a block sequence nested directly in a mapping is entered at `n - 1`, which
-// is -1 when the mapping is at the left margin.
+// A production the parser is inside. `indent` is its `n`. `n` is the runtime parameter the grammar still holds, and
+// the generator resolves the other parameter away. `return_state` is the state the automaton resumes in when the
+// production matches.
+//
+// The indentation is signed. The parser enters a block sequence nested directly in a mapping at `n - 1`. That is `-1`
+// where the mapping begins at the left margin.
 typedef struct ys_frame {
     ys_state return_state;
     ptrdiff_t indent;
 } ys_frame;
 
-// The productions the parser is inside, innermost last. Nothing but ys_options::max_bytes bounds its depth: no quantity
-// of input does, since a document nests as deeply as it says it does.
+// The productions the parser is inside. The innermost production sits last. `ys_options::max_bytes` bounds the
+// depth. The size of the input places no bound on it. A document nests as deeply as the document says.
 typedef struct ys_stack {
     ys_frame *frames;
     size_t depth;
@@ -143,69 +158,83 @@ static inline const ys_frame *ys_stack_top(const ys_stack *stack) {
     return &stack->frames[stack->depth - 1];
 }
 
-// Enter a production with parameter `n`, to resume at `return_state` when it matches.
-bool ys_stack_push(ys_memory *memory, ys_stack *stack, ys_state return_state, ptrdiff_t indent);
+// Enter a production with parameter `n`, to resume at `return_state` when it matches. YS_OK, or YS_FAILED_MEMORY where
+// the cap or the allocator refused the frame.
+int ys_stack_push(ys_memory *memory, ys_stack *stack, ys_state return_state, ptrdiff_t indent);
 
 // Leave the innermost production, and hand back the frame it ran in.
 ys_frame ys_stack_pop(ys_stack *stack);
 
-// --- Failures. ---
+// --- Failures.
 
-// What the parser failed with, and what it does about it.
+// The failure the parser stopped on, and the policy the parser follows after that failure.
 //
-// Every message is a static string, from messages.h or — for what depends on the grammar, the production the parser was
-// inside and what it expected there — from the table the generator writes into parser_tables.h. So nothing is allocated
-// on the failure path, which the failure that runs out of memory could not do anyway; nothing is freed; and there is no
-// lifetime to explain, a token's text being either the input's or a static string's, so that ys_are_tokens_stable() is
-// true of every code alike. What the parser found is not in the message, and does not need to be: the first
-// YS_CODE_UNPARSED_TEXT token behind the error begins at exactly the byte that failed.
+// A message is a static string, from messages.h or from the table the generator writes into parser_tables.h. That
+// table holds what depends on the grammar. That is the production the parser was inside and what the parser expected
+// there.
 //
-// The error token, like the injected marker, is a token of its own and not one of the queue's — it always follows every
-// token in it — so queueing it needs no room either, and reporting a malformed document cannot fail for want of memory.
+// The failure path therefore allocates nothing. A failure that runs out of memory could not allocate anyway. The
+// failure path frees nothing. A lifetime needs no explaining here. A token's text comes from the input or from a
+// static string, and ys_are_tokens_stable() is true whatever the code.
+//
+// The message does not say what the parser found, and does not need to. The first YS_CODE_UNPARSED_TEXT token behind
+// the error begins at exactly the byte that failed.
+//
+// The error token, like the injected marker, is a token of its own rather than a token the queue holds. It follows
+// what the queue holds. Queueing the error needs no room either. Reporting a malformed document therefore cannot fail
+// for want of memory.
 typedef struct ys_error {
-    const char *message; // the error's text, and what says there is an error to hand back at all; NULL when there is
-                         // not. Handing a format error back clears it, the parse carrying on past one.
-    ys_pending token;    // the error's token, handed back behind everything the queue holds
-    ys_resume resume;    // what the parser does with the input after a malformed document
+    const char *message; // the error's text. A NULL message says the parser has no error to hand back. Handing a
+                         // format error back clears the message, and the parse continues.
+    ys_pending token;    // the error's token. The parser hands it back behind the tokens the queue holds.
+    ys_resume resume;    // the policy the parser follows for the input after a malformed document.
 } ys_error;
 
-// --- The parser. ---
+// --- The parser.
 
-// The parsing arm of a ys_token_source: the whole execution state of the automaton, none of it in the C call stack, so
-// ys_read_token() can hand back a token from the middle of a production and resume there on the next call.
+// The parsing arm of a ys_token_source. The whole execution state of the automaton, with no part of it in the C call
+// stack. ys_read_token() can hand back a token from the middle of a production and resume there on the next call.
 typedef struct ys_parser {
-    ys_memory memory;
-    ys_window window;
-    ys_queue queue;
-    ys_stack stack;
-    ys_error error;
-    ys_state state; // where the automaton is
-    int fault;      // a resource failure ys_read_token() is to report: 0 none, -1 the reader failed, -2 the allocator
-    bool is_done;   // the source is spent — the stream ended, or it faulted — and answers -3 from here on
+    ys_memory memory; // the allocator it may use, and the cap on how much.
+    ys_window window; // the readable bytes and where the next character sits among them.
+    ys_queue queue;   // the tokens built and not yet handed back, the undecided ones among them.
+    ys_stack stack;   // the frames the automaton must give back on its way out. The innermost frame sits last.
+    ys_error error;   // the failure a malformed document came to, and the policy for the rest of the input.
+    ys_state state;   // the state the automaton is in.
+    // A resource failure ys_read_token() is to report. `0` for none, YS_FAILED_STREAM where the reader failed, and
+    // YS_FAILED_MEMORY where the allocator did. The name goes here rather than the number, and ys_status names the
+    // numbers.
+    int fault;
+    // the source has nothing left, and answers YS_FAILED_ACTION from here on. The stream ended, or the source faulted.
+    bool is_done;
 } ys_parser;
 
-// Initialize a freshly-allocated parser arm: `memory` is what it may allocate, and `options` gives the resume policy.
-// The window's bytes and reader are the constructor's to set, string or stream.
+// Initialize a freshly-allocated parser arm. `memory` is what it may allocate, and `options` gives the resume policy.
+// The constructor sets the window's bytes and reader. That holds for a string source and for a stream source.
 void ys_parser_init(ys_parser *parser, ys_memory memory, const ys_options *options);
 
-// Read the next token into `token`: YS_OK with it filled, YS_FAILED_STREAM the reader failed, YS_FAILED_MEMORY the
-// allocator did (with `errno` the callback's), YS_FAILED_ACTION with `errno` ENODATA once the stream has ended and been
-// read past.
+// Read the next token into `token`. YS_OK with it filled. YS_FAILED_STREAM the reader failed. YS_FAILED_MEMORY the
+// allocator did. `errno` holds the callback's value. YS_FAILED_ACTION with `errno` ENODATA once a caller reads past
+// the end of the stream.
 int ys_parser_read(ys_parser *parser, ys_token *token);
 
-// Make at least `wanted` bytes readable, reading from the source if need be — so that the decoder never sees a
-// character the window's edge cut in half, and a run of them is never cut into two tokens. Fewer bytes are readable
-// only at the end of the input. False if a fill failed — the source's reader, or the cap or the allocator — which sets
-// ys_parser::fault and ends the source.
-bool ys_parser_fill(ys_parser *parser, size_t wanted);
+// Make at least `wanted` bytes readable. The parser reads from the source where it must. The decoder then does not see
+// a character the window's edge cut in half. A consume of those characters then stays a single token. Fewer bytes are
+// readable only at the end of the input.
+//
+// YS_OK, or the fault a failed fill sets in `ys_parser::fault` before ending the source. That is YS_FAILED_STREAM where
+// the source's reader failed, and YS_FAILED_MEMORY where the cap or the allocator did.
+int ys_parser_fill(ys_parser *parser, size_t wanted);
 
-// Hand back a malformed document: the error token, with `message` as its text, at where the parser has reached. What
-// the parser does with the rest of the input is ys_error::resume. An open run must be resolved before this is called:
-// an error decides one, since it ends the block scalar or the key line the run was waiting on.
+// Hand back a malformed document. That is the error token, with `message` as its text, at where the parser has
+// reached. `ys_error::resume` says what the parser does with the rest of the input.
+//
+// A caller resolves an open run before calling this. An error decides a run. That ends the block scalar or the key
+// line the run waited on.
 void ys_parser_fail(ys_parser *parser, const char *message);
 
-// The token a pending one is: its text is the input the window still holds, or the parser's message when it is an
-// error, or nothing at all when it is a zero-width marker.
+// The token a pending token comes to. Its text is the input the window still holds. The text is the parser's message
+// where the token is an error. A zero-width marker has no text.
 ys_token ys_parser_token(const ys_parser *parser, ys_pending pending);
 
 #endif // YEAST_PARSER_H

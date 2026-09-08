@@ -3,6 +3,6 @@ A
 # B: 0, C: 0, L: 1, c: 0
 I&
 # B: 1, C: 1, L: 1, c: 1
-!An anchor name is required after '&'
+!An anchor name must follow `&`
 # B: 1, C: 1, L: 1, c: 1
 a

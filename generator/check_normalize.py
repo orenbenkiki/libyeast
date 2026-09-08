@@ -2,37 +2,42 @@
 """
 Check that the normalization pipeline preserves the grammar's meaning.
 
-A structural transformation is only allowed if it changes no token the interpreter emits and no event the fold produces.
-So this runs the two nets the base grammar already passes, on the grammar the pipeline produces: the fixtures — every
-`tests/spec` case reproduced token for token (`check_interpreter`) — and the YAML Test Suite, folded to events
-green-or-declared (`check_star`). Coverage runs on it too, pooled across the stages. Token and event identity is the
-whole proof; the vendored-spec check is meaningless on a transformed grammar and is not run here.
+A structural transformation may land where it changes no token the interpreter emits and no event the fold produces. So
+this runs the nets the base grammar already passes, on the grammar the pipeline produces.
 
-Each stage's grammar is purged of what the root no longer reaches, so a transformation that replaces a call site strands
-the fixtures of the callee it dead-ends — the fold family at `speculate-folds`, the fixture-only monomorphic copies at
-`monomorphize`. A stranded fixture is not dropped: it is pinned to the last stage whose grammar can still run it, keeps
-guarding that grammar token for token, and credits coverage from there. Only a fixture no stage at all can run is an
-error.
+The first net is the fixtures, a `tests/spec` case reproduced token for token by `check_interpreter`. The other is the
+YAML Test Suite, folded to events green-or-declared by `check_star`. Coverage runs on the suite too, and it pools across
+the stages.
 
-Each pinned group is run against its own stage. Every group passing and every step preserving the corpus over the stages
-its fixtures survive come to the same thing — a step would have to break the stream and a later one restore it exactly —
-so the fast answer is the whole answer, and naming the step that broke it is worth its cost only once something has.
+The proof rests on token and event identity. The vendored-spec check means nothing on a transformed grammar, and this
+does not run it.
 
-Hence two modes. By default it runs everything and judges at the end, which is what `make pc` and CI want: one pass, and
-a failure reported where it stands. Given `--bisect` it goes on to name the step, by binary search — a step only breaks
-what the steps before it kept, so the stages are green then red and the seam is found in a logarithmic number of corpus
-runs. `--bisect <step>` names the step to suspect first, the one just written: its two neighbouring stages are tried
-before the search, so a right guess costs two runs and a wrong one falls through to it.
+A stage's grammar drops what the root has stopped reaching. A transformation that replaces a call site therefore strands
+the fixtures of the callee it dead-ends. Those are the fixture-only monomorphic copies at `monomorphize`.
 
-An empty pipeline makes the one stage the base grammar itself, so this passes exactly when the base's own gates do —
-which is how the net is proved wired before a transformation rides it.
+A stranded fixture stays. Such a fixture pins to the last stage whose grammar can still run it. It keeps guarding that
+grammar token for token, and credits coverage from there. A fixture no stage at all can run is an error.
+
+A pinned group runs against its own stage. A group passing, and a step preserving the corpus over the stages its
+fixtures survive, come to the same thing. A step would have to break the stream and a later step restore it exactly. So
+the fast answer is the whole answer, and naming the step that broke the stream earns its cost once something has.
+
+Hence a pair of modes. By default this runs the whole pipeline and judges at the end. That is what `make pc` and CI
+want. A single pass, and a failure reported where it appears.
+
+Under `--bisect` this goes on to name the step. A binary search finds it. A step breaks what the steps before it kept.
+The stages run green then red, and a logarithmic number of corpus runs finds the seam.
+
+`--bisect <step>` names the step to suspect first. That is the step just written. The stages either side of it go first.
+A right guess costs a pair of runs, and a wrong guess falls through to the search.
+
+An empty pipeline makes the base grammar the whole pipeline. This then passes exactly where the base grammar's gates do.
+That is how the net proves itself wired before a transformation rides it.
 """
 
 import argparse
 import os
-import sys
-import threading
-import traceback
+from collections.abc import Iterable, Sequence
 
 import annotated2ir
 import check_grammar_coverage
@@ -42,54 +47,89 @@ import gate
 import interpreter
 import ir
 import normalize
+import spaces
 import spec_tests
 
-# The recursive helpers a transformed grammar carries recurse as deep as their input is long, past both Python's limit
-# and a default stack. So the check runs on a thread given a large one, with the limit raised to match — deep enough for
-# any real input, where `interpreter.DEPTH_LIMIT` is the cap that refuses a runaway with a trace before either is hit.
-STACK_BYTES = 256 * 1024 * 1024
-RECURSION_LIMIT = 200000
 
-
-def _say(message):
-    """Say where the run has got to — `ir.say`, so a step's progress and the check's are stamped the same way."""
-    ir.say(message)
-
-
-def _held_by(label):
+def _corpus_errors(
+    label: str, grammar: dict[str, ir.Prod], fixtures: Sequence[spec_tests.Fixture], suite: Sequence[str]
+) -> list[str]:
     """
-    The invariants the pipeline says hold once the step named `label` has run — what a run of that stage is entitled to
-    assert rather than infer.
-
-    Read off the step table, so what the interpreter checks at run time is what the pipeline claims and not what the
-    grammar's shape happens to say. Question it off the shape would only repeat the static count; told, the parse is an
-    independent witness to it — a gate that is present and *wrong* is a thing no static count can see.
-    """
-    held = set()
-    for step in normalize.STEPS:
-        held |= {one.name for one in step.settles}
-        if step.name == label:
-            return frozenset(held)
-    return frozenset(held)
-
-
-def _corpus_errors(label, grammar, fixtures, suite):
-    """
-    The cases `grammar` does not reproduce, named for the step that produced it — the fixtures filtered to the ones
-    `grammar` can still run, a stranded fixture's production being no longer this grammar's to ask about.
+    The cases `grammar` does not reproduce, named for the step that produced it. This keeps the fixtures `grammar` can
+    still run. A stranded fixture names a production this grammar has stopped holding.
     """
     runnable = [fixture for fixture in fixtures if spec_tests.runnable_fault(fixture, grammar) is None]
     errors = [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, runnable)]
     return errors + [f"[{label}] star {error}" for error in check_star.disagreements(grammar, suite)]
 
 
-def _pinned(stages, fixtures):
+def _spaces_held(grammar: dict[str, ir.Prod], fixtures: Sequence[spec_tests.Fixture]) -> list[str]:
     """
-    The fixtures each stage is held to, as a list of groups parallel to `stages` — every fixture pinned to the last
-    stage whose grammar can run it, the purge having stranded it everywhere later — and the fixtures no stage at all can
-    run, as error strings.
+    The places a parse reaches that the spaces say it cannot, as error strings.
+
+    The other checks read the grammar to work out which places a parse may reach. This holds those checkers to a parse
+    that really happened. A space that refuses a place the parse is actually in came out too narrow. A checker reading
+    only the grammar catches none of that. The other direction has nothing reading it. The entry and exit spaces reach
+    this gate and stop there. A space admitting more than a parse reaches goes unremarked until something prunes by it.
+
+    Both ends of a way, and the far end of an action. An entry check holds what a gate admits. An entry check says
+    nothing about where performing something leaves the parse. That is what the action transitions compute. An action
+    wrong in a way no gate happens to ask about would pass the entry checks and still be wrong.
+
+    An action's near end comes in from the caller rather than out of a checker. There is nothing there to disagree with.
     """
-    groups = [[] for _stage in stages]
+    # Read for a parse from the root alone, which is the machine that ships. A fixture starting outside the states the
+    # root brings it to simulates a parse no input makes.
+    held = normalize.spaces_of_ways(grammar)
+    faults: list[str] = []
+
+    def checking(
+        node: ir.Node,
+        before: Iterable[spaces.GuardAnswers],
+        after: Iterable[spaces.GuardAnswers],
+        emitter: interpreter.Emitter,
+    ) -> None:
+        found = held.get(id(node))
+        if found is None:  # an action, held to where performing it says the parse is left
+            said = normalize.after_action(node, spaces.guard_answers_in(before), grammar)
+            if after and not any(said.under(one) for one in after):
+                faults.append(
+                    f"performing {type(node).__name__} at position {emitter.position} leaves the parse where the "
+                    f"space says it cannot"
+                )
+            return
+        name, at, entered, leaves = found
+        for what, said, answers in (("entering", entered, before), ("leaving", leaves, after)):
+            if answers and not any(said.under(one) for one in answers):
+                faults.append(
+                    f"{name}: way {at} at position {emitter.position} sits on {what} where the space says the way "
+                    f"cannot"
+                )
+
+    for fixture in fixtures:
+        try:
+            interpreter.run(
+                grammar,
+                fixture.production,
+                fixture.input,
+                spec_tests.arguments(fixture, grammar),
+                checking=checking,
+            )
+        except Exception:  # noqa: BLE001  failure-is-reported: by `_corpus_errors`  # pylint: disable=W0718
+            continue
+    return sorted(set(faults))
+
+
+def _pinned(
+    stages: Sequence[tuple[str, dict[str, ir.Prod]]], fixtures: Sequence[spec_tests.Fixture]
+) -> tuple[list[list[spec_tests.Fixture]], list[str]]:
+    """
+    The fixtures a stage must pass, as a list of groups parallel to `stages`. A fixture pins to the last stage whose
+    grammar can run it. The purge strands that fixture at any later stage.
+
+    Also the fixtures no stage at all can run, as error strings.
+    """
+    groups: list[list[spec_tests.Fixture]] = [[] for _stage in stages]
     errors = []
     for fixture in fixtures:
         last = None
@@ -103,57 +143,69 @@ def _pinned(stages, fixtures):
     return groups, errors
 
 
-def _narrowed(corpus, fixtures, suite):
+def _narrowed(
+    corpus: Iterable[str], fixtures: Sequence[spec_tests.Fixture], suite: Sequence[str]
+) -> tuple[Sequence[spec_tests.Fixture], Sequence[str]]:
     """
     The fixtures and suite cases named in `corpus`, as the pair to search with. The question the search asks is which
-    step first broke *these*, so every other case is work whose answer is already known — a probe over fourteen cases
-    where the whole corpus is eleven hundred.
+    step first broke *these*. The pipeline already answers any other case. The probe then runs over the named ones where
+    the whole corpus is far larger.
     """
     named = {line.split("]", 1)[1].split(":", 1)[0].split(None, 1)[1] for line in corpus if "]" in line}
-    # A declared divergence stays in whatever suite is asked about: its declaration is checked against the cases given,
-    # so dropping it would report the declaration stale at every probe.
+    # A declared divergence stays in whatever suite is asked about. Its declaration is checked against the cases given,
+    # and dropping it would report the declaration stale at each probe.
     cases = [case for case in suite if case in named or case in check_star.DIVERGENCES]
     wanted = [fixture for fixture in fixtures if os.path.basename(fixture.input_path) in named]
     return (wanted, cases) if (wanted or cases) else (fixtures, suite)
 
 
-def _reporting_stage(corpus, stages):
+def _reporting_stage(corpus: Iterable[str], stages: Sequence[tuple[str, dict[str, ir.Prod]]]) -> int:
     """
-    The earliest stage a divergence was reported at, as an index. A fixture is judged at the last stage whose grammar
-    can run it, so where one fails there the break is at that stage or below it and no stage above can be the seam.
+    The earliest stage that reported a divergence, as an index. A fixture faces judgement at the last stage whose
+    grammar can run it. A fixture failing there puts the break at that stage or below it, and no stage above can be the
+    seam.
     """
     labels = [label for label, _grammar in stages]
     reported = [labels.index(line.split("]")[0].lstrip("[")) for line in corpus if line.startswith("[")]
     return min(reported) if reported else len(stages) - 1
 
 
-def _first_broken(stages, fixtures, suite, hint=None, bound=None):
+def _first_broken(
+    stages: Sequence[tuple[str, dict[str, ir.Prod]]],
+    fixtures: Sequence[spec_tests.Fixture],
+    suite: Sequence[str],
+    hint: str | None = None,
+    bound: int | None = None,
+) -> tuple[str, list[str]] | None:
     """
-    The earliest stage whose grammar does not reproduce the corpus, as `(label, errors)`, or `None` where every one
-    does. A step only breaks what the steps before it kept, so the stages run green then red and the seam is a binary
-    search — six probes over fifty stages rather than fifty.
+    The earliest stage whose grammar does not reproduce the corpus, as `(label, errors)`, or `None` where the whole
+    pipeline reproduces it. A step breaks what the steps before it kept. The stages run green then red, and the seam is
+    a binary search. That costs a probe per doubling of the pipeline's length rather than a probe per stage.
 
-    `bound` is the highest stage worth asking about, the earliest one a divergence was already reported at. `hint` names
-    a step to suspect first, and its two probes bound the search whichever way they fall: a stage before it that already
-    breaks puts the seam below, its own stage breaking after a clean one before it *is* the seam, and both holding puts
-    the seam above. So a hint never costs more than it saves, and the search that follows one starts from the range it
-    left rather than from the whole pipeline.
+    `bound` is the highest stage worth asking about, the earliest stage that already reported a divergence.
+
+    `hint` names a step to suspect first, and the probes around that step bound the search whichever way they fall. A
+    stage before the hint that already breaks puts the seam below. The hinted stage breaking after a clean stage before
+    it *is* the seam. Both holding puts the seam above.
+
+    So a hint costs no more than it saves. The search that follows a hint starts from the range the hint left, rather
+    than from the whole pipeline.
     """
     labels = [label for label, _grammar in stages]
     low = 0  # the stage at `low` is taken to hold; the one at `high` is known not to
     high = len(stages) - 1 if bound is None else bound
 
-    def probed(index):
-        """The corpus at one stage, said before and after so a search that is running says where it has got to."""
-        _say(f"    probing [{labels[index]}] ({index} of {len(stages) - 1})")
+    def probed(index: int) -> list[str]:
+        """The corpus at a stage, said before and after so a running search says where it has got to."""
+        ir.say(f"    probing [{labels[index]}] ({index} of {len(stages) - 1})")
         errors = _corpus_errors(*stages[index], fixtures, suite)
-        _say(f"    [{labels[index]}] {'breaks' if errors else 'holds'}, {high - low} stage(s) still in range")
+        ir.say(f"    [{labels[index]}] {'breaks' if errors else 'holds'} over {high - low} stage(s) still in range")
         return errors
 
     if hint is not None and hint in labels:
         index = labels.index(hint)
         if 0 < index <= high:
-            _say(f"suspecting [{hint}] first")
+            ir.say(f"suspecting [{hint}] first")
             if probed(index - 1):
                 high = index - 1
             else:
@@ -175,26 +227,33 @@ def _first_broken(stages, fixtures, suite, hint=None, bound=None):
     return stages[high][0], probed(high)
 
 
-def _check(does_bisect=False, hint=None):
-    _say("loading the fixtures and the suite")
+def _check(does_bisect: bool = False, hint: str | None = None) -> None:
+    """
+    Report the steps of the pipeline that change what the fixtures and the suite parse to.
+
+    `does_bisect` makes this narrow a failing step to the production that holds the fault. `hint` names where to look
+    first.
+    """
+    ir.say("loading the fixtures and the suite")
     fixtures = spec_tests.load()
     suite = check_star.cases()
-    _say(f"{len(fixtures)} fixture(s), {len(suite)} suite case(s); running {len(normalize.STEPS)} step(s)")
+    ir.say(f"{len(fixtures)} fixture(s), {len(suite)} suite case(s); running {len(normalize.STEPS)} step(s)")
     stages = normalize.stages(annotated2ir.load())
     final_label, final = stages[-1]
-    _say(f"{len(stages) - 1} stage(s) built, {len(final)} production(s) at [{final_label}]; pinning the fixtures")
+    ir.say(
+        f"{len(stages) - 1} stage(s) built from {len(final)} production(s) at [{final_label}]. pinning the fixtures."
+    )
     groups, errors = _pinned(stages, fixtures)
 
     corpus = []
     for (label, grammar), pinned in zip(stages, groups):
         if pinned:
-            _say(f"[{label}] {len(pinned)} pinned fixture(s)")
-            corpus += [
-                f"[{label}] fixture {error}"
-                for error in check_interpreter.reproduced(grammar, pinned, holding=_held_by(label))
-            ]
-    _say(f"[{final_label}] {len(suite)} suite case(s)")
+            ir.say(f"[{label}] {len(pinned)} pinned fixture(s)")
+            corpus += [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, pinned)]
+    ir.say(f"[{final_label}] {len(suite)} suite case(s)")
     corpus += [f"[{final_label}] star {error}" for error in check_star.disagreements(final, suite)]
+    ir.say(f"[{final_label}] holding the spaces to what the fixtures really reach")
+    errors += [f"[{final_label}] space {error}" for error in _spaces_held(final, groups[-1])]
     if corpus:  # something broke the stream; say so at once, whether or not the step behind it is asked for
         print(f"FAILING: {len(corpus)} corpus divergence(s)", flush=True)
         for divergence in corpus[:5]:
@@ -210,92 +269,82 @@ def _check(does_bisect=False, hint=None):
             print("    re-run with `--bisect [step]` to name the step behind it", flush=True)
     errors += corpus
     exercisers = [(grammar, pinned) for (_label, grammar), pinned in zip(stages, groups) if pinned]
-    _say(f"coverage of [{final_label}] against {sum(len(pinned) for _grammar, pinned in exercisers)} exerciser(s)")
+    ir.say(f"coverage of [{final_label}] against {sum(len(pinned) for _grammar, pinned in exercisers)} exerciser(s)")
     for error in check_grammar_coverage.gaps(final, exercisers):
         errors.append(f"[final] coverage {error}")
-    _say("holding the pipeline to its own law")
-    # The pipeline's own law: each step's invariant is a count that never rises, is none where the step settles it, and
-    # stays none after — a step breaking one saying so in its `lapses` and why, and a step naming one doing something
-    # about it. Every structural property the pipeline claims is judged here, so nothing else below repeats one.
+    ir.say("holding the pipeline to its own law")
+    # The pipeline's own law. Each step's invariant is a count that does not rise, is none where the step settles it,
+    # and stays none after.
     for fault in normalize.invariant_faults(stages):
         errors.append(f"[invariant] {fault}")
-    # A step naming neither an invariant nor a reason for having none promises what nothing checks. A step outliving the
-    # invariant it was written for is the way one arrives here: the invariant is what the pipeline is for and the step
-    # only a means to it, so what is left carrying nothing goes rather than being found a new thing to carry.
+    # A step naming neither an invariant nor a reason for having none promises what nothing checks. A step left with
+    # nothing goes rather than being found a new job.
     for name in normalize.untested_steps():
         errors.append(f"[step] `{name}` names neither an invariant nor a reason for having none")
-    # What the steps asked of `GUARD_CROSSES_ACTION` that it does not answer, and what it answers that nothing asked.
-    # The table is three-valued so that "no" and "not yet" are different, and an unnamed pair refuses the move — which
-    # looks exactly like a worked-out no unless it is said here. Read after the steps have run, they being what consults
-    # it, and a pair only ever consulted in a forked worker would not come back.
+    # A phase names the invariants it settles. Some step of the phase settles or establishes those.
+    for fault in normalize.phase_faults():
+        errors.append(f"[phase] {fault}")
+    # What the steps asked of `GUARD_CROSSES_ACTION` that it does not answer, and what it answers that nothing asked. An
+    # unnamed pair refuses the move, which looks exactly like a worked-out no unless it is said here.
     for guard, action in normalize.GUARD_CROSSES_ACTION.unnamed():
-        errors.append(f"[crossing] `{guard}` in front of `{action}` was asked about, and the table does not say")
+        errors.append(f"[crossing] a walk asked about `{guard}` in front of `{action}`, and the table does not say")
     for guard, action in normalize.GUARD_CROSSES_ACTION.unconsulted():
-        errors.append(f"[crossing] the table says `{guard}` in front of `{action}`, and nothing asked")
-    # What the runs asked of a global that one value for the parse could not have answered: the reads where the stack
-    # beside it held something the slot did not. A global is what does not nest, and this is what says so of the grammar
-    # that has just run rather than of the argument that made it one.
+        errors.append(f"[crossing] the table says `{guard}` in front of `{action}`. nothing asked about that pair.")
+    # What the runs asked of a global that one value for the parse could not have answered. A global is what does not
+    # nest, said of the grammar that has just run rather than of the argument that made it one.
     asked = interpreter.ASKED["flattened"]
     if asked:
-        errors.append(f"[global] {asked} read(s) answered from a stack a single slot could not have stood for")
+        errors.append(f"[global] {asked} read(s) answered from a stack a single slot could not have held")
 
-    # Every question that answered a kind it had called untested, and which kind — each pair a decision now owed, which
-    # is whether the family naming that kind is the right thing to say of it. The answer stood for the run, so whatever
-    # the corpus did above is what put it to the test: it says here whether the run held, since a run that broke has
-    # these as its first suspects and one that held has them as answers borne out. Said whatever happened and before the
-    # gate reports, which exits and would take the list with it, and the gate fails on a pair however the rest went.
+    # Each question that answered a kind it had called untested, and which kind. Said before the gate reports, which
+    # exits and would take the list with it.
     owed = ir.owed()
-    pairs = [f"{what} — {kind}" for what, kinds in owed.items() for kind in kinds]
-    _say(
-        f"{len(pairs)} question answer(s) taken on a family's word and never before tested, against a corpus that "
+    pairs = [f"{what} - {kind}" for what, kinds in owed.items() for kind in kinds]
+    ir.say(
+        f"{len(pairs)} question answer(s) taken on a family's word and untested, against a corpus that "
         f"{'did not hold' if corpus else 'held'}: " + ("; ".join(pairs) or "none")
     )
     for what, kinds in owed.items():
         for kind in kinds:
             errors.append(
-                f"[question] the question of {what} calls {kind} untested and it has arrived: say whether the family "
-                f"naming it answers for it, and take it off that list or name a family that tells the two apart"
+                f"[question] the question of {what} calls {kind} untested and that call has arrived. say whether the "
+                f"family naming the question answers for that call. then take it off that list, or name a family that "
+                f"tells the two apart."
             )
 
-    # The rounds each fixpoint took, deepest first — said before the gate reports, which exits where anything failed and
+    # The rounds each fixpoint took, deepest first. Said before the gate reports, which exits where anything failed and
     # would take this with it. `ir.ROUNDS` is a backstop, and this is what says how far out of reach it is.
     deepest = ir.deepest_rounds()
-    _say(
+    ir.say(
         f"deepest fixpoint {max(deepest.values(), default=0)} round(s) against a cap of {ir.ROUNDS}: "
         + ("; ".join(f"{what} {took}" for what, took in deepest.items()) or "none")
     )
 
-    _say("done, results:")
+    ir.say("done, results:")
     gate.report(
         errors,
-        "normalization fault(s) — a step that changes the grammar's meaning, or an invariant broken with no reason "
+        "normalization fault(s) - a step that changes the grammar's meaning, or an invariant broken with no reason "
         "given",
         f"normalization pipeline: {len(normalize.STEPS)} step(s) preserve {len(fixtures)} fixtures and {len(suite)} "
         f"suite cases",
     )
     print("    " + " -> ".join(step.name for step in normalize.STEPS))
-    # The stranded fixtures: each guards the last stage whose grammar can still run it, the purge having taken its
-    # production out of every later one.
+    # The stranded fixtures. Each guards the last stage whose grammar can still run it, the purge having taken its
+    # production out of the later ones.
     stranded = len(fixtures) - len(groups[-1])
     print(f"    {stranded} fixture(s) pinned to an earlier stage's grammar, the last to run them")
-    # The steps that carry no invariant and say why, which is the one way a step may name none — a fault above counts
-    # the rest.
+    # The steps with no invariant that say why, which is the one way a step may name none. A fault above counts the
+    # rest.
     exempt = [step.name for step in normalize.STEPS if step.untestable]
-    print(
-        f"    {len(exempt)} of {len(normalize.STEPS)} step(s) have no invariant to carry and say why: "
-        f"{', '.join(exempt)}"
-    )
-    # A question's handler nothing reached. Read here and nowhere else: a kind is exercised by the inputs that reach it,
-    # so only a run over the whole corpus can say a handler is dead — and a dead one is a guess about the grammar that
-    # held, either a kind that cannot occur where the question is asked or a shape the corpus does not reach.
+    print(f"    {len(exempt)} of {len(normalize.STEPS)} step(s) have no invariant and say why: " f"{', '.join(exempt)}")
+    # A question's handler nothing reached. A kind is exercised by the inputs that reach it, and a run over the whole
+    # corpus is what says a handler is dead.
     unused = ir.unexercised()
     print(
         f"    {sum(len(kinds) for kinds in unused.values())} question handler(s) nothing reached: "
-        + ("; ".join(f"{what} — {', '.join(kinds)}" for what, kinds in unused.items()) or "none")
+        + ("; ".join(f"{what} - {', '.join(kinds)}" for what, kinds in unused.items()) or "none")
     )
-    # What the final grammar still breaks, whatever the steps settle between them — each one a step not yet written, and
-    # the list Phase 03 finishes by emptying. Every structural count the phase watches is in here, the meter among them,
-    # so what follows says only what the list cannot: where those counts fall and what they are made of.
+    # What the final grammar still breaks, whatever the steps settle between them. Each is a step not yet written.
     unsettled = normalize.unsettled_invariants(final)
     print(
         f"    {len(unsettled)} invariant(s) the final grammar still breaks: "
@@ -303,12 +352,12 @@ def _check(does_bisect=False, hint=None):
     )
     print(f"    {len(final)} production(s) in the grammar the phase hands on")
     # The globals the grammar has come to hold, and what the runs asked of them that one slot could not have answered.
-    # At none the slot is the stack, which is what says the value does not nest.
+    # At none the slot is the stack. That is what says the value does not nest.
     held = [name for name in ir.GLOBAL_PARAMS if not any(name in final[production].params for production in final)]
-    print(f"    {len(held)} global(s) — {', '.join(held) or 'none'} — asked {asked} read(s) a single slot could not")
+    print(f"    {len(held)} global(s) - {', '.join(held) or 'none'} - asked {asked} read(s) a single slot could not")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Check that the normalization pipeline preserves the grammar's meaning"
     )
@@ -317,30 +366,11 @@ def main():
         nargs="?",
         const=True,
         metavar="STEP",
-        help="on a corpus failure, name the step behind it; STEP is the one to suspect first",
+        help="on a corpus failure, name the step behind it. suspect STEP first.",
     )
     arguments = parser.parse_args()
     hint = arguments.bisect if isinstance(arguments.bisect, str) else None
-
-    sys.setrecursionlimit(RECURSION_LIMIT)
-    threading.stack_size(STACK_BYTES)
-    status = {}
-
-    def worker():
-        try:
-            _check(does_bisect=arguments.bisect is not None, hint=hint)
-        except SystemExit as exit:  # gate.report exits on failure; carry its code back to the main thread
-            status["code"] = exit.code
-        except BaseException:  # noqa: BLE001 — a thread's exception reaches no exit code of its own
-            # A crash is a failure, and one raised here would otherwise be printed by the thread's excepthook while the
-            # main thread exits zero — a green gate over a check that never finished.
-            traceback.print_exc()
-            status["code"] = 1
-
-    thread = threading.Thread(target=worker)
-    thread.start()
-    thread.join()
-    sys.exit(status.get("code", 0))
+    gate.run_deep(lambda: _check(does_bisect=arguments.bisect is not None, hint=hint))
 
 
 if __name__ == "__main__":

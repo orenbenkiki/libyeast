@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MIT
 """
-Check that the Python wire code map matches the C one.
+Check that the Python wire code map matches the C map.
 
-`wire.CODE_CHAR` is the character each token code is written as; the authority is `src/wire.c`'s YS_WIRE table, which
-the C parser and the reference share. This parses that table and asserts the Python copy is exactly it, minus the three
-error codes, which collapse to one wire character no grammar annotation emits. So the interpreter cannot come to write a
-code the C parser would write differently.
+`wire.CODE_CHAR` gives the character that writes a token code. The authority is the YS_WIRE table in `src/wire.c`. The C
+parser and the reference share that table. This parses the table and asserts the Python copy matches it exactly. The
+error code falls outside the comparison. A grammar annotation emits that code at no point. So the interpreter cannot
+come to write a code the C parser would write differently.
 """
 
 import os
@@ -14,19 +14,19 @@ import re
 import gate
 import wire
 
-WIRE_C = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "wire.c")
-_ENTRY = re.compile(r"\[YS_CODE_(\w+)\]\s*=\s*'(.)'")
+_WIRE_C = os.path.join(gate.TREE, "src", "wire.c")  # the C copy of the code map this holds `wire.py` to.
+_ENTRY = re.compile(r"\[YS_CODE_(\w+)\]\s*=\s*'(.)'")  # a row of that copy. A code and the character that writes it.
 
 
-def main():
-    with open(WIRE_C) as handle:
+def main() -> None:
+    with open(_WIRE_C, encoding="utf-8") as handle:
         table = _ENTRY.findall(handle.read())
 
     from_c = {}
     for name, character in table:
         code = name.lower().replace("_", "-")
         if code.startswith("error"):
-            continue  # the three error codes are one wire character, and never an annotation's code
+            continue  # an error code is the wire's own and never an annotation's; `YS_CODE_ERROR` names it
         from_c[code] = character
 
     errors = []
@@ -35,11 +35,10 @@ def main():
         in_python = wire.CODE_CHAR.get(code)
         if in_c != in_python:
             errors.append(f"{code}: wire.c says {in_c!r}, wire.py says {in_python!r}")
-        # `ys_code_char` answers '\0' where the wire spells nothing, and a line is NUL-terminated, so a code written as
-        # one would read back as an empty line. Every character being printable is what keeps the two apart, and is what
-        # a wire being text means in the first place.
+        # `ys_code_char` answers '\0' where the wire writes nothing, and a line is NUL-terminated. A printable character
+        # is what keeps the two apart.
         if in_c is not None and not 0x21 <= ord(in_c) <= 0x7E:
-            errors.append(f"{code}: is written {in_c!r}, which is not a printable character a wire can carry")
+            errors.append(f"{code}: the wire writes {in_c!r}, and that is no printable character a wire can hold")
 
     gate.report(
         errors, "code(s) that differ between wire.c and wire.py", f"wire code map: {len(wire.CODE_CHAR)} codes agree"

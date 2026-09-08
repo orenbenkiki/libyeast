@@ -1,17 +1,21 @@
 # SPDX-License-Identifier: MIT
 """
-Reflow standalone ``#`` comment blocks to a width, keeping the ``# `` prefix and the block's indentation.
+Reflow standalone ``#`` comment blocks to a width. The ``# `` prefix and the block's indentation stay.
 
-Black leaves comments alone and docformatter only touches docstrings, so nothing else holds a comment to the column
-limit or fills it. This does, for the comments that are plain prose. A standalone comment — a line whose first non-space
-character is ``#`` — is found through ``tokenize``, so a ``#`` inside a string is never mistaken for one; an inline
-comment after code is left where it is. A shebang, an ``SPDX`` header, a directive such as ``noqa`` or ``type``, and any
-block that carries its own structure (extra indentation, a bullet, a ruler) are left alone too, since a greedy reflow
-would wreck them. A block is the run of same-indent standalone comment lines; an empty comment line splits it into
-paragraphs, and each paragraph is filled greedily to the width.
+Black leaves comments untouched and docformatter reaches docstrings and stops there. This holds a comment to the column
+limit, for the comments that are plain prose.
 
-Run with ``--apply`` to rewrite files in place, or ``--check`` to report the blocks that are not reflowed and exit non-
-zero. ``make reformat-py`` applies it; ``make vet-format-py`` checks it.
+A standalone comment is a line whose first non-space character is ``#``. ``tokenize`` finds it. A ``#`` inside a string
+passes for none. An inline comment after code stays in place.
+
+This passes over a shebang, an ``SPDX`` header, and a directive such as ``noqa`` or ``type``. This passes over a block
+with structure of its own, such as an extra indentation or a bullet. A ruler counts too.
+
+A block is the run of same-indent standalone comment lines. An empty comment line splits it into paragraphs. This fills
+a paragraph greedily to the width.
+
+Run with ``--apply`` to rewrite files in place, or ``--check`` to report the blocks that want a reflow and exit with a
+failing status. ``make reformat-py`` applies this, and ``make vet-format-py`` checks the result.
 """
 
 import io
@@ -20,22 +24,25 @@ import sys
 import textwrap
 import tokenize
 
-WIDTH = 120
-DIRECTIVE = re.compile(r"^(SPDX-|noqa|type:|pragma:|pylint:|fmt:|isort:|yapf|mypy:|nopep8|!)")
-RULER = re.compile(r"^[-=*|+~^]{2,}")
+_WIDTH = 120  # the column a reflow wraps a comment block to.
+
+# The lines a reflow leaves unchanged. A tool reads a directive and wants it on a single line. A ruler is a drawing
+# rather than a sentence. Wrapping a ruler would break the drawing.
+_DIRECTIVE = re.compile(r"^(SPDX-|noqa|type:|pragma:|pylint:|fmt:|isort:|yapf|mypy:|nopep8|!)")
+_RULER = re.compile(r"^[-=*|+~^]{2,}")  # a run of the same mark. A drawing rather than a sentence.
 
 
-def body_of(line):
+def _body_of(line: str) -> str:
     """
-    The comment text after ``#`` and one optional space; indentation beyond that space is kept, as a signal.
+    The comment text after ``#`` and an optional space. A reflow keeps indentation beyond that space, as a signal.
     """
     after_hash = line.lstrip()[1:]
     return after_hash[1:] if after_hash.startswith(" ") else after_hash
 
 
-def standalone(source, lines):
+def _standalone(source: str, lines: list[str]) -> dict[int, int]:
     """
-    Line number to indentation column, for every comment that stands alone on its line.
+    Line number to indentation column, over the comments that take a line of their own.
     """
     marks = {}
     for token in tokenize.generate_tokens(io.StringIO(source).readline):
@@ -46,43 +53,44 @@ def standalone(source, lines):
     return marks
 
 
-def is_risky(block):
+def _is_risky(block: list[str]) -> bool:
     """
-    Whether a block carries structure a greedy reflow would wreck, and so must be left untouched.
+    Whether a block has structure a greedy reflow would wreck. A reflow leaves such a block untouched.
     """
     for line in block:
-        body = body_of(line)
-        if body.startswith(" ") or DIRECTIVE.match(body.strip()) or RULER.match(body.strip()):
+        body = _body_of(line)
+        if body.startswith(" ") or _DIRECTIVE.match(body.strip()) or _RULER.match(body.strip()):
             return True
         if body.strip().startswith(("- ", "* ")):
             return True
     return False
 
 
-def reflow(block, indent):
+def _reflow(block: list[str], indent: int) -> list[str]:
     """
-    The block rewritten, each prose paragraph filled greedily to the width under the ``# `` prefix.
+    The block rewritten, with a prose paragraph filled greedily to the width under the ``# `` prefix.
 
-    A block is split into paragraphs on empty comment lines, and a paragraph that carries its own structure — a ruler, a
-    directive, an indent, a bullet — is kept verbatim while the plain-prose ones around it are still filled. That is
-    what lets a section-header comment sit above a paragraph without the paragraph being left long.
+    An empty comment line splits a block into paragraphs. A paragraph with structure of its own stays verbatim. That is
+    a ruler or a directive. An indent or a bullet counts too. The reflow still fills the plain-prose paragraphs around
+    it.
     """
     prefix = " " * indent + "# "
-    out, paragraph = [], []
+    out: list[str] = []
+    paragraph: list[str] = []
 
-    def flush():
+    def flush() -> None:
         if not paragraph:
             return
-        if is_risky(paragraph):
+        if _is_risky(paragraph):
             out.extend(paragraph)
         else:
-            text = " ".join(body_of(line).strip() for line in paragraph)
-            for wrapped in textwrap.wrap(text, WIDTH - len(prefix), break_long_words=False, break_on_hyphens=False):
+            text = " ".join(_body_of(line).strip() for line in paragraph)
+            for wrapped in textwrap.wrap(text, _WIDTH - len(prefix), break_long_words=False, break_on_hyphens=False):
                 out.append(prefix + wrapped)
         paragraph.clear()
 
     for line in block:
-        if body_of(line).strip() == "":
+        if _body_of(line).strip() == "":
             flush()
             out.append(" " * indent + "#")
         else:
@@ -91,13 +99,15 @@ def reflow(block, indent):
     return out
 
 
-def offenders(path, is_applying):
+def _offenders(path: str, is_applying: bool) -> list[int]:
     """
-    Reflow the file's comment blocks; return the starting line of each that changed, writing back if asked.
+    Reflow the file's comment blocks. Return the starting line of a block that changed. This writes the file back when
+    the caller asks.
     """
-    source = open(path).read()
+    with open(path, encoding="utf-8") as handle:
+        source = handle.read()
     lines = source.split("\n")
-    marks = standalone(source, lines)
+    marks = _standalone(source, lines)
     result, index, changed = [], 0, []
     while index < len(lines):
         if index + 1 in marks:
@@ -106,7 +116,7 @@ def offenders(path, is_applying):
             while index < len(lines) and index + 1 in marks and marks[index + 1] == indent:
                 block.append(lines[index])
                 index += 1
-            reflowed = reflow(block, indent)
+            reflowed = _reflow(block, indent)
             if reflowed != block:
                 changed.append(start)
             result.extend(reflowed)
@@ -114,25 +124,25 @@ def offenders(path, is_applying):
         result.append(lines[index])
         index += 1
     if is_applying and changed:
-        with open(path, "w") as handle:
+        with open(path, "w", encoding="utf-8") as handle:
             handle.write("\n".join(result))
     return changed
 
 
-def main():
+def main() -> None:
     arguments = sys.argv[1:]
     is_checking = "--check" in arguments
     is_applying = "--apply" in arguments
     paths = [argument for argument in arguments if not argument.startswith("-")]
     total = 0
     for path in paths:
-        changed = offenders(path, is_applying and not is_checking)
+        changed = _offenders(path, is_applying and not is_checking)
         total += len(changed)
         if is_checking:
             for start in changed:
-                print(f"{path}:{start}: comment block is not reflowed to {WIDTH} columns")
+                print(f"{path}:{start}: the reflow leaves the comment block off {_WIDTH} columns")
     if is_checking and total:
-        print(f"wrap-long-comments: {total} block(s) not reflowed — run `make reformat-py`")
+        print(f"wrap-long-comments: {total} block(s) not reflowed - run `make reformat-py`")
         sys.exit(1)
     if is_applying:
         print(f"wrap-long-comments: {total} block(s) reflowed")

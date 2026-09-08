@@ -1,6 +1,6 @@
 # yamlreference
 
-The Haskell YAML reference parser, vendored from <https://github.com/orenbenkiki/yamlreference>.
+Haskell YamlReference, vendored from <https://github.com/orenbenkiki/yamlreference>.
 
 `Text/Yaml/Reference.bnf` is the YAML grammar written as parser combinators, and — unlike the vendored
 `yaml-grammar/yaml-spec-1.2.yaml` — it carries the **token annotations**: which productions wrap their match in

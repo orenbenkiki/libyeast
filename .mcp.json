@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "inert": {
+      "command": "python3",
+      "args": [".claude/mcp/inert.py"]
+    }
+  }
+}

@@ -1,44 +1,50 @@
 # SPDX-License-Identifier: MIT
 """
-Check the subspace algebra against the states it stands for.
+Check the subspace algebra against the states it describes.
 
-A `SubSpace` is a description; the states it holds are what it means. So every operation is judged by enumerating those
-states over a small alphabet — a codepoint from each side of every span boundary the cases use, and the end of the
-stream — and asking whether the operation's result holds exactly the states set arithmetic on the enumerations gives.
-The alphabet is small and every standing is enumerated, so the enumeration is exhaustive over what the cases can tell
-apart.
+A `SubSpace` is a description, and the states inside that description are its meaning. So an operation is judged by
+enumerating those states over a small alphabet. The alphabet holds a codepoint per side of a span boundary the cases
+use, and the end of the stream. The question asked is whether the operation's result holds exactly the states set
+arithmetic on the enumerations gives.
 
-The standings themselves are judged the same way and in both directions: the quantities a standing orders are walked
-over a wider range than `spaces` walks them, and what that reaches must be exactly what stands there — one that no parse
-reaches being an enumeration that is not what it claims, and a state no standing names being a hole a subspace would say
-nothing about.
+The alphabet is small, and this enumerates the places. The enumeration is exhaustive over what the cases can tell apart.
 
-Reports every problem found and exits non-zero if there are any.
+A subspace says a single thing per place and says it coalesced. The table hands out a single answer per set of states.
+Any form asking for that set gets the same object. The identities of the algebra hold where the alphabet cannot reach to
+show them. An axis of a place cuts the whole space in half.
+
+This judges the places themselves the same way, and in both directions. This walks the quantities that a place orders
+over a wider range than `spaces` walks them, and what that reaches must be exactly what is there. A place that no parse
+reaches is an enumeration that is not what it claims. A state that no place names is a hole a subspace would say nothing
+about.
+
+Reports the problems found and exits with a failing status where it finds any.
 """
 
 import itertools
+from collections.abc import Sequence
 
 import chars
 import gate
 import spaces
 
-# One codepoint from each side of every boundary the cases below name, the invalid byte and the highest codepoint among
-# them, so a span that ends where another begins is told from one that does not.
-ALPHABET = (-1, 0, 0x20, 0x41, 0x42, 0x5A, 0x7E, 0x7F, 0x80, 0xD7FF, 0xE000, chars.MAX_CODEPOINT)
+# A codepoint per side of a boundary the cases below name, with the invalid byte and the top codepoint among them. This
+# tells a span that ends where another begins apart from a span that ends elsewhere.
+_ALPHABET = (-1, 0, 0x20, 0x41, 0x42, 0x5A, 0x7E, 0x7F, 0x80, 0xD7FF, 0xE000, chars.MAX_CODEPOINT)
 
-END_OF_STREAM = "end of stream"  # no codepoint, so it stands for itself in an enumeration
+_END_OF_STREAM = "end of stream"  # no codepoint. It appears as itself in an enumeration.
 
 
-def cases():
-    """The subspaces every law below is checked over, as an ordered `[(name, subspace)]`."""
+def _cases() -> list[tuple[str, spaces.SubSpace]]:
+    """The subspaces the laws below run over, as an ordered `[(name, subspace)]`."""
     letters = spaces.characters([(0x41, 0x5A)])
     printable = spaces.characters([(0x20, 0x7E)], is_at_end=True)
     return [
         ("nowhere", spaces.NOWHERE),
-        ("everywhere", spaces.EVERYWHERE),
+        ("complete", spaces.COMPLETE),
         ("letters", letters),
         ("printable", printable),
-        ("the end alone", spaces.characters(is_at_end=True)),
+        ("the end alone", spaces.characters(is_at_end=True)),  # not-prose: the name of a case in the table
         ("the invalid byte", spaces.characters([(-1, -1)])),
         ("at a line start", spaces.where(is_at_line_start=True)),
         ("not at a line start", spaces.where(is_at_line_start=False)),
@@ -49,34 +55,35 @@ def cases():
     ]
 
 
-def states_of(subspace):
-    """The states `subspace` holds, as a set of `(standing, codepoint or END_OF_STREAM)` pairs."""
-    states = set()
-    for standing in spaces.STANDINGS:
-        admitted = subspace.under(standing)
-        states |= {(standing, code) for code in ALPHABET if any(low <= code <= high for low, high in admitted.spans)}
+def _states_of(subspace: spaces.SubSpace) -> set[tuple[spaces.GuardAnswers, int | str]]:
+    """The states `subspace` holds, as a set of `(answer, codepoint or END_OF_STREAM)` pairs."""
+    states: set[tuple[spaces.GuardAnswers, int | str]] = set()
+    for answer in spaces.ALL_GUARD_ANSWERS:
+        admitted = subspace.under(answer)
+        states |= {(answer, code) for code in _ALPHABET if any(low <= code <= high for low, high in admitted.spans)}
         if admitted.is_at_end:
-            states.add((standing, END_OF_STREAM))
+            states.add((answer, _END_OF_STREAM))
     return states
 
 
-def check_canonical(named):
-    """Check that a subspace says one thing per standing, and that what it says is coalesced."""
+def _check_canonical(named: Sequence[tuple[str, spaces.SubSpace]]) -> list[str]:
+    """Check that a subspace says a single thing per place, and that the subspace coalesces what it says."""
     errors = []
     for name, subspace in named:
-        if len(subspace.admitted) != len(spaces.STANDINGS):
-            errors.append(f"{name}: {len(subspace.admitted)} answers for {len(spaces.STANDINGS)} standings")
+        if len(subspace.admitted) != len(spaces.ALL_GUARD_ANSWERS):
+            errors.append(f"{name}: {len(subspace.admitted)} answers for {len(spaces.ALL_GUARD_ANSWERS)} guard answers")
             continue
-        for standing in spaces.STANDINGS:
-            spans = subspace.under(standing).spans
+        for answer in spaces.ALL_GUARD_ANSWERS:
+            spans = subspace.under(answer).spans
             if list(spans) != [tuple(span) for span in chars.merged_spans(spans)]:
-                errors.append(f"{name}: the spans under {standing} are unsorted or adjacent")
+                errors.append(f"{name}: the spans under {answer} run out of order or lie adjacent")
     return errors
 
 
-# One set of states, spelled several ways: out of order, cut in two at a boundary that closes up, and a span repeated.
-# The table is asked for each and must hand back the one answer, since the algebra reads two answers as two sets.
-SPELLINGS = (
+# A set of states, written whole and then written again. Cut in half at a boundary that closes up, put out of order, and
+# given with a span repeated. The table must hand back the same answer for the whole group. The algebra reads a pair of
+# answers as a pair of sets.
+_FORMS = (
     ("a run given whole", [(0x41, 0x5A)]),
     ("the same run cut in two", [(0x41, 0x4F), (0x50, 0x5A)]),
     ("the same run out of order", [(0x50, 0x5A), (0x41, 0x4F)]),
@@ -84,99 +91,108 @@ SPELLINGS = (
 )
 
 
-def check_table():
+def _check_table() -> list[str]:
     """
-    Check that the table hands out one `Characters` per set of states, whatever spelling asks for it.
+    Check that the table hands out a single `spaces._Characters` per set of states. Any form asking for that set gets
+    the same object.
 
-    Equality being identity is what the algebra rests on: two answers holding the same characters must be one object, or
-    a subspace built one way compares unequal to a subspace built another and the two are read as different sets. A
-    table keyed on what it was handed rather than on what that comes to is how that breaks, so the spellings above are
-    asked for and held to being the one answer.
+    Equality being identity is what the algebra rests on. A pair of answers holding the same characters must be a single
+    object. Otherwise a subspace written this way compares unequal to a subspace written that way, and the algebra reads
+    them as different sets.
+
+    A table keyed on the form it got rather than on what that form comes to is how that breaks. The forms above go in,
+    and a single object must come back.
     """
     errors = []
-    wanted = spaces.held(SPELLINGS[0][1])
-    for said, spans in SPELLINGS[1:]:
+    wanted = spaces.held(_FORMS[0][1])
+    for said, spans in _FORMS[1:]:
         if spaces.held(spans) is not wanted:
-            errors.append(f"{said}: the table hands out a second answer for the states {SPELLINGS[0][0]} names")
+            errors.append(f"{said}: the table hands out a second answer for the states {_FORMS[0][0]} names")
     if spaces.held([(0x41, 0x5A)], is_at_end=True) is wanted:
-        errors.append("the end of the stream: the table hands out one answer whether it is admitted or not")
+        errors.append(
+            "the end of the stream: the table hands out a single answer whether a guard answer admits it or not"
+        )
     return errors
 
 
-def check_operations(named):
+def _check_operations(named: Sequence[tuple[str, spaces.SubSpace]]) -> list[str]:
     """Check that union, intersection and containment hold exactly what set arithmetic on the states gives."""
     errors = []
     for (one_name, one), (other_name, other) in itertools.product(named, repeat=2):
         pair = f"{one_name} against {other_name}"
-        if states_of(one | other) != states_of(one) | states_of(other):
+        if _states_of(one | other) != _states_of(one) | _states_of(other):
             errors.append(f"{pair}: the union does not hold both")
-        if states_of(one & other) != states_of(one) & states_of(other):
+        if _states_of(one & other) != _states_of(one) & _states_of(other):
             errors.append(f"{pair}: the intersection does not hold what both hold")
-        if states_of(one - other) != states_of(one) - states_of(other):
+        if _states_of(one - other) != _states_of(one) - _states_of(other):
             errors.append(f"{pair}: the difference does not hold what only the first holds")
-        if one.holds(other) != (states_of(other) <= states_of(one)):
+        if one.does_hold(other) != (_states_of(other) <= _states_of(one)):
             errors.append(f"{pair}: containment disagrees with the states held")
-        if bool(one) != bool(states_of(one)):
+        if bool(one) != bool(_states_of(one)):
             errors.append(f"{one_name}: emptiness disagrees with the states held")
     return errors
 
 
-def check_laws(named):
-    """Check the algebra's own identities, which the states cannot show where the alphabet does not reach."""
+def _check_laws(named: Sequence[tuple[str, spaces.SubSpace]]) -> list[str]:
+    """Check the identities of the algebra. The states cannot show them where the alphabet does not reach."""
     errors = []
     for name, subspace in named:
-        if subspace | spaces.NOWHERE != subspace or subspace & spaces.EVERYWHERE != subspace:
+        if subspace | spaces.NOWHERE != subspace or subspace & spaces.COMPLETE != subspace:
             errors.append(f"{name}: is changed by the empty union or the whole intersection")
         if subspace & spaces.NOWHERE != spaces.NOWHERE:
-            errors.append(f"{name}: meets the empty subspace somewhere")
+            errors.append(f"{name}: reaches the empty subspace somewhere")
         if subspace - subspace != spaces.NOWHERE or subspace - spaces.NOWHERE != subspace:
-            errors.append(f"{name}: taking itself away leaves something, or taking nothing away changes it")
-        if (subspace & spaces.EVERYWHERE) | (spaces.EVERYWHERE - subspace) != spaces.EVERYWHERE:
-            errors.append(f"{name}: it and what is left of the whole space without it are not the whole space")
-        if not spaces.EVERYWHERE.holds(subspace) or not subspace.holds(spaces.NOWHERE):
+            errors.append(f"{name}: taking itself away leaves something. taking nothing away changes it.")
+        if (subspace & spaces.COMPLETE) | (spaces.COMPLETE - subspace) != spaces.COMPLETE:
+            errors.append(f"{name}: a subspace and the rest of the whole space do not come to the whole space")
+        if not spaces.COMPLETE.does_hold(subspace) or not subspace.does_hold(spaces.NOWHERE):
             errors.append(f"{name}: is not between the empty subspace and the whole one")
-        if not subspace.holds(subspace):
+        if not subspace.does_hold(subspace):
             errors.append(f"{name}: does not hold itself")
     for (one_name, one), (other_name, other) in itertools.product(named, repeat=2):
         if one | other != other | one or one & other != other & one:
             errors.append(f"{one_name} against {other_name}: the operation is not symmetric")
-        if not (one | other).holds(one) or not one.holds(one & other):
+        if not (one | other).does_hold(one) or not one.does_hold(one & other):
             errors.append(f"{one_name} against {other_name}: the union or the intersection is on the wrong side")
     return errors
 
 
-def check_axes():
-    """Check that every axis of a standing is one `where` narrows on, and that no standing is said twice."""
+def _check_axes() -> list[str]:
+    """Check that an axis of a place is an axis `where` narrows on. Check that no place appears twice."""
     errors = []
-    if len(spaces.STANDINGS) != len(set(spaces.STANDINGS)):
-        errors.append(f"{len(spaces.STANDINGS)} standings hold {len(set(spaces.STANDINGS))} distinct ones")
+    if len(spaces.ALL_GUARD_ANSWERS) != len(set(spaces.ALL_GUARD_ANSWERS)):
+        errors.append(
+            f"{len(spaces.ALL_GUARD_ANSWERS)} guard answers hold {len(set(spaces.ALL_GUARD_ANSWERS))} distinct ones"
+        )
     for axis in spaces.AXES:
         narrowed = spaces.where(**{axis: True})
-        if narrowed | spaces.where(**{axis: False}) != spaces.EVERYWHERE:
+        if narrowed | spaces.where(**{axis: False}) != spaces.COMPLETE:
             errors.append(f"{axis}: its two sides are not the whole space")
         if narrowed & spaces.where(**{axis: False}) != spaces.NOWHERE:
-            errors.append(f"{axis}: its two sides meet")
+            errors.append(f"{axis}: its two sides overlap")
     return errors
 
 
-# Wider than the space enumerates itself over, and one of them negative: what a standing says is an ordering, so a range
-# telling more values apart can only find more orderings, and finding none is what says the narrower one saw them all.
+# Wider than the space enumerates itself over, and with a negative value among them. A place says an ordering. A range
+# telling more values apart can find more orderings and no fewer. Finding none says the narrower range saw the whole
+# set.
 _WIDER = range(-2, 12)
 
 
-def check_standings():
+def _check_guard_answers() -> list[str]:
     """
-    Check that the standings are the states some parse can be in — every one of them, and nothing else.
+    Check that the places are the states some parse can be in.
 
-    Both directions are owed and neither answers the other. A standing nothing realizes is a state the algebra carries
-    and no parse reaches, which costs nothing but says the enumeration is not what it claims; a state some parse reaches
-    and no standing names is a hole, and a subspace would silently say nothing about it.
+    The check owes both directions, and neither answers the other. A place that nothing realizes is a state the algebra
+    admits and no parse reaches. That costs nothing, but says the enumeration is not what it claims. A state some parse
+    reaches and no place names is a hole, and a subspace would silently say nothing about it.
 
-    Enumerated here rather than re-derived: the quantities are walked over a wider range than `spaces` walks them, so
-    the two computations agree about the orderings without being the same computation. What the four facts bounding them
-    assert — a line start is column zero, the measured run stands within its line, nothing an `ns-char` names stands
-    behind a line start, a full run leaves the parse mid-line — is asserted here too, since a check that dropped them
-    would call every standing they exclude a hole.
+    Enumerated here rather than re-derived. This walks the quantities over a wider range than `spaces` walks them. The
+    computations agree about the orderings without being the same computation.
+
+    This asserts the facts bounding them too. A line start is column `0`. A consumed length falls within its line. A
+    character an `ns-char` names sits at or after a line start. A full span leaves the parse mid-line. A check that
+    dropped those facts would call the places they exclude a hole.
     """
     reached = set()
     for is_at_line_start in (False, True):
@@ -185,42 +201,42 @@ def check_standings():
                 for did_consume_since_open in (False, True):
                     for n in _WIDER:
                         for column in (0,) if is_at_line_start else range(1, _WIDER.stop):
-                            for measured in range(0, column + 1):
+                            for consumed_length in range(0, column + 1):
                                 for floor in range(0, _WIDER.stop):
                                     reached.add(
-                                        spaces.Standing(
+                                        spaces.GuardAnswers(
                                             is_at_line_start,
                                             is_after_ns_char,
                                             did_match_full_span,
                                             did_consume_since_open,
                                             0 < n,
                                             column <= n,
-                                            n < measured,
-                                            measured < n,
+                                            n < consumed_length,
+                                            consumed_length < n,
                                             floor <= column,
                                             floor <= n,
                                         )
                                     )
-    held = set(spaces.STANDINGS)
-    return [f"{standing}: a standing no parse reaches" for standing in sorted(held - reached)] + [
-        f"{standing}: a state some parse reaches that no standing names" for standing in sorted(reached - held)
+    held = set(spaces.ALL_GUARD_ANSWERS)
+    return [f"{answer}: an answer no parse reaches" for answer in sorted(held - reached)] + [
+        f"{answer}: a state some parse reaches that no answer names" for answer in sorted(reached - held)
     ]
 
 
-def main():
-    named = cases()
+def main() -> None:
+    named = _cases()
     errors = (
-        check_canonical(named)
-        + check_table()
-        + check_operations(named)
-        + check_laws(named)
-        + check_axes()
-        + check_standings()
+        _check_canonical(named)
+        + _check_table()
+        + _check_operations(named)
+        + _check_laws(named)
+        + _check_axes()
+        + _check_guard_answers()
     )
     gate.report(
         errors,
         "subspace error(s)",
-        f"subspace algebra OK: {len(named)} subspaces over {len(spaces.STANDINGS)} standings",
+        f"subspace algebra OK: {len(named)} subspaces over {len(spaces.ALL_GUARD_ANSWERS)} answers",
     )
 
 

@@ -1,18 +1,22 @@
 # SPDX-License-Identifier: MIT
 """
-Freeze one conformance fixture's token stream: run the interpreter over its input and write the `.output` beside it.
+Freeze a conformance fixture's token stream. Run the interpreter over the fixture's input and write the `.output` beside
+that input.
 
-A fixture holds what the base grammar emits, token for token, and what it holds has to come from the interpreter rather
-than from a hand. An indent or a white token carries its characters as its text — trailing spaces among them — and a
-stream typed out loses them where nothing shows they were there. So the one way to author a fixture is to run it.
+A fixture holds the tokens the base grammar emits. That content has to come from the interpreter rather than from a
+hand. An indent or a white token holds the characters as text. Trailing spaces sit among those characters. A page hides
+a trailing space. A stream typed out therefore loses it. Authoring a fixture means running it.
 
-Named one at a time and never swept. Rewriting every fixture would re-freeze whatever the interpreter emits today, which
-is the oracle answering to the thing it judges; naming one says the change to it is meant. Where the fixture already
-holds a stream this says how the new one differs, so a re-freeze is read before it is committed.
+This freezes a fixture the caller names. This sweeps no set of fixtures. Rewriting the whole set would re-freeze
+whatever the interpreter emits on the day of the sweep. That is the oracle copying the thing it judges. Naming a fixture
+says the author meant the change to it. This prints how a new stream differs from the stream the fixture already holds.
+The author reads a re-freeze before committing it.
 
-Run by hand — `python3 generator/regen_fixture.py <stem>`, the stem being the filename without its extension — where a
-fixture is being written or a fault in one is being fixed. No gate runs it: what the gate does with a fixture is hold
-the grammar to it, and a target that rewrites one is the opposite of that standing where the gate can reach it.
+Run by hand, as `python3 generator/regen_fixture.py <stem>`. Somebody writing a fixture or fixing a fault in a fixture
+runs it. The stem is the filename without its extension.
+
+The gate holds the grammar to a fixture. The gate runs this script at no point. A target that rewrites a fixture is the
+opposite of that. The gate would reach such a target.
 """
 
 import os
@@ -21,18 +25,19 @@ import sys
 import annotated2ir
 import gate
 import interpreter
+import ir
 import spec_tests
 import wire
 
 
-def emitted(fixture, grammar):
+def _emitted(fixture: spec_tests.Fixture, grammar: dict[str, ir.Prod]) -> str:
     """The token stream `fixture`'s input makes, as the wire text a `.output` holds."""
     arguments = spec_tests.arguments(fixture, grammar)
     return wire.serialize(interpreter.run(grammar, fixture.production, fixture.input, arguments))
 
 
-def differences(was, now):
-    """How the frozen stream differs from the emitted one, as lines naming each, or none where they agree."""
+def _differences(was: str, now: str) -> list[str]:
+    """The lines on which the frozen stream differs from the emitted stream, or none where the pair agree."""
     lines = []
     old, new = was.split("\n"), now.split("\n")
     for index in range(max(len(old), len(new))):
@@ -43,37 +48,37 @@ def differences(was, now):
     return lines
 
 
-def frozen(stem):
+def _frozen(stem: str) -> list[str]:
     """
     Write the fixture named `stem`'s output from the interpreter. `stem` is the filename without its extension.
 
-    Reports what the fixture holds that the interpreter no longer emits, so a re-freeze says what it gave up.
+    Reports where what the fixture holds differs from what the interpreter emits. A re-freeze says what it gave up.
     """
     wanted = [fixture for fixture in spec_tests.load() if _stem(fixture) == stem]
     if not wanted:
         return [f"{stem}: no fixture of that name in {spec_tests.TESTS_DIR}"]
     (fixture,) = wanted
-    now = emitted(fixture, annotated2ir.load())
+    now = _emitted(fixture, annotated2ir.load())
     was = fixture.expected if os.path.exists(fixture.output_path) else None
     with open(fixture.output_path, "w", encoding="utf-8") as handle:
         handle.write(now)
-    changed = differences(was, now) if was is not None else []
-    ir_say = f"froze {os.path.basename(fixture.output_path)}: {now.count(chr(10))} line(s)"
-    print(f"{ir_say}{'' if was is not None else ', new'}")
+    changed = _differences(was, now) if was is not None else []
+    said = f"froze {os.path.basename(fixture.output_path)}: {now.count(chr(10))} line(s)"
+    print(f"{said}{'' if was is not None else ', new'}")
     for line in changed:
         print(line)
     return []
 
 
-def _stem(fixture):
-    """A fixture's name without its extension, which is what names it on the command line."""
+def _stem(fixture: spec_tests.Fixture) -> str:
+    """A fixture's name without its extension. That is what names it on the command line."""
     return os.path.basename(fixture.input_path)[: -len(".input")]
 
 
-def main():
+def main() -> None:
     if len(sys.argv) != 2:
         gate.report([f"usage: {os.path.basename(sys.argv[0])} <fixture-stem>"], "argument error(s)", "")
-    gate.report(frozen(sys.argv[1]), "fixture error(s)", "fixture frozen")
+    gate.report(_frozen(sys.argv[1]), "fixture error(s)", "fixture frozen")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 #!/bin/sh
-# Verify the given tools are available. Each argument is either a command name (checked on PATH) or `python3:MODULE`
-# (checked by importing MODULE). Prints one line per entry and exits non-zero (with a count) if any are missing.
+# Verify the given tools are available. An argument is either a command name (checked on PATH) or `python3:MODULE`
+# (checked by importing MODULE). Prints a line per entry. Exits with a failing status and a count where any are missing.
 # Usage: check-deps.sh <tool-or-path-or-python3:module>...
-set -u
+set -eu
 
 missing=0
 for tool in "$@"; do

@@ -27,7 +27,7 @@ n
 # B: 4, C: 4, L: 2, c: 0
 o
 # B: 4, C: 4, L: 2, c: 0
-!A stream holds only documents, directives and comments
+!A stream holds documents, directives and comments and nothing besides
 # B: 4, C: 4, L: 2, c: 0
 --b
 # B: 6, C: 6, L: 2, c: 2

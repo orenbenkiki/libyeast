@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
-// Package-consumption smoke test: built externally against the *installed* libyeast via pkg-config (see the Makefile's
-// pkg-test target), not part of the CMake build. Prints the version so the harness can check it is non-empty.
+// Package-consumption smoke test. Built externally against the *installed* libyeast via pkg-config (see the
+// Makefile's pkg-test target), not part of the CMake build. Prints the version so the harness can check it is
+// non-empty.
 #include <stdio.h>
 #include <yeast.h>
 
+// Print the version the installed library reports. A non-zero exit says the package did not link or did not answer.
 int main(void) {
     const char *version = ys_version();
     if (version == NULL || version[0] == '\0') {

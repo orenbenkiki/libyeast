@@ -22,7 +22,7 @@ JAVADOC_AUTOBRIEF     = YES
 GENERATE_TREEVIEW     = NO
 LAYOUT_FILE           = DoxygenLayout.xml
 
-# Every symbol shares the library prefix — ys_ on functions and types, YS_ on constants — so the alphabetical index
+# Every symbol shares the library prefix - ys_ on functions and types, YS_ on constants - so the alphabetical index
 # buckets by the letter after it (ys_version under V, YS_CODE_BOM under C) instead of filing the whole API under Y.
 IGNORE_PREFIX         = ys_ YS_
 

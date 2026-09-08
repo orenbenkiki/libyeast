@@ -2,35 +2,38 @@
 """
 Check that the grammar's zero-width markers balance.
 
-Every `begin-` marker must be closed by its own `end-`, on every path, and a rule must balance them the same way
-whichever path is taken through it — otherwise the token stream is a tree only sometimes, and the fold that rebuilds the
-production tree from it has nothing to stand on.
+A `begin-` marker gets its own `end-` on any path through the rule. A rule balances the markers the same way whichever
+path the parse takes. Otherwise the token stream is a tree on a run here and a tangle on a run there. The fold that
+rebuilds the production tree then has nothing to rest on.
 
-Nothing else catches this. The rule that every consumed character lies within a token action says nothing about markers,
-which consume nothing at all; and a marker that is never emitted looks exactly like a marker that is not needed.
+The rule that a consumed character lies within a token action says nothing about markers. A marker consumes nothing at
+all. A marker that goes unemitted looks exactly like a marker nobody needs.
 
-The chomping decides where a block scalar ends — `b-chomped-last` closes it when there is content to close, and
-`l-keep-empty` when the content was empty and kept — so the markers balance per value of `t` rather than per branch. The
-check therefore specializes: it fixes each finite parameter — `c`, `t` and the resume policy `r` — to each of its values
-in turn, and requires balance for each.
+The chomping decides where a block scalar ends. `b-chomped-last` closes it when there is content to close, and
+`l-keep-empty` when the content was empty and kept. So the markers balance per value of `t` rather than per branch.
+
+The check therefore specializes. It fixes a finite parameter to a value in turn, and requires balance under the whole
+set. Those parameters are the context `c` and the chomping `t`. The resume policy `r` and the indentation mode `i` come
+too.
 """
+
+from collections.abc import Iterable, Mapping
 
 import annotated2ir
 import gate
 import ir
 
 CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
-INDENT_MODES = annotated2ir.INDENT_MODES
+_INDENT_MODES = annotated2ir.INDENT_MODES  # the other finite parameter a marker walk enumerates over.
 
-# The nodes that emit no marker: a character, a guard, a commit point, an error token, and the `(flip)` a value
-# production is made of. Named rather than assumed, because assuming it is how a `(recover)` once hid every marker
-# inside it — a node this does not know is a node whose markers nothing has looked at, and the gate says so rather than
-# passing it. In alphabetical order.
-SILENT = (
-    ir.OneCharSet,
+# The nodes that emit no marker. A character or a guard. A commit point or an error token. The empty and failing
+# matches, the writes, and the `(flip)` that makes up a value production.
+#
+# Named rather than assumed. Assuming it is how a `(recover)` once hid the markers inside that scope. A node this does
+# not know is a node whose markers nothing has looked at, and the gate says so rather than passing it. In alphabetical
+# order.
+_SILENT = (
     ir.CharSet,
-    ir.IsLessEqualGuard,
-    ir.IsLessThanGuard,
     ir.CutAction,
     ir.DiffSet,
     ir.EmptyTree,
@@ -40,132 +43,154 @@ SILENT = (
     ir.FlipValue,
     ir.IncreaseAction,
     ir.InvalidSet,
+    ir.IsLessEqualGuard,
+    ir.IsLessThanGuard,
+    ir.OneCharSet,
     ir.RangeSet,
     ir.SetVarAction,
     ir.StartOfLineGuard,
 )
-# A scope whose markers are the markers of what it holds: it matches what is inside it, so what is inside it emits.
-# Passing over one would let a marker opened there go unclosed, and no other gate looks. A `(max)` is one of these where
-# it wraps a match and is not one where it is the vendored grammar's bare length note, so it is answered for on its own;
-# a `(recover)` is not one either, its two ways having to agree rather than one of them being the answer.
-SCOPES = (ir.CommitWrapper, ir.TokenWrapper)
-BALANCED = ((), ())  # no marker left open, and none closed that was not opened here
+# A scope whose markers are the markers of the item it holds. The scope matches that item, and the item emits. Passing
+# over such a scope would let a marker opened there go unclosed, and the walk would miss that.
+#
+# A `(max)` is such a scope where it wraps a match. A bare `(max)` in the vendored grammar is a length note rather than
+# a scope, and this answers for it separately. A `(recover)` is no such scope either. Its ways have to agree, rather
+# than a single way being the answer.
+_SCOPES = (ir.CommitWrapper, ir.TokenWrapper)
+
+# The markers a node leaves behind. The markers the node closes without opening, and the markers it leaves open.
+_Effect = tuple[tuple[str, ...], tuple[str, ...]]
+
+_BALANCED: _Effect = ((), ())  # no marker left open, and none closed that this rule did not open.
 
 
-class Unbalanced(Exception):
-    """A rule whose markers do not balance, with the rule named once it is known."""
+class _Unbalanced(Exception):
+    """A rule whose markers do not balance. The rule name goes in once the walk knows it."""
 
-    def __init__(self, reason):
+    def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
 
 
-def marker(code):
-    """What a code leaves behind: a marker it opens, a marker it closes, or nothing — most codes are not markers."""
+def _marker(code: str) -> _Effect:
+    """
+    The marker a code leaves behind. A marker the code opens, a marker it closes, or none.
+    """
     if code.startswith("begin-"):
         return ((), (code[len("begin-") :],))
     if code.startswith("end-"):
         return ((code[len("end-") :],), ())
-    return BALANCED
+    return _BALANCED
 
 
-def compose(before, after):
-    """The markers two nodes leave behind, one after the other: what `before` opened, `after` may close."""
+def _compose(before: _Effect, after: _Effect) -> _Effect:
+    """The markers a pair of nodes leave behind. They run in order, and `after` may close a marker `before` opened."""
     opened, closing = list(before[1]), list(after[0])
     while opened and closing:
         if opened[-1] != closing[0]:
-            raise Unbalanced(f"`end-{closing[0]}` closes `begin-{opened[-1]}`")
+            raise _Unbalanced(f"`end-{closing[0]}` closes `begin-{opened[-1]}`")
         opened.pop()
         closing.pop(0)
     return (tuple(before[0]) + tuple(closing), tuple(opened) + tuple(after[1]))
 
 
-def agreed(effects, what):
-    """The one way `what`'s branches balance their markers, or a complaint that they do not agree on one."""
+def _agreed(effects: Iterable[_Effect], what: str) -> _Effect:
+    """The way `what`'s branches balance their markers, or a complaint that the branches disagree."""
     distinct = set(effects)
     if len(distinct) > 1:
-        ways = " and ".join(sorted(str(effect) for effect in distinct))
-        raise Unbalanced(f"the branches of {what} balance their markers differently: {ways}")
-    return distinct.pop() if distinct else BALANCED
+        answers = " and ".join(sorted(str(balance) for balance in distinct))
+        raise _Unbalanced(f"the branches of {what} balance their markers differently: {answers}")
+    return distinct.pop() if distinct else _BALANCED
 
 
-def effect(node, values, known):
-    """The markers `node` leaves open or closes, with `c` and `t` fixed to `values`."""
+def _effect(node: ir.Node, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
+    """The markers `node` leaves open or closes, with the finite parameters fixed to what `values` gives them."""
     return _EFFECT(node, values, known)
 
 
-def _effect_of_run(node, values, known):
-    """A sequence's: each item after the one before it, what one leaves open being what the next may close."""
-    settled = BALANCED
+def _effect_of_run(node: ir.SeqTree, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
+    """A sequence's markers. An item follows the item before it, and may close what that item left open."""
+    settled = _BALANCED
     for item in node.items:
-        settled = compose(settled, effect(item, values, known))
+        settled = _compose(settled, _effect(item, values, known))
     return settled
 
 
-def _effect_of_switch(node, values, known):
+def _effect_of_switch(node: ir.CaseTree, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
     """
-    A `(case)`'s: the branch the values select, and nothing where it has none.
+    A `(case)`'s markers. The branch the values select, and none where the case has no such branch.
 
-    A rule reached only in some contexts lists only those: `ns-plain` has no block-in branch, because nothing reaches it
-    with block-in. A branch that is not there is a path that cannot be taken, and emits nothing.
+    A rule reached in a context lists that context. `ns-plain` has no block-in branch. A parse reaches it under other
+    contexts. A branch that is not there is a path nobody can take, and such a path emits no marker.
     """
     taken = {branch.value: branch.item for branch in node.branches}.get(values[node.var])
-    return BALANCED if taken is None else effect(taken, values, known)
+    return _BALANCED if taken is None else _effect(taken, values, known)
 
 
-def _effect_of_recovery(node, values, known):
+def _effect_of_recovery(node: ir.RecoverWrapper, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
     """
-    A recovery's: the one way its two paths balance.
+    A recovery's markers. The way its paths balance.
 
-    Recovering closes what the item left open, down to here, so that path leaves only what the recovery itself emits —
-    and the item's own way has to agree with it.
+    Recovering closes what the item left open, and it closes down to this point. That path leaves just what the recovery
+    itself emits. The way of the item has to agree with it.
     """
-    return agreed([effect(node.item, values, known), effect(node.recovery, values, known)], "a recovery")
+    return _agreed([_effect(node.item, values, known), _effect(node.recovery, values, known)], "a recovery")
 
 
-# A kind named nowhere raises: what its markers do is then something nothing has looked at, which is how a `(recover)`
-# once hid every marker inside it.
-_EFFECT = ir.Question(
+# A kind this question does not name raises. The markers of such a kind have gone unread. That is how a `(recover)` once
+# hid the markers inside it.
+_EFFECT: ir.Question[_Effect] = ir.Question(
     "a pair: the marker names a match closes without opening, and the names it leaves open",
     {
-        ir.EmitAction: lambda node, values, known: marker(node.code),
-        ir.Wrapper: lambda node, values, known: compose(
-            compose(marker(node.begin), effect(node.item, values, known)), marker(node.end)
+        ir.EmitAction: lambda node, values, known: _marker(node.code),
+        ir.Wrapper: lambda node, values, known: _compose(
+            _compose(_marker(node.begin), _effect(node.item, values, known)), _marker(node.end)
         ),
-        SCOPES: lambda node, values, known: effect(node.item, values, known),
-        # A wrapping `(max)` is one of those; the vendored grammar's bare `(max)` is a length note and matches nothing.
-        ir.MaxWrapper: lambda node, values, known: BALANCED if node.item is None else effect(node.item, values, known),
-        ir.ASKED_NOT_TAKEN_NODES: BALANCED,  # what is asked about emits nothing, whatever it matches
-        SILENT: BALANCED,
+        _SCOPES: lambda node, values, known: _effect(node.item, values, known),
+        # A wrapping `(max)` counts as such a scope. A bare `(max)` is a length note and matches nothing.
+        ir.MaxWrapper: lambda node, values, known: (
+            _BALANCED if node.item is None else _effect(node.item, values, known)
+        ),
+        # the item under this emits no marker, and the match it makes changes nothing.
+        ir.ASKED_NOT_TAKEN_NODES: _BALANCED,
+        _SILENT: _BALANCED,
         ir.SeqTree: _effect_of_run,
-        ir.AltTree: lambda node, values, known: agreed(
-            [effect(item, values, known) for item in node.items], "an alternation"
+        ir.AltTree: lambda node, values, known: _agreed(
+            [_effect(item, values, known) for item in node.items], "an alternation"
         ),
         ir.CaseTree: _effect_of_switch,
-        ir.OptTree: lambda node, values, known: agreed(
-            [effect(node.item, values, known), BALANCED], "an optional rule"
+        ir.OptTree: lambda node, values, known: _agreed(
+            [_effect(node.item, values, known), _BALANCED], "an optional rule"
         ),
-        # A rule that opens or closes a marker cannot be repeated: twice around leaves twice as many open.
-        ir.REPETITIONS: lambda node, values, known: agreed(
-            [effect(node.item, values, known), BALANCED], "a repeated rule"
+        # A rule that opens or closes a marker takes no repetition. Twice around leaves twice as many open.
+        ir.REPETITIONS: lambda node, values, known: _agreed(
+            [_effect(node.item, values, known), _BALANCED], "a repeated rule"
         ),
-        ir.BindTree: lambda node, values, known: effect(node.cond, values, known),
+        ir.BindTree: lambda node, values, known: _effect(node.cond, values, known),
         ir.RecoverWrapper: _effect_of_recovery,
-        ir.RefCall: lambda node, values, known: known.get(node.name, BALANCED),
+        ir.RefCall: lambda node, values, known: known.get(node.name, _BALANCED),
     },
 )
 
 
-def settle(grammar, values):
-    """How each rule balances its markers, with `c` and `t` fixed — reached by assuming balance and iterating."""
-    known = {name: BALANCED for name in grammar}
-    errors = {}
+def _settle(grammar: Mapping[str, ir.Prod], values: Mapping[str, str]) -> tuple[dict[str, _Effect], dict[str, str]]:
+    """
+    The way a rule balances its markers. `values` fixes the finite parameters. The walk assumes balance and iterates.
+
+    A pass can only take an answer a call further. A grammar of `n` productions settles in at most `n` passes, and a
+    grammar that has not settled by then is not settling.
+
+    Raised rather than returned. The answers say what a rule does with its markers. Handing back the answers reached to
+    that point would report a rule as balanced where the walk stopped rather than where the rule settles.
+    """
+    known: dict[str, _Effect] = {name: _BALANCED for name in grammar}
+    errors: dict[str, str] = {}
     for _pass in range(len(grammar)):
         did_change = False
         for name, production in grammar.items():
             try:
-                settled = effect(production.body, values, known)
-            except Unbalanced as complaint:
+                settled = _effect(production.body, values, known)
+            except _Unbalanced as complaint:  # failure-is-reported: as `errors[name]`, which this function returns
                 errors[name] = complaint.reason
                 continue
             errors.pop(name, None)
@@ -173,36 +198,37 @@ def settle(grammar, values):
                 known[name] = settled
                 did_change = True
         if not did_change:
-            break
-    return known, errors
+            return known, errors
+    raise AssertionError(f"the way a rule balances its markers did not settle in {len(grammar)} passes")
 
 
-def main():
+def main() -> None:
     grammar = annotated2ir.load()
-    complaints = {}
+    complaints: dict[tuple[str, str], list[str]] = {}
     for context in CONTEXTS:
         for chomping in CHOMPINGS:
             for resume in RESUMES:
-                for mode in INDENT_MODES:
+                for mode in _INDENT_MODES:
                     values = {"c": context, "t": chomping, "r": resume, "i": mode}
-                    where = f"c={context}, t={chomping}, r={resume}, i={mode}"
-                    known, errors = settle(grammar, values)
+                    where = f"c={context} t={chomping} r={resume} i={mode}"
+                    known, errors = _settle(grammar, values)
                     for name, reason in errors.items():
                         complaints.setdefault((name, reason), []).append(where)
-                    if known[ir.ROOT] != BALANCED:
+                    if known[ir.ROOT] != _BALANCED:
                         left = ", ".join(known[ir.ROOT][1]) or "none"
                         closed = ", ".join(known[ir.ROOT][0]) or "none"
-                        reason = f"the stream leaves open: {left}; and closes what it never opened: {closed}"
+                        reason = f"the stream leaves open: {left}. the stream closes what it did not open: {closed}"
                         complaints.setdefault((ir.ROOT, reason), []).append(where)
 
-    errors = []
+    faults = []
     for (name, reason), wheres in sorted(complaints.items()):
         more = f", and {len(wheres) - 1} more" if len(wheres) > 1 else ""
-        errors.append(f"{name}: {reason}\n    with {wheres[0]}{more}")
+        faults.append(f"{name}: {reason}\n    with {wheres[0]}{more}")
     gate.report(
-        errors,
+        faults,
         "rule(s) whose markers do not balance",
-        f"markers balance: {len(grammar)} rules, for every context, chomping, resume policy and indentation mode",
+        f"markers balance: {len(grammar)} rules hold under any context and any chomping. they hold under any resume "
+        f"policy and any indentation mode.",
     )
 
 

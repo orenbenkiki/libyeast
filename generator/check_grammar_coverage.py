@@ -1,32 +1,41 @@
 # SPDX-License-Identifier: MIT
 """
-Check that the conformance fixtures exercise every production of the grammar, both ways.
+Check that the conformance fixtures exercise the productions of the grammar. Both directions count.
 
-Coverage is dynamic, not by name: a production counts when running a fixture actually reaches it — so a production with
-no fixture of its own (a `seq-spaces`, an `in-flow`) is covered by the fixtures that reach it, and one that nothing
-reaches is a gap the suite must fill. What the gate proves is coverage by the suite the interpreter reproduces, since a
-fixture it crashes on leaves its productions unexercised and is reported as the gap it is.
+Coverage is dynamic rather than by name. A production counts when running a fixture actually reaches it.
 
-Reaching a production is half of exercising it. A rule is a decision, and a fixture that only ever watches it say yes
-leaves the other answer untested — so each must also be seen to **reject** an input, a `(cut)` inside it being one of
-the ways it can. The exception is a rule that *cannot* say no: `l-yaml-stream` matches at every position because every
-part of it is optional, and asking for a fixture where it fails would be asking for the impossible. Those are computed,
-not listed — `is_total` proves it from the body — and a rule that can never say no is worth knowing about anyway: a
-total rule swallows whatever it is given, so what says the input ended is whatever encloses it, `l-yeast-stream` for the
-root.
+So a production lacking a fixture, such as a `seq-spaces` or an `in-flow`, takes cover from the fixtures that reach it.
+A production nothing reaches is a gap the suite must fill.
 
-A `(cut)` is a decision too, and the same argument applies to it: one that never fires is a commit point nothing has
-shown is reachable, and a message nothing has shown is right. That is checked against the fixtures' own expected output
-rather than by watching the interpreter, which is stricter — it proves the error survived to be handed back, where a cut
-that fired inside a lookahead is speculative and would prove only that it can fire.
+The gate proves coverage by the suite the interpreter reproduces. A fixture the interpreter crashes on leaves its
+productions unexercised, and this reports that as a gap.
 
-`exercised` takes the grammar as an argument, the way the interpreter does, so this gate answers about the base grammar
-and about every stage the pipeline hands on — each transformation reshapes the productions, and the fixtures must still
-exercise all of them.
+Reaching a production is half of exercising it. A rule is a decision, and a fixture that sees it say yes and stops there
+leaves the other answer untested. So the corpus must also show a rule **reject** an input. A `(cut)` inside a rule is a
+way that can happen.
+
+The exception is a rule that *cannot* say no. `l-yaml-stream` matches at any position, and its parts are optional.
+Asking for a fixture where it fails would ask for the impossible.
+
+`_is_total` proves that from the body, rather than a list stating it. A rule that cannot say no is worth knowing about
+anyway. A total rule swallows whatever arrives, and whatever encloses it says the input ended. `l-yeast-stream` does
+that for the root.
+
+A `(cut)` is a decision too, and the same argument applies to it. A cut that does not fire is a commit point nothing has
+shown reachable. It is a message nothing has shown right.
+
+The fixtures' own expected output settles that, rather than a watch on the interpreter. That checker is stricter. It
+proves the error survived the way back to the caller. A cut that fired inside a lookahead is speculative, and would
+prove that it can fire and no more.
+
+`exercised` takes the grammar as an argument, the way the interpreter does. So this gate answers about the base grammar
+and about any stage the pipeline hands on. A transformation reshapes the productions, and the fixtures must still
+exercise them.
 """
 
 import os
 import re
+from collections.abc import Iterable, Mapping, Sequence
 
 import annotated2ir
 import check_messages
@@ -37,22 +46,26 @@ import spec_tests
 import wire
 import yaml
 
-# The parameters every rule is reached under every value of, and how many values that is. The resume policy is the only
-# one: the caller chooses it once and it is threaded down unchanged, where a context is chosen by the rule that descends
-# into one and can leave a rule out of reach of a value entirely.
-AMBIENT = {"r": len(annotated2ir.RESUMES)}
+# The parameters whose values a rule arrives at across the board, and the count of those values. The resume policy is
+# such a parameter. A context is not. The caller chooses the policy once, and the grammar threads it down unchanged. A
+# context comes from the rule that descends into it, and a rule may sit out of reach of a context value.
+_AMBIENT = {"r": len(annotated2ir.RESUMES)}
 
-# The nodes that match wherever they are asked to, and the ones that may always refuse. A `(cut)` counts as matching: it
-# takes nothing and refuses nothing where it stands, committing the parse instead, so what fails is whatever comes after
-# it. Both lists in alphabetical order, and a kind in neither raises rather than being read as either.
-ALWAYS = (
+# The nodes that match wherever the parse asks, and the nodes that may refuse wherever they appear. A `(cut)` counts as
+# matching. A `(cut)` takes nothing and refuses nothing wherever it appears, and the parse commits there. Whatever comes
+# after it is what fails. Both lists run in alphabetical order, and a kind in neither raises rather than falling to
+# either.
+_ALWAYS = (
     ir.ClearVarAction,
     ir.CloseWindowAction,
     ir.CommitProvisionalAction,
-    ir.ConsumeCharAction,  # the gate found the character, so taking it cannot fail
+    ir.ConsumeCharAction,  # the gate found the character. Taking it cannot fail.
     ir.CutAction,
     ir.EmitAction,
     ir.EmptyTree,
+    # The close takes the open off and asks nothing about whether the turn matched. `DidConsumeSinceOpenGuard` asks
+    # that. This close matches wherever the parse reaches it.
+    ir.EndMustConsumeAction,
     ir.ErrorAction,
     ir.ExcludeAtAction,
     ir.FlipValue,
@@ -76,13 +89,13 @@ ALWAYS = (
     ir.SetVarAction,
     ir.StartMustConsumeAction,
 )
-NEVER_SURE = (
+_NEVER_SURE = (
     ir.OneCharSet,
-    ir.CharSet,  # a set says no where the character is not one of its own
+    ir.CharSet,  # a set says no where the character falls outside it.
     ir.IsLessEqualGuard,
     ir.IsLessThanGuard,
     ir.DiffSet,
-    ir.EndMustConsumeGuard,  # a turn that took no character says no, which is what ends the run holding it
+    ir.DidConsumeSinceOpenGuard,  # a turn that took no character says no. That ends the run holding it.
     ir.EndOfStreamGuard,
     ir.InvalidSet,
     ir.LookGuard,
@@ -93,59 +106,67 @@ NEVER_SURE = (
 )
 
 
-def is_total(node, grammar, seen=frozenset()):
+def _is_total(node: ir.Node, grammar: Mapping[str, ir.Prod], seen: frozenset[str] = frozenset()) -> bool:
     """
-    Whether `node` matches at every position and for every parameter value, provably — or not at all.
+    Whether `node` matches at any position and under any parameter value. False where the shape gives no proof of that.
 
-    Proving it takes only the shape: a repetition or an optional can take nothing, a sequence is total when every item
-    is, an alternation when any item is, a `(case)` when every branch it has is total. Anything that reads the input,
-    and every zero-width guard, may say no. Recursion assumes total and lets the rest of the body decide, so a rule is
-    total only when some path through it does not depend on the recursion.
+    Proving it takes nothing beyond the shape. A repetition or an optional can take nothing. A sequence is total when
+    the items are total, an alternation when any item is total, and a `(case)` when the branches under it are total.
+    Anything that reads the input may say no, and so may a zero-width guard.
 
-    A `(case)` on `c` or `t` is read the way `check_markers` reads one: a rule reached only in some contexts lists only
-    those, so a branch that is not there is a path that cannot be taken rather than one that says no. Counting a missing
-    branch as a refusal would ask for a fixture running `nb-single-text` at `block-in`, which nothing reaches it with.
+    Recursion assumes total and lets the rest of the body decide. A rule is total where a path through it does not
+    depend on the recursion.
 
-    `r` is not like them and `AMBIENT` says so. A context is chosen by the rule that descends into one, so a rule can be
-    out of reach of a value; the resume policy is chosen once by the caller and threaded to everything unchanged, so
-    every rule is reached under every value of it. A `(case)` on `r` with a value missing is therefore a path that is
-    taken and says no — which is exactly how `l-recover-entry` declines to answer for a policy that recovers elsewhere.
+    A `(case)` on `c` or `t` reads the way `check_markers` reads such a case. A rule reached in a context lists that
+    context. A branch that is not there is a path nobody can take, rather than a path that says no. Counting a missing
+    branch as a refusal would ask for a fixture running `nb-single-text` at `block-in`. A parse reaches it under other
+    contexts.
+
+    `r` is not like them and `AMBIENT` says so. A context comes from the rule that descends into it, and a rule may sit
+    out of reach of a value. The caller chooses the resume policy once, and the grammar threads it down unchanged. A
+    rule then arrives at the policy's values, and the set is the same throughout.
+
+    A `(case)` on `r` with a value missing is therefore a path the parse takes, and it says no. That is exactly how
+    `l-recover-entry` declines to answer for a policy that recovers elsewhere.
     """
     return _IS_TOTAL(node, grammar, seen)
 
 
-def _a_switch_is_total(node, grammar, seen):
-    """A `(case)`'s answer: every branch it has is total, and no value it is reached under is left without one."""
-    if node.default is not None:  # the else covers every value with no branch, so no value is left to say no
-        return is_total(node.default, grammar, seen) and all(is_total(b.item, grammar, seen) for b in node.branches)
-    if len(node.branches) < AMBIENT.get(node.var, 0):
-        return False  # a value of an ambient parameter with no branch is a path that is taken, and says no
-    return all(is_total(branch.item, grammar, seen) for branch in node.branches)
-
-
-def _a_way_is_total(node, grammar, seen):
+def _a_switch_is_total(node: ir.CaseTree, grammar: Mapping[str, ir.Prod], seen: frozenset[str]) -> bool:
     """
-    An alternative's answer: it is entered on its gate, so one holding a guard may say no; one holding none is entered
-    always, and then what may say no is its actions and the productions it hands control to.
+    A `(case)`'s answer. The branches under the case are total, and no value the case arrives at goes without a branch.
+    """
+    if node.default is not None:  # the else covers a value with no branch. No value is left to say no
+        return _is_total(node.default, grammar, seen) and all(_is_total(b.item, grammar, seen) for b in node.branches)
+    if len(node.branches) < _AMBIENT.get(node.var, 0):
+        return False  # a value of an ambient parameter with no branch is a path that is taken, and says no
+    return all(_is_total(branch.item, grammar, seen) for branch in node.branches)
+
+
+def _a_way_is_total(node: ir.AlternativeState, grammar: Mapping[str, ir.Prod], seen: frozenset[str]) -> bool:
+    """
+    An alternative's answer. The gate decides entry. A gate holding a guard may say no. A way holding no guard takes the
+    parse in wherever it arrives. The actions of the way and the productions it hands control to may then say no.
     """
     if node.gate.guards:
         return False
     parts = node.actions + tuple(item for item in (node.first, node.second) if item is not None)
-    return all(is_total(part, grammar, seen) for part in parts)
+    return all(_is_total(part, grammar, seen) for part in parts)
 
 
-_IS_TOTAL = ir.Question(
-    "whether a match is total — matching at every position and for every parameter value",
+_IS_TOTAL: ir.Question[bool] = ir.Question(
+    "whether a match is total. A total match holds at any position and for any parameter value.",
     {
-        ALWAYS: True,
-        NEVER_SURE: False,
-        # A repetition of none or more, an optional and a scan all take nothing where nothing is there.
+        _ALWAYS: True,
+        _NEVER_SURE: False,
+        # A star or an optional matches by taking nothing, and a span consume sits behind a gate that already answered.
+        # Neither kind tells its caller no.
         (ir.ConsumeSpanAction, ir.ConsumeTrimmedSpanAction, ir.OptTree, ir.StarTree, ir.TrimStarTree): True,
-        # A wrapping `(max)` says no where its production does; the vendored grammar's bare `(max)` is a length note.
+        # A wrapping `(max)` says no where its production does. The vendored grammar's bare `(max)` is a length note.
         ir.MaxWrapper: lambda node, grammar, seen: (
-            is_total(node.item, grammar, seen) if node.item is not None else False
+            _is_total(node.item, grammar, seen) if node.item is not None else False
         ),
-        # A recovery answers a cut and nothing else, so what says no is the item saying it.
+        # A recovery answers a cut and stops there. The item inside it is what says no.
         (
             ir.CommitWrapper,
             ir.PlusTree,
@@ -153,53 +174,54 @@ _IS_TOTAL = ir.Question(
             ir.RepTree,
             ir.TokenWrapper,
             ir.Wrapper,
-        ): lambda node, grammar, seen: is_total(node.item, grammar, seen),
-        ir.BindTree: lambda node, grammar, seen: is_total(node.cond, grammar, seen),
-        ir.SeqTree: lambda node, grammar, seen: all(is_total(item, grammar, seen) for item in node.items),
-        ir.AltTree: lambda node, grammar, seen: any(is_total(item, grammar, seen) for item in node.items),
+        ): lambda node, grammar, seen: _is_total(node.item, grammar, seen),
+        ir.BindTree: lambda node, grammar, seen: _is_total(node.cond, grammar, seen),
+        ir.SeqTree: lambda node, grammar, seen: all(_is_total(item, grammar, seen) for item in node.items),
+        ir.AltTree: lambda node, grammar, seen: any(_is_total(item, grammar, seen) for item in node.items),
         ir.CaseTree: _a_switch_is_total,
-        ir.ChoiceState: lambda node, grammar, seen: any(is_total(way, grammar, seen) for way in node.alternatives),
+        ir.ChoiceState: lambda node, grammar, seen: any(_is_total(way, grammar, seen) for way in node.alternatives),
         ir.AlternativeState: _a_way_is_total,
-        # A recursion reached again is taken as total, the rest of the body deciding: a rule is total only where some
+        # A recursion the walk reaches again counts as total, and the rest of the body decides. A rule is total where a
         # path through it does not depend on the recursion.
         ir.RefCall: lambda node, grammar, seen: node.name in seen
-        or is_total(grammar[node.name].body, grammar, seen | {node.name}),
+        or _is_total(grammar[node.name].body, grammar, seen | {node.name}),
     },
 )
 
 
-def exercised(grammar, fixtures=None):
+def _exercised(
+    grammar: dict[str, ir.Prod], fixtures: Sequence[spec_tests.Fixture] | None = None
+) -> tuple[set[str], set[str]]:
     """
-    The productions the reproducible fixtures reach, and the ones they see reject an input — the whole suite's, or
-    `fixtures`' where given.
+    The productions the reproducible fixtures reach, and the productions they see reject an input. The fixtures are the
+    whole suite, or `fixtures` where the caller gives them.
 
-    Returns `(reached, rejected)`. A production is reached when its body offers a solution or a value expression
-    evaluates it; it is rejected when it fails to match, a `(cut)` inside it being one of the ways it can — a cut hands
-    back a failure like any other, carrying the message it names beside it.
+    Returns `(reached, rejected)`. A production counts as reached when the body offers a solution, or when a value
+    expression evaluates the production. A production counts as rejected when it fails to match. A `(cut)` inside a
+    production is a way that can happen. A cut hands back a failure like any other, and holds the message it names.
 
-    The run itself records this, where it enters and hands back productions. Nothing here watches the interpreter from
-    outside: a watcher sees only the calls that go through the name it replaced, so a handler reaching a production any
-    other way is missed, and the report reads exactly like a covered one.
+    The run itself records this, where it enters and hands back productions. This watches the interpreter from inside
+    rather than outside. A watcher outside sees the calls that go through the name it replaced, and misses a handler
+    reaching a production another way. The report would then read like a covered production.
     """
     coverage = interpreter.Coverage()
     exercisers = spec_tests.load() if fixtures is None else fixtures
     for at, fixture in enumerate(exercisers):
-        if at and not at % 100:  # the run is instrumented and slower than a plain one, so it says where it is
+        if at and not at % 100:  # the run is instrumented and slower than a plain one. It says where it is
             ir.say(f"            {at} of {len(exercisers)} fixture(s) exercised")
-        # A fixture that crashes here is a fault of its own and is raised: swallowing it would leave the productions it
-        # covers unexercised and report that instead, which says the grammar has a gap where what happened is that the
-        # parse died. Every fixture runs clean today, so nothing is being made stricter.
+        # A fixture that crashes here is a fault of its own and is raised. Swallowing it would leave the productions it
+        # covers unexercised and report a gap in the grammar.
         arguments = spec_tests.arguments(fixture, grammar)
         interpreter.run(grammar, fixture.production, fixture.input, arguments, coverage=coverage)
     return coverage.reached, coverage.rejected
 
 
-def fired():
+def _fired() -> set[str]:
     r"""
-    The error texts the fixtures' own expected output carries — the `(cut)`s and `(error)`s shown to reach it.
+    The error texts the fixtures' own expected output holds. The `(cut)`s and `(error)`s shown to reach it.
 
-    These are the texts as the wire holds them, escaped, which is what a message must be escaped to be compared against:
-    a message naming a backslash is `\x5c` here and a backslash in `messages.yaml`.
+    These are the texts as the wire holds them. The wire escapes them. A comparison against them wants the message
+    escaped too. A message naming a backslash is `\x5c` here and a backslash in `messages.yaml`.
     """
     texts = set()
     for fixture in spec_tests.load():
@@ -211,42 +233,50 @@ def fired():
     return texts
 
 
+# The suffix monomorphizing appends to a name. That suffix is a finite parameter and the value it took. Empty where the
+# grammar declares no finite parameter.
 _MONOMORPHIC_SUFFIX = (
     re.compile(r"_(?:" + "|".join(ir.FINITE_PARAMS) + r")_[a-z]+(?:-[a-z]+)*") if ir.FINITE_PARAMS else None
 )
-_HELPER_SUFFIX = re.compile(r"(?:_\d+)+$")  # what a transformation's minted helper carries
+_HELPER_SUFFIX = re.compile(r"(?:_\d+)+$")  # the suffix a transformation's minted helper takes.
 
 
-def _base(name):
+def _base(name: str) -> str:
     """
-    `name` with its monomorphic-copy and minted-helper suffixes stripped — `foo_c_flow-in_1` to `foo`. A copy or a
-    helper is covered when its base is: the fixtures test a base production, and each is a token-faithful piece of it,
-    proved to change no token and reachable, that adds no logic of its own to leave untested. A monomorphic copy differs
-    only by a static parameter substitution; a helper is a piece of the base's own body, moved — the tail of a sequence
-    too long to hold two calls, the turn of a run — all of which the base is seen to do, so requiring more of one than
-    of the body it came from would ask the corpus for what the untransformed grammar never needed. Covering every one
-    directly would take a fixture per production and context it appears in — combinatorial, where `[ 'x' ]` reaching a
-    copy `key: 'x'` does not is a hole in the corpus, not dead code.
+    `name` with its monomorphic-copy and minted-helper suffixes stripped. `foo_c_flow-in_1` comes back as `foo`.
 
-    The credit is the floor and not the ceiling: a base's coverage records that an input was taken, not which of its
-    pieces took it. What the credit answers for is a base like `l-recover-entry`, a resume policy that declines and so
-    matches nowhere, which no fixture could reach whatever it was cut into.
+    A base covers the copies and the helpers under it. The fixtures test a base production. A copy or a helper is a
+    token-faithful piece of that base, proved to change no token and proved reachable. Neither adds logic of its own to
+    leave untested.
+
+    A monomorphic copy differs in a static parameter substitution. A helper is a piece of the body of the base, taken
+    out and given a name. That is the tail of a sequence too long to hold a pair of calls, or the turn of a run. The
+    corpus already shows the base doing both of those. Requiring more of a helper than of the body it came from would
+    ask the corpus for what the untransformed grammar did not need.
+
+    Covering a copy directly would take a fixture per production and context it appears in. That count is combinatorial.
+    `[ 'x' ]` reaching a copy where `key: 'x'` does not is a hole in the corpus rather than dead code.
+
+    The credit is the floor and not the ceiling. A base's coverage records that the parse took an input, and not which
+    piece took it. The credit answers for a base like `l-recover-entry`. That is a resume policy that declines, and it
+    matches at no position. A fixture could reach it under no cutting whatever.
     """
     return _HELPER_SUFFIX.sub("", _MONOMORPHIC_SUFFIX.sub("", name) if _MONOMORPHIC_SUFFIX else name)
 
 
-def _decided_by_callers(grammar, wanted):
+def _decided_by_callers(grammar: Mapping[str, ir.Prod], wanted: Iterable[str]) -> set[str]:
     """
-    The bases among `wanted` that every caller gates before entering — so nothing can be seen to refuse them.
+    The bases among `wanted` that a caller gates before entering. A refusal by such a base then goes unseen.
 
-    A gate is tested before the call it stands in front of, so where every way that names a production carries one, the
-    parse never enters that production on a character it cannot start with. It has no way left to refuse, and asking the
-    corpus for an input that makes it is asking for one that cannot exist.
+    The parse tests a gate before the call behind it. A gate in front of a call turns the parse away from a character
+    the production cannot start with. Such a production has no way left to refuse. Asking the corpus for an input that
+    makes it refuse asks for an input that cannot exist.
 
-    This is the rule the one-hop case already follows — a gate saying no counts as the production it guards saying no,
-    "otherwise gating a rule correctly would make it look untested" — said of a production whose refusals have all been
-    taken up by its callers rather than by the one gate immediately in front of it. A production some way calls ungated
-    is not among them: there the parse can still walk in and be turned away.
+    This is the rule the near case already follows. A gate saying no counts as a refusal by the production behind that
+    gate, "otherwise gating a rule correctly would make it look untested". The same holds here of a production whose
+    callers have taken up its refusals. Callers further out count too.
+
+    A production some way calls ungated is not among them. There the parse can still walk in and find a refusal.
     """
     gated = {name: True for name in wanted}
     for production in grammar.values():
@@ -261,65 +291,72 @@ def _decided_by_callers(grammar, wanted):
     return {_base(name) for name, is_gated in gated.items() if is_gated and name in called}
 
 
-def gaps(grammar, exercisers=None):
+def gaps(
+    grammar: dict[str, ir.Prod],
+    exercisers: Sequence[tuple[dict[str, ir.Prod], Sequence[spec_tests.Fixture] | None]] | None = None,
+) -> list[str]:
     """
-    The productions `grammar` leaves unexercised and the messages nothing fires, as error strings — empty when the
-    fixtures reach and reject every production and carry every message. Takes the grammar as an argument, so it re-runs
-    on a structurally-transformed grammar whose reshaped productions the same fixtures must still exercise; a
-    monomorphic copy is held covered when its base is. `exercisers` — `(grammar, fixtures)` pairs, each run in its own
-    right — is how a pipeline's grammars pool their coverage: a fixture stranded by a transformation runs against the
-    last grammar its production is reachable in, and a base name exercised at any stage credits its copies here. Left
-    out, `grammar` itself is exercised with the whole suite.
+    The productions `grammar` leaves unexercised and the messages nothing fires, as error strings. Empty where the
+    fixtures reach and reject the productions and say the messages.
 
-    A base that is total where the fixtures run it is excused the rejection: nothing can be seen to reject what matches
-    at every position, and a copy that says no where the base matched empty would be asking the corpus for a refusal the
-    untransformed grammar had nowhere to show.
+    Takes the grammar as an argument, and re-runs on a structurally-transformed grammar whose reshaped productions the
+    same fixtures must still exercise. A monomorphic copy counts as covered where its base counts as covered.
+
+    `exercisers` is `(grammar, fixtures)` pairs, and this runs them in turn. That is how a pipeline's grammars pool
+    their coverage. A fixture stranded by a transformation runs against the last grammar its production is reachable in.
+    A base name exercised at any stage credits its copies here. With `exercisers` left out, `grammar` itself runs
+    against the whole suite.
+
+    A base that is total where the fixtures run it goes without the rejection. A production that matches at any position
+    shows no refusal to see. A copy that says no where the base matched empty would ask the corpus for a refusal the
+    untransformed grammar had no place to show.
     """
-    reached_bases, rejected_bases = set(), set()
+    reached_bases: set[str] = set()
+    rejected_bases: set[str] = set()
     pairs = [(grammar, None)] if exercisers is None else exercisers
     for at, (stage, fixtures) in enumerate(pairs):
         ir.say(f"        exerciser {at + 1} of {len(pairs)}, {len(fixtures or ())} fixture(s)")
-        reached, rejected = exercised(stage, fixtures)
+        reached, rejected = _exercised(stage, fixtures)
         reached_bases |= {_base(name) for name in reached}
         rejected_bases |= {_base(name) for name in rejected}
-    with open(check_messages.MESSAGES) as handle:
+    with open(check_messages.MESSAGES, encoding="utf-8") as handle:
         messages = yaml.safe_load(handle)
-    texts = fired()
+    texts = _fired()
 
     errors = [f"{name}: no reproducible fixture exercises it" for name in grammar if _base(name) not in reached_bases]
     wanting = [
         name
         for name in grammar
-        if _base(name) not in rejected_bases and not is_total(grammar[name].body, grammar, frozenset({name}))
+        if _base(name) not in rejected_bases and not _is_total(grammar[name].body, grammar, frozenset({name}))
     ]
     excused = {
         base
         for base in {_base(name) for name in wanting}
         for stage, _fixtures in ([] if exercisers is None else exercisers)
-        if base in stage and is_total(stage[base].body, stage, frozenset({base}))
+        if base in stage and _is_total(stage[base].body, stage, frozenset({base}))
     }
-    excused |= _decided_by_callers(grammar, {name for name in wanting})
+    excused |= _decided_by_callers(grammar, set(wanting))
     errors += [
-        f"{name}: no fixture makes it reject an input, and it is not total"
+        f"{name}: no fixture makes the rule reject an input, and the rule is not total"
         for name in wanting
         if _base(name) not in excused
     ]
     errors += [
-        f"{code}: no fixture's output carries its message, so nothing shows the cut fires"
+        f"{code}: no fixture's output holds the message. nothing shows the cut fires."
         for code, text in sorted(messages.items())
         if wire.escape(text.encode("utf-8")) not in texts
     ]
     return errors
 
 
-def main():
+def main() -> None:
     grammar = annotated2ir.load()
-    with open(check_messages.MESSAGES) as handle:
+    with open(check_messages.MESSAGES, encoding="utf-8") as handle:
         message_count = len(yaml.safe_load(handle))
     gate.report(
         gaps(grammar),
         "gap(s) in what the fixtures exercise",
-        f"grammar coverage: {len(grammar)} productions matched and rejected, {message_count} messages fired",
+        f"grammar coverage: {len(grammar)} productions matched and rejected, and {message_count} messages fired",
     )
 
 

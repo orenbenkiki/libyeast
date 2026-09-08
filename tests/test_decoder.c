@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: MIT
+// The decoder's tests, over what a character classifies as and what a consume takes. These reach the private header
+// that the library's public tests cannot.
+
 #include "acutest.h"
 #include "decoder.h"
 #include <stdbool.h>
 #include <stdint.h>
 
-// An empty window is the end of the input: it carries no set bits, so every membership test fails at it of its own
-// accord, and no test site in the parser needs an end-of-input case of its own.
+// An empty window is the end of the input. The key has no set bits, and a membership test fails there of its own
+// accord. A test site in the parser needs no end-of-input case of its own.
 static void test_end_of_input(void) {
     ys_char character = ys_next_char((const uint8_t *)"", 0);
     TEST_CHECK(character == YS_LIT_KEY_EOF);
@@ -14,7 +17,7 @@ static void test_end_of_input(void) {
     TEST_CHECK((character & YS_SET_BIT_C_PRINTABLE) == 0);
 }
 
-// An ASCII character is one table lookup: the character the grammar names, the sets it is in, and a length of one.
+// An ASCII character is a single table lookup. The character the grammar names, the sets it is in, and a length of `1`.
 static void test_ascii_character(void) {
     ys_char dash = ys_next_char((const uint8_t *)"-x", 2);
     TEST_CHECK(dash == YS_LIT_KEY_HYPHEN_MINUS);
@@ -39,7 +42,7 @@ static void test_ascii_character(void) {
     TEST_CHECK(YS_LEN(nul) == 1);                    // but its length still tells it from the end of the input
 }
 
-// The two characters the grammar names above ASCII.
+// The pair of characters the grammar names above ASCII.
 static void test_named_non_ascii(void) {
     ys_char next_line = ys_next_char((const uint8_t *)"\xC2\x85", 2);
     TEST_CHECK(next_line == YS_LIT_KEY_NEXT_LINE);
@@ -52,7 +55,7 @@ static void test_named_non_ascii(void) {
     TEST_CHECK((byte_order_mark & YS_SET_BIT_NB_CHAR) == 0); // nb-char withholds the byte-order mark
 }
 
-// Ordinary content above ASCII: one key whatever its length, since the grammar cannot tell such characters apart.
+// Ordinary content above ASCII. A single key whatever its length. The grammar cannot tell such characters apart.
 static void test_content_non_ascii(void) {
     ys_char latin = ys_next_char((const uint8_t *)"\xC3\xA9", 2);         // U+00E9
     ys_char cjk = ys_next_char((const uint8_t *)"\xE4\xB8\x80", 3);       // U+4E00
@@ -69,7 +72,7 @@ static void test_content_non_ascii(void) {
     }
 }
 
-// The C1 controls and the two noncharacters: JSON-compatible, but not printable, and so not content either.
+// The C1 controls and the pair of noncharacters. JSON-compatible, but not printable, and so not content either.
 static void test_not_printable_non_ascii(void) {
     ys_char control = ys_next_char((const uint8_t *)"\xC2\x80", 2);          // U+0080
     ys_char noncharacter = ys_next_char((const uint8_t *)"\xEF\xBF\xBE", 3); // U+FFFE
@@ -82,8 +85,8 @@ static void test_not_printable_non_ascii(void) {
     TEST_CHECK((noncharacter & YS_SET_BIT_C_PRINTABLE) == 0);
 }
 
-// Malformed UTF-8, after Markus Kuhn's decoder stress test. Each is rejected, and each consumes exactly one byte, so
-// that a caller can step over it and carry on reporting rather than stopping at the first bad byte.
+// Malformed UTF-8. The cases come from Markus Kuhn's decoder stress test. The decoder rejects a case, and consumes a
+// single byte. A caller can then step over it and continue reporting rather than stopping at the first bad byte.
 static void test_malformed_utf8(void) {
     static const struct {
         const char *name;
@@ -123,10 +126,10 @@ static void test_malformed_utf8(void) {
     }
 }
 
-// `ys_utf8_length` answers for the bytes the wire format is handed, which nothing has classified. It agrees with
-// `ys_next_char` on every ill-formed shape above; here it is on the well-formed ones, and on the empty window that
-// only it can be asked about — `ys_next_char` reads the end of the input as a character, where a length of no bytes
-// is simply no sequence.
+// `ys_utf8_length` answers for the bytes the wire format takes in. Those bytes reach it unclassified. It agrees with
+// `ys_next_char` on the ill-formed shapes above. Here it runs on the well-formed ones, and on the empty window that
+// `ys_next_char` cannot answer for. `ys_next_char` reads the end of the input as a character, where a length of no
+// bytes is simply no sequence.
 static void test_utf8_length(void) {
     static const struct {
         const char *name;
@@ -150,13 +153,13 @@ static void test_utf8_length(void) {
     }
 }
 
-// Every codepoint UTF-8 can encode reports the length it was encoded in, and every surrogate is rejected. The encoder
-// here is written independently of the decoder, which is what makes this a check rather than a tautology.
+// A codepoint UTF-8 can encode reports the length of its encoding, and the decoder rejects a surrogate. The encoder
+// here goes independently of the decoder. That makes this a check rather than a tautology.
 //
-// The first codepoint to disagree is remembered and reported after the sweep rather than at once, so that the sweep has
-// no branch that only a failure would take — a branch no passing run could ever cover.
+// The sweep holds the first codepoint to disagree and reports it at the end rather than at once. The sweep then
+// has no failure-only branch. Such a branch is a branch no passing run could ever cover.
 static void test_every_codepoint(void) {
-    uint32_t first_wrong = 0; // no codepoint below U+0080 is swept, so zero can mean "none"
+    uint32_t first_wrong = 0; // no codepoint below U+0080 is swept. Zero can mean "none"
     ys_char wrong_key = 0;
 
     for (uint32_t codepoint = 0x80u; codepoint <= 0x10FFFFu; codepoint++) {
@@ -190,57 +193,62 @@ static void test_every_codepoint(void) {
     TEST_MSG("U+%04X: key 0x%08X, length %u", first_wrong, (unsigned)wrong_key, (unsigned)YS_LEN(wrong_key));
 }
 
-// Scanning a run — what the parser does for every (***) and (+++) over a character set.
-static void test_scan_set(void) {
-    ys_run spaces = ys_scan_set((const uint8_t *)"    x", 5, YS_SET_ID_S_WHITE);
+// Consuming a set. This is what the parser does for a (***) or a (+++) over a character set.
+static void test_consume_set(void) {
+    ys_consumed spaces = ys_consume_set((const uint8_t *)"    x", 5, YS_SET_ID_S_WHITE);
     TEST_CHECK(spaces.bytes == 4 && spaces.characters == 4);
 
     const uint8_t *digits = (const uint8_t *)"1234abc";
-    ys_run run = ys_scan_set(digits, 7, YS_SET_ID_NS_DEC_DIGIT);
-    TEST_CHECK(run.bytes == 4 && run.characters == 4);
+    ys_consumed taken = ys_consume_set(digits, 7, YS_SET_ID_NS_DEC_DIGIT);
+    TEST_CHECK(taken.bytes == 4 && taken.characters == 4);
 
-    // A run of no length, when the very first character is not in the set.
-    run = ys_scan_set(digits, 7, YS_SET_ID_S_WHITE);
-    TEST_CHECK(run.bytes == 0 && run.characters == 0);
+    // A consume of no length, when the very first character is not in the set.
+    taken = ys_consume_set(digits, 7, YS_SET_ID_S_WHITE);
+    TEST_CHECK(taken.bytes == 0 && taken.characters == 0);
 
-    // A run stops at the end of the window, never past it.
-    run = ys_scan_set(digits, 2, YS_SET_ID_NS_DEC_DIGIT);
-    TEST_CHECK(run.bytes == 2 && run.characters == 2);
-    run = ys_scan_set(digits, 0, YS_SET_ID_NS_DEC_DIGIT);
-    TEST_CHECK(run.bytes == 0 && run.characters == 0);
+    // A consume stops at the end of the window, never past it.
+    taken = ys_consume_set(digits, 2, YS_SET_ID_NS_DEC_DIGIT);
+    TEST_CHECK(taken.bytes == 2 && taken.characters == 2);
+    taken = ys_consume_set(digits, 0, YS_SET_ID_NS_DEC_DIGIT);
+    TEST_CHECK(taken.bytes == 0 && taken.characters == 0);
 
-    // A run carries on through non-ASCII content, where the bytes outnumber the characters: "ab" and U+4E00, which is
-    // three bytes, stopping at the space.
-    run = ys_scan_set((const uint8_t *)"ab\xE4\xB8\x80 z", 7, YS_SET_ID_NS_CHAR);
-    TEST_CHECK(run.bytes == 5 && run.characters == 3);
+    // A consume continues through non-ASCII content, where the bytes outnumber the characters. Here "ab" and U+4E00,
+    // which is three bytes, stopping at the space.
+    taken = ys_consume_set((const uint8_t *)"ab\xE4\xB8\x80 z", 7, YS_SET_ID_NS_CHAR);
+    TEST_CHECK(taken.bytes == 5 && taken.characters == 3);
 
-    // Bytes that are not UTF-8 are in no set, so they end a run rather than being consumed by it.
-    run = ys_scan_set((const uint8_t *)"ab\xFF", 3, YS_SET_ID_NS_CHAR);
-    TEST_CHECK(run.bytes == 2 && run.characters == 2);
+    // Bytes that are not UTF-8 are in no set. They end a consume rather than being consumed by it.
+    taken = ys_consume_set((const uint8_t *)"ab\xFF", 3, YS_SET_ID_NS_CHAR);
+    TEST_CHECK(taken.bytes == 2 && taken.characters == 2);
 }
 
-static void test_span_trim_sets(void) {
-    // A run keeps its inner spaces and gives back the trailing ones: the span is "a b", the trim the two spaces after.
-    ys_trim run = ys_span_trim_sets((const uint8_t *)"a b  ", 5, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
-    TEST_CHECK(run.span.bytes == 3 && run.trim.bytes == 2);
+// A trimmed consume splits the take in half. The span it keeps comes first. The trailing run given back comes after.
+static void test_consume_trim_sets(void) {
+    // A consume keeps its inner spaces and gives back the trailing ones. The span is "a b", the trim the two spaces
+    // after.
+    ys_trim taken = ys_consume_trim_sets((const uint8_t *)"a b  ", 5, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(taken.span.bytes == 3 && taken.trim.bytes == 2);
 
-    // Nothing but the given-back kind: the span is empty and the whole run is trim — the empty match a trimmed run
-    // makes of a line of only spaces.
-    run = ys_span_trim_sets((const uint8_t *)"    ", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
-    TEST_CHECK(run.span.bytes == 0 && run.trim.bytes == 4);
+    // Nothing but the given-back kind. The kept span is empty and the whole of what was taken is trim. That is what a
+    // line of only spaces comes to.
+    taken = ys_consume_trim_sets((const uint8_t *)"    ", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(taken.span.bytes == 0 && taken.trim.bytes == 4);
 
-    // No trailing given-back characters: the span is the whole run, the trim empty. nb-char stops at the break.
-    run = ys_span_trim_sets((const uint8_t *)"abc\n", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
-    TEST_CHECK(run.span.bytes == 3 && run.trim.bytes == 0);
+    // No trailing given-back characters. The span is the whole of what was taken, the trim empty. nb-char stops at
+    // the break.
+    taken = ys_consume_trim_sets((const uint8_t *)"abc\n", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(taken.span.bytes == 3 && taken.trim.bytes == 0);
 
-    // The span is counted in characters too, stopping after a non-ASCII kept character: "a" then U+4E00 (three bytes),
-    // then two given-back spaces.
-    run = ys_span_trim_sets((const uint8_t *)"a\xE4\xB8\x80  ", 6, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
-    TEST_CHECK(run.span.bytes == 4 && run.span.characters == 2 && run.trim.bytes == 2 && run.trim.characters == 2);
+    // The span is counted in characters too, stopping after a non-ASCII kept character. Here "a" then U+4E00 (three
+    // bytes), then two given-back spaces.
+    taken = ys_consume_trim_sets((const uint8_t *)"a\xE4\xB8\x80  ", 6, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(taken.span.bytes == 4 && taken.span.characters == 2 && taken.trim.bytes == 2 &&
+               taken.trim.characters == 2);
 
-    // A non-ASCII byte in no set ends the run as an ASCII one out of set does: "ab" then a byte that is not UTF-8.
-    run = ys_span_trim_sets((const uint8_t *)"ab\xFF", 3, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
-    TEST_CHECK(run.span.bytes == 2 && run.trim.bytes == 0);
+    // A non-ASCII byte in no set ends the consume as an ASCII one out of set does. Here "ab" then a byte that is not
+    // UTF-8.
+    taken = ys_consume_trim_sets((const uint8_t *)"ab\xFF", 3, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
+    TEST_CHECK(taken.span.bytes == 2 && taken.trim.bytes == 0);
 }
 
 TEST_LIST = {
@@ -252,7 +260,7 @@ TEST_LIST = {
     {"malformed_utf8", test_malformed_utf8},
     {"utf8_length", test_utf8_length},
     {"every_codepoint", test_every_codepoint},
-    {"scan_set", test_scan_set},
-    {"span_trim_sets", test_span_trim_sets},
+    {"consume_set", test_consume_set},
+    {"consume_trim_sets", test_consume_trim_sets},
     {NULL, NULL},
 };

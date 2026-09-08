@@ -1,32 +1,32 @@
 # SPDX-License-Identifier: MIT
+# The error messages libyeast emits, keyed by the code a grammar `(cut)` or `(error)` names. A message says what the
+# parse expected. It says nothing about what the parse found, and the byte that failed comes back as the first
+# unparsed token behind the error. The interpreter reads this file. `check_messages` holds the codes here to the
+# codes the grammar names. The C parser emits no message from this file. `src/messages.c` holds the wire reader's own
+# messages and nothing out of here.
 #
-# The error messages libyeast emits, keyed by the code a grammar `(cut)` or `(error)` names. Each says what was
-# expected, never what was found — the byte that failed comes back as the first unparsed token behind the error. This
-# file is the single source: the interpreter reads it, and the C parser's message table is generated from it (gated
-# against drift), so the mapping is never hand-duplicated.
+# A `(cut)` or an `(error)` in `yeast-spec-1.2.yaml` names a code here. A fixture whose expected output holds the text
+# shows that code firing. A commit point nothing reaches is a message nothing has checked.
 #
-# Every code here is named by a `(cut)` or an `(error)` in `yeast-spec-1.2.yaml`, and every one is shown to fire by a
-# fixture whose expected output carries its text — a commit point nothing reaches is a message nothing has checked.
-#
-# A byte that is no codepoint at all belongs to none of this: it is the decoder's, below the grammar, and its message
-# will be a hand-written one in `src/messages.c` rather than an entry here. There is no such message yet, the parser
-# core that would emit it being unbuilt; `PLAN.md` §4 says what deciding it decides.
+# A byte that is no codepoint at all belongs elsewhere. Such a byte belongs to the decoder below the grammar. Its
+# message will be hand-written in `src/messages.c` rather than an entry here. The tree holds no such message. The
+# parser core that would emit it does not exist. `PLAN.md` section 4 says what deciding that decides.
 
 # A required construct is absent.
-MISSING_VALUE: "A mapping value is required after ':'"
-MISSING_KEY: "A mapping key is required after '?'"
-MISSING_ENTRY: "A sequence entry is required after '-'"
-MISSING_ANCHOR_NAME: "An anchor name is required after '&'"
-MISSING_ALIAS_NAME: "An anchor name is required after '*'"
-MISSING_DIRECTIVE: "A directive name is required after '%'"
+MISSING_VALUE: "A mapping value must follow `:`"
+MISSING_KEY: "A mapping key must follow `?`"
+MISSING_ENTRY: "A sequence entry must follow `-`"
+MISSING_ANCHOR_NAME: "An anchor name must follow `&`"
+MISSING_ALIAS_NAME: "An anchor name must follow `*`"
+MISSING_DIRECTIVE: "A directive name must follow `%`"
 
-# A construct was opened and never closed.
+# A construct opened and stayed open.
 UNTERMINATED_DOUBLE_QUOTE: "Unterminated double-quoted scalar"
 UNTERMINATED_SINGLE_QUOTE: "Unterminated single-quoted scalar"
 UNTERMINATED_FLOW_SEQ: "Unterminated flow sequence"
 UNTERMINATED_FLOW_MAP: "Unterminated flow mapping"
 
-# An escape or its digits are malformed.
+# An escape or its digits come out malformed.
 ESC_X2: "A '\\x' escape requires two hexadecimal digits"
 ESC_U4: "A '\\u' escape requires four hexadecimal digits"
 ESC_U8: "A '\\U' escape requires eight hexadecimal digits"
@@ -34,18 +34,18 @@ ESC_URI: "A '%' escape in a tag requires two hexadecimal digits"
 INVALID_ESCAPE: "Invalid escape sequence"
 
 # A directive is malformed.
-YAML_DIRECTIVE: "The %YAML directive requires a version, e.g. %YAML 1.2"
+YAML_DIRECTIVE: "The %YAML directive requires a version such as %YAML 1.2"
 TAG_DIRECTIVE: "The %TAG directive requires a handle and a prefix"
 
-# A marker or a header carries trailing junk, where only a comment or the end of the line may follow.
+# A marker or a header has trailing junk, where only a comment or the end of the line may follow.
 BLOCK_HEADER: "A block scalar header requires a comment or line break"
 DOCUMENT_END: "A '...' document-end marker requires a comment or line break"
 
 # A block scalar's leading empty lines set a floor its first content line may not fall below.
-BLOCK_SCALAR_UNDER_INDENT: "A block scalar's content must be indented at least as far as its leading empty lines"
+BLOCK_SCALAR_UNDER_INDENT: "A block scalar's content must reach at least as far in as its leading empty lines"
 
 # An implicit mapping key ran past the bounded lookahead a parser resolves it within.
 IMPLICIT_KEY_TOO_LONG: "An implicit mapping key must be at most 1024 characters"
 
 # The input holds something a stream cannot.
-TRAILING_CONTENT: "A stream holds only documents, directives and comments"
+TRAILING_CONTENT: "A stream holds documents, directives and comments and nothing besides"

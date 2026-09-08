@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: MIT
 """
-Check that the interpreter reproduces every conformance fixture it covers.
+Check that the interpreter reproduces the conformance fixtures it covers.
 
-For each fixture whose production rests on only the nodes the interpreter supports, run the production and compare its
-token stream to the fixture's, byte for byte. This is where libyeast's grammar is proved to emit the reference's tokens,
-one production at a time — the malformed inputs included, now that a failed cut becomes an error and the unparsed
-recovery.
+Take a fixture whose production rests on the nodes the interpreter supports, and run that production. Compare the token
+stream the run emits against the stream the fixture froze. The comparison goes byte by byte.
+
+This is where libyeast's grammar proves it emits the reference's tokens, a production at a time. The malformed inputs
+are among them. A failed cut writes an error token and hands the remainder to the unparsed recovery. A fixture can hold
+that stream like any other.
 """
 
 import os
@@ -18,32 +20,30 @@ import spec_tests
 import wire
 
 
-def reproduced(grammar, fixtures=None, deterministic=frozenset(), holding=frozenset()):
+def reproduced(grammar: dict[str, ir.Prod], fixtures: list[spec_tests.Fixture] | None = None) -> list[str]:
     """
-    The fixtures `grammar` does not reproduce token for token, as error strings — empty when it reproduces them all.
+    The fixtures `grammar` does not reproduce token for token, as error strings. Empty where the grammar reproduces the
+    whole set.
 
-    Takes the grammar as an argument the way the interpreter does, so a structurally-transformed grammar is held to the
-    same token streams the base one is: the fixtures are the base's frozen output, so reproducing them is the transform
-    changing no token. `deterministic` passes through to the interpreter, so a hybrid run is held to the same streams
-    too.
+    Takes the grammar as an argument the way the interpreter does. A structurally-transformed grammar emits the same
+    token streams as the base grammar. The fixtures are the base's frozen output. Reproducing them means the transform
+    changed no token.
     """
     if fixtures is None:
         fixtures = spec_tests.load()
     ir.say(f"        {len(fixtures)} fixture(s), spread over the cores")
-    held = gate.spread(_run_one, (grammar, deterministic, holding), fixtures)
+    held = gate.spread(_run_one, (grammar,), fixtures)
     return [error for error in held if error is not None]
 
 
-def _run_one(held, fixture):
-    """How `fixture` differs from what it froze, or `None` where it does not."""
-    grammar, deterministic, holding = held
+def _run_one(held: tuple[dict[str, ir.Prod]], fixture: spec_tests.Fixture) -> str | None:
+    """The way `fixture` differs from the stream it froze. `None` comes back where the pair agree."""
+    (grammar,) = held
     try:
         arguments = spec_tests.arguments(fixture, grammar)
-        tokens = interpreter.run(
-            grammar, fixture.production, fixture.input, arguments, deterministic=deterministic, holding=holding
-        )
+        tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments)
         actual = wire.serialize(tokens)
-    except Exception as error:  # noqa: BLE001 — a crash is a divergence to report, not to abort the gate on
+    except Exception as error:  # noqa: BLE001  failure-is-reported: as `actual` below  # pylint: disable=W0718
         actual = f"(crash: {type(error).__name__}: {error})"
     if actual == fixture.expected:
         return None
@@ -51,7 +51,7 @@ def _run_one(held, fixture):
     return f"{os.path.basename(fixture.input_path)}: {reason}"
 
 
-def main():
+def main() -> None:
     fixtures = spec_tests.load()
     errors = reproduced(annotated2ir.load(), fixtures)
     gate.report(

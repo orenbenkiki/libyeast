@@ -2,20 +2,20 @@
 #
 # This YAML grammar was manually derived from
 # https://github.com/yaml/yaml-grammar/blob/master/yaml-spec-1.2.yaml
-# to add the token actions, which are based on the Haskell YAML reference parser
+# to add the token actions, which are based on Haskell YamlReference
 # https://github.com/orenbenkiki/yamlreference
 #
 # It is the grammar libyeast is generated from: a YAML parser in C whose
 # conformance is a property of its generator rather than of its test suite.
-# Everything the parser does is derived from this file — the character classes
+# Everything the parser does is derived from this file - the character classes
 # it branches on, the productions it recognizes, and the tokens it emits.
 #
 # The grammar it derives from says how to recognize YAML. It does not say what
 # to emit, and it cannot: it writes the indicator characters inline, so it has
 # nowhere to record that a quotation mark opens a scalar as an indicator but is
 # meta inside an escape, and it names no token at all. This grammar restores
-# that structure — each indicator character is reached through the rule that
-# names it — and annotates the rules with the tokens they emit.
+# that structure - each indicator character is reached through the rule that
+# names it - and annotates the rules with the tokens they emit.
 #
 # Those tokens are yeast, the reference parser's token model: zero-width markers
 # bracketing the interesting rules, and every consumed character classified. The
@@ -158,14 +158,14 @@
 #
 #     The grammar this one derives from has an <auto-detect-indent> instead: the
 #     indentation of the next line holding a character other than a space, less
-#     n — read before anything is consumed, past the rest of the current line and
+#     n - read before anything is consumed, past the rest of the current line and
 #     however many empty lines follow, bounded by nothing. Every rule that wanted
 #     it takes its own indentation and reads <column> now, since the parse is
 #     standing on the line that would have answered.
 #
 #     The empty lines of a block scalar are still the one place libyeast must
-#     hold tokens back: whether such a line is content — a line feed the scalar
-#     keeps — or is chomped away depends on whether a line with content ever
+#     hold tokens back: whether such a line is content - a line feed the scalar
+#     keeps - or is chomped away depends on whether a line with content ever
 #     follows it, and until one does the answer is not known. YAML bounds this
 #     nowhere; libyeast bounds it by `max_token_bytes`.
 #
@@ -265,7 +265,7 @@
 #     Convert a string of decimal digits to an integer.
 #
 #   * (match)
-#     Return the text of the open run — the token about to be emitted, which is
+#     Return the text of the open run - the token about to be emitted, which is
 #     what the rule reading it has just matched.
 #
 #   * (len)
@@ -303,19 +303,19 @@
 # silent about.
 #
 # The parser gathers the characters it consumes into a run, and gives the run a
-# code. A run ends — becoming one token — wherever a (token) begins or ends, and
+# code. A run ends - becoming one token - wherever a (token) begins or ends, and
 # wherever an (emit) falls. So an action does not make *a* token: it says what
 # the characters consumed within it are called, and where the runs are cut. A
 # nested action overrides the one around it for its own extent, and splits the
 # outer run in two.
 #
-# A character consumed under no action at all is `unparsed-text` — what the
+# A character consumed under no action at all is `unparsed-text` - what the
 # parser says about input it could not parse. On the success path that is always
 # an action someone forgot, so every rule that consumes a character is held to
 # lying within one.
 #
 #   * (token)
-#     A code, and the rule it covers. The characters that rule consumes carry
+#     A code, and the rule it covers. The characters that rule consumes take
 #     the code, but for those a nested action claims.
 #
 #       (token): [ indicator, '-' ]
@@ -329,7 +329,7 @@
 #
 #   * (emit)
 #     A zero-width token at this point, which also cuts the run around it. Used
-#     where a marker does not bracket a rule — a block scalar begins at its
+#     where a marker does not bracket a rule - a block scalar begins at its
 #     indicator, but ends inside the rule that consumed its last line break.
 #
 #       (emit): begin-scalar
@@ -427,7 +427,7 @@ nb-json:
 # encoding, and this rule emits the mark it matched, nothing more.
 #
 # The reference parser instead gives this token the *name* of the encoding it detected as
-# the token's text — "TF-8", "TF-16LE" — which is a divergence, and one the two token
+# the token's text - "TF-8", "TF-16LE" - which is a divergence, and one the two token
 # streams will differ on when they are compared.
 #
 # Emits: bom
@@ -1303,8 +1303,8 @@ s-indent:
 #===============================================================================
 # This rule means to match as many spaces as possible, then check the parse has
 # not passed the indentation level in variable n. An indentation is the spaces
-# the indent token holds, so the check reads the length of (match) — the token
-# the rule is building — and nothing need be remembered about where the spaces
+# the indent token holds, so the check reads the length of (match) - the token
+# the rule is building - and nothing need be remembered about where the spaces
 # began.
 #
 # The (***) function means the rule must match 0 or more times.
@@ -1700,7 +1700,7 @@ ns-directive-parameter:
 
 
 
-##### 6.8.1. “YAML” Directives
+##### 6.8.1. "YAML" Directives
 
 
 :086: ns-yaml-directive
@@ -1740,7 +1740,7 @@ ns-yaml-version:
 
 
 
-##### 6.8.2. “TAG” Directives
+##### 6.8.2. "TAG" Directives
 
 
 :088: ns-tag-directive
@@ -2929,8 +2929,8 @@ c-ns-flow-pair-json-key-entry:
 
 #===============================================================================
 # An implicit key must resolve within a bounded lookahead: the spec's 1024
-# characters (§7.4.2). libyeast wraps the key in that `(max)`, where the official
-# grammar writes it before the production rather than around it — a key past 1024
+# characters (section 7.4.2). libyeast wraps the key in that `(max)`, where the official
+# grammar writes it before the production rather than around it - a key past 1024
 # characters is an error, IMPLICIT_KEY_TOO_LONG, and unparsed from there. The
 # single line the key is also held to needs no bound here: the flow-key context
 # already forbids a break inside a key, so none is ever consumed.
@@ -3183,7 +3183,7 @@ c-chomping-indicator:
 # Where the scalar ends depends on how it is chomped. Stripped, the final break is not
 # content and the scalar ended before it. Clipped, the break is a line feed the scalar
 # keeps, so the scalar ends after it. Kept, more breaks follow, and the scalar does not
-# end here at all — l-keep-empty ends it once they are consumed. At end-of-input the
+# end here at all - l-keep-empty ends it once they are consumed. At end-of-input the
 # clipped and kept alternatives still have their line feed, a zero-width one, since the
 # spec reads the end of input as a final line break.
 #
@@ -3224,9 +3224,9 @@ l-chomped-empty:
 #   ( s-indent(<=n) b-non-content )*
 #   l-trail-comments(n)?
 #
-# Where the indentation is still owed — an indicator that named none, and no content line to say it — there is no n to
+# Where the indentation is still owed - an indicator that named none, and no content line to say it - there is no n to
 # bound these lines by, and they are what would have said it. So each is taken whole and the widest of them is the
-# floor, which is what the trailing comment must then be shallower than. Given an n, the official reading stands.
+# floor, which is what the trailing comment must then be shallower than. Given an n, the official meaning stands.
 #
 # Emits: indent
 
@@ -3258,7 +3258,7 @@ l-strip-empty:
 #   l-empty(n,block-in)*
 #   l-trail-comments(n)?
 #
-# The kept trailing breaks are content, so the scalar ends after them — and before any
+# The kept trailing breaks are content, so the scalar ends after them - and before any
 # trailing comments, which are not.
 #
 # l-strip-empty's twin where the indentation is still owed: the lines are taken whole, the widest of them being the
@@ -3312,7 +3312,7 @@ l-trail-comments:
 #   '|' c-b-block-header(m,t)
 #   l-literal-content(n+m,t)
 #
-# The scalar begins at its indicator. It does not end here — where it ends depends on
+# The scalar begins at its indicator. It does not end here - where it ends depends on
 # the chomping, so b-chomped-last and l-keep-empty emit the end between them.
 #
 # Emits: begin-scalar, text
@@ -3347,8 +3347,8 @@ l-nb-literal-text:
 #   ( <any-indent empty line> => f = max(f, column) )*
 #
 # libyeast's own, shared by both block-scalar styles: the leading empty lines before a block scalar's first content
-# line, which the spec's §8.1.1.1 forbids from out-indenting the content. The stream is taken as valid and every one is
-# emitted whatever its indentation, raising f — the floor, an out-parameter the caller reads back — to the widest of
+# line, which the spec's section 8.1.1.1 forbids from out-indenting the content. The stream is taken as valid and every one is
+# emitted whatever its indentation, raising f - the floor, an out-parameter the caller reads back - to the widest of
 # them. It stops at the first line that is not all spaces, leaving that line for the content to read.
 #
 # Emits: indent
@@ -3371,11 +3371,11 @@ l-leading-empties:
 # indentation and as this line being under-indented rather than a past empty line being over-indented, is what a forward
 # parser with no lookahead can say: the empty lines are already emitted, and f is all it has to remember. Taking the
 # indentation before the check is also what tells an empty scalar, whose content line never comes, from an
-# under-indented one — there the indentation fails before the cut, and the scalar ends with no error.
+# under-indented one - there the indentation fails before the cut, and the scalar ends with no error.
 #
 # i says where the indentation comes from. Given, the header's indicator said it and the line must have exactly that
 # many spaces. Detected, the indicator said nothing and this line is what says it: one span over the spaces, deeper
-# than the indentation in force — which is the official grammar's m > 0 — and this is where n is established, from the
+# than the indentation in force - which is the official grammar's m > 0 - and this is where n is established, from the
 # column that span reached. The floor is the same rule either way, read against what the line turned out to be.
 #
 # Emits: indent
@@ -3408,7 +3408,7 @@ s-indent-floor:
 #   l-leading-empties(f)
 #   s-indent-floor(n,f) nb-char+
 #
-# libyeast's own: the first chunk of a literal scalar — its leading empties raising the floor, its first content line
+# libyeast's own: the first chunk of a literal scalar - its leading empties raising the floor, its first content line
 # held to it, then the literal content.
 
 l-nb-literal-first:
@@ -3427,7 +3427,7 @@ l-nb-literal-first:
 #   ( ns-char nb-char* ( b-l-folded(n,block-in) s-nb-folded-text(n) )*
 #   | s-white nb-char* ( b-l-spaced(n) s-nb-spaced-text(n) )* )
 #
-# libyeast's own: the folded twin of l-nb-literal-first — the leading empties raising the floor, the first content
+# libyeast's own: the folded twin of l-nb-literal-first - the leading empties raising the floor, the first content
 # line's indentation held to it, and then the folded or spaced lines, their shared indentation already taken so the
 # floor is checked before the two are told apart. The rest of each line's content, and every line after the first, are
 # the folded and spaced texts unchanged.
@@ -3471,7 +3471,7 @@ b-nb-literal-next:
 
 #===============================================================================
 # A block scalar with no content at all still has to close. b-chomped-last ends the
-# scalar when there was content to end; when there was none, this does — unless the
+# scalar when there was content to end; when there was none, this does - unless the
 # breaks are kept, in which case they are content, and l-keep-empty ends it after them.
 #
 # It matches nothing, so the grammar it derives from can write the alternation as an
@@ -3525,7 +3525,7 @@ l-literal-content:
 #   '>' c-b-block-header(m,t)
 #   l-folded-content(n+m,t)
 #
-# The scalar begins at its indicator. It does not end here — where it ends depends on
+# The scalar begins at its indicator. It does not end here - where it ends depends on
 # the chomping, so b-chomped-last and l-keep-empty emit the end between them.
 #
 # Emits: begin-scalar, text
@@ -3690,7 +3690,7 @@ l-folded-content:
 # <column> is where it left the parse, which is the n+m every entry is measured against. It must be deeper than the
 # indentation in force, which is what the official grammar's m > 0 says.
 #
-# The entries run at that indentation, so they are entered at it — l-block-seq-entries takes it as its own n. The first
+# The entries run at that indentation, so they are entered at it - l-block-seq-entries takes it as its own n. The first
 # entry has had its indentation consumed here already; every later one begins with s-indent(n), which is what ends the
 # collection when a line is indented less.
 #
@@ -3758,7 +3758,7 @@ c-l-block-seq-entry:
 #
 # The spaces that follow the '-' or the '?' are this compact collection's own
 # indentation, so they are taken as its indent token and <column> is what the
-# collection is indented by — where that run left the parse. The official
+# collection is indented by - where that run left the parse. The official
 # grammar reads an m here that it sets nowhere, and n+1+m is that same column
 # said as arithmetic: the run begins one past the '-' at column n.
 #
@@ -3837,7 +3837,7 @@ l+block-mapping:
 #   ns-l-block-map-entry(n)
 #   ( s-indent(n) ns-l-block-map-entry(n) )*
 #
-# The entries of a block mapping, run at the indentation the first of them established — l-block-seq-entries' twin.
+# The entries of a block mapping, run at the indentation the first of them established - l-block-seq-entries' twin.
 
 l-block-map-entries:
   (...): n
@@ -4287,10 +4287,10 @@ l-yaml-stream:
             (wrap): [ begin-document, end-document, l-explicit-document ]
 
 #===============================================================================
-# Where the parse cannot go on there is no more parsing to do: the error is emitted and the rest of the input —
-# whatever it is — comes back unparsed, a line's content and its break each its own token so that no token spans a
+# Where the parse cannot go on there is no more parsing to do: the error is emitted and the rest of the input -
+# whatever it is - comes back unparsed, a line's content and its break each its own token so that no token spans a
 # line. It gives up there for one of two reasons: a commit failed, or the input was never a stream to begin with, which
-# is what l-yeast-stream — the root the parser runs — is here to say. These are libyeast's own, and are not rules of
+# is what l-yeast-stream - the root the parser runs - is here to say. These are libyeast's own, and are not rules of
 # the official grammar.
 #===============================================================================
 
@@ -4299,7 +4299,7 @@ l-yaml-stream:
 #   [x:0-x:10FFFF] - b-char
 #
 # Any character at all but a line break: recovery consumes whatever character is there. A byte that is no character is
-# not one of these — <invalid> carries it instead.
+# not one of these - <invalid> holds it instead.
 
 nb-unparsed:
   (---):
@@ -4317,7 +4317,7 @@ nb-unparsed:
 #   | <end_of_file> )
 #
 # The run of input the parser could not parse, bounded by the resume policy: everything that is left when nothing is to
-# be resumed; only as far as the next document marker when the parse carries on there; and, when it carries on at the
+# be resumed; only as far as the next document marker when the parse continues there; and, when it continues at the
 # next line no more indented than n, as far as whichever of the two comes first. Each policy adds a place the run
 # stops, so none of them gives up more input than the one before it. The guards are in scope until this rule returns
 # and no further, so they stop the run without forbidding the line to whatever resumes at it.
@@ -4329,8 +4329,8 @@ nb-unparsed:
 # c-forbidden is not redundant in the third: s-indent-le-line cannot hold below an indentation of 0, so a run bounded
 # by nothing would go straight past a document marker.
 #
-# A run of bytes that begin no character comes back as unparsed-invalid — as many bytes as it takes to reach where
-# valid UTF-8 resumes — among the unparsed-text of the characters on either side of it.
+# A run of bytes that begin no character comes back as unparsed-invalid - as many bytes as it takes to reach where
+# valid UTF-8 resumes - among the unparsed-text of the characters on either side of it.
 #
 # Emits: unparsed-text, unparsed-invalid, unparsed-break
 
@@ -4381,12 +4381,12 @@ l-yeast-stream:
 #
 # What the parser does with input it cannot parse once nothing narrower has answered for it, which is what
 # ys_options.resume chooses between: bring it back unparsed and stop, or bring back only what stands between here and
-# the next document and carry on parsing there, so that one malformed document does not cost the caller the others. A
-# failed cut arrives here too — it is the same question — and this and l-yeast-stream being mutually recursive is what
+# the next document and continue parsing there, so that one malformed document does not cost the caller the others. A
+# failed cut arrives here too - it is the same question - and this and l-yeast-stream being mutually recursive is what
 # lets a resumed document fail again without a second mechanism for it.
 #
 # The parse is at the stream's own level by the time it reaches here, having unwound past every rule that might have
-# answered for it, so there is no indentation left to be bounded by and a resuming policy carries on at the next
+# answered for it, so there is no indentation left to be bounded by and a resuming policy continues at the next
 # document however fine-grained it would rather be.
 
 l-recover:
@@ -4406,11 +4406,11 @@ l-recover:
 #   l-unparsed(n,r)
 #
 # What a block collection gives up when one of its entries is malformed: the entry, and the lines indented past n that
-# belonged to it — no more. The collection's own repetition takes it from there, s-indent(n) matching where the next
+# belonged to it - no more. The collection's own repetition takes it from there, s-indent(n) matching where the next
 # entry begins and failing where the collection ends, so nothing here has to know which of the two the run stopped at.
 #
 # Only an indentation-bounded policy recovers here. Under any other there is no branch to take, so this does not match,
-# and the cut that asked goes on unwinding to l-recover, which answers for the stream — which is how a policy that
+# and the cut that asked goes on unwinding to l-recover, which answers for the stream - which is how a policy that
 # recovers elsewhere never notices that this rule exists.
 
 l-recover-entry:
@@ -4427,7 +4427,7 @@ l-recover-entry:
 # s-indent-le-line(n) ::=
 #   <start_of_line> s-indent-le(n) <lookahead:_ns-char> <not_followed_by_c-comment>
 #
-# Whether the line beginning here is indented no more than n — where an indentation-bounded recovery gives up skipping.
+# Whether the line beginning here is indented no more than n - where an indentation-bounded recovery gives up skipping.
 #
 # The lookaheads are what make this the *line's* indentation rather than some of it: s-indent-le is a bound over a
 # repetition and will match one space of four and be satisfied, so requiring content immediately after forces it to

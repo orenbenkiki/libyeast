@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+// Allocating an object and growing an array under a cap. This resolves what a NULL `ys_options` means. This
+// builds an object charged to the cap. This doubles an array that outgrows its capacity.
+
 #include "memory.h"
 
 #include <assert.h>
@@ -6,8 +9,8 @@
 #include <stdint.h>
 #include <string.h>
 
-// Give `bytes` back to the cap. Only a growth that the allocator then refused ever does, since everything else that is
-// freed is freed with the ys_memory itself.
+// Give `bytes` back to the cap. This runs where a growth the allocator refused has to come off the cap again.
+// Deleting the ys_memory frees what the cap still holds.
 static void ys_memory_release(ys_memory *memory, size_t bytes) {
     memory->allocated_bytes -= bytes;
 }
@@ -21,15 +24,16 @@ void *ys_memory_new(ys_memory *memory, const ys_options *options, size_t size) {
     memory->allocator = resolved.allocator;
     memory->max_bytes = resolved.max_bytes;
     memory->allocated_bytes = 0;
-    if (!ys_memory_reserve(memory, size)) {
-        errno = ENOMEM; // the cap is smaller than the object; there is nowhere to build it. This one is ours to name
+    if (ys_memory_reserve(memory, size) != YS_OK) {
+        errno = ENOMEM; // the cap is smaller than the object; there is nowhere to build it. This one is ours to name.
         return NULL;
     }
 
-    // The allocator's failure is the allocator's to name: it must set errno, and this passes that through rather than
+    // The allocator's failure is the allocator's to name. It must set errno, and this passes that through rather than
     // overriding it. errno is cleared first so a debug build can catch an allocator that returns NULL without setting
-    // it, and a release build still yields something sensible if one does. On success errno is left as it was, since a
-    // function that succeeds has no business changing it.
+    // it. A release build still yields something sensible where that happens. On success errno is left as it was. A
+    // function
+    // that succeeds has no business changing it.
     int saved_errno = errno;
     errno = 0;
     void *object = ys_allocate(&memory->allocator, size);
@@ -43,12 +47,12 @@ void *ys_memory_new(ys_memory *memory, const ys_options *options, size_t size) {
     return object;
 }
 
-bool ys_memory_reserve(ys_memory *memory, size_t wanted) {
+int ys_memory_reserve(ys_memory *memory, size_t wanted) {
     if (memory->max_bytes != 0 && wanted > memory->max_bytes - memory->allocated_bytes) {
-        return false;
+        return YS_FAILED_MEMORY;
     }
     memory->allocated_bytes += wanted;
-    return true;
+    return YS_OK;
 }
 
 void *ys_memory_grow(ys_memory *memory, void *items, size_t *capacity, size_t wanted, size_t initial,
@@ -67,7 +71,7 @@ void *ys_memory_grow(ys_memory *memory, void *items, size_t *capacity, size_t wa
         return NULL; // UNTESTED
     }
     size_t more = (grown - *capacity) * item_size;
-    if (!ys_memory_reserve(memory, more)) {
+    if (ys_memory_reserve(memory, more) != YS_OK) {
         return NULL;
     }
     void *items_grown = ys_reallocate(&memory->allocator, items, grown * item_size);

@@ -1,6 +1,7 @@
-name: verify
+# The "verify" sub-gate. The generator pipeline is correct and its outputs current. Pure Python. The job needs no
+# matrix.
 
-# The generator pipeline is correct and its outputs current: the "verify" sub-gate. Pure Python, so one runner.
+name: verify
 
 on:
   push:

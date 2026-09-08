@@ -2,185 +2,292 @@
 """
 The space of states a parse can decide in, and the subsets of it a grammar's guards name.
 
-Every guard asks about one axis of a small space: the character in front of the parse, the character behind it, whether
-it stands at a line start, two bits of its own bookkeeping, and how the parse's own quantities stand against each other.
-So what a parse stands in when it decides is one point of that space, and what a gate admits, what a way takes and what
-a call site can reach are each a subset of it — a `SubSpace`.
+A guard asks about a single axis of a small space. The character in front of the parse is an axis, and so is the
+character behind it. A further axis is a boolean. A boolean says whether the parse is at a line start. The booleans hold
+the bookkeeping bits and the comparisons between the parse's quantities. A parse deciding is at a single point of that
+space. A gate admits a subset of that space. So does what a way takes, and what a call site can reach. A subset is a
+`SubSpace`.
 
-All but the character axis are booleans, so a *standing* is an assignment to them, and a `SubSpace` is what it admits
-under each. That is exact: the axes are finite, union, intersection and containment are computed per standing, and
-nothing is widened or narrowed to make an answer fit.
+The axes named by `BOOKKEEPING_AXES` and `COMPARISON_AXES` are booleans. A `GuardAnswers` is an assignment to them. It
+answers the questions a guard can ask. A `SubSpace` records the characters admitted under such an assignment. The axes
+are finite. This computes union, intersection and containment per assignment. This widens no answer and narrows none to
+make it fit.
 
-**A comparison of two of the parse's own quantities is an axis, and the quantities are not.** The indentation, the
-column, the length of the run just measured and the block scalar's floor are integers of no fixed range, so none of them
-is a coordinate — but no guard reads one. Every one asks how two of them stand, and there are six such questions in the
-grammar, so those six are the axes and the magnitudes never appear.
+**A comparison of the parse's quantities is an axis. A quantity is not an axis.** The indentation and the column are
+integers of no fixed range. So are the length of the last consume and the block scalar's floor. A quantity is no
+coordinate here, and no guard reads a quantity. A guard asks how a pair of them compare, or how the indentation compares
+against `0`. `COMPARISON_AXES` holds those questions.
 
-Six free booleans would carry states no parse can be in: an ordering is transitive, and a column is never negative while
-a line start is column zero. So the standings are not every assignment — they are the assignments some integers make,
-enumerated once from the quantities themselves. That is where the arithmetic is done and the only place it is.
+Free booleans would admit states no parse can be in. An ordering is transitive. A column is not negative, and a line
+start is column `0`. `ALL_GUARD_ANSWERS` holds the assignments those integers make, enumerated once from the quantities
+themselves. That enumeration is where the arithmetic is done.
 
-The characters are `chars.py`'s spans, the invalid byte among them as the `(-1, -1)` interval it already is. The end of
-the stream is not one of them and is not the absence of them either: it is the axis's own value, carried beside the
-spans, because a way entered at the end of the stream is a way entered somewhere.
+The characters are `chars.py`'s spans. The invalid byte is one of them, as the `(-1, -1)` interval. The end of the
+stream is a value of the axis too. A way entered at the end of the stream is a way entered somewhere.
 
-**One `Characters` per distinct answer, and a subspace is a reference to one per standing.** The same few sets are
-admitted over and over — a lookahead's set stands under every standing, and the standings a guard narrows to all admit
-whatever the other side of the meet admitted — so the answers are held in a table and handed out rather than built.
-Equal answers are then the same object, `is` decides equality, and what two of them come to is a lookup on the pair.
-That is what keeps the cost of the algebra in the number of *distinct sets* the grammar holds rather than in the number
-of standings, which is free to grow with the questions the guards ask.
+**A single `_Characters` per distinct answer, and a subspace holds a reference per assignment.** A grammar admits the
+same few sets over and over. A table holds a distinct set once, and a lookup hands out a reference. Equal sets are then
+the same object, `is` decides equality, and a pair of them reaches a lookup on that pair. The cost of the algebra
+follows the number of distinct sets rather than the number of assignments.
 """
 
 import dataclasses
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import NamedTuple
 
 import chars
 
-ALL_CHARACTERS = ((-1, chars.MAX_CODEPOINT),)  # the invalid byte and every codepoint, which is every character there is
+ALL_CHARACTERS = ((-1, chars.MAX_CODEPOINT),)  # The invalid byte and the codepoints. Together they are the characters.
 
 
 @dataclasses.dataclass(frozen=True, order=True)
-class Standing:
+class GuardAnswers:
     """
-    Where a parse stands, as the booleans every guard but the character ones ask about.
+    The answers a guard gets at a point of the parse, as booleans beside the characters.
 
-    Four of them say where it is and what it has just done; six say how its own quantities stand — the indentation `n`,
-    the column, the length of the run just measured, and the block scalar's leading-empty floor `f`. Those four
-    quantities are integers of no fixed range and none of them is a coordinate here; what the guards ask is only ever
-    how two of them compare, and these six are every such question the grammar has.
+    `BOOKKEEPING_AXES` say where the parse is and what it has just done. `COMPARISON_AXES` say how the parse's
+    quantities compare.
+
+    Those quantities are the indentation `n` and the column. They are also the length of the last consume, and the block
+    scalar's leading-empty floor `f`. They are integers of no fixed range, and a quantity is no coordinate here. A guard
+    asks how a pair of them compare, or how the indentation compares against `0`.
     """
 
     is_at_line_start: bool
     is_after_ns_char: bool
     did_match_full_span: bool
     did_consume_since_open: bool
-    is_indented: bool  # 0 < n
-    is_not_too_indented: bool  # column <= n
-    is_measured_past_the_indent: bool  # n < len(match)
-    is_measured_under_the_indent: bool  # len(match) < n
-    is_column_at_least_the_floor: bool  # f <= column
-    is_indent_at_least_the_floor: bool  # f <= n
+    is_indented: bool  # `0 < n`
+    is_not_too_indented: bool  # `column <= n`
+    is_consumed_length_past_the_indent: bool  # `n < len(match)`
+    is_consumed_length_under_the_indent: bool  # `len(match) < n`
+    is_column_at_least_the_floor: bool  # `f <= column`
+    is_indent_at_least_the_floor: bool  # `f <= n`
 
 
-# How far the quantities are enumerated below. Five ranks tell any four of them apart, and the count stops growing well
-# inside this: `check_spaces` enumerates wider and holds what it finds to what stands here.
+class _Quantities(NamedTuple):
+    """
+    The parse's quantities. The tuple a caller names them in, and the order `comparisons` takes.
+
+    Named rather than positional. The enumeration here covers the same quantities as the comparison into the axes above,
+    and as the write an action in `normalize` makes. A caller names its slot. The name says which quantity is which,
+    rather than the order the writer put them in.
+    """
+
+    n: int
+    column: int
+    consumed_length: int
+    floor: int
+
+
+# The depth this enumerates the quantities to below. The ranks here tell the quantities apart, and the count stops
+# growing well inside that depth. `check_spaces` enumerates wider and holds what it finds to the depth here.
 _RANKS = 8
 
 
-def _compared(is_at_line_start):
+def _quantified(is_at_line_start: bool) -> tuple[_Quantities, ...]:
     """
-    Every way the parse's quantities can stand against each other, as `(the six axes above)` tuples.
+    The `(n, column, consumed_length, floor)` tuples the parse's quantities can hold, under a line start or not.
 
-    Worked out from the quantities rather than declared, so the answers are consistent by construction: an ordering is
-    transitive and no set of integers makes a tuple that is not here. Four facts bound them, each true of every parse
-    rather than of the grammar's current shape:
-
-    - **A column is where the parse stands in its line, and a line start is column zero.** So the column is zero at a
-      line start and at least one anywhere else — the interpreter says exactly this, setting `is_sol` to `column == 0`.
-    - **The indentation reaches one below zero.** The root is entered at `-1`, where nothing has been pushed, and
-      `0 < n` tells that apart from a pushed zero.
-    - **The measured run and the floor are lengths**, so neither is negative.
-    - **The measured run stands within the line the parse is on**, so it is no longer than the column. Every site
-      reading it measures `s-space*` under a `(token): indent`, and a space is neither a break — which would reset the
-      column under it — nor a byte-order mark, which would take no column of its own.
+    The bounds `_every_ordering` names, said as the tuples themselves rather than as how they compare. A caller can then
+    work out a take's effect as an arithmetic on the quantities, and read the result back as comparisons.
     """
     columns = (0,) if is_at_line_start else range(1, _RANKS)
-    return sorted(
-        {
-            (0 < n, column <= n, n < measured, measured < n, floor <= column, floor <= n)
-            for n in range(-1, _RANKS)
-            for column in columns
-            for measured in range(0, column + 1)
-            for floor in range(0, _RANKS)
-        }
+    return tuple(
+        _Quantities(n, column, consumed_length, floor)
+        for n in range(-1, _RANKS)
+        for column in columns
+        for consumed_length in range(0, column + 1)
+        for floor in range(0, _RANKS)
     )
 
 
-def _standings():
+# The quantity names, and which quantities a comparison axis reads. `COMPARISON_AXES` order, an entry apiece.
+#
+# The second is what a reader holding a parse rather than a `GuardAnswers` needs. An axis whose quantities the reader
+# has no value for is an axis the reader cannot answer, and the reader says so rather than guessing.
+#
+# Written beside the comparisons. The pair are the same fact read a pair of ways, and apart they would drift.
+QUANTITIES = _Quantities._fields
+# The quantities a comparison reads, in the order `COMPARISON_AXES` names them.
+COMPARISON_READS = (
+    ("n",),
+    ("column", "n"),
+    ("n", "consumed_length"),
+    ("consumed_length", "n"),
+    ("floor", "column"),
+    ("floor", "n"),
+)
+
+
+def comparisons(quantities: Sequence[int]) -> tuple[bool, ...]:
     """
-    Every standing a parse can be in: the orderings above under each way the four other axes can stand.
+    The comparison axes `(n, column, consumed_length, floor)` settles, in the order `GuardAnswers` holds them.
 
-    Two of those four are not free either, and both are facts about what the parse has just done:
+    A reader of the grammar or of a parse gets them from here. This answers for a parse as much as for the enumeration.
+    A comparison written again beside a caller is a second thing to keep in step.
 
-    - **Nothing an `ns-char` names stands behind a line start.** What is behind one is a break, a byte-order mark, or
-      nothing at all, and `ns-char` holds none of the three.
-    - **A run that took its whole limit leaves the parse mid-line.** Every limited run the grammar makes takes spaces
-      or hex digits, neither holding a break, and no consume ever consumes nothing — so having taken one is standing
-      past it, on the line it was taken on.
+    `check_spaces._check_guard_answers` does write them again, and says why. That module is an oracle. An oracle
+    computing what it checks would check nothing.
+    """
+    named = _Quantities(*quantities)
+    return (
+        0 < named.n,
+        named.column <= named.n,
+        named.n < named.consumed_length,
+        named.consumed_length < named.n,
+        named.floor <= named.column,
+        named.floor <= named.n,
+    )
+
+
+def _every_ordering(is_at_line_start: bool) -> list[tuple[bool, ...]]:
+    """
+    The ways the parse's quantities can compare against one another, as `(the comparison axes above)` tuples.
+
+    This works the orderings out from the quantities rather than declaring them. The answers are then consistent by
+    construction. An ordering is transitive, and no set of integers makes a tuple that is not here.
+
+    The facts below bound them, true of a parse rather than of the grammar's current shape.
+
+    - **A column is where the parse is in its line, and a line start is column `0`.** So the column is `0` at a
+      line start and at least `1` anywhere else. A take keeps that. A break goes to column `0` and a line start. Any
+      other character takes a column and leaves the line start behind. The byte-order mark moves neither column nor
+      line start.
+    - **The indentation does not fall below `-1`.** A parse enters the root at `-1` and has pushed nothing there, and
+      `0 < n` tells that apart from a pushed `0`.
+      The grammar does compute lower. A parse enters a block sequence at `n - 1`. A block sequence at the root
+      therefore reaches `-2`. The readers answer alike for them, the reader of such a value being
+      `(<): [n, <column>]` against a column that is not negative. `interpreter._indent` holds the value it hands back
+      to `-1` for that reason, and no state of a parse falls outside the enumeration here.
+    - **What a consume took and the floor are lengths.** Neither is negative.
+    - **A consume falls within the line the parse is on.** The consumed length is at most the column. A site reading
+      it measures `s-space*` under a `(token): indent`. A space is not a break. A break would reset the column under
+      the consume. A space is not a byte-order mark either. A byte-order mark takes no column of its own.
+    """
+    return sorted({comparisons(quantities) for quantities in _quantified(is_at_line_start)})
+
+
+def _all_guard_answers() -> tuple[GuardAnswers, ...]:
+    """
+    The answers a parse can get. The orderings above, under the ways the bookkeeping axes can go.
+
+    A pair of those axes are not free either, and both are facts about what the parse has just done.
+
+    - **Nothing an `ns-char` names comes behind a line start.** A break, a byte-order mark, or the input's start
+      comes behind a line start. `ns-char` names none of them.
+    - **A run that took its whole limit leaves the parse mid-line.** A limited run the grammar makes takes spaces or
+      hex digits. Neither of those holds a break. A consume takes at least a character. Having taken such a run
+      therefore leaves the parse past it on that line.
     """
     return tuple(
-        Standing(is_at_line_start, is_after_ns_char, did_match_full_span, did_consume_since_open, *compared)
+        GuardAnswers(is_at_line_start, is_after_ns_char, did_match_full_span, did_consume_since_open, *compared)
         for is_at_line_start in (False, True)
         for is_after_ns_char in ((False,) if is_at_line_start else (False, True))
         for did_match_full_span in ((False,) if is_at_line_start else (False, True))
         for did_consume_since_open in (False, True)
-        for compared in _compared(is_at_line_start)
+        for compared in _every_ordering(is_at_line_start)
     )
 
 
-STANDINGS = _standings()
+ALL_GUARD_ANSWERS = _all_guard_answers()
 
-AXES = tuple(field.name for field in dataclasses.fields(Standing))
+# `AXES` names the axes of `GuardAnswers` in declaration order. A caller building a `GuardAnswers` from a mapping reads
+# the axes here.
+AXES = tuple(field.name for field in dataclasses.fields(GuardAnswers))
 
-_AT = {standing: at for at, standing in enumerate(STANDINGS)}  # where each standing's answer stands in a subspace
+# The kinds of axis. A bookkeeping axis is a bit the parse holds. That bit says where the parse is and what it has just
+# done. A comparison axis says how a pair of the parse's quantities compare.
+#
+# This names both groups rather than taking a group as whatever the other leaves. An axis added to `GuardAnswers` and
+# put in neither group draws a refusal here. A group taken as a leftover would swallow that axis silently.
+BOOKKEEPING_AXES = ("is_at_line_start", "is_after_ns_char", "did_match_full_span", "did_consume_since_open")
+# The axes a comparison decides. `COMPARISON_READS` gives the quantities an axis reads.
+COMPARISON_AXES = (
+    "is_indented",
+    "is_not_too_indented",
+    "is_consumed_length_past_the_indent",
+    "is_consumed_length_under_the_indent",
+    "is_column_at_least_the_floor",
+    "is_indent_at_least_the_floor",
+)
+if set(BOOKKEEPING_AXES) | set(COMPARISON_AXES) != set(AXES):
+    raise ValueError("an axis of `GuardAnswers` is in neither group, or a name here is no axis of a `GuardAnswers`")
+if len(COMPARISON_READS) != len(COMPARISON_AXES) or any(
+    name not in QUANTITIES for reads in COMPARISON_READS for name in reads
+):
+    raise ValueError("`COMPARISON_READS` leaves a comparison axis without the quantities it reads")
+
+# the index of a `GuardAnswers` in a subspace.
+_AT = {guard_answers: at for at, guard_answers in enumerate(ALL_GUARD_ANSWERS)}
+
+HELD = frozenset(ALL_GUARD_ANSWERS)  # the answers a parse ever gets.
 
 
 @dataclasses.dataclass(frozen=True)
-class Characters:
+class _Characters:
     """
-    The characters admitted under one standing, and whether the end of the stream is admitted there.
+    The characters a `GuardAnswers` admits, and whether it admits the end of the stream.
 
-    Held in `_KNOWN` and handed out by `held`, so two of these holding the same characters are one object. Nothing
-    builds one directly: what makes them worth interning is that `is` then answers what an equality would have to walk
-    the spans for, and that what two of them come to can be remembered against the pair.
+    `_KNOWN` holds these and `held` hands them out. A pair of them holding the same characters is a single object.
+
+    `held` builds them. `is` then answers what an equality would have to walk the spans for. `_INTERSECTED` remembers
+    the intersection of a pair against that pair.
     """
 
-    spans: tuple = ()
+    spans: tuple[tuple[int, int], ...] = ()
     is_at_end: bool = False
 
-    def __bool__(self):
-        """Whether anything is admitted at all."""
+    def __bool__(self) -> bool:
+        """Whether this admits any character or the end of the stream."""
         return bool(self.spans) or self.is_at_end
 
 
-_KNOWN = {}
-_MET = {}  # what two of them hold in common, per pair
-_JOINED = {}  # what either of them holds, per pair
-_DROPPED = {}  # what the first holds and the second does not, per pair
+# A character set as merged and sorted `(low, high)` pairs. `chars` hands a set over in this form.
+_Spans = tuple[tuple[int, int], ...]
+
+_KNOWN: dict[tuple[_Spans, bool], _Characters] = {}  # a single `_Characters` per spans-and-end pair.
+_INTERSECTED: dict[tuple[_Characters, _Characters], _Characters] = {}  # the characters a pair of them both admit.
+_JOINED: dict[tuple[_Characters, _Characters], _Characters] = {}  # the characters either of them admits.
+_DROPPED: dict[tuple[_Characters, _Characters], _Characters] = {}  # the characters only the first admits.
 
 
-def held(spans=(), is_at_end=False):
-    """The one `Characters` admitting `spans` and, where `is_at_end`, the end of the stream."""
-    admitted = tuple(tuple(span) for span in chars.merged_spans(spans))
+def held(spans: Iterable[tuple[int, int]] = (), is_at_end: bool = False) -> _Characters:
+    """The `_Characters` admitting `spans` and, where `is_at_end`, the end of the stream."""
+    admitted = tuple(chars.merged_spans(spans))
     key = (admitted, is_at_end)
     known = _KNOWN.get(key)
     if known is None:
-        _KNOWN[key] = known = Characters(admitted, is_at_end)
+        _KNOWN[key] = known = _Characters(admitted, is_at_end)
     return known
 
 
-NONE = held()
+_NONE = held()
+_ANYTHING = held(ALL_CHARACTERS, True)  # the characters and the end of the stream.
 
 
-def _met(one, other):
-    """What both admit, remembered against the pair — which is the same pair over and over."""
+def _intersected(one: _Characters, other: _Characters) -> _Characters:
+    """
+    The characters both admit. `_INTERSECTED` remembers the answer against the pair. The same pair comes up over and
+    over.
+    """
     if one is other:
         return one
-    if one is NONE or other is NONE:
-        return NONE
-    known = _MET.get((one, other))
+    if one is _NONE or other is _NONE:
+        return _NONE
+    known = _INTERSECTED.get((one, other))
     if known is None:
-        _MET[one, other] = known = held(
+        _INTERSECTED[one, other] = known = held(
             chars.intersected_spans(one.spans, other.spans), one.is_at_end and other.is_at_end
         )
     return known
 
 
-def _dropped(one, other):
-    """What the first admits and the second does not, remembered against the pair."""
-    if one is other or one is NONE:
-        return NONE
-    if other is NONE:
+def _dropped(one: _Characters, other: _Characters) -> _Characters:
+    """The characters the first admits and the second refuses. `_DROPPED` remembers the answer against the pair."""
+    if one is other or one is _NONE:
+        return _NONE
+    if other is _NONE:
         return one
     known = _DROPPED.get((one, other))
     if known is None:
@@ -190,13 +297,13 @@ def _dropped(one, other):
     return known
 
 
-def _joined(one, other):
-    """What either admits, remembered against the pair."""
+def _joined(one: _Characters, other: _Characters) -> _Characters:
+    """The characters either admits. `_JOINED` remembers the answer against the pair."""
     if one is other:
         return one
-    if one is NONE:
+    if one is _NONE:
         return other
-    if other is NONE:
+    if other is _NONE:
         return one
     known = _JOINED.get((one, other))
     if known is None:
@@ -207,85 +314,190 @@ def _joined(one, other):
 @dataclasses.dataclass(frozen=True)
 class SubSpace:
     """
-    A set of the states a parse can decide in, as what it admits under each standing.
+    A set of the states a parse can decide in, as what it admits under a `GuardAnswers`.
 
-    Canonical by construction: one answer per standing, standing by standing in `STANDINGS` order, each of them the one
-    `Characters` its spans name. So two subspaces holding the same states are equal — and equal the cheap way, every
-    answer being the same object where it says the same thing — and `NOWHERE` is the only empty one.
+    Canonical by construction. The tuple holds a single answer per `GuardAnswers`, in the order specified by
+    `ALL_GUARD_ANSWERS`. A `_Characters` holds the spans of an answer.
+
+    A pair of subspaces holding the same states are therefore equal, and equal the cheap way. An answer is the same
+    object wherever it says the same thing. `NOWHERE` is the empty subspace.
     """
 
-    admitted: tuple = ()
+    admitted: tuple[_Characters, ...] = ()
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Fill a subspace built with nothing named. The filled subspace admits no character under any answers."""
         if not self.admitted:
-            object.__setattr__(self, "admitted", (NONE,) * len(STANDINGS))
+            object.__setattr__(self, "admitted", (_NONE,) * len(ALL_GUARD_ANSWERS))
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Whether the subspace holds a state at all."""
         return any(self.admitted)
 
-    def __or__(self, other):
+    def __or__(self, other: "SubSpace") -> "SubSpace":
         """The states either subspace holds."""
         if self is other:
             return self
         return SubSpace(tuple(map(_joined, self.admitted, other.admitted)))
 
-    def __and__(self, other):
+    def __and__(self, other: "SubSpace") -> "SubSpace":
         """The states both subspaces hold."""
         if self is other:
             return self
-        return SubSpace(tuple(map(_met, self.admitted, other.admitted)))
+        return SubSpace(tuple(map(_intersected, self.admitted, other.admitted)))
 
-    def __sub__(self, other):
-        """The states this subspace holds and `other` does not."""
+    def __sub__(self, other: "SubSpace") -> "SubSpace":
+        """The states this subspace holds and `other` refuses."""
         if self is other:
             return NOWHERE
         return SubSpace(tuple(map(_dropped, self.admitted, other.admitted)))
 
-    def holds(self, other):
-        """Whether every state `other` holds is one this subspace holds."""
+    def does_hold(self, other: "SubSpace") -> bool:
+        """Whether the states `other` holds are ones this subspace holds."""
         return self | other == self
 
-    def under(self, standing):
-        """The characters this subspace admits under `standing`, as a `Characters`, empty where it admits none."""
-        return self.admitted[_AT[standing]]
+    def under(self, guard_answers: GuardAnswers) -> _Characters:
+        """The characters this subspace admits under `guard_answers`, as a `_Characters`, empty where it admits none."""
+        return self.admitted[_AT[guard_answers]]
 
 
-NOWHERE = SubSpace()
-EVERYWHERE = SubSpace((held(ALL_CHARACTERS, True),) * len(STANDINGS))
-# Every state a character can be taken in, which is every one but the end of the stream: taking is what the end has none
-# of, so a way that must take is a way no parse standing there enters.
-ANY_CHARACTER = SubSpace((held(ALL_CHARACTERS),) * len(STANDINGS))
+NOWHERE = SubSpace()  # the empty subspace.
+COMPLETE = SubSpace((_ANYTHING,) * len(ALL_GUARD_ANSWERS))  # `_ANYTHING` under the answers there are.
+# The states that admit a character. These are the states but the end of the stream. The end of the stream takes
+# nothing. A way that must take is a way no parse enters from there.
+ANY_CHARACTER = SubSpace((held(ALL_CHARACTERS),) * len(ALL_GUARD_ANSWERS))
 
 
-def characters(spans=(), is_at_end=False):
-    """The subspace admitting `spans`, and the end of the stream where `is_at_end`, wherever the parse stands."""
-    return SubSpace((held(spans, is_at_end),) * len(STANDINGS))
+def characters(spans: Iterable[tuple[int, int]] = (), is_at_end: bool = False) -> SubSpace:
+    """The subspace admitting `spans` under any guard answer, and the end of the stream where `is_at_end`."""
+    return SubSpace((held(spans, is_at_end),) * len(ALL_GUARD_ANSWERS))
 
 
-def not_characters(spans):
+def not_characters(spans: Iterable[tuple[int, int]]) -> SubSpace:
     """
-    The subspace admitting every character `spans` does not, and the end of the stream.
+    The subspace admitting the characters `spans` refuses, and the end of the stream.
 
-    A negative lookahead is what this says: it refuses the characters it names and passes where there is no character at
-    all, the end of the input matching nothing being how it passes for free.
+    This says a negative lookahead. The subspace refuses the characters `spans` names, and passes where the input holds
+    no character at all. The end of the input matches nothing. The lookahead passes there for free.
     """
     return characters(chars.subtracted_spans(list(ALL_CHARACTERS), list(spans)), is_at_end=True)
 
 
-def where(**asked):
-    """
-    The subspace admitting every character under the standings whose axes are as `asked` names them.
+# the quantity tuples a `GuardAnswers` holds, worked out once and kept.
+_HOLDING: dict[tuple[bool, tuple[bool, ...]], list[_Quantities]] = {}
 
-    Each keyword is one of `AXES`; an axis not named is admitted either way, a guard saying nothing about it.
+
+def _holding(guard_answers: GuardAnswers) -> Sequence[_Quantities]:
+    """
+    The `(n, column, consumed_length, floor)` tuples `guard_answers` holds. The inverse of what `comparisons` reads off.
+    """
+    if not _HOLDING:
+        for at_line_start in (False, True):
+            for quantities in _quantified(at_line_start):
+                _HOLDING.setdefault((at_line_start, comparisons(quantities)), []).append(quantities)
+    compared = tuple(getattr(guard_answers, axis) for axis in COMPARISON_AXES)
+    return _HOLDING.get((guard_answers.is_at_line_start, compared), ())
+
+
+TOP = _RANKS - 1  # the value a quantity saturates at. The comparisons stop changing above it, as `check_spaces` holds.
+
+
+# the answers a `(bits, quantities)` comes to. A move asks for this once per tuple it yields.
+_GUARD_ANSWERS_AT: dict[tuple[tuple[bool, ...], tuple[int, ...]], GuardAnswers] = {}
+
+
+def _guard_answers_at(bits: tuple[bool, ...], quantities: tuple[int, ...]) -> GuardAnswers:
+    """
+    The answers `bits` and `quantities` come to. An action sets the booleans and moves the quantities.
+
+    A quantity outside the enumeration answers no differently from the edge it passed. The moves therefore saturate
+    here, rather than a move clamping for itself.
+    """
+    guard_answers = _GUARD_ANSWERS_AT.get((bits, quantities))
+    if guard_answers is None:
+        _GUARD_ANSWERS_AT[bits, quantities] = guard_answers = GuardAnswers(
+            *bits, *comparisons(tuple(min(max(value, -1), TOP) for value in quantities))
+        )
+    return guard_answers
+
+
+def reached_by(
+    move: Callable[[GuardAnswers, _Quantities], Iterable[tuple[tuple[bool, ...], tuple[int, ...]]]],
+) -> dict[GuardAnswers, frozenset[GuardAnswers]]:
+    """
+    `{answers: the answers performing `move` reaches from them}`. This does the arithmetic performing something costs.
+
+    A caller hands `move` a `GuardAnswers` and a `Quantities` it holds. `move` yields the states reached from there, as
+    `(bits, quantities)` pairs. An action that can go more than a single way yields a state per way. An action those
+    answers refuse yields no state.
+
+    The arithmetic itself belongs to whoever knows the action. The contents of a `GuardAnswers` and the meaning of the
+    results belong here.
+
+    This reads `ALL_GUARD_ANSWERS` rather than the answers some space holds. The answers at a parse decide where an
+    action leaves the parse. The result is therefore a property of the action, worked out once however many spaces later
+    perform the action.
+    """
+    reached: dict[GuardAnswers, frozenset[GuardAnswers]] = {}
+    for guard_answers in ALL_GUARD_ANSWERS:
+        got: set[GuardAnswers] = set()
+        for quantities in _holding(guard_answers):
+            for bits, moved in move(guard_answers, quantities):
+                landed = _guard_answers_at(bits, moved)
+                # Some of the bits are not free of the rest. A move may name answers no parse gets, which dropped would
+                # read as a state the action cannot reach.
+                if landed not in _AT:
+                    raise ValueError(f"a move reaching {landed}. no parse gets those answers.")
+                got.add(landed)
+        reached[guard_answers] = frozenset(got)
+    return reached
+
+
+def after(space: SubSpace, reached: Mapping[GuardAnswers, Iterable[GuardAnswers]], does_take: bool) -> SubSpace:
+    """
+    The states a parse reaches by performing in `space` something whose `reached` says where it goes.
+
+    `does_take` says whether the action consumed a character. That decides the characters the result admits. Past a take
+    the next character is whatever the input holds. An action taking nothing leaves the question unchanged.
+    """
+    held_by: dict[GuardAnswers, _Characters] = {}
+    for guard_answers in ALL_GUARD_ANSWERS:
+        admitted = space.under(guard_answers)
+        if not admitted:
+            continue
+        handed_on = _ANYTHING if does_take else admitted
+        for landed in reached[guard_answers]:
+            held_by[landed] = _joined(held_by.get(landed, _NONE), handed_on)
+    return SubSpace(tuple(held_by.get(guard_answers, _NONE) for guard_answers in ALL_GUARD_ANSWERS))
+
+
+def guard_answers_in(wanted_answers: Iterable[GuardAnswers]) -> SubSpace:
+    """
+    The subspace admitting the characters under `wanted_answers`, and no character anywhere else.
+
+    A caller holding answers rather than axes asks for this. A parse that really reached somewhere becomes a space. A
+    checker of the grammar can then ask whether the grammar allows that parse.
+
+    Here rather than at the asker. Building a subspace remains this module's work. `_NONE` and `_ANYTHING` belong here
+    with it.
+    """
+    wanted = set(wanted_answers)
+    return SubSpace(tuple(_ANYTHING if guard_answers in wanted else _NONE for guard_answers in ALL_GUARD_ANSWERS))
+
+
+def where(**asked: bool) -> SubSpace:
+    """
+    The subspace admitting any character under the answers whose axes are as `asked` names them.
+
+    A keyword is one of `AXES`. The subspace admits both values of an axis `asked` leaves out. A guard says nothing
+    about that axis. `guard_answers_in` asks the same question of answers rather than of axes.
     """
     for axis in asked:
         if axis not in AXES:
             raise ValueError(f"no axis named {axis}: the axes are {', '.join(AXES)}")
-    everything = held(ALL_CHARACTERS, True)
     return SubSpace(
         tuple(
-            everything if all(getattr(standing, axis) == wanted for axis, wanted in asked.items()) else NONE
-            for standing in STANDINGS
+            _ANYTHING if all(getattr(guard_answers, axis) == wanted for axis, wanted in asked.items()) else _NONE
+            for guard_answers in ALL_GUARD_ANSWERS
         )
     )

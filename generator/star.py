@@ -1,31 +1,38 @@
 # SPDX-License-Identifier: MIT
 """
-Fold libyeast's yeast token stream up to the YAML Test Suite's event level, and check the two are compatible.
+Fold libyeast's yeast token stream up to the YAML Test Suite's event level, and check that both are compatible.
 
-The community YAML Test Suite (`third_party/yaml-test-suite/`, vendored data form) states, per case, an `in.yaml` input
-and the `test.event` stream a conformant parser produces for it — or an `error` marker where it must reject the input.
-libyeast is a token parser, a level below events, so the check is a deterministic **fold**: the yeast stream's
-`begin-`/`end-` markers rebuild the event tree and the leaf tokens fill it, and the question is whether that stream is
-*compatible* with the expected events — would it produce them, matched as far as the token layer settles them. Node and
-pair brackets, indicators, whitespace, indentation and breaks are presentation the events do not carry; they fold away.
-A scalar's value is reconstructed as far as the tokens mechanically give it — content joined, a `line-fold` a space and
-a `line-feed` a newline, an escape resolved — not by any value-layer decision above the tokens.
+The community YAML Test Suite lives in `third_party/yaml-test-suite/`, as vendored data. Per case the suite states an
+`in.yaml` input and the `test.event` stream a conformant parser produces for that input. The suite states an `error`
+marker instead where a parser must reject the input.
 
-This is libyeast's independent net: the suite is derived from the same spec but written by other hands, so it catches a
-grammar bug libyeast's own fixtures, migrated from one reference, would share.
+libyeast is a token parser, and events sit a level above. So the check is a deterministic **fold**. The yeast stream's
+`begin-`/`end-` markers rebuild the event tree and the leaf tokens fill it. The question is whether that stream is
+*compatible* with the expected events, matched as far as the token layer settles them.
+
+Node and pair brackets are presentation the events leave out. So are indicators and whitespace. So are indentation and
+breaks. They fold away. A scalar's value comes back as far as the tokens mechanically give it. The content joins up, a
+`line-fold` gives a space and a `line-feed` a newline, and an escape resolves. A value-layer decision above the tokens
+comes into none of it.
+
+This is libyeast's independent net. The suite derives from the same spec but comes from other hands. It catches a
+grammar bug the fixtures of libyeast, migrated from a single reference, would share.
 """
 
+import dataclasses
 import os
+from collections.abc import Iterable, Mapping
 
-import annotated2ir
+import gate
 import interpreter
+import ir
 import wire
 
-SUITE = os.path.join(annotated2ir.TREE, "third_party", "yaml-test-suite")
+SUITE = os.path.join(gate.TREE, "third_party", "yaml-test-suite")  # the directory the vendored YAML Test Suite sits in.
 
-# The escape sequences a double-quoted scalar's `begin-escape`..`end-escape` span resolves to, keyed by the character
-# after the backslash. The numeric escapes (`\xHH`, `\uHHHH`, `\UHHHHHHHH`) are handled apart.
-ESCAPES = {
+# The escape sequences a `begin-escape`..`end-escape` span of a double-quoted scalar resolves to, keyed by the character
+# after the backslash. A separate path handles the numeric escapes `\xHH` and `\uHHHH` and `\UHHHHHHHH`.
+_ESCAPES = {
     "0": "\x00",
     "a": "\x07",
     "b": "\x08",
@@ -42,18 +49,20 @@ ESCAPES = {
     "\\": "\\",
     "N": "\x85",
     "_": "\xa0",
-    "L": " ",
-    "P": " ",
+    "L": "\u2028",
+    "P": "\u2029",
 }
 
 
-def _unescape_wire(text):
-    r"""The characters a wire token's escaped text stands for: a codepoint per `\xHH`/`\uHHHH`, else literal."""
+def _unescape_wire(text: str) -> str:
+    r"""
+    The characters a wire token's escaped text names. A codepoint per `\xHH` or `\uHHHH`, and a literal otherwise.
+    """
     return "".join(chr(value) for value, _length, _piece in wire.units(text))
 
 
-def _uri_unescape(text):
-    """A tag URI's `%XX` escapes as the characters they denote: each run of escaped bytes decoded as UTF-8."""
+def _uri_unescape(text: str) -> str:
+    """A tag URI's `%XX` escapes as the characters they denote. A run of escaped bytes decodes as UTF-8."""
     out, raw, index = [], bytearray(), 0
     while index < len(text):
         if text[index] == "%" and index + 3 <= len(text):
@@ -70,12 +79,12 @@ def _uri_unescape(text):
     return "".join(out)
 
 
-def _expand_tag(handle, suffix, tags):
+def _expand_tag(handle: str, suffix: str, tags: Mapping[str, str]) -> str:
     """
-    A tag's `handle` and `suffix` as the event shows it: its handle resolves through `tags` — the document's `%TAG`
-    directives over the default primary `!` and secondary `!!` — so `!!str` is `tag:yaml.org,2002:str`, a local `!foo`
-    stays `!foo`, and a verbatim `!<uri>` is the URI it wrote. A URI's `%XX` escapes are decoded. A named handle with no
-    `%TAG` to resolve it is undefined, and using it is an error the resolution the fold stands in for reports.
+    A tag's `handle` and `suffix` as the event shows it. The handle resolves through `tags`. That mapping holds the
+    document's `%TAG` directives over the default primary `!` and secondary `!!`. So `!!str` is `tag:yaml.org,2002:str`,
+    a local `!foo` stays `!foo`, and a verbatim `!<uri>` is the URI it wrote. A URI's `%XX` escapes decode. A named
+    handle needs a `%TAG` to resolve it. The resolution this fold models reports an unresolved handle as an error.
     """
     if handle.startswith("!<") and handle.endswith(">"):
         return _uri_unescape(handle[2:-1])  # a verbatim !<uri>, written with no handle span
@@ -84,19 +93,30 @@ def _expand_tag(handle, suffix, tags):
     return _uri_unescape(tags[handle] + suffix)
 
 
-class Event:
-    """One event: its kind (`+MAP`, `=VAL`, …) and the parts written after it, compared as far as they settle."""
+class _Event:
+    """
+    An event. The kind is `+MAP` or `=VAL` or another such marker. The parts written after the kind, compared as far as
+    they settle.
+    """
 
     __slots__ = ("kind", "anchor", "tag", "style", "value")
 
-    def __init__(self, kind, anchor=None, tag=None, style=None, value=None):
+    def __init__(
+        self,
+        kind: str,
+        anchor: str | None = None,
+        tag: str | None = None,
+        style: str | None = None,
+        value: str | None = None,
+    ) -> None:
         self.kind = kind
         self.anchor = anchor
         self.tag = tag
         self.style = style
         self.value = value
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """The event written as the suite writes it. A disagreement comes out in that form."""
         parts = [self.kind]
         if self.anchor:
             parts.append(f"&{self.anchor}")
@@ -109,12 +129,13 @@ class Event:
         return " ".join(parts)
 
 
-def parse_events(text):
+def parse_events(text: str) -> list[_Event]:
     """
     Parse a `test.event` file into a list of `Event`s.
 
-    A line is `KIND rest`: a collection marker keeps only its kind (a flow `{}`/`[]` hint is presentation); `=VAL` and
-    `=ALI` carry an optional `&anchor`, an optional `<tag>`, then a `<style><value>` where the style is one of `:'"|>`.
+    A line is `KIND rest`. A collection marker keeps its kind and drops what follows. A flow `{}`/`[]` hint is
+    presentation. `=VAL` and `=ALI` take an optional `&anchor`, an optional `<tag>`, then a `<style><value>` where the
+    style comes from `:'"|>`.
     """
     events = []
     for line in text.splitlines():
@@ -122,7 +143,7 @@ def parse_events(text):
             continue
         kind, _, rest = line.partition(" ")
         if kind in ("+STR", "-STR", "+DOC", "-DOC", "-MAP", "-SEQ"):
-            events.append(Event(kind))
+            events.append(_Event(kind))
         elif kind in ("+MAP", "+SEQ"):
             anchor = tag = None
             for token in rest.split():  # an optional `{}`/`[]` flow hint, then `&anchor`, then `<tag>`
@@ -130,9 +151,9 @@ def parse_events(text):
                     anchor = token[1:]
                 elif token.startswith("<"):
                     tag = token[1:-1]
-            events.append(Event(kind, anchor, tag))
+            events.append(_Event(kind, anchor, tag))
         elif kind == "=ALI":
-            events.append(Event(kind, value=rest[1:] if rest.startswith("*") else rest))
+            events.append(_Event(kind, value=rest[1:] if rest.startswith("*") else rest))
         elif kind == "=VAL":
             anchor = tag = None
             while rest and rest[0] in "&<":
@@ -143,14 +164,17 @@ def parse_events(text):
                 elif token.startswith("<"):
                     tag = token[1:-1]
             style, value = rest[:1], _unescape_event(rest[1:])
-            events.append(Event(kind, anchor, tag, style, value))
+            events.append(_Event(kind, anchor, tag, style, value))
         else:
             raise ValueError(f"unknown event {line!r}")
     return events
 
 
-def _unescape_event(text):
-    r"""A `test.event` value's own escaping — `\n`, `\t`, `\\`, `\r` — back to the characters it stands for."""
+def _unescape_event(text: str) -> str:
+    r"""
+    The escaping a `test.event` value uses, back to the characters it names. That is `\n` and `\t` and `\r` and `\\` and
+    `\0` and `\b`.
+    """
     out, index = [], 0
     while index < len(text):
         char = text[index]
@@ -164,35 +188,75 @@ def _unescape_event(text):
     return "".join(out)
 
 
-# The wire character each marker the fold cares about carries.
+# The wire character a marker the fold cares about takes.
 _C = wire.CODE_CHAR
-BEGIN = {_C["begin-document"]: "+DOC", _C["begin-mapping"]: "+MAP", _C["begin-sequence"]: "+SEQ"}
-END = {_C["end-document"]: "-DOC", _C["end-mapping"]: "-MAP", _C["end-sequence"]: "-SEQ"}
+_BEGIN = {_C["begin-document"]: "+DOC", _C["begin-mapping"]: "+MAP", _C["begin-sequence"]: "+SEQ"}  # the opening event.
+_END = {_C["end-document"]: "-DOC", _C["end-mapping"]: "-MAP", _C["end-sequence"]: "-SEQ"}  # the closing event.
 
-# The tag handles every document starts with, before its own `%TAG` directives: the primary `!` names a local tag, the
-# secondary `!!` resolves to the YAML tag namespace.
-DEFAULT_TAGS = {"!": "!", "!!": "tag:yaml.org,2002:"}
+# The tag handles a document starts with, ahead of any `%TAG` directive of its own. The primary `!` names a local tag,
+# and the secondary `!!` resolves to the YAML tag namespace.
+_DEFAULT_TAGS = {"!": "!", "!!": "tag:yaml.org,2002:"}
 
 
-def fold(tokens):
+@dataclasses.dataclass
+class _Scalar:
+    """A scalar being gathered. It holds the style and the text of the `begin-scalar`..`end-scalar` span."""
+
+    style: str | None = None
+    parts: list[str] = dataclasses.field(default_factory=list)
+
+
+@dataclasses.dataclass
+class _Tag:
+    """A tag being gathered. It holds the handle and the suffix, and says whether the handle has closed."""
+
+    handle: list[str] = dataclasses.field(default_factory=list)
+    suffix: list[str] = dataclasses.field(default_factory=list)
+    is_handle_closed: bool = False
+
+    def gathering(self) -> list[str]:
+        """The side the arriving characters belong to."""
+        return self.suffix if self.is_handle_closed else self.handle
+
+
+@dataclasses.dataclass
+class _Directive:
+    """A directive being gathered. It holds the name, the handle and the prefix, and says which span is open."""
+
+    name: list[str] = dataclasses.field(default_factory=list)
+    handle: list[str] = dataclasses.field(default_factory=list)
+    prefix: list[str] = dataclasses.field(default_factory=list)
+    is_in_handle: bool = False
+    is_in_tag: bool = False
+
+    def gathering(self) -> list[str]:
+        """The part the arriving characters belong to."""
+        if self.is_in_handle:
+            return self.handle
+        return self.prefix if self.is_in_tag else self.name
+
+
+def _fold(tokens: Iterable[wire.Token]) -> list[_Event]:
     """
-    Fold a yeast token stream into the events it would produce, or raise `Incompatible` if it holds an error token.
+    Fold a yeast token stream into the events it would produce. Raise `Incompatible` where the document is rejected, by
+    an error token or by a resolution the tokens cannot show.
 
-    The stream is bracketed by an implicit `+STR`/`-STR`. A scalar's run of `text`/`meta`/`line-fold`/`line-feed` and
-    escapes is gathered between its `begin-scalar` and `end-scalar` and its style read from the indicator that opens it;
-    an alias becomes `=ALI`; an anchor or a tag annotates the value or collection it precedes.
+    An implicit `+STR`/`-STR` brackets the stream. A scalar gathers a run of `text`/`meta`/`line-fold`/`line-feed` and
+    escapes. That run sits between `begin-scalar` and `end-scalar`. The indicator that opens a scalar gives its style.
+    An alias becomes `=ALI`. An anchor or a tag annotates the value or collection it precedes.
     """
-    events = [Event("+STR")]
-    pending_anchor = pending_tag = None
-    scalar = None  # (style, [text parts]) while inside a begin-scalar..end-scalar
-    escape = None  # the raw text of a begin-escape..end-escape span
+    events = [_Event("+STR")]
+    pending_anchor: str | None = None
+    pending_tag: str | None = None
+    scalar: _Scalar | None = None  # while inside a begin-scalar..end-scalar
+    escape: list[str] | None = None  # the raw text of a begin-escape..end-escape span
     is_in_alias = False
-    alias = []
-    anchor = None  # [name parts] while inside a begin-anchor..end-anchor
-    tag = None  # [handle parts, suffix parts, handle-closed?] while inside a begin-tag..end-tag
-    tags = dict(DEFAULT_TAGS)  # the document's tag handles, its `%TAG` directives over the defaults
-    directive = None  # [name, handle parts, prefix parts, in-handle?, in-prefix?] while inside a directive
-    yaml_directives = 0  # `%YAML` directives seen in the document; more than one is an error
+    alias: list[str] = []
+    anchor: list[str] | None = None  # the name parts while inside a begin-anchor..end-anchor
+    tag: _Tag | None = None  # while inside a begin-tag..end-tag
+    tags = dict(_DEFAULT_TAGS)  # the document's tag handles, its `%TAG` directives over the defaults
+    directive: _Directive | None = None  # while inside a directive
+    yaml_directives = 0  # `%YAML` directives seen in the document; a second is an error
 
     for token in tokens:
         code = token.code
@@ -200,31 +264,37 @@ def fold(tokens):
             raise Incompatible(f"error token: {token.text}")
         if scalar is not None:
             if code == _C["text"]:
-                scalar[1].append(token.text and _unescape_wire(token.text))
+                scalar.parts.append(token.text and _unescape_wire(token.text))
             elif code == _C["line-fold"]:
-                scalar[1].append(" ")
+                scalar.parts.append(" ")
             elif code == _C["line-feed"]:
-                scalar[1].append("\n")
+                scalar.parts.append("\n")
             elif code == _C["begin-escape"]:
                 escape = []
             elif code == _C["end-escape"]:
-                scalar[1].append(_resolve_escape(escape[1:]))  # escape[0] is the opening backslash
+                if escape is None:
+                    raise Incompatible("an `end-escape` with no `begin-escape` before it")
+                # The raise above says it is a list, and pylint does not narrow it across the loop.
+                scalar.parts.append(_resolve_escape(escape[1:]))  # pylint: disable=unsubscriptable-object
                 escape = None
-            elif escape is not None and code in (_C["indicator"], _C["meta"], _C["text"]):
+            # What an escape is made of. The backslash that opens it and the characters naming it, which the grammar
+            # gives as an indicator and meta.
+            elif escape is not None and code in (_C["indicator"], _C["meta"]):
                 escape.append(token.text and _unescape_wire(token.text))
-            elif code == _C["indicator"] and scalar[0] is None:
+            elif code == _C["indicator"] and scalar.style is None:
                 indicator = _unescape_wire(token.text)
-                scalar[0] = {'"': '"', "'": "'", "|": "|", ">": ">"}.get(indicator, scalar[0])
+                scalar.style = {'"': '"', "'": "'", "|": "|", ">": ">"}.get(indicator, scalar.style)
             elif code == _C["end-scalar"]:
-                style = scalar[0] or ":"
-                events.append(Event("=VAL", pending_anchor, pending_tag, style, "".join(scalar[1])))
-                pending_anchor = pending_tag = scalar = None
+                style = scalar.style or ":"
+                events.append(_Event("=VAL", pending_anchor, pending_tag, style, "".join(scalar.parts)))
+                pending_anchor = pending_tag = None
+                scalar = None
             continue
         if is_in_alias:
             if code == _C["meta"]:
                 alias.append(token.text and _unescape_wire(token.text))
             elif code == _C["end-alias"]:
-                events.append(Event("=ALI", value="".join(alias)))
+                events.append(_Event("=ALI", value="".join(alias)))
                 is_in_alias = False
                 alias = []
             continue
@@ -237,30 +307,31 @@ def fold(tokens):
             continue
         if tag is not None:
             if code == _C["end-handle"]:
-                tag[2] = True
+                tag.is_handle_closed = True
             elif code == _C["end-tag"]:
-                pending_tag = _expand_tag("".join(tag[0]), "".join(tag[1]), tags)
+                pending_tag = _expand_tag("".join(tag.handle), "".join(tag.suffix), tags)
                 tag = None
             elif code in (_C["indicator"], _C["meta"]):
-                tag[1 if tag[2] else 0].append(token.text and _unescape_wire(token.text))
+                tag.gathering().append(token.text and _unescape_wire(token.text))
             continue
         if directive is not None:
             if code == _C["begin-handle"]:
-                directive[3] = True
+                directive.is_in_handle = True
             elif code == _C["end-handle"]:
-                directive[3] = False
+                directive.is_in_handle = False
             elif code == _C["begin-tag"]:
-                directive[4] = True
+                directive.is_in_tag = True
             elif code == _C["end-tag"]:
-                directive[4] = False
+                directive.is_in_tag = False
             elif code == _C["meta"]:
-                directive[1 if directive[3] else 2 if directive[4] else 0].append(_unescape_wire(token.text))
-            elif code == _C["indicator"] and (directive[3] or directive[4]):
-                directive[1 if directive[3] else 2].append(_unescape_wire(token.text))
+                directive.gathering().append(_unescape_wire(token.text))
+            elif code == _C["indicator"] and (directive.is_in_handle or directive.is_in_tag):
+                (directive.handle if directive.is_in_handle else directive.prefix).append(_unescape_wire(token.text))
             elif code == _C["end-directive"]:
-                name = directive[0][0] if directive[0] else ""  # a `%YAML` directive's version joins its name here too
+                # A `%YAML` directive's version joins its name here too.
+                name = directive.name[0] if directive.name else ""
                 if name == "TAG":
-                    tags["".join(directive[1])] = "".join(directive[2])
+                    tags["".join(directive.handle)] = "".join(directive.prefix)
                 elif name == "YAML":
                     yaml_directives += 1
                     if yaml_directives > 1:
@@ -268,43 +339,45 @@ def fold(tokens):
                 directive = None
             continue
         if code == _C["begin-directive"]:
-            directive = [[], [], [], False, False]
-        elif code in BEGIN:
+            directive = _Directive()
+        elif code in _BEGIN:
             if code == _C["begin-document"]:
-                tags = dict(DEFAULT_TAGS)
+                tags = dict(_DEFAULT_TAGS)
                 yaml_directives = 0
-            events.append(Event(BEGIN[code], pending_anchor, pending_tag))
+            events.append(_Event(_BEGIN[code], pending_anchor, pending_tag))
             pending_anchor = pending_tag = None
-        elif code in END:
-            events.append(Event(END[code]))
+        elif code in _END:
+            events.append(_Event(_END[code]))
         elif code == _C["begin-scalar"]:
-            scalar = [None, []]
+            scalar = _Scalar()
         elif code == _C["begin-alias"]:
             is_in_alias, alias = True, []
         elif code == _C["begin-anchor"]:
             anchor = []
         elif code == _C["begin-tag"]:
-            tag = [[], [], False]
-    events.append(Event("-STR"))
+            tag = _Tag()
+    events.append(_Event("-STR"))
     return events
 
 
-def _resolve_escape(parts):
-    r"""A double-quoted `\`-escape (its indicator and digits gathered in `parts`) as the character it denotes."""
+def _resolve_escape(parts: Iterable[str]) -> str:
+    r"""
+    A double-quoted `\`-escape as the character it denotes. The indicator and the digits arrive gathered in `parts`.
+    """
     body = "".join(parts)
     if not body:
         return ""
     lead = body[0]
     if lead in "xuU":
         return chr(int(body[1:], 16))
-    return ESCAPES.get(lead, lead)
+    return _ESCAPES.get(lead, lead)
 
 
 class Incompatible(Exception):
-    """The token stream cannot produce the expected events."""
+    """libyeast rejects the document. An error token, or a resolution error only the fold can see."""
 
 
-def run_case(grammar, data, deterministic=frozenset()):
-    """Fold the events libyeast produces for `data`, or raise `Incompatible` (an error token, or a crash)."""
-    tokens = interpreter.run(grammar, "l-yeast-stream", data, {}, deterministic=deterministic)
-    return fold(tokens)
+def run_case(grammar: dict[str, ir.Prod], data: bytes) -> list[_Event]:
+    """Fold the events libyeast produces for `data`, or raise `Incompatible` where it rejects the document."""
+    tokens = interpreter.run(grammar, "l-yeast-stream", data, {})
+    return _fold(tokens)

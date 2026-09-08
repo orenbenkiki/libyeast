@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: MIT
+// A source of yeast tokens, whichever way a producer makes them. YAML parsed from memory or a stream, or a yeast wire
+// replayed from a stream. The constructors build a single type. ys_read_token(), ys_are_tokens_stable() and
+// ys_delete_token_source() work on a source of any arm. Code over tokens does not know or care which made them.
+
 #include "token_source.h"
 
 #include "memory.h"
@@ -7,12 +11,9 @@
 #include <stdint.h>
 #include <yeast.h>
 
-// A source of yeast tokens, whichever way they are made: YAML parsed from memory or a stream, or a yeast wire replayed
-// from a stream. The three constructors build the one type; ys_read_token(), ys_are_tokens_stable() and
-// ys_delete_token_source() work on it whichever arm it is, so code over tokens does not know or care which made them.
-
-// Allocate a source and plant its kind. On success `*memory` is what it may allocate, for the caller to hand to the
-// arm it goes on to build; on failure it is NULL with `errno` set, and the caller closes any reader it was handed.
+// Allocate a source and plant its kind. On success `*memory` holds the allocator the source may use. The caller hands
+// that allocator to the arm it goes on to build. On failure the call answers NULL with `errno` set. The caller then
+// closes any reader it took in.
 static ys_token_source *ys_new_source(ys_source_kind kind, const ys_options *options, ys_memory *memory) {
     ys_token_source *source = ys_memory_new(memory, options, sizeof(*source)); // sets errno on failure
     if (source != NULL) {
@@ -30,8 +31,8 @@ ys_token_source *ys_new_yaml_memory_parser(const char *input, size_t length, con
     ys_token_source *source = ys_new_source(YS_SOURCE_PARSER, options, &memory);
     if (source != NULL) {
         ys_parser_init(&source->as.parser, memory, options);
-        // The window is the caller's buffer, whole: no reader to give it more, no buffer of its own to free. That is
-        // what makes a memory parser's tokens stable — their text is the caller's bytes.
+        // The window is the caller's buffer, whole. No reader to give it more, no buffer of its own to free. That is
+        // what makes a memory parser's tokens stable. Their text is the caller's bytes.
         if (input != NULL) {
             source->as.parser.window.bytes = (const uint8_t *)input;
         }
@@ -88,7 +89,7 @@ bool ys_are_tokens_stable(const ys_token_source *source) {
 
 int ys_delete_token_source(ys_token_source *source) {
     if (source == NULL) {
-        return 0; // deleting nothing cannot fail
+        return YS_OK; // deleting nothing cannot fail
     }
     if (source->kind == YS_SOURCE_PARSER) {
         ys_parser *parser = &source->as.parser;

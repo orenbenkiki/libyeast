@@ -1,6 +1,7 @@
-name: test
+# The "test" sub-gate. The C parser tests pass across compilers and OSes. Pure C. The coverage gate rides with
+# gh-pages.
 
-# The C parser tests pass across compilers/OSes: the "test" sub-gate. Pure C — the coverage gate rides with gh-pages.
+name: test
 
 on:
   push:
@@ -28,7 +29,7 @@ jobs:
       - name: C tests
         run: make test CC=${{ matrix.cc }}
 
-  # Windows/MSVC: the Makefile needs a Unix shell, so drive CMake directly to run the tests.
+  # Windows and MSVC. The Makefile needs a Unix shell. The workflow drives CMake directly to run the tests.
   windows:
     name: windows-latest / msvc
     runs-on: windows-latest
@@ -37,7 +38,8 @@ jobs:
       # Set up the MSVC toolchain so the AddressSanitizer runtime DLL is on PATH for the Debug tests.
       - uses: ilammy/msvc-dev-cmd@v1
       - run: cmake -S . -B build
-      # Debug is AddressSanitizer-instrumented (heap/stack overflow + use-after-free); Release is the plain smoke build.
+      # Debug is AddressSanitizer-instrumented, for heap and stack overflow and use-after-free. Release is the plain
+      # smoke build.
       - run: cmake --build build --config Debug
       - run: ctest --test-dir build -C Debug --output-on-failure
       - run: cmake --build build --config Release

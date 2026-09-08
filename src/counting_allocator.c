@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
+// A malloc/free wrapper that counts the allocations still live. A test or a consumer can confirm that the code freed
+// what it allocated. Its overhead over plain malloc/free is a single counter.
+
 #include <errno.h>
 #include <stdlib.h>
 #include <yeast.h>
-
-// A malloc/free wrapper that counts the allocations still live, so that a test — or a consumer — can confirm everything
-// allocated through it was freed. Its overhead over plain malloc/free is a single counter.
 
 struct ys_counting_allocator {
     size_t live_buffers;
 };
 
+// Allocate `size` bytes and count the buffer as live. NULL where malloc refused, with the count left alone.
 static void *ys_counting_allocate(void *context, size_t size) {
     void *pointer = malloc(size);
     if (pointer != NULL) {
@@ -18,6 +19,7 @@ static void *ys_counting_allocate(void *context, size_t size) {
     return pointer;
 }
 
+// Free `pointer` and take the buffer off the count. A NULL pointer frees nothing and counts as nothing.
 static void ys_counting_deallocate(void *context, void *pointer) {
     if (pointer != NULL) {
         ((ys_counting_allocator *)context)->live_buffers--;
@@ -25,10 +27,11 @@ static void ys_counting_deallocate(void *context, void *pointer) {
     free(pointer);
 }
 
+// Resize `pointer` to `size` bytes. The count stays right at the edges of what a caller may ask of realloc.
 static void *ys_counting_reallocate(void *context, void *pointer, size_t size) {
     // Handle the edge cases explicitly instead of leaving realloc's implementation-defined size==0 behavior to skew
-    // the count: size 0 frees, a NULL pointer allocates, and a genuine resize keeps the count (realloc frees the old
-    // block and returns the new one itself).
+    // the count. A size of `0` frees. A NULL pointer allocates. A genuine resize keeps the count. Realloc frees the old
+    // block and returns the new block itself.
     if (size == 0) {
         ys_counting_deallocate(context, pointer);
         return NULL;
@@ -59,7 +62,7 @@ ys_allocator ys_counting_allocator_functions(ys_counting_allocator *counter) {
 
 int ys_close_counting_allocator(void *counter) {
     if (((const ys_counting_allocator *)counter)->live_buffers > 0) {
-        errno = ENOMEM; // a leak: something allocated through the counter was never freed, so its memory is still held
+        errno = ENOMEM; // a leak. Something allocated through the counter was not freed, and its memory is still held
         return -1;
     }
     return 0;

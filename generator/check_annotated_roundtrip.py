@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: MIT
 """
-Round-trip check: `annotated2ir` then `ir2annotated` must reproduce the vendored grammar exactly.
+Check that `annotated2ir` then `ir2annotated` reproduce libyeast's grammar exactly.
 
-Loads the vendored yaml-grammar, translates it to the IR and back, and asserts the regenerated data equals the source
-(compared as parsed data, not text). So a translation that loses a production, or quietly rewrites one, fails here
-rather than in whatever is generated from the IR afterwards.
+Loads `grammar/yeast-spec-1.2.yaml` and translates it to the IR and back. The regenerated data equals the source,
+compared as parsed data rather than text. A translation that loses a production fails here. So does a translation that
+quietly rewrites a production. Neither waits for what the IR generates afterwards.
 """
 
 import annotated2ir
@@ -14,8 +14,8 @@ import ir2annotated
 import yaml
 
 
-def main():
-    with open(annotated2ir.DEFAULT_GRAMMAR) as handle:
+def main() -> None:
+    with open(annotated2ir.DEFAULT_GRAMMAR, encoding="utf-8") as handle:
         original = yaml.safe_load(handle)
     regenerated = ir2annotated.regenerate(annotated2ir.translate(original))
 

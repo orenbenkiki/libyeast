@@ -1,6 +1,66 @@
 {
+  "permissions": {
+    "allow": [
+      "Read(//Users/obk/projects/libyeast/.claude/conventions.md)",
+      "Read(//Users/obk/projects/libyeast/.claude/rejected.md)",
+      "Read(//private/tmp/claude-502/**/scratchpad/**)"
+    ]
+  },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/standing-rules.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/clear-one-at-a-time.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/one-at-a-time.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/one-at-a-time.sh\"",
+            "timeout": 10,
+            "statusMessage": "checking the session is serial"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-tools.sh\"",
+            "timeout": 10,
+            "statusMessage": "deciding an agent's tool call"
+          }
+        ]
+      },
+      {
+        "matcher": "StructuredOutput",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_answer.py\""
+          }
+        ]
+      },
       {
         "matcher": "Bash",
         "hooks": [
@@ -9,31 +69,71 @@
             "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/no-shell-file-writes.sh\"",
             "timeout": 10,
             "statusMessage": "checking for shell file writes"
-          },
-          {
-            "type": "agent",
-            "prompt": "You are gating a commit. The tool call is: $ARGUMENTS\n\nIf its command does not run `git commit`, reply exactly ALLOW and stop — do no other work, read nothing, run nothing.\n\nOtherwise review the staged change against the six checks the repository owner requires of EVERY commit. Read `git diff --cached` and whatever files you need.\n\n1. Every comment and docstring is consistent with the code it stands over — including comments the change made stale but did not touch. Names are held to the same rule and are not exempt for being names: a class, a function, a field or a step whose name says what its code no longer does is as stale as a comment that does, and a name naming one of several things it does, or a thing it does not do at all, is wrong however long it has been there.\n2. DESIGN.md describes the current state, CHANGELOG.md is the history, PLAN.md is what is left to do, and none encroaches on another's domain. In particular PLAN.md must not describe something the change just built.\n3. Every number in the comments and in the documents is current — counts, enumerations, and figures quoted in the changelog entry.\n4. `make pc` passes. Do not run it; check that a `.stamps/` entry is newer than every staged source file, and treat it as failed if it is not.\n5. Nothing the change leaves behind says the same thing twice. Code it added or moved that repeats what another function, table or walk already does belongs in the one place that does it — the repository answers a question once and reads that answer everywhere.\n6. Nothing the change leaves behind is unreachable. A function, class, field, table entry or branch that nothing constructs, calls or reads is removed rather than kept against a future use, and a kind the change made dead goes with the step that made it so.\n\nReply exactly ALLOW if all six hold. Otherwise reply BLOCK, then one line per failure naming the check number, the file, and what is wrong. Judge only the staged change; do not review the repository at large, and do not comment on style or design.",
-            "timeout": 180,
-            "statusMessage": "reviewing the commit against the six checks"
           }
         ]
-      }
-    ],
-    "PostToolUse": [
+      },
       {
         "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/reading-rule.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/question-rule.sh\"",
             "timeout": 10,
-            "statusMessage": "checking the Reading rule"
+            "statusMessage": "checking the Question rule"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/step-rules.sh\"",
+            "timeout": 10,
+            "statusMessage": "checking a new step states its argument"
           },
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/tense-check.sh\"",
             "timeout": 10,
             "statusMessage": "checking tense"
+          },
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_words.py\"",
+            "timeout": 10,
+            "statusMessage": "checking words"
+          },
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/no_tree_numbers.py\"",
+            "timeout": 15,
+            "statusMessage": "checking for numbers of the tree"
+          },
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/altitude.py\"",
+            "timeout": 15,
+            "statusMessage": "checking the altitude of DESIGN.md"
+          },
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/short_comments.py\"",
+            "timeout": 15,
+            "statusMessage": "checking the length of a comment inside a body"
+          },
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_rewrite.py\"",
+            "timeout": 15,
+            "statusMessage": "checking the prose an edit leaves"
+          },
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/ascii_only.py\"",
+            "timeout": 10,
+            "statusMessage": "checking for a character past ASCII"
+          },
+          {
+            "type": "command",
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/unread_files.py\"",
+            "timeout": 10,
+            "statusMessage": "checking a reader knows the file"
           }
         ]
       }

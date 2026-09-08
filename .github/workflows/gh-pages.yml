@@ -1,13 +1,13 @@
-name: gh-pages
+# Build the Doxygen API docs + gcovr coverage report, and publish them to GitHub Pages from main. The generated files
+# stay out of the repository.
+#
+# The build runs on a pull request too. The deploy runs from main.
 
-# Build the Doxygen API docs + gcovr coverage report, and publish them to GitHub Pages from main. Nothing generated is
-# committed to the repository.
+# The gh-pages sub-gate holds the `// UNTESTED` coverage contract and the docs completeness check.
 #
-# The build runs on a pull request too, because this sub-gate is where the `// UNTESTED` coverage contract and the docs
-# completeness check live: a change that leaves a public symbol undocumented, or an uncovered line unannotated, has to
-# fail before it lands rather than after. Only the deploy is main's.
-#
-# One-time repo setting: Settings -> Pages -> Source = GitHub Actions.
+# A repo setting made once. Settings -> Pages -> Source = GitHub Actions.
+
+name: gh-pages
 
 on:
   push:
@@ -17,8 +17,8 @@ on:
 permissions:
   contents: read
 
-# One run per branch or pull request; a superseded one is cancelled. The deploy has a group of its own, since Pages
-# takes one deployment at a time whatever it came from.
+# A run per branch or pull request. GitHub cancels a superseded run. The deploy has a group of its own. Pages takes a
+# deployment at a time, whatever branch it came from.
 concurrency:
   group: gh-pages-${{ github.ref }}
   cancel-in-progress: true

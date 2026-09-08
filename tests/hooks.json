@@ -1,0 +1,359 @@
+{
+  "_": [
+    "A registered hook answers a faulty edit and passes a clean one. This says which edit is which. `check_hooks`",
+    "runs the pair against the command `.claude/settings.json` registers. A hook that answers neither reads as",
+    "silent. A hook that answers both says the same of whatever it reads.",
+    "",
+    "A hook takes a list of pairs. `probes` names what the pair puts the fault in. A hook reading a comment and a",
+    "string literal gets a pair apiece. An arm no pair fires against goes untried.",
+    "",
+    "This is data rather than Python. The faults below are what the hooks refuse. A hook that reads a module of",
+    "`generator/` would find such a fault in the source of the check that runs it.",
+    "",
+    "`TREE` in a path names the root of the repository. The Edit tool hands an absolute path. A hook matching",
+    "`*/x/*.py` answers nothing about a relative one.",
+    "",
+    "A pair with a `file` fires as an edit into that text. `check_hooks` writes the text under a scratch directory",
+    "by its basename. The payload is then the Edit the tool would send. Its `old_string` cuts a slice out of a line,",
+    "with no comment marker in the slice. A hook reading that slice sees no prose and passes."
+  ],
+
+  "no-shell-file-writes.sh": [
+    {
+      "probes": "a command",
+      "answers": { "tool_input": { "command": "echo hi > generator/probe.py" } },
+      "passes": { "tool_input": { "command": "grep -n Question generator/ir.py" } }
+    }
+  ],
+
+  "one-at-a-time.sh": [
+    {
+      "probes": "a second launch in a turn",
+      "skips": "this decides from the session rather than from the edit. a pair fires a payload and reads the answer, and the answer here says what the turn already launched. the first call of a pair creates the marker the second call reads, so a pair reports the reverse of what the hook does."
+    }
+  ],
+
+  "question-rule.sh": [
+    {
+      "probes": "an isinstance call",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "if isinstance(node, ir.SeqTree):\n    pass\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "if isinstance(node, ir.Node):\n    pass\n" }
+      }
+    },
+    { "probes": "a comment", "skips": "this reads an isinstance call over ir kinds. a comment is no call." },
+    { "probes": "a docstring", "skips": "this reads an isinstance call over ir kinds. a docstring is no call." },
+    { "probes": "a markdown line", "skips": "this reads a module of generator. a markdown file goes past it." },
+    { "probes": "a string literal", "skips": "this reads an isinstance call over ir kinds. a literal is no call." }
+  ],
+
+  "step-rules.sh": [
+    {
+      "probes": "a step name",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/normalize.py", "new_string": "_Step(\"mint-probes\", _mint_probes)\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/normalize.py", "new_string": "held = sorted(grammar)\n" }
+      }
+    },
+    { "probes": "a comment", "skips": "this reads a `_Step(` call in normalize.py. a comment is no call." },
+    { "probes": "a docstring", "skips": "this reads a `_Step(` call in normalize.py. a docstring is no call." },
+    { "probes": "a markdown line", "skips": "this reads normalize.py. a markdown file goes past it." },
+    { "probes": "a string literal", "skips": "this reads a `_Step(` call in normalize.py. a literal is no call." }
+  ],
+
+  "tense-check.sh": [
+    {
+      "probes": "a comment",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "# The cache previously held the whole walk.\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "# The cache holds the whole walk.\n" }
+      }
+    },
+    {
+      "probes": "a docstring",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "\"\"\"The cache previously held the whole walk.\"\"\"\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "\"\"\"The cache holds the whole walk.\"\"\"\n" }
+      }
+    },
+    {
+      "probes": "a markdown line",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "new_string": "The cache will be the whole walk.\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "new_string": "The cache holds the whole walk.\n" }
+      }
+    },
+    {
+      "probes": "a string literal",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "HELD = \"The cache will be the whole walk.\"\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "HELD = \"The cache holds the whole walk.\"\n" }
+      }
+    }
+  ],
+
+  "prose_words.py": [
+    {
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The place a run is measured.\nHELD = ()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The place a run is measured", "new_string": "The one place a run is measured" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The place a run is measured", "new_string": "The line a run is measured on" }
+      }
+    },
+    {
+      "probes": "a string literal",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\nHELD = \"The set a walk over the grammar builds.\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk", "new_string": "The one set a walk" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "the grammar builds", "new_string": "the grammar makes" }
+      }
+    },
+    {
+      "probes": "a docstring",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\n\nThe walk holds the set it built.\n\"\"\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "the set it built", "new_string": "every set it built" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "the set it built", "new_string": "the set it made" }
+      }
+    },
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nThe pass reads the grammar before it starts.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "reads the grammar", "new_string": "reads every grammar" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "reads the grammar", "new_string": "reads the root" }
+      }
+    }
+  ],
+
+  "no_tree_numbers.py": [
+    {
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The pipeline hands on what the steps leave.\nHELD = ()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "what the steps leave", "new_string": "42 productions" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "what the steps leave", "new_string": "what the steps hand on" }
+      }
+    },
+    {
+      "probes": "a docstring",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\n\nThe pipeline hands on what the steps leave.\n\"\"\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "what the steps leave", "new_string": "42 productions" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "what the steps leave", "new_string": "what the steps hand on" }
+      }
+    },
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nThe pipeline hands on what the steps leave.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "what the steps leave", "new_string": "42 productions" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "what the steps leave", "new_string": "what the steps hand on" }
+      }
+    },
+    {
+      "probes": "a string literal",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\nHELD = \"The pipeline hands on what the steps leave.\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "what the steps leave", "new_string": "42 productions" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "what the steps leave", "new_string": "what the steps hand on" }
+      }
+    }
+  ],
+
+  "short_comments.py": [
+    {
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # one\n    return 1\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # one\n", "new_string": "    # one\n    # two\n    # three\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # one\n", "new_string": "    # one\n    # two\n" }
+      }
+    },
+    {
+      "probes": "a string literal",
+      "skips": "this counts the lines of a comment run inside a body. a literal is no comment."
+    },
+    { "probes": "a docstring", "skips": "this counts an indented run of `#` lines. a docstring opens on quotes." },
+    { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." }
+  ],
+
+  "altitude.py": [
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nThe pass reads what the grammar reaches before it starts.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "what the grammar reaches", "new_string": "`normalize._does_reach_nothing`" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "what the grammar reaches", "new_string": "what the root reaches" }
+      }
+    },
+    { "probes": "a comment", "skips": "this reads DESIGN.md. that file is markdown and holds no comment." },
+    { "probes": "a docstring", "skips": "this reads DESIGN.md. that file is markdown and holds no docstring." },
+    { "probes": "a string literal", "skips": "this reads DESIGN.md. that file is markdown and holds no literal." }
+  ],
+
+  "prose_rewrite.py": [
+    {
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The set a walk over the grammar builds.\nHELD = ()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk over the grammar builds", "new_string": "A walk over the grammar, which reads a production, and then answers with the set it built, and a caller asking twice is answered once" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk over the grammar builds", "new_string": "The set a walk over the grammar makes" }
+      }
+    },
+    {
+      "probes": "a string literal",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\nHELD = \"The set a walk over the grammar builds.\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk over the grammar builds", "new_string": "A walk over the grammar, which reads a production, and then answers with the set it built, and a caller asking twice is answered once" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "the grammar builds", "new_string": "the grammar makes" }
+      }
+    },
+    {
+      "probes": "a docstring",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\n\nThe set a walk over the grammar builds.\n\"\"\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk over the grammar builds", "new_string": "A walk over the grammar, which reads a production, and then answers with the set it built, and a caller asking twice is answered once" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk over the grammar builds", "new_string": "The set a walk over the grammar makes" }
+      }
+    },
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nThe set a walk over the grammar builds.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "The set a walk over the grammar builds", "new_string": "A walk over the grammar, which reads a production, and then answers with the set it built, and a caller asking twice is answered once" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "The set a walk over the grammar builds", "new_string": "The set a walk over the grammar makes" }
+      }
+    }
+  ],
+
+  "prose_answer.py": [
+    {
+      "probes": "a proposal the critic states",
+      "_": "A call naming proposals and no changes asks the word rules of `rule` and of `why`.",
+      "answers": {
+        "agent_id": "probe",
+        "tool_input": { "proposals": [{ "rule": "A gate refuses the one word the project turned down.", "why": "The tree holds no such word." }] }
+      },
+      "passes": {
+        "agent_id": "probe",
+        "tool_input": { "proposals": [{ "rule": "A gate refuses a word the project turned down.", "why": "The tree holds no such word." }] }
+      }
+    }
+  ],
+
+  "unread_files.py": [
+    {
+      "probes": "a file whose language no reader knows",
+      "_": "The rule reads the path. A `.txt` file has no reader here, and a `.md` file has one.",
+      "answers": { "tool_input": { "file_path": "TREE/NOTES.txt", "content": "A probe. The hooks read it.\n" } },
+      "passes": { "tool_input": { "file_path": "TREE/NOTES.md", "content": "A probe. The hooks read it.\n" } }
+    },
+    { "probes": "a comment", "skips": "this reads the path an edit names. the prose inside the file goes unread here." },
+    {
+      "probes": "a docstring",
+      "skips": "this reads the path an edit names. the prose inside the file goes unread here."
+    },
+    {
+      "probes": "a markdown line",
+      "skips": "this reads the path an edit names. the prose inside the file goes unread here."
+    },
+    {
+      "probes": "a string literal",
+      "skips": "this reads the path an edit names. the prose inside the file goes unread here."
+    }
+  ],
+
+  "agent-tools.sh": [
+    {
+      "probes": "a tool an agent may not call",
+      "_": "A payload naming an agent is an agent's call. `Grep` is withheld on purpose, and a refusal there writes no miss.",
+      "answers": { "agent_id": "probe", "tool_name": "Grep", "tool_input": {} },
+      "passes": { "agent_id": "probe", "tool_name": "TodoWrite", "tool_input": {} }
+    }
+  ],
+
+  "ascii_only.py": [
+    {
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The set a walk builds.\nHELD = ()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long—slow walk builds" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long slow walk builds" }
+      }
+    },
+    {
+      "probes": "a docstring",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\n\nThe set a walk builds.\n\"\"\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long—slow walk builds" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long slow walk builds" }
+      }
+    },
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nThe set a walk builds.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "The set a walk builds", "new_string": "The set a long—slow walk builds" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "The set a walk builds", "new_string": "The set a long slow walk builds" }
+      }
+    },
+    {
+      "probes": "a string literal",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\nHELD = \"The set a walk builds.\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long—slow walk builds" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long slow walk builds" }
+      }
+    }
+  ]
+}

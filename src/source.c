@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: MIT
+// Filling a ys_source from its reader. Tearing down the transport behind that source. The fill compacts the bytes
+// already read, grows the buffer where it has to, and pulls more bytes. The teardown closes the transport and frees
+// the buffers.
+
 #include "source.h"
 
 #include <errno.h>
@@ -49,7 +53,7 @@ int ys_teardown(int (*close)(void *), void *close_context, ys_allocator allocato
         saved_errno = errno; // the reader's, kept whatever the allocator's close does next
     }
 
-    // A deallocation cannot fail, but may set errno all the same, so the reason for the failure is carried across them.
+    // A deallocation cannot fail, but may set errno all the same. `saved_errno` is kept across them.
     for (size_t index = 0; index < count; index++) {
         ys_deallocate(&allocator, buffers[index]);
     }
@@ -57,9 +61,9 @@ int ys_teardown(int (*close)(void *), void *close_context, ys_allocator allocato
     if (ys_close_allocator(&allocator) != 0) {
         if (result == YS_OK) {
             result = YS_FAILED_MEMORY;
-            saved_errno = errno; // only the allocator failed, so its reason is the one to keep
+            saved_errno = errno; // only the allocator failed. Its errno is the one to keep.
         } else {
-            result = YS_FAILED_BOTH; // both failed; errno stays the reader's, the first
+            result = YS_FAILED_BOTH; // both failed; errno stays the reader's, the first.
         }
     }
     errno = saved_errno;

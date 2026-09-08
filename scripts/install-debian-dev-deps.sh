@@ -1,9 +1,12 @@
 #!/bin/sh
-# Install the tools a sub-gate needs on Debian/Ubuntu, on top of the C build deps: the parser generator's Python, the
-# formatters and linters, and the coverage and docs tools. The goal argument ($1) picks the sub-gate: `c` or `test`
-# (nothing beyond the C build deps), `verify` (Python + PyYAML), `vet` (formatters + linters), `gh-pages` (coverage +
-# docs); omitted or `pc` installs everything. Assumes the apt index is current. Run it from the project root: it reads
-# .clang-format-version there.
+# Install the tools a sub-gate needs on Debian/Ubuntu, on top of the C build deps. Those are the parser generator's
+# Python, the formatters and linters, and the coverage and docs tools.
+#
+# The goal argument `$1` picks the sub-gate. `c` or `test` add nothing. `verify` adds Python and PyYAML. `vet` adds the
+# formatters and linters. `gh-pages` adds the coverage and docs tools. `pc` installs the whole set. A call with no goal
+# does the same.
+#
+# Assumes the apt index is current. Run it from the project root. It reads .clang-format-version there.
 set -eu
 goal="${1:-}"
 
@@ -27,7 +30,7 @@ gh-pages)
     docs=true
     ;;
 *)
-    echo "install-debian-dev-deps.sh: unknown goal '$goal' (expected: pc, c, test, verify, vet, gh-pages)" >&2
+    echo "install-debian-dev-deps.sh: unknown goal '$goal'. the goals are pc and c. test and verify are goals. so are vet and gh-pages." >&2
     exit 1
     ;;
 esac
@@ -37,8 +40,8 @@ sh "$here/install-debian-build-deps.sh" "$goal"
 
 apt=""
 pip=""
-# Python is not a C build dep, so the groups that run the generator or pip-install their tools bring it: PyYAML for the
-# generator, pip for the formatters and coverage tool.
+# Python is not a C build dep. A group that runs the generator brings Python. So does a group that pip-installs its
+# tools. PyYAML for the generator, pip for the formatters and coverage tool.
 if $gen; then
     apt="$apt python3-yaml"
 fi
@@ -46,11 +49,11 @@ if $lint || $cov; then
     apt="$apt python3-pip"
 fi
 if $lint; then
-    # clang-format comes from a pip wheel, not apt: apt's version differs from a developer's and formats code the gate
-    # then rejects. Its major is .clang-format-version, the one source the gate and both dev-deps scripts read.
-    # clang-tidy is a linter, not a formatter, so its version is not load-bearing the same way.
+    # clang-format comes from a pip wheel rather than from apt. Apt ships a different version. That version formats
+    # code the gate then rejects. Its major is .clang-format-version, the source the gate and both dev-deps scripts
+    # share. clang-tidy is a linter rather than a formatter. Its version does not bear the same load.
     apt="$apt clang-tidy cppcheck shfmt"
-    pip="$pip clang-format==$(cat .clang-format-version).* mdformat mdformat-gfm black format-docstring gersemi ruff"
+    pip="$pip clang-format==$(cat .clang-format-version).* mdformat mdformat-gfm black format-docstring gersemi ruff pylint mypy types-PyYAML conan"
 fi
 if $cov; then
     apt="$apt llvm"

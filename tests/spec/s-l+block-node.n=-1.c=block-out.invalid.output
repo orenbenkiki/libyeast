@@ -17,7 +17,7 @@ n
 # B: 1, C: 1, L: 1, c: 1
 I:
 # B: 2, C: 2, L: 1, c: 2
-!A mapping value is required after ':'
+!A mapping value must follow `:`
 # B: 2, C: 2, L: 1, c: 2
 x
 # B: 2, C: 2, L: 1, c: 2
