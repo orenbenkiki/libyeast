@@ -1,4 +1,4 @@
-# Build the Doxygen API docs + gcovr coverage report, and publish them to GitHub Pages from main. The generated files
+# Build the Doxygen API docs and the gcovr coverage report. Publish the docs and the report to GitHub Pages. The generated files
 # stay out of the repository.
 #
 # The build runs on a pull request too. The deploy runs from main.
@@ -17,8 +17,7 @@ on:
 permissions:
   contents: read
 
-# A run per branch or pull request. GitHub cancels a superseded run. The deploy has a group of its own. Pages takes a
-# deployment at a time, whatever branch it came from.
+# The workflow holds a concurrency group per branch or pull request. GitHub cancels a superseded run in that group. The deploy job holds a separate concurrency group. Pages takes a single deployment at a time across branches.
 concurrency:
   group: gh-pages-${{ github.ref }}
   cancel-in-progress: true

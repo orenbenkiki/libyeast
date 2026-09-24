@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// The parser's tests, over the window and the queue and the stack. These reach the private headers that the library's
-// public tests cannot.
+// The parser's tests cover the window, the queue and the stack. These tests reach private headers the library's public
+// tests cannot reach.
 
 #include "acutest.h"
 #include "messages.h"
@@ -9,14 +9,14 @@
 #include <errno.h>
 #include <string.h>
 
-// An allocator that hands out memory but refuses to grow it. A ys_memory_grow() failure path is then reachable
-// without having to exhaust the machine.
+// `test_allocate` hands a block of memory to a caller. A request to grow a block fails. A test then reaches the
+// `ys_memory_grow` failure path without exhausting the machine.
 static void *test_allocate(void *context, size_t size) {
     (void)context;
     return malloc(size);
 }
 
-// A reallocate that refuses whatever a caller asks for. A growth then fails on demand.
+// A reallocate refuses any size a caller asks for. A growth then fails on demand.
 static void *test_refuse_to_grow(void *context, void *pointer, size_t size) {
     (void)context;
     (void)pointer;
@@ -30,20 +30,21 @@ static void test_deallocate(void *context, void *pointer) {
     free(pointer);
 }
 
-// The callbacks above as a single allocator. It hands out memory and then refuses to grow a block.
+// The callbacks above make up a single allocator. It hands out memory and then refuses to grow a block.
 static ys_allocator ungrowable_allocator(void) {
     ys_allocator allocator = {test_allocate, test_refuse_to_grow, test_deallocate, NULL, NULL};
     return allocator;
 }
 
-// A mark on the first line, whose byte and codepoint offsets are the same. That holds while the input is ASCII.
+// A mark on the first line. The byte and codepoint offsets are the same while the input is ASCII.
 static ys_mark mark_of(size_t byte_offset, size_t column) {
     ys_mark mark = {byte_offset, byte_offset, 0, column};
     return mark;
 }
 
-// The cap counts what an object allocates for itself, and refuses what would pass it. A cap too small to build the
-// object under refuses the build outright. The build does not go on to fail at the first allocation.
+// The cap counts what an object allocates for itself. The cap refuses an allocation that would go past that count. A
+// cap too small to build the object refuses the build outright. The build does not go on to fail at the first
+// allocation.
 static void test_memory_cap(void) {
     ys_memory memory = {{0}, 100, 0};
     TEST_CHECK(ys_memory_reserve(&memory, 60) == YS_OK);
@@ -66,7 +67,7 @@ static void test_memory_cap(void) {
     free(object);
 }
 
-// Growing doubles and charges the cap. The array stays at the first block or above, and a refusal leaves it
+// Growing doubles the array and charges the cap. The array stays at the first block or above, and a refusal leaves it
 // untouched.
 static void test_memory_grow(void) {
     ys_memory memory = {{0}, 0, 0};
@@ -108,7 +109,7 @@ static void test_memory_grow(void) {
 }
 
 // A mark advances by bytes and by characters. Those counts differ above ASCII. A line break resets the column and
-// counts a line, however many characters it spans.
+// counts a line, however many characters the break spans.
 static void test_window_marks(void) {
     ys_token_source *src = ys_new_yaml_memory_parser("", 0, NULL);
     TEST_ASSERT(src != NULL);
@@ -128,7 +129,7 @@ static void test_window_marks(void) {
     ys_delete_token_source(src);
 }
 
-// A string parser's window is the caller's buffer, whole, and that holds from the first call.
+// A string parser's window is the caller's whole buffer. That holds from the first call.
 static void test_string_window(void) {
     const char *input = "hello";
     ys_token_source *src = ys_new_yaml_memory_parser(input, 5, NULL);
@@ -146,7 +147,7 @@ static void test_string_window(void) {
     ys_delete_token_source(src);
 }
 
-// A reader that hands out its bytes a byte at a time. Filling then has to loop.
+// A reader that hands out its bytes a byte at a time. A caller filling a window then has to loop.
 typedef struct drip {
     const char *bytes;
     size_t size;
@@ -174,7 +175,7 @@ static ys_bytes_reader drip_reader(drip *source) {
     return reader;
 }
 
-// A stream parser's window is its own. It fills from the reader. The filling stops at the end of the input.
+// A stream parser's window is the parser's own buffer. The window fills from the reader until the input ends.
 static void test_stream_window(void) {
     drip source = {"hello", 5, 0, false};
     ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), NULL);
@@ -196,7 +197,7 @@ static void test_stream_window(void) {
     ys_delete_token_source(src);
 }
 
-// The window discards the bytes no token points at any more, and keeps the bytes the queue still does.
+// The window discards the bytes no token points at any more. It keeps the bytes the queue still points at.
 static void test_window_compacts_to_the_queue(void) {
     drip source = {"hello", 5, 0, false};
     ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), NULL);
@@ -221,8 +222,8 @@ static void test_window_compacts_to_the_queue(void) {
     ys_delete_token_source(src);
 }
 
-// A reader that fails ends the source. The fill records YS_FAILED_STREAM, and ys_read_token() reports it once as a
-// status rather than a token. The source answers YS_FAILED_ACTION from then on.
+// A reader that fails ends the source. The fill records `YS_FAILED_STREAM`, and `ys_read_token` reports it once as a
+// status rather than a token. The source answers `YS_FAILED_ACTION` from then on.
 static void test_reader_failure_ends_the_source(void) {
     drip source = {"hello", 5, 0, true};
     ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), NULL);
@@ -241,7 +242,7 @@ static void test_reader_failure_ends_the_source(void) {
     ys_delete_token_source(src);
 }
 
-// A window that cannot grow ends the source for want of memory. YS_FAILED_MEMORY, with ENOMEM.
+// A window that cannot grow ends the source for want of memory. The source reports `YS_FAILED_MEMORY` with ENOMEM.
 static void test_window_out_of_memory_ends_the_source(void) {
     drip source = {"hello", 5, 0, false};
     ys_options options = {ungrowable_allocator(), YS_RESUME_NONE, 0};
@@ -261,10 +262,10 @@ static void test_window_out_of_memory_ends_the_source(void) {
     ys_delete_token_source(src);
 }
 
-// A cap smaller than the parser itself refuses to build a parser at all, for either kind, and on account of the cap.
+// A cap smaller than the parser itself refuses to build a parser of either kind. The cap causes the refusal.
 //
 // Both kinds get something valid to read. A constructor rejects a bad argument before it ever consults the cap, and a
-// refusal on those grounds would prove nothing about the cap. `errno` is what tells the cases apart.
+// refusal on those grounds would prove nothing about the cap. `errno` tells the cases apart.
 static void test_cap_below_the_parser(void) {
     ys_options options = {{0}, YS_RESUME_NONE, 1};
 
@@ -331,7 +332,7 @@ static void test_queue_run(void) {
     ys_queue_resolve_run(queue);
     TEST_CHECK(ys_queue_is_ready(queue));
 
-    // The scalar ends before the breaks that were not in it. The marker's position is what says so.
+    // The scalar ends before the breaks that were not in it. The marker's position says so.
     TEST_CHECK(ys_queue_pop(queue).code == YS_CODE_END_SCALAR);
     TEST_CHECK(ys_queue_pop(queue).code == YS_CODE_BREAK);
     TEST_CHECK(ys_queue_pop(queue).code == YS_CODE_BREAK);
@@ -440,7 +441,7 @@ static void test_error_behind_the_queue(void) {
 }
 
 // Handing back the end-of-stream token ends the source. The stream has closed, and the next read is
-// YS_FAILED_ACTION.
+// `YS_FAILED_ACTION`.
 static void test_end_stream_ends_the_source(void) {
     ys_token_source *src = ys_new_yaml_memory_parser("", 0, NULL);
     TEST_ASSERT(src != NULL);
@@ -457,7 +458,7 @@ static void test_end_stream_ends_the_source(void) {
     ys_delete_token_source(src);
 }
 
-// The parser does not exist yet. A pull yields the same error at the first character.
+// The tree holds no parser. A pull yields the same error at the first character.
 static void test_not_implemented(void) {
     ys_token_source *src = ys_new_yaml_memory_parser("hello: world\n", 13, NULL);
     TEST_ASSERT(src != NULL);

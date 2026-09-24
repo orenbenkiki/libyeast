@@ -1,8 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/obk/projects/libyeast/.claude/conventions.md)",
-      "Read(//Users/obk/projects/libyeast/.claude/rejected.md)",
+      "Read(//Users/obk/projects/libyeast/**)",
+      "Grep",
+      "Glob",
       "Read(//private/tmp/claude-502/**/scratchpad/**)"
     ]
   },
@@ -12,12 +13,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/standing-rules.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/standing-rules.sh\"",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/clear-one-at-a-time.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/clear-one-at-a-time.sh\"",
             "timeout": 10
           }
         ]
@@ -28,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/one-at-a-time.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/one-at-a-time.sh\"",
             "timeout": 10
           }
         ]
@@ -40,15 +41,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/one-at-a-time.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/one-at-a-time.sh\"",
             "timeout": 10,
             "statusMessage": "checking the session is serial"
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/agent-tools.sh\"",
-            "timeout": 10,
-            "statusMessage": "deciding an agent's tool call"
           }
         ]
       },
@@ -57,7 +52,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_answer.py\""
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_answer.py\""
           }
         ]
       },
@@ -66,7 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/no-shell-file-writes.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/no-shell-file-writes.sh\"",
             "timeout": 10,
             "statusMessage": "checking for shell file writes"
           }
@@ -77,61 +72,31 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/question-rule.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/question-rule.sh\"",
             "timeout": 10,
             "statusMessage": "checking the Question rule"
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/step-rules.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/step-rules.sh\"",
             "timeout": 10,
             "statusMessage": "checking a new step states its argument"
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/tense-check.sh\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/tense-check.sh\"",
             "timeout": 10,
             "statusMessage": "checking tense"
           },
           {
             "type": "command",
-            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_words.py\"",
-            "timeout": 10,
-            "statusMessage": "checking words"
-          },
-          {
-            "type": "command",
-            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/no_tree_numbers.py\"",
-            "timeout": 15,
-            "statusMessage": "checking for numbers of the tree"
-          },
-          {
-            "type": "command",
-            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/altitude.py\"",
-            "timeout": 15,
-            "statusMessage": "checking the altitude of DESIGN.md"
-          },
-          {
-            "type": "command",
-            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/short_comments.py\"",
-            "timeout": 15,
-            "statusMessage": "checking the length of a comment inside a body"
-          },
-          {
-            "type": "command",
-            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_rewrite.py\"",
-            "timeout": 15,
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_gate.py\"",
+            "timeout": 30,
             "statusMessage": "checking the prose an edit leaves"
           },
           {
             "type": "command",
-            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/ascii_only.py\"",
-            "timeout": 10,
-            "statusMessage": "checking for a character past ASCII"
-          },
-          {
-            "type": "command",
-            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/unread_files.py\"",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/unread_files.py\"",
             "timeout": 10,
             "statusMessage": "checking a reader knows the file"
           }

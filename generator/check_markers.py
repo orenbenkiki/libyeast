@@ -2,19 +2,19 @@
 """
 Check that the grammar's zero-width markers balance.
 
-A `begin-` marker gets its own `end-` on any path through the rule. A rule balances the markers the same way whichever
-path the parse takes. Otherwise the token stream is a tree on a run here and a tangle on a run there. The fold that
-rebuilds the production tree then has nothing to rest on.
+A `begin-` marker gets its own `end-` on any path through the rule. Otherwise the token stream is a tree on a run here
+and a tangle on a run there. The fold that rebuilds the production tree then has nothing to rest on.
 
 The rule that a consumed character lies within a token action says nothing about markers. A marker consumes nothing at
 all. A marker that goes unemitted looks exactly like a marker nobody needs.
 
-The chomping decides where a block scalar ends. `b-chomped-last` closes it when there is content to close, and
-`l-keep-empty` when the content was empty and kept. So the markers balance per value of `t` rather than per branch.
+The chomping decides where a block scalar ends. `b-chomped-last` closes it when there is content to close.
+`l-keep-empty` closes it when the content was empty and kept. So the markers balance per value of `t` rather than per
+branch.
 
-The check therefore specializes. It fixes a finite parameter to a value in turn, and requires balance under the whole
-set. Those parameters are the context `c` and the chomping `t`. The resume policy `r` and the indentation mode `i` come
-too.
+The check therefore specializes. It fixes a finite parameter to a value in turn, and requires balance under the values
+that parameter takes. The context `c` and the chomping `t` are finite parameters. So are the resume policy `r` and the
+indentation mode `i`.
 """
 
 from collections.abc import Iterable, Mapping
@@ -24,14 +24,15 @@ import gate
 import ir
 
 CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
-_INDENT_MODES = annotated2ir.INDENT_MODES  # the other finite parameter a marker walk enumerates over.
+_INDENT_MODES = (
+    annotated2ir.INDENT_MODES
+)  # The values of the indentation mode `i`, a finite parameter the marker walk enumerates.
 
 # The nodes that emit no marker. A character or a guard. A commit point or an error token. The empty and failing
 # matches, the writes, and the `(flip)` that makes up a value production.
 #
-# Named rather than assumed. Assuming it is how a `(recover)` once hid the markers inside that scope. A node this does
-# not know is a node whose markers nothing has looked at, and the gate says so rather than passing it. In alphabetical
-# order.
+# The gate names these nodes rather than assuming them. The gate reports a node missing from this list rather than
+# passing that node. In alphabetical order.
 _SILENT = (
     ir.CharSet,
     ir.CutAction,
@@ -50,22 +51,22 @@ _SILENT = (
     ir.SetVarAction,
     ir.StartOfLineGuard,
 )
-# A scope whose markers are the markers of the item it holds. The scope matches that item, and the item emits. Passing
-# over such a scope would let a marker opened there go unclosed, and the walk would miss that.
+# A scope whose markers are the markers of the item it holds. The scope matches that item, and the item emits. A walk
+# passing over such a scope would miss a marker opened there and left unclosed.
 #
 # A `(max)` is such a scope where it wraps a match. A bare `(max)` in the vendored grammar is a length note rather than
-# a scope, and this answers for it separately. A `(recover)` is no such scope either. Its ways have to agree, rather
-# than a single way being the answer.
+# a scope, and the module checks a bare `(max)` separately. A `(recover)` is no such scope either. Its ways have to
+# agree. The answer does not come from a single way.
 _SCOPES = (ir.CommitWrapper, ir.TokenWrapper)
 
 # The markers a node leaves behind. The markers the node closes without opening, and the markers it leaves open.
 _Effect = tuple[tuple[str, ...], tuple[str, ...]]
 
-_BALANCED: _Effect = ((), ())  # no marker left open, and none closed that this rule did not open.
+_BALANCED: _Effect = ((), ())  # The rule leaves no marker open and closes no marker it did not open.
 
 
 class _Unbalanced(Exception):
-    """A rule whose markers do not balance. The rule name goes in once the walk knows it."""
+    """A rule whose markers do not balance. The walk adds the rule name once it reaches the rule."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -84,7 +85,9 @@ def _marker(code: str) -> _Effect:
 
 
 def _compose(before: _Effect, after: _Effect) -> _Effect:
-    """The markers a pair of nodes leave behind. They run in order, and `after` may close a marker `before` opened."""
+    """
+    The markers a pair of nodes leave behind. The nodes run in order, and `after` may close a marker `before` opened.
+    """
     opened, closing = list(before[1]), list(after[0])
     while opened and closing:
         if opened[-1] != closing[0]:
@@ -104,7 +107,7 @@ def _agreed(effects: Iterable[_Effect], what: str) -> _Effect:
 
 
 def _effect(node: ir.Node, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
-    """The markers `node` leaves open or closes, with the finite parameters fixed to what `values` gives them."""
+    """The markers `node` leaves open or closes, with the finite parameters fixed to the settings in `values`."""
     return _EFFECT(node, values, known)
 
 
@@ -118,10 +121,11 @@ def _effect_of_run(node: ir.SeqTree, values: Mapping[str, str], known: Mapping[s
 
 def _effect_of_switch(node: ir.CaseTree, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
     """
-    A `(case)`'s markers. The branch the values select, and none where the case has no such branch.
+    A `(case)`'s markers. A case takes the markers of the branch the values select. A case with no such branch takes
+    none.
 
-    A rule reached in a context lists that context. `ns-plain` has no block-in branch. A parse reaches it under other
-    contexts. A branch that is not there is a path nobody can take, and such a path emits no marker.
+    A rule reached in a context lists that context. `ns-plain` has no block-in branch. A parse reaches `ns-plain` under
+    other contexts. A branch that is not there is a path nobody can take, and such a path emits no marker.
     """
     taken = {branch.value: branch.item for branch in node.branches}.get(values[node.var])
     return _BALANCED if taken is None else _effect(taken, values, known)
@@ -129,16 +133,15 @@ def _effect_of_switch(node: ir.CaseTree, values: Mapping[str, str], known: Mappi
 
 def _effect_of_recovery(node: ir.RecoverWrapper, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
     """
-    A recovery's markers. The way its paths balance.
+    A recovery's markers depend on how its paths balance.
 
-    Recovering closes what the item left open, and it closes down to this point. That path leaves just what the recovery
-    itself emits. The way of the item has to agree with it.
+    A recovery closes what its item left open. The recovery closes down to where it began. The recovering path leaves
+    only what the recovery emits. The item's own way has to agree with that path.
     """
     return _agreed([_effect(node.item, values, known), _effect(node.recovery, values, known)], "a recovery")
 
 
-# A kind this question does not name raises. The markers of such a kind have gone unread. That is how a `(recover)` once
-# hid the markers inside it.
+# A lookup of a kind this question does not name raises. The markers of such a kind have gone unread.
 _EFFECT: ir.Question[_Effect] = ir.Question(
     "a pair: the marker names a match closes without opening, and the names it leaves open",
     {
@@ -162,7 +165,8 @@ _EFFECT: ir.Question[_Effect] = ir.Question(
         ir.OptTree: lambda node, values, known: _agreed(
             [_effect(node.item, values, known), _BALANCED], "an optional rule"
         ),
-        # A rule that opens or closes a marker takes no repetition. Twice around leaves twice as many open.
+        # A rule that opens or closes a marker takes no repetition. A second pass around the repetition leaves twice as
+        # many markers open.
         ir.REPETITIONS: lambda node, values, known: _agreed(
             [_effect(node.item, values, known), _BALANCED], "a repeated rule"
         ),
@@ -180,8 +184,8 @@ def _settle(grammar: Mapping[str, ir.Prod], values: Mapping[str, str]) -> tuple[
     A pass can only take an answer a call further. A grammar of `n` productions settles in at most `n` passes, and a
     grammar that has not settled by then is not settling.
 
-    Raised rather than returned. The answers say what a rule does with its markers. Handing back the answers reached to
-    that point would report a rule as balanced where the walk stopped rather than where the rule settles.
+    The walk then raises rather than returning. The answers say what a rule does with its markers. A partial answer
+    would report a rule as balanced where the walk stopped rather than where the rule settles.
     """
     known: dict[str, _Effect] = {name: _BALANCED for name in grammar}
     errors: dict[str, str] = {}
@@ -217,7 +221,9 @@ def main() -> None:
                     if known[ir.ROOT] != _BALANCED:
                         left = ", ".join(known[ir.ROOT][1]) or "none"
                         closed = ", ".join(known[ir.ROOT][0]) or "none"
-                        reason = f"the stream leaves open: {left}. the stream closes what it did not open: {closed}"
+                        reason = (
+                            f"the stream leaves open: {left}. the stream closes what it did not open. that is {closed}"
+                        )
                         complaints.setdefault((ir.ROOT, reason), []).append(where)
 
     faults = []

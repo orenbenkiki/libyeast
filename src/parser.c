@@ -9,9 +9,9 @@
 #include <stdint.h>
 #include <string.h>
 
-// A window with no buffer of its own still has readable bytes to point at. That count comes to `0`. Pointing at
-// nothing differs from pointing at no address. The C standard leaves NULL plus `0` undefined, and the sanitizers say
-// so.
+// A window with no buffer of its own still points at readable bytes. The count of those bytes comes to `0`. Such a
+// window still holds an address. NULL holds no address. The C standard leaves NULL plus `0` undefined, and a sanitizer
+// flags it.
 static const uint8_t YS_NO_BYTES[1] = {0};
 
 // --- Moving the window.
@@ -29,8 +29,9 @@ void ys_window_break(ys_window *window, ys_consumed taken) {
     window->mark.column = 0;
 }
 
-// The offset, in the whole input, of the oldest byte the parser still needs. That is where the first token it has
-// built but not handed back begins. With no token built, it is where the parser itself has reached.
+// The offset, in the whole input, of the oldest byte the parser still needs. That byte begins the first token the
+// parser has built and not handed back. The parser may have built no token. The offset is then where the parser itself
+// has reached.
 static size_t ys_parser_retained(const ys_parser *parser) {
     if (parser->queue.count > 0) {
         return parser->queue.tokens[parser->queue.head].start.byte_offset;
@@ -66,7 +67,7 @@ int ys_parser_fill(ys_parser *parser, size_t wanted) {
 
 // --- Filling and draining the queue.
 
-// Make room for a further token. Drop the space the tokens already handed back left behind, and grow the queue if
+// Make room for a further token. Drop the space the queue's handed-back tokens left behind. Grow the queue where
 // that leaves no room.
 static int ys_queue_make_room(ys_memory *memory, ys_queue *queue) {
     if (queue->head + queue->count < queue->capacity) {

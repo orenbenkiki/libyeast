@@ -35,11 +35,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      # Set up the MSVC toolchain so the AddressSanitizer runtime DLL is on PATH for the Debug tests.
+      # Set up the MSVC toolchain. The AddressSanitizer runtime DLL is then on PATH for the Debug tests.
       - uses: ilammy/msvc-dev-cmd@v1
       - run: cmake -S . -B build
-      # Debug is AddressSanitizer-instrumented, for heap and stack overflow and use-after-free. Release is the plain
-      # smoke build.
+      # The Debug build runs under AddressSanitizer. AddressSanitizer catches a heap overflow, a stack overflow and a use-after-free. The Release build is a plain smoke build.
       - run: cmake --build build --config Debug
       - run: ctest --test-dir build -C Debug --output-on-failure
       - run: cmake --build build --config Release

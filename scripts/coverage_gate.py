@@ -6,7 +6,7 @@ Enforce the coverage-annotation contract from a gcovr JSON report.
 An executable line that tests do NOT cover must have a `// UNTESTED` comment. A `// UNTESTED` on a line the tests DO
 cover is stale. Either is an error. The report prints `<path>:<line>: message` for an editor to go to.
 
-Usage: coverage_gate.py <gcovr-json>.
+Usage: `coverage_gate.py <gcovr-json>`.
 """
 
 import json
@@ -53,7 +53,7 @@ def main() -> int:
             text = source[number - 1]
             is_annotated = _MARKER in text
             if count == 0 and not is_annotated:
-                violations.append((path, number, f"uncovered line, needs a {_MARKER} comment", text))
+                violations.append((path, number, f"uncovered line. it needs a {_MARKER} comment", text))
             elif count > 0 and is_annotated:
                 violations.append((path, number, f"stale {_MARKER} on a covered line", text))
 

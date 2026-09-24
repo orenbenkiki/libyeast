@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: MIT
 """
-Recover the official grammar from libyeast's grammar, to prove we still speak its language.
+Recover the official grammar from libyeast's grammar.
 
-libyeast's grammar adds what the official grammar lacks. The token annotations. A production per indicator character.
-That production gives an annotation somewhere to attach. Rules of libyeast's own making.
+libyeast's grammar adds token annotations, a production per indicator character, and rules of its own making. The
+official grammar lacks these. An indicator production gives an annotation somewhere to attach.
 
 This undoes those additions. An annotation goes, and its child stays. A zero-width marker goes outright. A reference to
 an indicator production becomes the character it names. The rules libyeast added stay out.
 
-The result must be the vendored grammar. That is what `check_vendor_spec.py` checks.
+The result must be the vendored grammar. `check_vendor_spec.py` checks that.
 
 Usage: `python3 generator/ir2spec.py > recovered.yaml`.
 """
@@ -21,22 +21,23 @@ import ir2annotated
 
 import yaml
 
-# The rules libyeast adds that match nothing at all. They exist only to emit a marker. The official grammar can leave
-# them out and not notice. `x / end-block-scalar` is `x / <empty>`. That is `x?`, and `x?` is what it writes.
+# A rule listed here is a rule libyeast adds that matches nothing and emits a marker. The official grammar can leave
+# such a rule out and not notice. `x / end-block-scalar` is `x / <empty>`. The official grammar writes that as `x?`.
 MARKER_ONLY = frozenset({"end-block-scalar"})
 
-# A scope the official grammar has no question for. That grammar writes the wrapped item in the scope's place. A
-# `(recover)` says where a failed cut stops unwinding, and a `(commit)` is a scoped cut. An annotation names the
-# characters, and a `(wrap)` puts markers around them.
+# The official grammar has no question for a scope listed here. That grammar writes the wrapped item in the scope's
+# place. A `(recover)` says where a failed cut stops unwinding, and a `(commit)` is a scoped cut. An annotation names
+# the characters, and a `(wrap)` puts markers around them.
 #
 # A `(max)` is a scope too, and it falls outside this list. The official grammar writes the bound of a `(max)` as a bare
-# `(max)` before what the bound covers.
+# `(max)` in front of the region the bound covers.
 _WRAPS_WHAT_IT_WRITES = (ir.CommitWrapper, ir.RecoverWrapper, ir.TokenWrapper, ir.Wrapper)
 
-# The rules libyeast adds around the official grammar. The root the parser runs, and the unparsed recovery that root and
-# a failed cut hand off to. They consume, and are not marker-only. The official grammar has no counterpart to compare
-# them against. The recovery of the official grammar leaves them out.
-OWN = frozenset(  # in alphabetical order.
+# libyeast adds these rules around the official grammar. The root is the rule the parser runs. The unparsed recovery is
+# the rule that the root and a failed cut hand off to. The root and the unparsed recovery consume, and neither is
+# marker-only. The official grammar has no counterpart to the root or to the unparsed recovery. The recovery of the
+# official grammar leaves the root and the unparsed recovery out.
+OWN = frozenset(  # The rules sit in alphabetical order.
     {
         "l-block-map-entries",
         "l-block-seq-entries",
@@ -81,12 +82,12 @@ def _flatten(items: tuple[ir.Node, ...]) -> tuple[ir.Node, ...]:
     """
     The items of a sequence, with nested sequences spliced in.
 
-    Wrapping part of a sequence nests a sequence inside a sequence. Say the markers around a directive, but not around
-    the comments that follow it. Erasing the annotation leaves the nesting behind, where the official grammar writes the
-    items flat.
+    Wrapping part of a sequence nests a sequence inside a sequence. The markers around a directive wrap such a part, and
+    the comments that follow the directive stay outside it. Erasing the annotation leaves the nesting behind, where the
+    official grammar writes the items flat.
 
-    Sequencing is associative. Splicing them back is a change of form rather than of grammar. `normalize` applies it to
-    the official grammar too. Neither side gains from that.
+    Sequencing is associative. Splicing the nested sequences back is a change of form rather than of grammar.
+    `normalize` applies it to the official grammar too. The splice favours neither grammar.
     """
     spliced: list[ir.Node] = []
     for item in items:
@@ -155,7 +156,7 @@ def official(grammar: dict[str, ir.Prod]) -> dict[str, object]:
 
 
 def normalized(grammar: dict[str, ir.Prod]) -> dict[str, object]:
-    """A grammar's mapping with its sequences flattened. This is what `check_vendor_spec` holds `official` to."""
+    """A grammar's mapping with its sequences flattened. `check_vendor_spec` holds `official` to this form."""
     flattened = {}
     for name, production in grammar.items():
         flattened[name] = ir.Prod(production.number, name, production.params, _normalize(production.body))

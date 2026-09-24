@@ -2,32 +2,29 @@
 # SPDX-License-Identifier: MIT
 """
 PreToolUse on Edit and Write. This hook refuses a private name cited in `DESIGN.md` as the writer writes it.
+`a-design-citation-keeps-its-altitude` is the rule.
 
 `DESIGN.md` is context, perspective and architecture. A private name belongs to the module that holds it. The docstring
-beside that name explains it. A citation of a private name is the symptom of a passage saying what the source already
-says. The detail then appears twice, and an edit reaches a single copy.
+beside that name explains it. A passage citing a private name repeats that docstring.
 
 `check_documents.private_citation_errors` decides which citations are private. This hook imports that checker rather
-than copying it. The checker runs over the lines as written. A citation appears in backticks. A checker that blanks a
+than copying it. The checker reads the lines the writer wrote. A citation appears in backticks. A checker that blanks a
 code span finds nothing there.
 
-The gate refuses the same citation minutes later. Refusing it here keeps the citation out of the file.
+`check_documents` refuses the same citation when the gate runs. This hook refuses the citation earlier and keeps it out
+of the file.
 
-A session drove the sentence-shape meter to none across `DESIGN.md` while the altitude rule went unread, and this hook
-came out of that. A meter with a single dimension is a meter a rewrite satisfies.
 
-There is no import guard. A checker that cannot check must fail loudly. A silent checker and a clean edit read the same.
+
+This hook imports the checker with no guard. A checker that cannot check must fail loudly. A silent checker and a clean
+edit read the same.
 
 `.claude/settings.json` sets the `PYTHONPATH` that puts `generator` on the path.
 """
 
-import json
 import os
-import sys
 
 import check_documents
-import collect_fragments
-import refusal
 
 
 def refusal_for(prose: str, path: str) -> str | None:
@@ -49,19 +46,5 @@ def refusal_for(prose: str, path: str) -> str | None:
         "So the sentence is about the wrong altitude, and shortening it does not fix that. TAKE THE "
         "PASSAGE OUT. Where the architecture needs the point, say it in the words the architecture uses "
         "and name the piece rather than the function.\n\n"
-        "Rule: each-document-keeps-to-its-domain."
+        "Rule: a-design-citation-keeps-its-altitude."
     )
-
-
-def main() -> None:
-    payload = json.load(sys.stdin)
-    edit = collect_fragments.edited(payload.get("tool_input", {}))
-    if edit is None:
-        return
-    found = refusal_for(edit.now, edit.path)
-    if found:
-        refusal.refuse(found)
-
-
-if __name__ == "__main__":
-    main()

@@ -28,7 +28,7 @@ DIVERGENCES = {
         "an empty kept block scalar whose input ends in no line break. the spec reads end-of-input as a line break "
         "only in b-chomped-last. an empty scalar does not reach that rule. l-literal-content skips the group where "
         "no content line appears. l-keep-empty's l-empty needs a real b-break, and the input holds none. the spec "
-        "therefore folds the scalar to the empty scalar. the suite's one line break comes from YAMLStar appending a "
+        "therefore folds the scalar to the empty scalar. the suite's line break comes from YAMLStar appending a "
         "trailing break to the input, and the grammar appends none."
     ),
 }
@@ -59,9 +59,10 @@ def _disagreement(grammar: dict[str, ir.Prod], directory: str) -> str | None:
 
 def _one_case(held: tuple[dict[str, ir.Prod]], case: str) -> str | None:
     """
-    A case folded and held to what the suite says of it. `None` comes back where the fold and the suite agree.
+    Fold a case and compare the fold with what the suite says of it. `None` comes back where the fold and the suite
+    agree.
 
-    `held` holds what a run judges a case under, handed to a worker once. It is the grammar to fold the case with.
+    `held` holds the grammar to fold the case with. A run hands `held` to a worker once.
     """
     (grammar,) = held
     return _disagreement(grammar, os.path.join(star.SUITE, case))
@@ -74,9 +75,9 @@ def cases() -> list[str]:
 
 def disagreements(grammar: dict[str, ir.Prod], suite: Sequence[str] | None = None) -> list[str]:
     """
-    The suite cases `grammar` folds differently from the suite and does not declare, as error strings. Empty where the
-    grammar agrees green-or-declared. Takes the grammar as an argument. A structurally-transformed grammar folds the
-    whole corpus to the same events the base grammar does.
+    Answer an error string for a suite case that `grammar` folds differently from the suite and does not declare. The
+    answer is empty where the grammar agrees with the suite or declares the difference. A structurally-transformed
+    grammar folds the whole corpus to the same events the base grammar does.
     """
     if suite is None:
         suite = cases()

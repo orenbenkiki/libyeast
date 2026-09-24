@@ -1,0 +1,189 @@
+{
+  "_": "A settling run cites a rule of `.claude/conventions.md` per change. `cited` counts the changes citing a rule. `accepted` counts the changes the comparator let through. `overlaps` pairs a rule with a second rule. A later change applied that second rule to the same run of text. `record_run` writes this file.",
+  "rules": {
+    "a-comment-describes-what": {
+      "cited": 497,
+      "accepted": 281
+    },
+    "a-condition-names-what-decides-it": {
+      "cited": 1,
+      "accepted": 1
+    },
+    "a-count-is-answered-for": {
+      "cited": 2,
+      "accepted": 2
+    },
+    "a-hedge-names-its-condition": {
+      "cited": 6,
+      "accepted": 5
+    },
+    "a-name-keeps-its-meaning": {
+      "cited": 19,
+      "accepted": 3
+    },
+    "a-piece-of-prose-is-written-once": {
+      "cited": 876,
+      "accepted": 364
+    },
+    "a-sentence-names-its-actor": {
+      "cited": 1780,
+      "accepted": 817
+    },
+    "a-sentence-says-one-thing": {
+      "cited": 9147,
+      "accepted": 3681
+    },
+    "every-claim-is-checked-before-it-is-written": {
+      "cited": 242,
+      "accepted": 111
+    },
+    "faulty-prose-is-re-said-not-patched": {
+      "cited": 5,
+      "accepted": 4
+    },
+    "long-names-over-short-ones": {
+      "cited": 2,
+      "accepted": 1
+    },
+    "no-em-dash-and-no-colon": {
+      "cited": 2,
+      "accepted": 0
+    },
+    "short-plain-sentences": {
+      "cited": 12,
+      "accepted": 8
+    },
+    "text-says-what-is": {
+      "cited": 1,
+      "accepted": 1
+    }
+  },
+  "overlaps": [
+    {
+      "rules": [
+        "a-comment-describes-what",
+        "a-comment-describes-what"
+      ],
+      "count": 3
+    },
+    {
+      "rules": [
+        "a-comment-describes-what",
+        "a-piece-of-prose-is-written-once"
+      ],
+      "count": 1
+    },
+    {
+      "rules": [
+        "a-comment-describes-what",
+        "a-sentence-names-its-actor"
+      ],
+      "count": 1
+    },
+    {
+      "rules": [
+        "a-comment-describes-what",
+        "a-sentence-says-one-thing"
+      ],
+      "count": 3
+    },
+    {
+      "rules": [
+        "a-piece-of-prose-is-written-once",
+        "a-piece-of-prose-is-written-once"
+      ],
+      "count": 2
+    },
+    {
+      "rules": [
+        "a-piece-of-prose-is-written-once",
+        "a-sentence-says-one-thing"
+      ],
+      "count": 9
+    },
+    {
+      "rules": [
+        "a-piece-of-prose-is-written-once",
+        "every-claim-is-checked-before-it-is-written"
+      ],
+      "count": 2
+    },
+    {
+      "rules": [
+        "a-sentence-names-its-actor",
+        "a-comment-describes-what"
+      ],
+      "count": 1
+    },
+    {
+      "rules": [
+        "a-sentence-names-its-actor",
+        "a-piece-of-prose-is-written-once"
+      ],
+      "count": 4
+    },
+    {
+      "rules": [
+        "a-sentence-names-its-actor",
+        "a-sentence-names-its-actor"
+      ],
+      "count": 1
+    },
+    {
+      "rules": [
+        "a-sentence-names-its-actor",
+        "a-sentence-says-one-thing"
+      ],
+      "count": 7
+    },
+    {
+      "rules": [
+        "a-sentence-says-one-thing",
+        "a-comment-describes-what"
+      ],
+      "count": 3
+    },
+    {
+      "rules": [
+        "a-sentence-says-one-thing",
+        "a-hedge-names-its-condition"
+      ],
+      "count": 2
+    },
+    {
+      "rules": [
+        "a-sentence-says-one-thing",
+        "a-piece-of-prose-is-written-once"
+      ],
+      "count": 7
+    },
+    {
+      "rules": [
+        "a-sentence-says-one-thing",
+        "a-sentence-names-its-actor"
+      ],
+      "count": 11
+    },
+    {
+      "rules": [
+        "a-sentence-says-one-thing",
+        "a-sentence-says-one-thing"
+      ],
+      "count": 30
+    },
+    {
+      "rules": [
+        "a-sentence-says-one-thing",
+        "every-claim-is-checked-before-it-is-written"
+      ],
+      "count": 1
+    },
+    {
+      "rules": [
+        "every-claim-is-checked-before-it-is-written",
+        "a-sentence-names-its-actor"
+      ],
+      "count": 1
+    }
+  ]
+}

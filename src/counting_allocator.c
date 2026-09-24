@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// A malloc/free wrapper that counts the allocations still live. A test or a consumer can confirm that the code freed
-// what it allocated. Its overhead over plain malloc/free is a single counter.
+// A wrapper around `malloc` and `free` that counts the allocations still live. A test or a consumer can confirm that
+// the code freed what it allocated. The wrapper adds a single counter to the cost of plain `malloc` and `free`.
 
 #include <errno.h>
 #include <stdlib.h>
@@ -10,7 +10,7 @@ struct ys_counting_allocator {
     size_t live_buffers;
 };
 
-// Allocate `size` bytes and count the buffer as live. NULL where malloc refused, with the count left alone.
+// Allocate `size` bytes and count the buffer as live. NULL where malloc refused. The count does not move.
 static void *ys_counting_allocate(void *context, size_t size) {
     void *pointer = malloc(size);
     if (pointer != NULL) {
@@ -27,7 +27,8 @@ static void ys_counting_deallocate(void *context, void *pointer) {
     free(pointer);
 }
 
-// Resize `pointer` to `size` bytes. The count stays right at the edges of what a caller may ask of realloc.
+// Resize `pointer` to `size` bytes. The count stays right when `pointer` is NULL, when `size` asks for no bytes, or
+// when the realloc call fails.
 static void *ys_counting_reallocate(void *context, void *pointer, size_t size) {
     // Handle the edge cases explicitly instead of leaving realloc's implementation-defined size==0 behavior to skew
     // the count. A size of `0` frees. A NULL pointer allocates. A genuine resize keeps the count. Realloc frees the old

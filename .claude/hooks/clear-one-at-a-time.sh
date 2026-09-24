@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # UserPromptSubmit. This deletes the markers `one-at-a-time.sh` writes.
 #
-# The user speaking is what clears a marker. A turn may then put something in front of the user again, and it may run a
+# A prompt from the user clears a marker. A turn may then put something in front of the user again, and it may run a
 # tool again after a refusal.
 set -euo pipefail
 

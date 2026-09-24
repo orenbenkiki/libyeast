@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-Emit a shields.io endpoint-badge JSON from a gcovr `--json-summary` file.
+Emit a Shields endpoint-badge JSON from a gcovr `--json-summary` file.
 
-The published badge at `img.shields.io/endpoint?url=.../coverage.json` reads this and shows the line-coverage
+The published badge at `img.shields.io/endpoint?url=.../coverage.json` reads that JSON and shows the line-coverage
 percentage. Its colour steps from red at low coverage to bright green at high.
 """
 
@@ -12,7 +12,7 @@ import sys
 
 
 def _color_for(percent: int) -> str:
-    """The shields.io colour for a coverage `percent`."""
+    """The Shields colour for a coverage `percent`."""
     if percent >= 90:
         return "brightgreen"
     if percent >= 75:

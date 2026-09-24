@@ -44,20 +44,34 @@ def declaring(path: str) -> set[str]:
     return {pattern for pattern in _MAY_HOLD_ANY_BYTE if fnmatch.fnmatchcase(path, pattern)}
 
 
+def past_ascii(text: str) -> list[tuple[int, int, str]]:
+    """
+    `(the line, the column, the character)` per character of `text` past ASCII.
+
+    Public. The `ascii_only` hook reads an edit through here, and this gate reads the tree through here.
+    """
+    return [
+        (at, column, character)
+        for at, line in enumerate(text.split("\n"), 1)
+        for column, character in enumerate(line, 1)
+        if ord(character) > 127
+    ]
+
+
+def named_character(character: str) -> str:
+    """The codepoint of `character`, and the name Unicode gives it."""
+    return f"U+{ord(character):04X} {unicodedata.name(character, 'unnamed')}"
+
+
 def _past_ascii(path: str) -> list[str]:
     """`file:line:column` and the character, per character of `path` past ASCII."""
-    held: list[str] = []
     whole = pathlib.Path(gate.TREE, path)
     # git tracks a path the working tree no longer holds, a deletion staged and not yet committed.
     if not whole.exists():
-        return held
+        return []
     with open(whole, encoding="utf-8", errors="replace") as handle:
-        for at, line in enumerate(handle, 1):
-            for column, character in enumerate(line, 1):
-                if ord(character) > 127:
-                    named = unicodedata.name(character, "unnamed")
-                    held.append(f"{path}:{at}:{column}: U+{ord(character):04X} {named}")
-    return held
+        text = handle.read()
+    return [f"{path}:{at}:{column}: {named_character(one)}" for at, column, one in past_ascii(text)]
 
 
 def main() -> None:

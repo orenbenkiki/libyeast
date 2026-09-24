@@ -6,7 +6,7 @@
 # and linters. `gh-pages` adds the coverage and docs tools. `pc` installs the whole set. A call with no goal does the
 # same.
 #
-# Run it from the project root. It reads .clang-format-version there.
+# Run it from the project root. It reads `.clang-format-version` there.
 set -eu
 goal="${1:-}"
 
@@ -30,7 +30,7 @@ gh-pages)
     docs=true
     ;;
 *)
-    echo "install-macos-dev-deps.sh: unknown goal '$goal'. the goals are pc and c. test and verify are goals. so are vet and gh-pages." >&2
+    echo "unknown goal '$goal'. the goals are pc and c. test and verify are goals. vet and gh-pages are goals too." >&2
     exit 1
     ;;
 esac
@@ -40,8 +40,9 @@ sh "$here/install-macos-build-deps.sh" "$goal"
 
 # LLVM supplies clang-tidy (lint) and llvm-cov (coverage). Install LLVM once where either group needs it. clang-format
 # comes from a pip wheel rather than from LLVM. Brew ships a different version. That version formats code the gate
-# then rejects. Its major is .clang-format-version, the source the gate and both dev-deps scripts share. Python 3
-# itself comes with the Xcode Command Line Tools the build-deps script installs. The pip install here covers PyYAML.
+# then rejects. The wheel's major version comes from `.clang-format-version`. The gate and both dev-deps scripts read that
+# same file. Python 3 itself comes with the Xcode Command Line Tools the build-deps script installs. The pip install
+# here covers PyYAML.
 need_llvm=false
 brew_pkgs=""
 pip_pkgs=""
@@ -74,7 +75,7 @@ fi
 if $need_llvm && [ -n "${GITHUB_PATH:-}" ]; then
     echo "$(brew --prefix llvm)/bin" >>"$GITHUB_PATH"
 fi
-# Hand CI the pinned clang-format. The Makefile then uses that binary rather than the brew LLVM copy on the PATH above.
+# Hand CI the pinned clang-format. The Makefile then uses that pinned binary rather than the Homebrew clang-format on PATH.
 if $lint && [ -n "${GITHUB_ENV:-}" ]; then
     echo "CLANG_FORMAT=$(python3 -c 'import clang_format, os; print(os.path.join(os.path.dirname(clang_format.__file__), "data", "bin", "clang-format"))')" >>"$GITHUB_ENV"
 fi

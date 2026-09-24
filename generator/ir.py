@@ -9,17 +9,20 @@ a single node, and this module normalizes nothing. The round-trip through `ir2an
 gate holds it there.
 
 The reader also takes the vendored grammar's forms, and there the mirror is not exact. `(ord)` lands on the same
-`AtoiValue` as `(atoi)`. The pair agree at the digit `(ord)` applies to. `(<<<)` becomes whatever it wraps. That is a
+`AtoiValue` as `(atoi)`. The pair agree at the digit `(ord)` applies to. `(<<<)` becomes the node it wraps. That is a
 repetition already possessive here. libyeast's grammar writes neither, and neither round-trips. Flattening and
-simplification belong to whatever consumes the IR. `ir2spec.py` does its own, to compare against the official grammar.
+simplification belong to the reader of the IR. `ir2spec.py` does its own, to compare against the official grammar.
 
 A node is a dataclass. A grammar node inside a node is a field of its own, or an item of a tuple. A walker can therefore
-recurse over the IR without knowing which node it holds. `BranchPart` exists for that reason. A `(case)` branch is a
+recurse over the IR without knowing which node it holds. `BranchPart` is a node for that reason. A `(case)` branch is a
 node rather than a bare pair, and no reader has to special-case a branch.
 
 A node also answers `references()`. Those are the productions the subtree names directly, and the answer does not follow
 into their bodies. A class writes its own fields out. A field that can hold a production sits with the node. So do the
 fields that are codes, and the fields that are messages or counts. The nodes themselves say what is reachable.
+
+A question about a node is a `Question`. A `Question` raises on a kind its table does not name. This mechanises
+`a-kind-dispatch-raises`. `check_normalize` reports the handlers a corpus run reached nothing through.
 """
 
 import time
@@ -30,31 +33,31 @@ from typing import ClassVar, Generic, Self, TypeVar, TypeVarTuple, cast
 # The production the whole grammar hangs off. It is a YAML stream, and then the end of the input.
 ROOT = "l-yeast-stream"
 
-# The production that a failed cut hands the input to. It is entered by name rather than called. That makes the
-# production a start state of its own beside the root's copies. The unwind lands on it. The parse continues past it
-# where the resume policy says so.
+# A failed cut hands the input to this production. The parser enters the production by name rather than by a call.
+# RECOVER is a start state of its own, like a copy of the root. An unwind lands on RECOVER. A resume policy decides
+# whether the parse goes on past RECOVER.
 RECOVER = "l-recover"
 
 # The parameters `normalize.monomorphize` specializes away into a production's name. Such a parameter has finitely many
-# values. A call passes it lexically. The value settles where a parse enters a production. They are the context `c` and
-# the chomping `t`. They are also the block scalar's indentation mode `i`. The chomping and the mode are lexical once
-# `lift-setters` has made them so, rather than a match's stashed state. The resume policy `r` joins them. `n`, `m` and
-# `f` are integers and stay.
+# values. A call passes it lexically. The value settles where a parse enters a production. These parameters are the
+# context `c` and the chomping `t`. They are also the block scalar's indentation mode `i`. Once `lift-setters` has run,
+# the chomping and the mode are lexical rather than a match's stashed state. The resume policy `r` joins them. `n`, `m`
+# and `f` are integers and stay.
 #
 # A left-out finite parameter takes its default. An omitted resume policy is the policy that does not resume. `entry`
-# fills that in, and the root and a fixture that names none reach the copy that fixes it.
+# fills that in, and the root and a fixture that names none reach the copy that fixes that policy.
 FINITE_PARAMS = ("c", "t", "r", "i")
 FINITE_DEFAULTS = {"r": "n"}  # the value a left-out parameter takes. A call gives `c`, `t` and `i`.
 
 # The parameters that are a single value for the parse rather than a value per call. `read-global-f` and `read-global-m`
 # take them off the declarations and the calls. The reads and the writes then reach the slot itself.
 #
-# A global is what does not nest. The construct that opens the auto-detected indent measures that indent, and a reader
-# takes it while the construct runs. The block scalar's floor comes from the leading empty lines, and the first content
-# line reads it. Either way it is a construct at a time.
+# A global holds a value that does not nest. The construct that opens the auto-detected indent measures that indent, and
+# a reader takes it while the construct runs. The block scalar's floor comes from the leading empty lines, and the first
+# content line reads it. Either way a single construct holds the value at a time.
 #
-# `clear-f` and `clear-m` say where the pair stop applying. The parse refuses a read past that region rather than
-# answering from what the last write left. In alphabetical order.
+# `clear-f` and `clear-m` say where the globals `f` and `m` stop applying. The parse refuses a read past that region
+# rather than answering from what the last write left. The list runs in alphabetical order.
 GLOBAL_PARAMS = ("f", "m")
 
 
@@ -64,12 +67,12 @@ _Passed = TypeVar("_Passed")
 
 def specialized(base: str, bindings: Mapping[str, object]) -> str:
     """
-    The name of the monomorphic copy of `base` that fixes `bindings`. That is its finite parameters, in `FINITE_PARAMS`
-    order, and the name writes `_<parameter>_<value>` apiece.
+    Answer the name of the monomorphic copy of `base` that fixes `bindings`. `bindings` holds finite parameters. The
+    name adds a `_<parameter>_<value>` suffix for a parameter it fixes. The suffixes follow `FINITE_PARAMS` order.
 
-    A parameter left unset is not in the name. Its value is `None`, as a context is where a parse establishes none. Nor
-    is a parameter at its default in the name. So the copy that fixes only defaults keeps the base name and resolves
-    like it. That keeps the root `l-yeast-stream`, and lets a fixture naming no resume policy find it.
+    The name leaves out a parameter set to `None` or to its default. A copy fixing only defaults keeps the base name and
+    resolves like the base. The root keeps the name `l-yeast-stream` that way. A fixture naming no resume policy then
+    finds the root.
     """
     return base + "".join(
         f"_{parameter}_{bindings[parameter]}"
@@ -83,9 +86,9 @@ def entry(
 ) -> tuple[str, dict[str, _Passed]]:
     """
     Resolve a call of `name` with `parameters` to the production `grammar` holds. That is the monomorphic copy where a
-    copy is present, with the finite parameters the name fixes moved out of the arguments. Otherwise the answer is
-    `name` itself, and the arguments stay whole. `entry` fills in a left-out finite default, and a fixture or the root
-    then finds its copy.
+    copy is present, and `entry` then moves the finite parameters the name fixes out of the arguments. Otherwise the
+    answer is `name` itself, and the arguments stay whole. `entry` fills in a left-out finite default, and a fixture or
+    the root then finds its copy.
 
     This drops the finite parameters the resolved production stops declaring. A monomorphic copy has shed them. The base
     name at its default is still the polymorphic production. That production declares the parameters and takes them.
@@ -116,8 +119,8 @@ def is_one_char(node: "Node", grammar: Mapping[str, "Prod"], seen: frozenset[str
     does.
 
     The table names any other kind as no such node, and a kind named in neither list raises. `_IS_ONE_CHAR` is a
-    `Question`. It answers for what somebody wrote into the table, and the corpus reaches the answers. A silent `False`
-    here would turn a consume into a way, and the run would gain an empty fallback nobody wrote.
+    `Question`. It covers what somebody wrote into the table, and the corpus reaches the answers. A silent `False` here
+    would turn a consume into a way, and the run would gain an empty fallback nobody wrote.
     """
     return _IS_ONE_CHAR(node, grammar, seen)
 
@@ -131,31 +134,31 @@ class Question(Generic[_Answer]):
     A total dispatch over node kinds. It says what to do per kind. A default plays no part.
 
     A caller asks a question about a node through this. The alternative is a chain of `isinstance` tests ending in a
-    fallthrough. That answers permissively for whatever form its author did not think of, and reports that blindness as
-    a fact about the grammar. These rules hold a question to what it claims.
+    fallthrough. That answers permissively for a form its author did not think of, and reports that blindness as a fact
+    about the grammar. These rules hold a question to its own claim.
 
     - **It raises on a kind the table does not name.** The message says which question and which kind. There is no
-      default and no way to write a default. Answering for a kind nobody named is the failure this replaces.
+      default and no way to write a default. Covering a kind nobody named is the failure this replaces.
     - **Something reaches a handler.** A kind whose handler nothing reaches is a guess about the grammar.
       `unexercised` reports it once the whole corpus has run, and not before. An input that reaches a kind exercises
       that kind. A partial run says nothing about a kind no input reached.
 
     Those rules pin the table to the kinds that occur. A missing kind raises, and the run reports a spare handler. A
-    question then says nothing about kinds it cannot see. A kind added to the IR touches the questions that reach that
-    kind, loudly, on the day they do.
+    question then says nothing about kinds it cannot see. A question raises on a kind added to the IR on the day an
+    input brings that kind to the question.
 
-    A pair of lists say what has not arrived, and the pair differ in whether an answer exists for it. Intents come
-    first. A real property of the kinds separates an answer from another, and a question makes use of it. So a question
-    names the family it means. That is a statement about the kinds themselves. It then says which part of that family
-    has not turned up.
+    A pair of lists say what has not arrived, and the pair differ in whether the kind has an answer. Intents come first.
+    A real property of the kinds separates an answer from another, and a question makes use of it. So a question names
+    the family it means. That is a statement about the kinds themselves. It then says which part of that family has not
+    turned up.
 
-    - `untested` names a kind a family answers for, and nobody has tested that answer.
+    - `untested` names a kind a family covers, and nobody has tested that answer.
       The family answers a kind that arrives, and the family's word is a reasonable word to take. The run records the
       arrival, reports the kind and fails. Somebody then makes the decision rather than passing over it. Either the
       family's answer is right for that kind and the kind comes off the list, or the answer is wrong. Then the family
-      was the wrong thing to say here, and a finer family that tells the pair apart is what this wants.
-    - `unknown` names a kind nothing here answers for, whatever a family would have said.
-      A kind that arrives raises where it appears, and no answer exists to take.
+      was the wrong word, and the question wants a finer family that tells the pair apart.
+    - `unknown` names a kind nothing here covers, and a family says nothing for it either.
+      A kind that arrives raises where it appears, and the question gives nothing back.
 
     Both are measurements rather than claims. They say what has happened rather than what cannot.
 
@@ -163,7 +166,7 @@ class Question(Generic[_Answer]):
       of tests resolves that silently by its order. The author's intent goes unsaid. Here it is an error until
       somebody writes the answer down.
 
-    Handlers take the node and whatever the caller threads through, and a caller calls a question the same way.
+    Handlers take the node and the values the caller threads through, and a caller calls a question the same way.
     `question(node, grammar, ways)` reaches `handler(node, grammar, ways)`. A handler that is not callable is the answer
     itself, `Empty: True` rather than a lambda ignoring what a call hands it. A call gets that value back. Keep it
     immutable.
@@ -190,15 +193,17 @@ class Question(Generic[_Answer]):
         both = sorted(kind.__name__ for kind in self._untested & self._unknown)
         if both:
             raise TypeError(f"the question of {what} calls {', '.join(both)} both untested and unknown")
-        # An untested kind is a kind a family answers for. There has to be a family that names it. Without a family no
-        # answer to call untested, and what is meant is that nothing is known of it.
+        # An untested kind is a kind a family covers. There has to be a family that names it. Without a family nothing
+        # calls the kind untested, and what is meant is that nothing is known of it.
         idle = sorted(kind.__name__ for kind in self._untested if kind not in self._by_kind)
         if idle:
             raise TypeError(
                 f"the question of {what} calls {', '.join(idle)} untested. no group of that question names the kind."
             )
         for kind in self._unknown:
-            self._by_kind.pop(kind, None)  # nothing is known of it, whatever a family would have said
+            self._by_kind.pop(
+                kind, None
+            )  # this question knows nothing of the kind, and a family says nothing for it either
         stray = sorted(kind.__name__ for kind in (*self._by_kind, *self._untested, *self._unknown) if kind not in KINDS)
         if stray:
             raise TypeError(f"the question of {what} names {', '.join(stray)}. those are no kinds of node.")
@@ -213,9 +218,9 @@ class Question(Generic[_Answer]):
             raise TypeError(f"the question of {self.what} knows nothing of {kind.__name__}, and it has arrived")
         handler = self._by_kind.get(kind)
         if handler is None:
-            raise TypeError(f"the question of {self.what} has no answer for {kind.__name__}")
+            raise TypeError(f"the question of {self.what} names no handler for {kind.__name__}")
         if kind in self._untested:
-            self._arrived.add(kind)  # answered by its family, and that the family is right for it is what is owed
+            self._arrived.add(kind)  # answered by its family, and the family's fitness for it is still owed
         else:
             self._used.add(kind)
         return handler(node, *given) if callable(handler) else handler
@@ -231,7 +236,7 @@ class Question(Generic[_Answer]):
         return sorted(kind.__name__ for kind in self._arrived)
 
     def used(self) -> list[str]:
-        """The kinds this question has answered for."""
+        """The kinds this question has covered."""
         return sorted(kind.__name__ for kind in self._used)
 
     def mark_reached(self, used: Container[str], arrived: Container[str]) -> None:
@@ -241,24 +246,22 @@ class Question(Generic[_Answer]):
 
 
 # A round count no fixpoint over a grammar should need. A round drops a call or moves a question, and there are finitely
-# many of both. A loop still going here has stopped settling, and a run that says so beats a run that does not return.
+# many of both. A loop still going here has stopped settling.
 #
-# `deepest_rounds` says on a run how far out of reach this cap sits. The sweep's refinement of duplicate bodies comes
-# nearest. The run reports that rather than this file writing it down. A copy of a measurement goes quietly stale.
+# `deepest_rounds` says on a run how far out of reach this cap sits.
 ROUNDS = 100
 
-# The most rounds a fixpoint has taken, and the name says which fixpoint. The cap above is a backstop picked to be far
-# out of reach. This says how far, and the run reports it at the end. A number nobody measured can then give way to a
-# number somebody did.
+# The most rounds a fixpoint has taken, and the name says which fixpoint. The cap above is a backstop far out of reach.
+# This says how far, and the run reports it at the end.
 _DEEPEST: dict[str, int] = {}
 
 
 _STARTED = time.time()  # the moment the run began. A progress line reports the elapsed time against it.
 
 
-# The work this process is on, said in a line it prints. The process that shares the work out leaves it empty, and a
-# process that took a share names the item. A check with many workers writes to the same stream, and the lines
-# interleave.
+# The work this process is on. A line the process prints names that work. The process that shares the work out leaves it
+# empty, and a process that took a share names the item. The workers of a check write to the same stream, and their
+# lines interleave.
 _WORKING = ""
 
 
@@ -271,13 +274,13 @@ def working(what: str) -> None:
 
 def say(message: str) -> None:
     """
-    Say where a run has got to, stamped with the clock and with how long it has been going, and flushed.
+    Say where a run has got to. The line states the clock and how long the run has gone, and `say` flushes stdout after
+    it.
 
-    It is flushed. Wherever anyone is watching, stdout is a pipe under `tee` or under a log. Python buffers a pipe by
-    the block. An unflushed line arrives once the run is over. There is nothing left to report by then.
+    A watched run writes stdout to a pipe under `tee` or under a log. Python buffers a pipe by the block. An unflushed
+    line arrives once the run is over.
 
-    A line from a worker names the work rather than the worker. The process that wrote it answers nothing. The subject
-    it was answering about is what makes the interleaved lines readable.
+    A line from a worker names the work rather than the worker.
     """
     where = f" {_WORKING}" if _WORKING else ""
     print(f"[{time.strftime('%H:%M:%S')} {time.time() - _STARTED:6.1f}s{where}] {message}", flush=True)
@@ -285,7 +288,7 @@ def say(message: str) -> None:
 
 def rounds(what: str) -> Iterator[int]:
     """
-    The rounds of a fixpoint. This counts a round and says it. It raises where `what` has plainly stopped settling.
+    Count a round of a fixpoint and say it. Raise where `what` has stopped settling.
     """
     for at in range(ROUNDS):
         _DEEPEST[what] = max(_DEEPEST.get(what, 0), at + 1)
@@ -305,9 +308,8 @@ def deepest_rounds() -> dict[str, int]:
 
 def unexercised() -> dict[str, list[str]]:
     """
-    `{what: [kind]}` per question holding a handler nothing reached. It is meaningful after the whole corpus has run,
-    and not before. An input that reaches a kind exercises that kind. A partial run says nothing about a kind no input
-    reached.
+    `{what: [kind]}` per question holding a handler nothing reached. An input that reaches a kind exercises that kind. A
+    partial run says nothing about a kind no input reached.
     """
     return {question.what: question.unused() for question in Question.asked if question.unused()}
 
@@ -315,23 +317,23 @@ def unexercised() -> dict[str, list[str]]:
 def owed() -> dict[str, list[str]]:
     """
     `{what: [kind]}` per question whose untested part has arrived. A kind here is a decision that question owes. A run
-    that reaches such a kind says so and fails. It does not pass on the family's word.
+    that reaches such a kind says so and fails. The run does not pass on the word of a family.
     """
     return {question.what: question.arrived() for question in Question.asked if question.arrived()}
 
 
-# The record of what a process reached. `what_was_reached` gives the record and `also_reached` folds it back in. It is
-# the kinds a question answered for, how deep a fixpoint went, and the untested kinds that arrived.
+# The record of the kinds a process reached. `what_was_reached` gives the record and `also_reached` folds it back in.
+# The record holds the kinds a question covered, how deep a fixpoint went, and the untested kinds that arrived.
 Reached = tuple[dict[str, set[str]], dict[str, int], dict[str, set[str]]]
 
 
 def what_was_reached() -> Reached:
     """
-    The record this process has reached. That is the kinds a question answered for, and how deep a fixpoint went.
+    The record this process has reached. That is the kinds a question covered, and how deep a fixpoint went.
 
     A check that shares its work out over the cores runs in forked children. A child marks what it reached in a copy of
-    these. A kind the child reached counts as reached. The record comes back with the answers, and this folds it in.
-    Without that, `unexercised` would report a handler only a worker reached.
+    the record. A kind the child reached counts as reached. The record comes back with the answers, and this folds it
+    in. Without that, `unexercised` would report a handler only a worker reached.
     """
     return (
         {question.what: set(question.used()) for question in Question.asked},
@@ -374,13 +376,12 @@ def _renamed(names: Mapping[str, str], *values: *_Values) -> tuple[*_Values]:
     `values` with the production names replaced by what `names` maps them to. This is the mirror of `_refs`, and the
     `renamed` methods read it. A node renames itself, and a tuple renames its items. Anything else comes back unchanged.
 
-    The result is a new value, as the results here are new. The nodes are frozen, and an earlier stage of the pipeline
-    still holds the old value.
+    The result is a new value. The nodes are frozen, and an earlier stage of the pipeline still holds the old value.
 
     A class writes `renamed` beside `references`, and writes both of them itself. Neither derives from a list of fields.
     The fields mean different things. A call is not a continuation, and a protected match is not the handler that
-    answers for it. A check holds the pair together rather than a shared declaration. A rename must change exactly the
-    names `references` reports.
+    catches it. A check holds the pair together, and no shared declaration does. A rename must change exactly the names
+    `references` reports.
     """
     # Each value comes back as what it went in as. A walk over a tuple cannot say that. It is asserted here, rather than
     # at each `renamed` that unpacks the result.
@@ -400,7 +401,7 @@ def _renamed(names: Mapping[str, str], *values: *_Values) -> tuple[*_Values]:
 @dataclass(frozen=True)
 class Node:
     """
-    The methods a node of the IR answers, and the leaf's answer to them.
+    The methods a node of the IR answers, and what a leaf gives back.
 
     A leaf holds no production name of its own. It inherits both methods and writes neither. A node holding other nodes
     overrides them, and reads the fields through `_refs` and `_renamed`.
@@ -443,12 +444,12 @@ class LitValue(Node):
 @dataclass(frozen=True)
 class MatchValue(Node):
     """
-    `(match)` is the characters of the token the parse is building. It is what a rule has just matched, read where the
-    rule must act on that text. The characters are in hand already, and the parse remembers nothing about where they
-    began.
+    `(match)` is the characters of the token the parse is building. A rule has just matched those characters. A rule
+    reads them where the rule must act on that text. The characters are in hand already, and the parse remembers nothing
+    about where they began.
 
-    Under `(len)` a reader does not take it as text at all. The last consume's length is a slot of its own, and that is
-    what `LenValue` takes. The meanings differ wherever a token cuts across a consume, or holds more than a single
+    Under `(len)` a reader does not take `(match)` as text at all. The last consume's length is a slot of its own, and
+    `LenValue` takes that slot. The meanings differ wherever a token cuts across a consume, or holds more than a single
     consume.
     """
 
@@ -458,8 +459,9 @@ class GlobalValue(Node):
     """
     The value of the global `name`. A single value holds for the parse, rather than a value per call.
 
-    A reader takes it off the slot rather than through a parameter. `SetVarAction` and `IncreaseAction` write it.
-    `ClearVarAction` says where it stops applying. A production declares nothing here, and a call passes nothing down.
+    A reader takes the value off the global's slot rather than through a parameter. `SetVarAction` and `IncreaseAction`
+    write it. `ClearVarAction` says where it stops applying. A production declares nothing here, and a call passes
+    nothing down.
     """
 
     name: str
@@ -478,8 +480,8 @@ class IndentValue(Node):
 @dataclass(frozen=True)
 class AutoDetectIndentValue(Node):
     """
-    `<auto-detect-indent>` is the indentation of the next line holding a character other than a space. That figure is
-    less `n`. A reader takes it without consuming anything, and no bound applies.
+    `<auto-detect-indent>` measures the next line holding a character other than a space. The value subtracts `n` from
+    the indentation of that line. A reader takes it without consuming anything, and no bound applies.
 
     The node belongs to the official grammar, and a reader takes it from there. libyeast's grammar takes such an
     indentation where it appears and reads `ColumnValue`. This module evaluates no such node. The node stays for the
@@ -492,9 +494,8 @@ class ColumnValue(Node):
     """
     `<column>` is the column the parse is at. The count starts at `0`.
 
-    It is what a construct is indented by, read where the indentation has just been consumed. The parse takes it where
-    the parse is, and looks ahead for nothing. The run of spaces a line begins with leaves the parse at the column that
-    run measures.
+    A construct's indentation equals the column after the parse consumes that indentation. The parse reads the column
+    without lookahead. A line's leading spaces leave the parse at the column they measure.
     """
 
 
@@ -533,10 +534,10 @@ class LenValue(Node):
     """
     `(len)` is the length of a match in characters.
 
-    Of `(match)`, the argument the grammar gives it, that is how many characters the last consume took. A reader takes
-    it off the slot the consume leaves. Measuring the text plays no part. A token is cut wherever an annotation opens or
-    closes, and what a rule just matched is neither cut nor joined by that. Of anything else it is the length of
-    whatever that evaluates to.
+    The grammar applies `(len)` to `(match)`. There `(len)` gives the character count of the last consume. A reader
+    takes that count off the slot the consume leaves, and measures no text. An annotation that opens or closes cuts a
+    token. That cut neither splits nor joins a rule's match. On another expression, `(len)` gives the length of its
+    value.
     """
 
     arg: Node
@@ -565,7 +566,9 @@ class AtoiValue(Node):
 
 @dataclass(frozen=True)
 class BranchPart(Node):
-    """A branch of a `(case)` or a `(flip)`. It is what to use when the parameter has this value."""
+    """
+    A branch of a `(case)` or a `(flip)`. The interpreter takes the branch where the parameter holds the branch's value.
+    """
 
     value: str
     item: Node
@@ -635,13 +638,12 @@ class FailTree(Node):
     """
     `<fail>` is the match no input makes. It is the twin of `<empty>`. Any input makes `<empty>` and takes nothing.
 
-    A `(case)` may decline a value of a finite parameter. `l-recover-entry` does under a policy that does not recover
-    here, and `s-line-prefix` in a context no rule invokes it under. The branch says so with this rather than by being
-    absent.
+    A `(case)` may decline a value of a finite parameter. `l-recover-entry` declines under a policy that does not
+    recover here. `s-line-prefix` declines in a context no rule invokes it under. Such a case states the decline with a
+    `<fail>` branch rather than by leaving the branch out.
 
     A case names the values of its parameter, and `validate_grammar._check_total_cases` holds the case to that. A walk
-    over such a case then reaches a node saying the decline, rather than an emptiness it has to read as refusal. The
-    specialization has no value left to have no branch for.
+    over such a case then reaches a node saying the decline, rather than an emptiness it has to read as refusal.
     """
 
 
@@ -666,16 +668,17 @@ class InvalidSet(Node):
 @dataclass(frozen=True)
 class CharSet(Node):
     """
-    A character out of `spans`. That is the set as the parser sees it, and the parser can ask about a character that
-    way.
+    The node matches a character out of `spans`. The parser sees the set that way, and the parser can ask about a
+    character that way.
 
     `spans` is a tuple of inclusive `(low, high)` codepoint intervals, sorted and disjoint and merged. A pair of nodes
     denoting the same characters are therefore the same node, and the sweep writes them once. The invalid byte is the
-    interval `(-1, -1)`, a unit no character can hold. That is how a set holding it beside real characters says so.
+    interval `(-1, -1)`, a unit no character can hold. A set holding the invalid byte beside real characters holds that
+    interval.
 
-    A union and a subtraction come out where a pass makes this node. Neither rides along. `chars.Model` gives a
-    character a key holding a bit per set the grammar tests. The parser runs a bit test and no more. Whatever
-    combination of characters and ranges the grammar wrote, the question at run time is the same shape.
+    A pass computes a union or a subtraction as it makes this node, and the node keeps neither operation. `chars.Model`
+    gives a character a key holding a bit per set the grammar tests. The parser runs a bit test and no more. The grammar
+    may write a combination of characters and ranges, and the question at run time is the same shape.
     """
 
     spans: tuple[tuple[int, int], ...]
@@ -753,7 +756,7 @@ class OptTree(Node):
 
 @dataclass(frozen=True)
 class RepTree(Node):
-    """`({N})` is exactly `count` times. `count` is an expression, a literal or a parameter."""
+    """`({N})` matches `N` exactly `count` times. `count` is an expression, a literal or a parameter."""
 
     count: Node
     item: Node
@@ -777,7 +780,7 @@ class TrimStarTree(Node):
     ns-plain-char`, and the trim is `s-white` there. The quoted in-line runs go the same way, in single quotes and in
     double.
 
-    It matches the empty string. A run of only `trim` characters consumes none of them.
+    The tree matches the empty string. A run of only `trim` characters consumes none of them.
     """
 
     full: Node
@@ -794,12 +797,12 @@ class TrimStarTree(Node):
 @dataclass(frozen=True)
 class ConsumeSpanAction(Node):
     """
-    A maximal run of `set` characters, and the parse takes it as a single consume. A `StarTree` or a `PlusTree` over a
-    character class becomes this in the canonical form, and it maps to a single repeated-char-set match.
+    The action consumes a maximal run of `set` characters. Normalization turns a `StarTree` or a `PlusTree` over a
+    character class into this action. The action maps to a repeated-char-set match.
 
-    It takes at least a character. A gate peeking what `set` denotes sits in front of it for both. The star adds a way
-    beside it, a `NegLookGuard` on the same question and a `ConsumeNoCharAction`. Taking none is then a way of its own,
-    rather than this action matching nothing.
+    The action takes at least a character. A gate sits in front of the action and peeks at `set`. A star adds a way
+    beside the action. That way holds a `NegLookGuard` on the same question and a `ConsumeNoCharAction`. The star takes
+    none on that way rather than through this action.
     """
 
     set: Node
@@ -815,7 +818,7 @@ class ConsumeSpanAction(Node):
 @dataclass(frozen=True)
 class ConsumeNoCharAction(Node):
     """
-    A run that took no character, and the IR says it as an action. The match is empty, and the length reads `0`.
+    The IR says a run that took no character as this action. The match is empty, and the length reads `0`.
 
     A run that must take a character is a gate peeking its set and a consume of that set. A run that may take none
     offers that pair as one way. Its other way refuses the set and performs this action.
@@ -825,24 +828,24 @@ class ConsumeNoCharAction(Node):
     then this action and no more. The grammar writes no such count.
 
     The way taking none performs this rather than performing nothing. A length read past a way that performed nothing
-    would be whatever the last run left. That is a different run's answer.
+    would be the length the last run left. That is a different run's answer.
 
-    It names no set. The parse settles the set that took nothing before a reader gets here, and that set makes no
-    difference to what this leaves behind. A pair of these are the same action wherever the pair coincide.
+    The action names no set. The parse settles the set that took nothing before a reader gets here, and that set makes
+    no difference to the set this leaves behind. A pair of these are the same action wherever the pair coincide.
     """
 
 
 @dataclass(frozen=True)
 class ConsumeCharAction(Node):
     """
-    The character the gate peeked. The run takes it. It consumes a single character. The gate has already found it
-    there. A `ConsumeCharAction` that finds nothing is a gate that did not do its job, and the interpreter says so
-    rather than matching nothing.
+    The run consumes the character the gate peeked. A `ConsumeCharAction` that finds nothing is a gate that did not do
+    its job, and the interpreter says so rather than matching nothing.
 
-    `set` is the characters it consumes, kept although the gate asks the same question. A gate moves. A pass hoists a
-    gate to a caller, splices a gate into another way, or splits a gate from what it protected. The set the consume took
-    at authoring time does not move. That set rides here, and a reader takes it off the consume wherever the consume has
-    got to. A way's consumption then does not come from whichever guard happens to sit in front of it.
+    `set` holds the characters the action consumes. The action keeps `set` although the gate asks the same question. A
+    gate moves. A pass hoists a gate to a caller, splices a gate into another way, or splits a gate from what it
+    protected. The set the consume took at authoring time does not move. That set rides here, and a reader takes it off
+    the consume wherever the consume has got to. A way's consumption then does not come from the guard sitting in front
+    of it.
     """
 
     set: Node
@@ -857,7 +860,7 @@ class ConsumeCharAction(Node):
 
 def _asked_in_order(guard: object) -> tuple[str, str]:
     """
-    The order a gate's guards come in. It is the kind, then the question entire. Total, and stable across runs.
+    Order a gate's guards by the kind, then by the whole question. The order is total, and it holds across runs.
     """
     return type(guard).__name__, repr(guard)
 
@@ -865,16 +868,16 @@ def _asked_in_order(guard: object) -> tuple[str, str]:
 @dataclass(frozen=True)
 class GatePart(Node):
     """
-    The questions a parse enters an alternative on. A test takes no character. They are the `guards`. A guard holds at
-    the parse's position. They are a set rather than a sequence. A guard asks about the same position, and no order
-    between them means anything. A gate holding none is the unconditional fallthrough. The last alternative is where
-    that appears. The question about the character in front is a `LookGuard` over its class, and that guard sits among
+    The `guards` are the questions a parse enters an alternative on. A guard takes no character and holds at the parse's
+    position. The guards form a set rather than a sequence. They ask about the same position, and no order between
+    guards means anything. A gate holding no guard is the unconditional fallthrough, and it sits on the last
+    alternative. The question about the character in front is a `LookGuard` over its class, and that guard sits among
     the other guards.
 
-    A gate holds them as a tuple in a canonical order rather than as a set. A pair of gates asking the same questions
-    are then the same gate. That is what lets the sweep merge the productions that hold them. The pipeline's output
-    stays the same from run to run. A set would order its members by hash, and a guard reading a named parameter hashes
-    through a string, whose hash a process picks afresh.
+    A gate holds its guards as a tuple in a canonical order rather than as a set. A pair of gates asking the same
+    questions are then the same gate. The sweep can therefore merge the productions that hold them. The pipeline's
+    output stays the same from run to run. A set would order its members by hash. A guard reading a named parameter
+    hashes a string, and a process picks a string's hash afresh.
     """
 
     guards: tuple[Node, ...] = ()
@@ -902,12 +905,13 @@ class AlternativeState(Node):
     single push. `second` with no `first` is a tail call. `second` has nothing behind it, and a sequence's trailing
     actions therefore become a continuation of the sequence.
 
-    `recover` rides whichever of the pair holds the call it protects. That is `first` where a call sits there, and
+    `recover` rides the member of the pair holding the call it protects. That is `first` where a call sits there, and
     `second` where the way is a tail call.
 
-    A cut unwinding out of that call stops at the recovery production this names. The interpreter emits the error. It
-    closes the markers the call opened down to that recovery. `recover` matches what this rule gives up, and the parse
-    continues past the call as though it had matched. A recovery that does not match sends the cut on up.
+    A cut unwinding out of that call stops at the recovery production `recover` names. The interpreter emits the error.
+    It closes the markers the call opened down to that recovery. That recovery production matches what the failed call
+    gives up, and the parse continues past the call as though it had matched. A recovery that does not match sends the
+    cut on up.
     """
 
     gate: GatePart
@@ -927,8 +931,8 @@ class AlternativeState(Node):
             raise ValueError(
                 f"a way calling {self.first} with nothing behind it - a tail call is `second` with no " f"`first`"
             )
-        # A recovery answers for a cut unwinding out of the call it rides. A way with a recovery and making no call
-        # rides nothing. It is refused where it is built, the question having no call to ask it of.
+        # A recovery catches a cut unwinding out of the call it rides. A way with a recovery and making no call rides
+        # nothing. It is refused where it is built, the question having no call to ask it of.
         if self.recover is not None and self.first is None and self.second is None:
             raise ValueError(f"a way with the recovery {self.recover} and making no call for it to ride")
 
@@ -963,12 +967,13 @@ class ChoiceState(Node):
 @dataclass(frozen=True)
 class ConsumeLimitedSpanAction(Node):
     """
-    Up to `limit` characters of `set`. The parse takes them as a single consume, and the action reports the count. A run
-    that fills the limit and a run that falls short both match. `DidMatchFullSpanGuard` tells them apart.
+    The action consumes up to `limit` characters of `set`. The parse takes them as a single consume, and the action
+    reports the count. A run that fills the limit and a run that falls short both match. `DidMatchFullSpanGuard` tells
+    them apart.
 
-    It is an action that cannot fail. A gate cannot protect a counted consume. A gate tests the character in front, and
-    not `limit` characters. An action asked for a count beyond reach is a way failing on what it performs. Here the
-    taking matches. The question about it is a guard like any other, asked past the action in question.
+    The consume cannot fail. A gate cannot protect a counted consume. A gate tests the character in front, and not
+    `limit` characters. A way would fail on what it performs if the action refused a short run. This action matches a
+    short run instead.
     """
 
     set: Node
@@ -987,11 +992,8 @@ class DidMatchFullSpanGuard(Node):
     """
     Whether the `ConsumeLimitedSpanAction` just performed took its whole limit.
 
-    It asks about the action in front and no more. It runs where that action left the parse. Any other action takes the
-    answer away. Asking with none there raises rather than answering.
-
-    A guard that reads what an action did is how a taking that cannot fail still says no. The refusal moved out of the
-    action and into a question about it.
+    The guard asks about the action in front and no more. It runs where that action left the parse. Any other action
+    takes the answer away. Asking with none there raises rather than answering.
     """
 
 
@@ -999,12 +1001,12 @@ class DidMatchFullSpanGuard(Node):
 class ConsumeTrimmedSpanAction(Node):
     """
     A maximal run of `full` characters that gives back its trailing run of `trim`. The parse takes it as a single
-    consume. It is the trimming consume over a pair of sets that a plain or quoted scalar's line is to compile to. It
-    takes at least a character, and the interpreter asserts that.
+    consume. A plain or quoted scalar's line will compile to this trimming consume over a pair of sets. It takes at
+    least a character, and the interpreter asserts that.
 
-    The pipeline builds none. A `TrimStarTree` sits where this will, and the trim-reuse pass `PLAN.md` owes will make
-    the exchange. This file writes the node, and the interpreter matches it. The pass then has a shape to land on rather
-    than a vocabulary to invent alongside it. `check_dead_code` declares it kept though dead.
+    The pipeline builds none. A `TrimStarTree` sits where this node will sit, and the trim-reuse pass `PLAN.md` owes
+    will make the exchange. This file writes the node, and the interpreter matches it. `check_dead_code` declares it
+    kept though dead.
     """
 
     full: Node
@@ -1020,7 +1022,7 @@ class ConsumeTrimmedSpanAction(Node):
 
 @dataclass(frozen=True)
 class LookGuard(Node):
-    """`(===)` is positive lookahead, taking nothing."""
+    """`(===)` is positive lookahead. It takes nothing."""
 
     item: Node
 
@@ -1034,7 +1036,7 @@ class LookGuard(Node):
 
 @dataclass(frozen=True)
 class NegLookGuard(Node):
-    """`(!==)` is negative lookahead, taking nothing."""
+    """`(!==)` is negative lookahead. It takes nothing."""
 
     item: Node
 
@@ -1062,7 +1064,7 @@ class LookBehindGuard(Node):
 
 @dataclass(frozen=True)
 class DiffSet(Node):
-    """`(---)` is character-class subtraction. It is `base` less whatever `minus` holds."""
+    """`(---)` is character-class subtraction. It is `base` less the characters `minus` holds."""
 
     base: Node
     minus: tuple[Node, ...]
@@ -1094,13 +1096,13 @@ class MaxWrapper(Node):
     """
     `(max)` is a bound of `limit` characters. It is the implicit-key lookahead limit the spec sets in section 7.4.2.
 
-    The vendored grammar writes it before a production, as a length note on what follows. That form is `(max): N`.
+    The vendored grammar writes `(max)` before a production, as a length note on what follows. That form is `(max): N`.
     libyeast writes the bound around the production instead, as `(max): [N, message, rule]`. There it is the bounded
-    window a parser resolves the key within. Consuming past `limit` characters is the error `message`, and unparsed from
-    there.
+    window a parser resolves the key within. Consuming past `limit` characters is the error `message`. A parser leaves
+    the rest of the input unparsed.
 
-    A key also sits on a line of its own, and that needs no help here. The flow-key context already forbids a break
-    inside a key. `ir2spec` undoes the wrapping back to the vendored grammar's preceding `(max): N`.
+    A key also stays within a single line, and `(max)` adds no check for that. The flow-key context already forbids a
+    break inside a key. `ir2spec` undoes the wrapping back to the vendored grammar's preceding `(max): N`.
     """
 
     limit: Node
@@ -1117,7 +1119,7 @@ class MaxWrapper(Node):
 
 @dataclass(frozen=True)
 class IsLessThanGuard(Node):
-    """`(<)` asserts the first value is less than the second, whichever pair the parse works out."""
+    """`(<)` asserts the first value is less than the second, for the pair the parse works out."""
 
     a: Node
     b: Node
@@ -1132,7 +1134,7 @@ class IsLessThanGuard(Node):
 
 @dataclass(frozen=True)
 class IsLessEqualGuard(Node):
-    """`(<=)` asserts the first value is no greater than the second, whichever pair the parse works out."""
+    """`(<=)` asserts the first value is no greater than the second, for the pair the parse works out."""
 
     a: Node
     b: Node
@@ -1198,12 +1200,10 @@ class SetVarAction(Node):
 @dataclass(frozen=True)
 class ClearVarAction(Node):
     """
-    A zero-width action that says `param` stops applying here. Past this action no slot holds a value for `param`.
-    Reading it is a fault rather than whatever the last write left behind.
+    A zero-width action says `param` stops applying here. Past this action no slot holds a value for `param`. A read of
+    `param` there is a fault rather than the value the last write left behind.
 
-    A construct that measures `param` finishes, and the path continues with no value of its own in force. The value has
-    no further meaning there. A refusal is what says so. Leaving the value in place would let a later read take a
-    measurement of something that has ended, and no gate would see that happen.
+    A construct that measures `param` ends on this action.
     """
 
     param: str
@@ -1213,7 +1213,7 @@ class ClearVarAction(Node):
 class IncreaseAction(Node):
     """
     `(increase)` raises indentation parameter `param` to the current column. The write is `param = max(param, column)`.
-    It is a zero-width action. It records the widest indentation the parse has reached. That is how a block scalar's
+    The action is zero-width. It records the widest indentation the parse has reached. That is how a block scalar's
     leading empty lines set the floor its first content line may not fall below.
     """
 
@@ -1227,15 +1227,16 @@ class IncreaseAction(Node):
 # annotation does not make *a* token. It says what code the characters consumed within take. It also says where the
 # parser cuts the runs.
 #
-# A character consumed under no annotation gets the code `unparsed`. That is what the parser says about input it could
-# not parse. On the success path it is a mistake. `validate_grammar.py` holds a character-consuming node to lying within
-# a `TokenWrapper`.
+# A character consumed under no annotation gets the code `unparsed`. The parser gives that code to input it could not
+# parse. On the success path an `unparsed` character is a mistake. `validate_grammar.py` refuses a character-consuming
+# node that lies outside a `TokenWrapper`.
 
 
 @dataclass(frozen=True)
 class TokenWrapper(Node):
     """
-    `(token)` says the characters `item` consumes take `code`, but for those a nested annotation claims.
+    `(token)` says the characters `item` consumes take `code`. A character a nested annotation claims takes the code of
+    that annotation instead.
 
     The parse cuts the run at both edges. The characters before, within and after `item` fall into separate tokens.
     `item` may yield more than a single token where the item nests annotations of its own. It may yield none where the
@@ -1259,8 +1260,8 @@ class Wrapper(Node):
     `(wrap)` is zero-width `begin` and `end` markers bracketing `item`. It is sugar for an `EmitAction` on either side
     of the item.
 
-    This is a single node rather than a sequence written out. The markers are then paired by construction, and a `begin`
-    cannot lose its `end`.
+    This is a single node rather than a sequence written out. The node pairs the markers, and a `begin` cannot lose its
+    `end`.
     """
 
     begin: str
@@ -1277,25 +1278,28 @@ class Wrapper(Node):
 
 @dataclass(frozen=True)
 class EmitAction(Node):
-    """`(emit)` is a zero-width token at this point. It also cuts the run of characters around that token."""
+    """
+    `(emit)` emits a zero-width token at its own position in the grammar. It also cuts the run of characters around that
+    token.
+    """
 
     code: str
 
 
-# The pairs, and what says which close answers which open. A half a step writes names `pair`, the pairs it can belong
-# to. A pair as written gets an entry, and both halves of that pair name the same.
+# A step writes halves. A half names in `pair` the pairs it can belong to. A pair as written gets an entry, and both
+# halves of that pair name that entry.
 #
-# A close answers the open on the stack where the pair they share is there. The kind cannot say it. A pair of `(token)`s
-# are the same kind and different pairs. A close that takes the wrong open of its own kind is invisible to anything
-# asking what kind is there.
+# A close answers the open on the stack where both halves name a pair in common. The kind of an open cannot say which
+# pair the open belongs to. A pair of `(token)`s are the same kind and different pairs. A close that takes the wrong
+# open of its own kind is invisible to a reader asking which pair is there.
 #
 # The provisional run is the scope with no `pair` on either half. A single run is open at a time, and its close has
 # nothing to tell apart.
 #
-# `pair` is a set of them rather than a lone entry. A merge makes halves indistinguishable. A pair of productions alike
-# but for which pair they hold are the same production, and the half that survives holds both. So a close answers an
-# open where the sets intersect. That is where a pair they both hold exists. The merge's cost lands exactly there, and
-# precision falls where the grammar itself stopped telling the pair apart.
+# `pair` is a set of pairs rather than a lone entry. A merge makes halves indistinguishable. The merge joins a pair of
+# productions that differ only in the pair they hold. The half that survives holds the pairs of the productions it
+# joined. So a close answers an open where the sets intersect. A close then cannot tell apart a pair of opens whose
+# productions the merge joined.
 
 
 @dataclass(frozen=True)
@@ -1319,20 +1323,20 @@ class PushIndentAction(Node):
 @dataclass(frozen=True)
 class PopIndentAction(Node):
     """
-    A zero-width action that takes the indentation in force off the stack. The level it displaced comes back. The pop
-    leads a production of its own. It does not sit beside the call in question. An alternative runs nothing past the
-    call it makes. The way continues at that production, and the pop is the first thing done there.
+    A zero-width action takes the indentation in force off the stack. The level it displaced comes back. The pop leads a
+    production of its own. The pop does not sit beside the call that leads to that production. An alternative runs
+    nothing past the call it makes. The way continues at that production, and the pop is the first thing done there.
 
-    `level` is what its `PushIndentAction` put there. Both halves hold that value where a pass mints the pair together,
-    and it rides with the pop wherever the pop moves. It says nothing the stack does not already hold, and the pop
-    restores from the stack instead. A pop takes off whatever is on top.
+    `level` holds the value its `PushIndentAction` put there. Both halves hold that value where a pass mints the pair
+    together, and the value rides with the pop wherever the pop moves. The level says nothing the stack does not already
+    hold, and the pop restores from the stack instead. A pop takes off the entry on top.
 
-    It is there for a step moving the pop, or for a step moving something past the pop. Such a step can say which
+    The level is there for a step moving the pop, or for a step moving something past the pop. Such a step can say which
     indentation the actions around it measure against, and needs no table pairing the ends. A check runs where the pop
     runs, and that makes the pairing a refusal rather than a claim. A pair of pops of the same level are the same action
-    still, and what merges before this has a level merges after it.
+    still, and the level stops no merge.
 
-    It is `None` where the pop names none. A push names the level it puts there.
+    The level is `None` where the pop names none. A push names the level it puts there.
     """
 
     level: Node | None
@@ -1349,12 +1353,12 @@ class PopIndentAction(Node):
 @dataclass(frozen=True)
 class SetForbiddenAction(Node):
     """
-    A zero-width action that sets what may not match at a start of line to `item`. It is `None` where the line start
+    A zero-width action that sets what may not match at a start of line to `item`. `item` is `None` where the line start
     forbids nothing.
 
-    It is what an `(exclude)` becomes, at either end of what the exclusion covers. The set is a single value for the
-    parse rather than a value per call. So this writes a slot, and the write that ends a scope names what applies after
-    it. It does not take back what the opening write displaced.
+    An `(exclude)` becomes this action, at either end of the run the exclusion covers. The set is a single value for the
+    parse rather than a value per call. This therefore writes a slot, and the write that ends a scope names what applies
+    after it. It does not take back what the opening write displaced.
 
     The write takes nothing back. The exclusion opening inside another is the entry recovery's exclusion, and it sits
     inside a document's exclusion. It forbids what the outer exclusion does and a thing more, and the inner value
@@ -1374,8 +1378,8 @@ class SetForbiddenAction(Node):
 @dataclass(frozen=True)
 class PushCodeAction(Node):
     """
-    A zero-width action that cuts the run and sets the code its following characters take to `code`. It is what a
-    `(token)` opens with. It pushes the displaced code onto the stack. The matching `PopCodeAction` takes that code
+    A zero-width action that cuts the run and sets the code its following characters take to `code`. A `(token)` opens
+    with this action. The action pushes the displaced code onto the stack. The matching `PopCodeAction` takes that code
     back.
     """
 
@@ -1386,8 +1390,8 @@ class PushCodeAction(Node):
 @dataclass(frozen=True)
 class PopCodeAction(Node):
     """
-    A zero-width action that cuts the run and takes the code for its following characters off the top of the stack. That
-    is what its `PushCodeAction` displaced. The pop and that push go together, and `Token(code, item)` lowers to
+    A zero-width action that cuts the run and takes the code for its following characters off the top of the stack. Its
+    `PushCodeAction` displaced that code. The pop and that push go together, and `Token(code, item)` lowers to
     `PushCode(code), item, PopCode`. A pop with nothing pushed raises. The pair says where a code begins and ends.
     """
 
@@ -1397,13 +1401,13 @@ class PopCodeAction(Node):
 @dataclass(frozen=True)
 class PushMessageAction(Node):
     """
-    A zero-width action that opens a committed region under `message`. It is what a `(commit)` opens with. From here to
-    the `PopMessageAction` that closes it, the input must take the parse through. A failure that unwinds past this point
-    with the region left open reports `message`. A failure that unwinds through a closed region backtracks like any
-    other.
+    A zero-width action that opens a committed region under `message`. A `(commit)` opens with this action. The parse
+    must get through the input from here to the `PopMessageAction` that closes the region. A failure that unwinds past
+    this point with the region left open reports `message`. A failure that unwinds through a closed region backtracks
+    like any other.
 
-    A gate does not rise past such a push. Refusing entry to a region the grammar committed to must stay the error it
-    names.
+    A gate does not rise past such a push. Refusing entry to a region the grammar committed to must stay the error
+    `message` names.
     """
 
     message: str
@@ -1427,15 +1431,14 @@ class PopMessageAction(Node):
 @dataclass(frozen=True)
 class PushRecoveryAction(Node):
     """
-    A zero-width action that says what answers for a failed `(cut)` from here on. `recovery` matches whatever of the
-    input the parse gives up. `resume` is where it continues once that has matched.
+    A zero-width action that says what catches a failed `(cut)` from here on. `recovery` matches the part of the input
+    the parse gives up. `resume` is where the parse continues past the protected call once `recovery` has matched.
 
-    The parse holds the pair together. An unwind reads where to stop and where to go on from a single place. It works
-    neither out from what the abandoned parse left behind. `resume` names the continuation of the way, where the path
-    continues past the protected call. That is what makes continuing here the same as the call having matched.
+    The parse holds the pair together. An unwind reads where to stop and where to go on, and it reads both from a single
+    place. The unwind does not derive from what the abandoned parse left behind.
 
-    A recovery that says nothing recovers nothing. A rule reached under a resume policy that does not recover here has
-    no branch to take. The cut goes on unwinding to whoever does answer for it.
+    A recovery that says nothing recovers nothing. A resume policy may not recover here. A rule reached under that
+    policy then has no branch to take. The cut goes on unwinding to whoever does catch it.
     """
 
     recovery: Node
@@ -1454,10 +1457,10 @@ class PushRecoveryAction(Node):
 class PopRecoveryAction(Node):
     """
     A zero-width action that takes back what the innermost `PushRecoveryAction` established. A cut past this point then
-    unwinds to whatever answered before it.
+    unwinds to the rule that answered before it.
 
-    The pop and `PushRecoveryAction` go together. Like the other pairs the halves hold on the stack of the parse rather
-    than where a step wrote them. A split that cuts the halves apart is nothing either half has to know.
+    The pop and `PushRecoveryAction` go together. The halves pair on the stack of the parse rather than where a step
+    wrote them. Neither half has to know about a split that cuts the halves apart.
     """
 
     pair: frozenset[int]
@@ -1469,7 +1472,7 @@ class OpenWindowAction(Node):
     A zero-width action that opens a `(max)` window `limit` characters wide. Past it, a committed consume fails the cut
     `message` names.
 
-    Windows do not nest. The outermost is what applies. An inner window sits inside the budget the outer already bounds.
+    Windows do not nest. The outermost window applies. An inner window sits inside the budget the outer already bounds.
     An open under an outer window raises the count and does no more.
     """
 
@@ -1501,13 +1504,13 @@ class CloseWindowAction(Node):
 @dataclass(frozen=True)
 class StartMustConsumeAction(Node):
     """
-    A zero-width action that opens a region which must take a character. The `DidConsumeSinceOpenGuard` that asks about
-    it may run with the parse at the position where this ran. The region has then not matched.
+    A zero-width action that opens a region which must take a character. The `DidConsumeSinceOpenGuard` of the region
+    may run with the parse still at the position of this action. The guard then finds that the region has not matched.
 
-    It is what makes a loop end, and the grammar can see the action there. A turn taking no character is a turn that
-    would repeat forever. So a run says of its turn that the turn takes a character. The machine reads a loop that must
+    The action ends a loop, and the grammar can see the action there. A turn taking no character is a turn that would
+    repeat forever. A run therefore says of its turn that the turn takes a character. The machine reads a loop that must
     make progress. It compares no positions to find out. The action is harmless around a turn that takes a character
-    anyway. A run says it of the turns alike rather than of the turns that need saying.
+    anyway. A run marks a turn whether or not the turn needs the mark.
     """
 
     pair: frozenset[int]
@@ -1517,12 +1520,12 @@ class StartMustConsumeAction(Node):
 class DidConsumeSinceOpenGuard(Node):
     """
     Whether the region its own `StartMustConsumeAction` opened has taken a character. It refuses where the parse has not
-    moved since that open. It reads and does no more. `EndMustConsumeAction` is what ends the region. A gate holding
-    this asks a question and leaves the parse where it was, the way the other guards do.
+    moved since that open. `EndMustConsumeAction` ends the region. A gate holding this asks a question and leaves the
+    parse where it was, the way the other guards do.
 
-    The guard and `StartMustConsumeAction` go together, on the stack of the parse as the other pairs do. The open it
-    reads is the innermost open with the same `pair`, rather than the innermost open of any pair. Opens of other pairs
-    may sit between the halves, and the parse walks past them.
+    The guard and `StartMustConsumeAction` go together, on the stack of the parse as the other pairs do. The guard reads
+    the innermost open with the same `pair`, rather than the innermost open of any pair. Opens of other pairs may sit
+    between the halves, and the parse walks past those opens.
     """
 
     pair: frozenset[int]
@@ -1532,14 +1535,14 @@ class DidConsumeSinceOpenGuard(Node):
 class EndMustConsumeAction(Node):
     """
     A zero-width action that closes the region its own `StartMustConsumeAction` opened. It takes that open off the stack
-    of the parse. It takes the open on *top*, and holds that open to naming this `pair`. A pop takes what its own push
-    put there. A top naming another pair is a half moved across a pair it must not cross, rather than a reason to look
-    further down. That is the discipline a pop here keeps. It tells this apart from `DidConsumeSinceOpenGuard`. That
-    guard reads rather than pops, and walks past the opens of other pairs.
+    of the parse. It takes the open on *top*, and that open must name this `pair`. A top naming another pair means a
+    step moved a half of a pair past a boundary it must not cross. The action then looks no further down. Popping the
+    top tells this action apart from `DidConsumeSinceOpenGuard`. That guard reads rather than pops, and walks past the
+    opens of other pairs.
 
-    It says nothing about whether the region matched. `DidConsumeSinceOpenGuard` asks that. A way with this already
-    entered on the answer. Splitting the pair is what keeps a gate read-only. A guard that closed the region could sit
-    in front of nothing that touches the stack. A second ask would find the region gone.
+    The action says nothing about whether the region matched. `DidConsumeSinceOpenGuard` asks that. A way holding this
+    action has entered on the answer already. Splitting the pair keeps a gate read-only. A guard that closed the region
+    could sit in front of nothing that touches the stack. A second ask would find the region gone.
     """
 
     pair: frozenset[int]
@@ -1548,13 +1551,12 @@ class EndMustConsumeAction(Node):
 @dataclass(frozen=True)
 class PushBackTrackAction(Node):
     """
-    A zero-width action that opens a region the parse gives back whole. From here to the `PopBackTrackAction` that
-    closes it, the ways taken inside are the ways taken. A failure past the close gives the region up. It does not
+    A zero-width action that opens a region the parse gives back whole. `PopBackTrackAction` closes the region. The
+    parse keeps the ways it takes inside the region. A failure past the close gives the region up. The parse does not
     choose among those ways again.
 
-    It is what makes a repetition possessive. The grammar can see the fact rather than leaving it to whoever runs the
-    parse. A run takes its turns. A continuation that fails fails the run entire, and no shorter run remains to fall
-    back to. A failure before the close backtracks like any other. The region settles what has closed.
+    This action makes a repetition possessive. A run takes its turns. A continuation that fails fails the run entire.
+    The parse holds no shorter run to fall back to. A failure before the close backtracks like any other.
     """
 
     pair: frozenset[int]
@@ -1564,9 +1566,8 @@ class PushBackTrackAction(Node):
 class PopBackTrackAction(Node):
     """
     A zero-width action that closes the region the innermost `PushBackTrackAction` opened. It settles the ways taken
-    inside that region. The pop and `PushBackTrackAction` go together. Like the other pairs the halves hold on the stack
-    of the parse rather than where a step wrote them. A split that cuts the halves apart is nothing either half has to
-    know.
+    inside that region. The pop and `PushBackTrackAction` go together. The halves pair up on the stack of the parse
+    rather than where a step wrote them. A split may cut the halves apart, and neither half has to know.
     """
 
     pair: frozenset[int]
@@ -1585,7 +1586,7 @@ class OpenProvisionalAction(Node):
 class MarkProvisionalAction(Node):
     """
     A zero-width action that marks the open run's current position. It cuts the run into the region before the mark and
-    the region from the mark on. That is the side a later `RetypeProvisionalAction` or `InjectBeforeAction` names.
+    the region from the mark on. A later `RetypeProvisionalAction` or `InjectBeforeAction` names either region.
 
     A run holds a mark at a time. Taking the mark again moves it, and the last taken wins. That is how a rule reading
     line by line marks a fresh line. A mark is a parse position, rather than a property of any token.
@@ -1599,9 +1600,9 @@ class RetypeProvisionalAction(Node):
     `after_mark`. A token whose characters came in as a line break takes `breaks`, and any other takes `rest`. A kind
     whose code is `None` keeps its own.
 
-    The run stays open. It matches the rewrite over `ys_queue_run` step for step. There is no discard. A failed
-    hypothesis retypes rather than dropping tokens. The field is `breaks` rather than the `break` the runtime writes,
-    and Python reserves that word. `rest` and `breaks` are token codes rather than production names.
+    The run stays open. The action matches the rewrite over `ys_queue_run` step for step. A failed hypothesis retypes
+    rather than dropping tokens. The field is `breaks` rather than the `break` the runtime writes, and Python reserves
+    that word. `rest` and `breaks` are token codes rather than production names.
     """
 
     rest: str | None
@@ -1612,13 +1613,13 @@ class RetypeProvisionalAction(Node):
 @dataclass(frozen=True)
 class InjectBeforeAction(Node):
     """
-    A zero-width action that puts the decided markers `codes`, in order, into the open run at `at`. That is the run's
-    `start` or its `mark`.
+    `InjectBeforeAction` takes no width. It writes the token codes in `codes` into the open run in order. `at` names the
+    place, either `start` or `mark`.
 
     `start` sits ahead of the whole run. `mark` sits between the sides.
 
-    `begin-document` and the node markers go ahead of a document's whites. `begin-pair` goes at the mark where a line
-    turned out to be a key. `end-scalar` goes ahead of a block scalar's chomped empty lines. It matches
+    `begin-document` and the node markers go ahead of a document's whites. `begin-pair` goes at the mark of a line the
+    parse reads as a key. `end-scalar` goes ahead of a block scalar's chomped empty lines. The action matches
     `ys_queue_inject` step for step. `codes` are token codes rather than production names.
     """
 
@@ -1632,8 +1633,8 @@ class CommitProvisionalAction(Node):
     A zero-width action that resolves the open run. The queue decides the tokens and hands them back on demand. It
     matches `ys_queue_resolve_run` step for step.
 
-    It goes with `OpenProvisionalAction` dynamically, the way a committed region's push and pop go together. The run
-    belongs to the queue rather than to any single call, and a split may cut the pair across productions.
+    The action goes with `OpenProvisionalAction` dynamically, the way a committed region's push and pop go together. The
+    run belongs to the queue rather than to any single call, and a split may cut the pair across productions.
     """
 
 
@@ -1651,21 +1652,21 @@ class CutAction(Node):
 @dataclass(frozen=True)
 class CommitWrapper(Node):
     """
-    `(commit)` matches `item`. It commits to `item` being present and no further. It is a `(cut)` scoped to what
-    follows.
+    `(commit)` matches `item`. It commits to `item` being present and no further. A `(cut)` scoped to the parts behind
+    it says the same thing.
 
     A `(cut)` commits the whole parse from its point on. `(commit)` commits to `item` being able to match at all.
     `message` is the error where `item` cannot match, as a `(cut)`'s message names its error. A quoted scalar that stays
-    open is such a case, and so is a flow collection that stays open.
+    open is such a case. A flow collection that stays open is another.
 
     The match backtracks like any other where `item` matches and a *later* rule fails. The commitment does not reach
-    past `item`. So a flow scalar that closed cleanly can take another meaning. A rule may have tried it as a mapping
-    key and been wrong. A scalar that stayed open is still the error it should name. `message` keys
+    past `item`. A flow scalar that closed cleanly can therefore take another meaning. A rule may have tried it as a
+    mapping key and been wrong. A scalar that stayed open is still the error it should name. `message` keys
     `grammar/messages.yaml`, as a `(cut)`'s message does.
 
-    An implicit key that will not parse is not this key. It is no error. The grammar wraps a commit reached in a key
-    context in a `(case) c`. The key branches are the bare `item`, and the `else` is the commit. The softening is a
-    switch on `c` rather than a decision the parser makes.
+    An implicit key that will not parse raises no error. The grammar wraps a commit reached in a key context in a
+    `(case) c`. The key branches are the bare `item`, and the `else` is the commit. The grammar softens the error with a
+    switch on `c`, and the parser decides nothing.
     """
 
     message: str
@@ -1686,8 +1687,8 @@ class ErrorAction(Node):
     token.
 
     `message` names the expectation to report. It is a key into `grammar/messages.yaml`, as a `(cut)`'s message is a key
-    there. Unlike a `(cut)` it is a match rather than a commit. It emits and succeeds. The grammar says what the parser
-    does about the input from here, in the rule that holds it.
+    there. Unlike a `(cut)` it is a match rather than a commit. It emits and succeeds. The rule holding the `(error)`
+    says what the parser does with the input from here.
     """
 
     message: str
@@ -1698,14 +1699,14 @@ class RecoverWrapper(Node):
     """
     `(recover)` is where a `(cut)` inside `item` stops unwinding, when `recovery` says it stops here.
 
-    A cut unwinds past the calls between itself and whatever will answer for it. This is a rule saying "that is me". The
+    A cut unwinds past the calls between itself and the rule that will catch it. A `(recover)` is such a rule. The
     interpreter emits the error. It closes the markers `item` opened down to this point and no further. `recovery`
-    matches whatever of the input this rule is willing to give up. The parse then continues from here as though `item`
+    matches the part of the input this rule is willing to give up. The parse then continues from here as though `item`
     had matched, and a repetition around the rule takes its next turn.
 
     `recovery` decides whether that happens at all. A rule reached under a resume policy that does not recover here has
-    no branch to take. The rule does not match, and the cut goes on unwinding to whoever does answer for it. That is
-    what keeps a policy recovering elsewhere from noticing this rule exists.
+    no branch to take. The rule does not match, and the cut goes on unwinding to whoever does catch it. A policy
+    recovering elsewhere sees no sign of this rule.
     """
 
     recovery: Node
@@ -1750,25 +1751,26 @@ class Prod(Node):
 # question is whether the set is in front, whether the set stays away, or whether it is behind. An exclusion asks at a
 # take that follows, and says what may not match from here on.
 #
-# So a walk of what the grammar takes stops at such a node. A rule asks about the characters inside rather than taking
-# them. Counting them would count characters the parse does not consume.
+# So a walk of the characters the grammar takes stops at such a node. A rule asks about the characters inside rather
+# than taking them. Counting them would count characters the parse does not consume.
 #
 # Taking nothing is not what makes such a node. An action and a guard take nothing too. `<end-of-stream>` asks about the
 # input and falls outside this family. It holds no characters to stop at. In alphabetical order.
 ASKED_NOT_TAKEN_NODES = (ExcludeAtAction, LookBehindGuard, LookGuard, NegLookGuard)
 
-# The kinds that take characters themselves rather than through whatever they hold. Such a kind takes at least a
-# character wherever it matches. It is the counterpart of `CONSUMES_NOTHING`.
+# The kinds that take characters themselves rather than through the nodes they hold. Such a kind takes at least a
+# character wherever it matches. This set is the counterpart of `CONSUMES_NOTHING`.
 #
 # A walk of a node's children must not descend into such a kind. Doing so counts the same characters twice, or counts a
-# peek's set as a match. Said forwards, these are what move the parse on. A question asked in front of such a kind stops
-# speaking for where the parse then arrives.
+# peek's set as a match. Such a kind moves the parse on. A question asked in front of such a kind stops speaking for
+# where the parse then arrives.
 #
 # A kind that reads on a way and not on another is neither this nor `CONSUMES_NOTHING`. A run, a repetition and a choice
 # are such kinds, and a reader asks about their parts instead.
 #
-# The forms of taking are here, whichever phase writes them. A family narrowed to the forms a phase happens to use
-# answers a question about the other phases by silently not counting them. In alphabetical order.
+# The set holds the forms of taking that the phases write. A family could hold only the forms a single phase uses. Such
+# a family would leave the other phases uncounted, and a question about those phases would get a wrong answer. The set
+# lists its kinds in alphabetical order.
 CONSUMING = (
     CharSet,
     ConsumeCharAction,
@@ -1815,8 +1817,8 @@ ACTIONS = (
 )
 
 # A question the parse answers where it is, and the answer takes no character. A guard asks what the input holds around
-# the position, and how the count it holds compares. It leaves nothing behind and may decline. That is what tells it
-# from an action.
+# the position, and how the count it holds compares. It leaves nothing behind and may decline. A reader tells a guard
+# from an action on those grounds.
 #
 # A `(cut)` is no guard. It takes nothing either. It commits the parse rather than asking anything, and belongs with the
 # actions. In alphabetical order.
@@ -1832,13 +1834,13 @@ GUARDS = (
     StartOfLineGuard,
 )
 
-# The kinds a way performs. They are what the machine does where a way runs, to the input or to the state a way holds.
-# They may appear in a way's actions, as against the gate of that way. A gate asks and no more.
+# The kinds a way performs. The machine runs such a kind where a way runs, against the input or against the state a way
+# holds. Such a kind may appear in a way's actions, and not in the gate of that way. A gate asks and no more.
 PERFORMED_NODES = (*ACTIONS, *CONSUMING)
 
-# The steps the machine takes a step at a time in a way. That is the family above without the sets. A set sits *inside*
-# a consume. The set is what the consume consumes rather than something performed beside it. A walk holding a way to
-# what it does then counts the consume once, rather than once per character.
+# The kinds the machine performs in a way as single steps. The set holds the kinds of `PERFORMED_NODES` without the
+# sets. A set sits *inside* a consume. The consume consumes that set rather than performing it as a step. A walk holding
+# a way to its own actions then counts the consume once, rather than once per character.
 PERFORMED_STEPS = (
     *ACTIONS,
     ConsumeCharAction,
@@ -1847,14 +1849,16 @@ PERFORMED_STEPS = (
     ConsumeTrimmedSpanAction,
 )
 
-# The kinds that take characters and leave the length behind, in the forms the pipeline gives them. Those are the
-# repetitions the grammar writes, and the consumes the lowering turns those into. They are also the consume of a single
-# character that a set among a way's actions lowers to.
+# A kind in this set takes characters and leaves the length behind, in the forms the pipeline gives them. The
+# repetitions the grammar writes are such kinds. So are the consumes the lowering turns those repetitions into. A set
+# among a way's actions lowers to a consume of a single character, and that consume is such a kind too.
 #
-# `(match)` is what such a kind took. A rule asking gets the same answer at a stage.
+# `(match)` names the characters such a kind took. A rule asking about them gets the same answer throughout the
+# pipeline.
 #
-# `ConsumeNoCharAction` falls outside them and writes the length itself. It takes nothing, and there is no length to
-# measure. The `0` is the answer rather than what measuring came to. In alphabetical order.
+# `ConsumeNoCharAction` falls outside this set and writes the length itself. It takes nothing, and there is no length to
+# measure. `ConsumeNoCharAction` writes `0` as the answer rather than as a measurement. The kinds above appear in
+# alphabetical order.
 LEAVES_A_LENGTH = (
     ConsumeCharAction,
     ConsumeLimitedSpanAction,
@@ -1868,45 +1872,45 @@ LEAVES_A_LENGTH = (
 
 # The kinds that take no character at all. An action leaves something behind. A guard asks a question. An empty match
 # does neither. `<empty>` is both an action and a guard. It does nothing, and matches wherever a way arrives. A family
-# that needs the kind names it. A match begins on whatever is behind such a node.
+# that needs `<empty>` names it. A match begins on the character behind such a node.
 CONSUMES_NOTHING = (*ACTIONS, *GUARDS, EmptyTree)
 
 # `EmptyTree` is here and in `TREES`. A question naming both families takes it out of the other, and a kind named twice
 # is an error.
 
-# A peek is a guard that holds its question about the input as an `item` and takes nothing. It may ask about what is in
-# front or what is behind. `every-peek-is-a-character-set` is the rule over these. A guard that reads the input need not
-# be a peek. `<end-of-stream>` asks whether a character is there at all, and holds no question.
+# A peek is a guard that holds its question about the input as an `item` and takes nothing. It may ask about the
+# character in front or the character behind. `every-peek-is-a-character-set` is the rule over these. A guard that reads
+# the input need not be a peek. `<end-of-stream>` asks whether a character is there at all, and holds no question.
 PEEKS = (LookGuard, LookBehindGuard, NegLookGuard)
 
 # The guards that read what is in front of the parse. The questions are whether a character is there at all, whether the
-# character falls in a set, and whether it falls outside that set. A look behind falls outside them. So does where the
-# parse is in the line, and so does how the indentation compares.
+# character falls in a set, and whether it falls outside that set. A look behind, the parse's place in the line and the
+# comparison of the indentation fall outside these guards.
 LOOKS_AHEAD = (EndOfStreamGuard, LookGuard, NegLookGuard)
 
-# The kinds that match a single character, whatever character of their set turns up. A difference or an alternation can
-# match a single character. So can a call or a switch. Such a kind does where what it holds does. That is a question
-# about the grammar rather than about the kind. In alphabetical order.
+# The kinds that match a single character, under any character of their set. A difference or an alternation can match a
+# single character. So can a call or a switch. Such a kind matches a single character where the node it holds does. That
+# is a question about the grammar rather than about the kind. In alphabetical order.
 _ALWAYS_ONE_CHAR = (CharSet, InvalidSet, OneCharSet, RangeSet)
 
-# A match repeated. It is the same state entered again, as many times as the input allows or as a count fixes. A run
-# said as the consume a parser makes falls outside them. The lowering turns such a repetition *into* the consume. In
-# alphabetical order.
+# A kind in this set repeats a match. The parse enters the same state again, as many times as the input allows or as a
+# count fixes. A run that a parser makes as a consume stays out of this set. The lowering turns such a repetition *into*
+# the consume. In alphabetical order.
 REPETITIONS = (PlusTree, RepTree, StarTree)
 
 # A repetition the input ends rather than a count. A run takes turns until what it repeats declines. `REPETITIONS` takes
 # in the counted repetition as well. The phases lower both, and a count is a run of a length already fixed.
 RUNS = (PlusTree, StarTree)
 
-# A node that holds its content rather than bracketing the content with a pair. It is what the wrappers phase takes
-# apart. In alphabetical order.
+# A node of a kind in this set holds its content rather than bracketing the content with a pair. The wrappers phase
+# takes such a node apart. The set lists its kinds in alphabetical order.
 WRAPPERS = (CommitWrapper, MaxWrapper, RecoverWrapper, TokenWrapper, Wrapper)
 
-# The shapes of the tree the lowerings take apart. Those are a choice of ways and a run of a way. They are a repetition,
-# an optional and a binding. They are a switch and an empty match.
+# The shapes of the tree the lowerings take apart. The shapes are a choice of ways and a run of a way. They are a
+# repetition, an optional and a binding. They are a switch and an empty match.
 #
 # These are things the grammar writes, and not things the machine has a state for. The phases before the canonical form
-# are what remove them. In alphabetical order.
+# remove these shapes. In alphabetical order.
 TREES = (
     AltTree,
     BindTree,
@@ -1921,8 +1925,8 @@ TREES = (
     TrimStarTree,
 )
 
-# The kinds the machine has a state for. Those are the choice of ways a production offers, and a way among them. They
-# are what the trees above become. In alphabetical order.
+# The kinds the machine has a state for. Those are the choice of ways a production offers, and a way among them. The
+# lowerings turn the shapes of `TREES` into these kinds. In alphabetical order.
 STATES = (AlternativeState, ChoiceState)
 
 # The kinds a node holds that are neither a match nor a value. The first is the arm of a switch, and it pairs a
@@ -1950,8 +1954,8 @@ WALKED_UNCONSUMED = (
     Wrapper,
 )
 
-# The kinds that hold a match, and so cannot appear where an item does. A choice and a run become productions of their
-# own. A recovery moves to the edge an alternative rides. A binding becomes an action. In alphabetical order.
+# The kinds that hold a match. Such a kind cannot appear where an item does. A choice and a run become productions of
+# their own. A recovery moves to the edge an alternative rides. A binding becomes an action. In alphabetical order.
 HOLDS_A_MATCH = (AltTree, BindTree, RecoverWrapper, SeqTree)
 
 # The shapes a production's body may be, with a state the machine has apiece. It is a choice of ways, or a run of a way.
@@ -1959,18 +1963,18 @@ HOLDS_A_MATCH = (AltTree, BindTree, RecoverWrapper, SeqTree)
 # match, and `no-bind-nodes` counts that wherever it appears. In alphabetical order.
 BODY_KINDS = (AltTree, ChoiceState, RecoverWrapper, SeqTree)
 
-# The shapes an item may take. An item is something the machine does where it appears. That is a call. It is also
-# anything that takes no character. It is anything that takes characters.
+# An item may take one of these shapes. An item is something the machine does where it appears. Such an item is a call,
+# a step that takes no character, or a step that takes characters.
 #
-# A guard's question is the guard's business and no item of the way. That is what lets a peek hold a set, and an
-# exclusion a question a bounded run of steps answers. `every-peek-is-a-character-set` and `every-exclusion-is-bounded`
-# answer for those.
+# A guard's question is the guard's business and no item of the way. A peek holds a set. An exclusion holds a question
+# that a bounded run of steps answers. `every-peek-is-a-character-set` covers the peek's set, and
+# `every-exclusion-is-bounded` covers the exclusion's question.
 #
-# This says the families and the call, rather than a list of the forms a phase reaches. A taking left out of the list is
-# a step the machine has, read as a shape it has no state for.
+# The list names the families and the call rather than the forms a phase reaches. The machine would read a taking left
+# out of the list as an unknown shape.
 LEAF_ITEMS = (*CONSUMES_NOTHING, *CONSUMING, RefCall)
 
-# The kinds a production may hold instead of a matcher. Such a kind is a value the parse works out. That is an
+# The kinds a production may hold instead of a matcher. Such a kind is a value the parse works out. A kind is an
 # indentation or a measured length, a parameter or a switch over a parameter. It matches nothing. It takes no character
 # and reads no input. In alphabetical order.
 VALUE_KINDS = (
@@ -1993,10 +1997,11 @@ VALUE_KINDS = (
 _VALUE_LEAVES = (LitValue, ParamValue)
 
 # The kinds that do not match a single character. A repetition or a sequence takes a run rather than a character. A
-# lookaround and a marker take none, and so do an action and a guard. A value expression is no match at all. The
-# consumes the canonical form writes state the count in the name.
+# lookaround and a marker take none. An action and a guard take none. A value expression is no match at all. The
+# canonical form names a consumes by the count it takes.
 #
-# With the kinds that can be a character it comes to `KINDS`. That is what it is here for. In alphabetical order.
+# This set and the kinds that can be a character together come to `KINDS`. The set lists its kinds in alphabetical
+# order.
 _NOT_ONE_CHAR = (
     AddValue,
     AlternativeState,
@@ -2071,14 +2076,14 @@ _NOT_ONE_CHAR = (
     Wrapper,
 )
 
-# The kinds of node the IR writes. That is the kinds of thing that appear inside a body. `_NOT_ONE_CHAR` names a kind
-# that cannot be a character. The tuple below names a kind that can be a character. The pair together cover the kinds.
+# The kinds of node the IR writes inside a body. `_NOT_ONE_CHAR` names a kind that cannot be a character. The tuple
+# below names a kind that can be a character. The pair together cover the kinds.
 #
 # A kind added to neither is a kind `Question` refuses to hear about. A table naming it would be naming what is no kind
-# of node. A net reading this has to tell "a kind I know, and this is not it" from "a kind nobody has named".
+# of node. A net reading `KINDS` has to tell "a kind I know, and this is not it" from "a kind nobody has named".
 #
 # A `Prod` is no kind of node. It is a name, a parameter list and a body. It is the thing a body hangs off rather than
-# anything inside a body. A walk of a body reaches no `Prod`, and no question asks what it means.
+# anything inside a body. A walk of a body reaches no `Prod`, and no question asks what a `Prod` means.
 KINDS = _NOT_ONE_CHAR + (AltTree, CaseTree, OneCharSet, CharSet, DiffSet, InvalidSet, RangeSet, RefCall)
 
 
@@ -2089,9 +2094,8 @@ def _refuse_a_family_said_twice() -> None:
     A family is a statement about the kinds themselves. The members tell a pair apart, rather than the prose above them.
 
     A pair of comments may ask different questions. The first asks what takes a character wherever it matches. The
-    second asks what takes a character itself rather than through what it holds. The pair are a family the moment they
-    come to the same members. A reader answering the first through the second is then right by accident. This is what
-    sees that.
+    second asks what takes a character itself rather than through the nodes it holds. The pair are a family the moment
+    they come to the same members. A reader answering the first through the second is then right by accident.
     """
     said: dict[frozenset[type], str] = {}
     for name, family in globals().items():
@@ -2102,9 +2106,8 @@ def _refuse_a_family_said_twice() -> None:
             said[members] = name
 
 
-# The table `is_one_char` answers from, as a question. It answers for the kinds somebody wrote in and no more. A kind
-# absent from here is a kind nobody has asked this of. Such a kind arriving raises rather than taking an answer. That is
-# what a question buys, and why the table is smaller than `KINDS`.
+# `is_one_char` reads its answer from this table. It covers the kinds somebody wrote in and no more. A kind absent from
+# here is a kind nobody has asked this of. `is_one_char` raises on such a kind.
 _IS_ONE_CHAR: Question[bool] = Question(
     "whether a node matches a single character",
     {
@@ -2115,8 +2118,8 @@ _IS_ONE_CHAR: Question[bool] = Question(
         and all(is_one_char(item, grammar, seen) for item in node.items),
         RefCall: lambda node, grammar, seen: node.name in seen
         or is_one_char(grammar[node.name].body, grammar, seen | {node.name}),
-        # The kinds that reach here and are not a single character. This list names them rather than borrowing a family,
-        # and no wider group fits.
+        # This list names the kinds that reach here and match more or less than a single character. A wider family would
+        # hold kinds beside these.
         (
             AddValue,
             AlternativeState,
@@ -2183,12 +2186,9 @@ def repeated(node: "Node") -> "Node | None":
     """
     The match `node` takes again and again, and `None` where it takes a turn at most.
 
-    A run said as the consume a parser makes repeats nothing here. The consume is what a repetition of a class is *for*.
-    Counting the consume as a repetition would make the lowered shape the fault the lowering fixed.
+    A run said as the consume a parser makes repeats nothing here.
 
-    The table names the remaining kinds, and a kind named in neither list raises. A default meaning of "this does not
-    repeat" plays no part. A repetition this had not heard of would go unseen. That is what `is_one_char` answering
-    `False` by default did.
+    The table names the remaining kinds, and a kind named in neither list raises.
     """
     if isinstance(node, TrimStarTree):
         return node.full
@@ -2199,8 +2199,9 @@ def repeated(node: "Node") -> "Node | None":
     raise TypeError(f"cannot tell whether {type(node).__name__} repeats anything")
 
 
-# The shape a `kept_for` store takes. The key is the subject's id and whatever else the answer turns on. The value is
-# the subject beside its answer. A store whose answer has a short shape writes that shape instead of taking this.
+# `Kept` is the shape a `kept_for` store takes. The key is the subject's id beside the other values the answer turns on.
+# The value is the subject beside its answer. A store whose answer has a short shape writes that shape instead of taking
+# this.
 Kept = dict[tuple[int, object], tuple[object, _Answer]]
 
 
@@ -2208,21 +2209,19 @@ def kept_for(store: Kept[_Answer], subject: object, work: Callable[[], _Answer],
     """
     `work()` for `subject`, worked out once and kept in `store` against that object's identity and `under`.
 
-    It keys on identity rather than equality. These answer about a grammar or a node, and both compare equal to others
-    that are not them. A pair of stages hold the same frozen action under references denoting different sets. Answering
-    the second from the first would be answering about the wrong grammar. A value hash costs more here than it saves. A
-    grammar is a dictionary of whole production trees.
+    The store keys on identity rather than equality. An asker asks about a grammar or a node. A grammar compares equal
+    to objects that are not it. A node compares equal to objects that are not it. A pair of stages hold the same frozen
+    action under references denoting different sets. Answering the second from the first would be answering about the
+    wrong grammar. A value hash costs more here than it saves. A grammar is a dictionary of whole production trees.
 
     The store keeps `subject` beside the answer, and checks it. An `id` is unique among the objects alive at once and no
     further. A grammar that has been let go frees its id for the next grammar. A store holding only the answer would
-    hand the next grammar its predecessor's answer. Holding the subject keeps that grammar alive, and the id goes on
-    meaning it.
+    hand the next grammar its predecessor's answer. Holding the subject keeps the subject alive, and the id goes on
+    naming the subject.
 
-    `under` is whatever else the answer depends on, hashable and compared by value. An asker whose answer turns on an
-    action as well as a grammar names the action there. The asker builds no key of its own.
-
-    This file writes it once. The askers had it written out across a pair of modules. That was a dance of a pair of
-    lines apiece, and a comment said it kept the same discipline as the last.
+    `under` holds the other values the answer depends on. Such a value is hashable, and the store compares it by value.
+    An asker whose answer turns on an action as well as a grammar names the action there. The asker builds no key of its
+    own.
     """
     known = store.get((id(subject), under))
     if known is None or known[0] is not subject:
@@ -2234,9 +2233,8 @@ def rebuilt(node: "Node", visit: Callable[["Node"], "Node"]) -> "Node":
     """
     `node` with the grammar nodes it holds replaced by `visit` of those nodes.
 
-    It is the generic walker the module's shape exists for. It reaches any node the same way. A node is a field of its
-    own, or an item of a tuple. A caller recurses without special-casing any node. A value a node holds rather than
-    grammar comes back unchanged.
+    A grammar node sits in a field of `node` or in an item of a tuple field. A caller recurses without special-casing
+    any node. A value a node holds rather than grammar comes back unchanged.
     """
     changed: dict[str, object] = {}
     for field in fields(node):
@@ -2248,6 +2246,6 @@ def rebuilt(node: "Node", visit: Callable[["Node"], "Node"]) -> "Node":
     return replace(node, **changed) if changed else node
 
 
-# Last, with the families behind it. Run partway down, this would answer for the families above and read exactly the
-# same as a run that answered for the whole module.
+# The families come first, and this check comes last. A run stopped partway would cover the families and look like a
+# full run.
 _refuse_a_family_said_twice()

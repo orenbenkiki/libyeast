@@ -1,5 +1,5 @@
 # The build, the tests and the install of libyeast. This builds the library shared and static from a single source
-# list, hardened and with its symbols hidden bar the public API. This builds the test suite under acutest. It installs
+# list. The build hardens the library and hides the symbols outside the public API. This builds the test suite under acutest. It installs
 # the header, the CMake package and the pkg-config file.
 
 cmake_minimum_required(VERSION 3.20)
@@ -10,12 +10,12 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Coverage instrumentation (gcov; GCC/Clang). A dedicated build with no sanitizers or hardening. The gcov data is
-# clean. MSVC is unsupported.
-option(YEAST_COVERAGE "Build with gcov coverage instrumentation (GCC/Clang)" OFF)
+# Coverage instrumentation for gcov under GCC and Clang. This build turns the sanitizers and the hardening off. The gcov data is
+# clean. This build does not support MSVC.
+option(YEAST_COVERAGE "Build with gcov coverage instrumentation (GCC and Clang)" OFF)
 if(YEAST_COVERAGE)
     if(MSVC)
-        message(FATAL_ERROR "YEAST_COVERAGE requires GCC or Clang for gcov. MSVC does not provide it.")
+        message(FATAL_ERROR "`YEAST_COVERAGE` requires GCC or Clang for gcov. MSVC does not provide it.")
     endif()
     add_compile_options(--coverage -O0 -g)
     add_link_options(--coverage)
@@ -24,16 +24,16 @@ endif()
 include(CheckCCompilerFlag)
 include(CheckLinkerFlag)
 
-# Flags that guard flag probes. -Werror makes an unknown positive -Wfoo fail the probe (GCC otherwise only warns on
-# unknown -W). Hardening probes override this to "-O2 -Werror". -O2 silences -D_FORTIFY_SOURCE=3's -O0-only #warning.
-# That keeps the probe from rejecting FORTIFY falsely.
+# The flags below guard the flag probes. -Werror makes an unknown positive -Wfoo fail the probe (GCC otherwise only warns on
+# unknown -W). Hardening probes override those guard flags to "-O2 -Werror". -O2 silences the -O0-only #warning that
+# `-D_FORTIFY_SOURCE=3` raises.
+# The probe then accepts FORTIFY rather than rejecting it.
 #
-# -Werror still fails flags that are inert on this target. An example is -fstack-clash-protection on macOS emitting
-# -Wunused-command-line-argument. The probe prunes those rather than breaking the real build under the library's
-# -Werror.
+# -Werror still fails flags that are inert on this target. -fstack-clash-protection on macOS is such a flag. The compiler emits
+# -Wunused-command-line-argument for that flag. The probe prunes those flags.
 set(YEAST_PROBE_FLAGS "-Werror")
 
-# Collect, into out_var, those of ARGN the current compiler accepts.
+# Collect into `out_var` the flags in ARGN that the current compiler accepts.
 function(yeast_supported_flags out_var)
     set(_ok "")
     foreach(flag IN LISTS ARGN)
@@ -50,7 +50,7 @@ function(yeast_supported_flags out_var)
     set(${out_var} "${_ok}" PARENT_SCOPE)
 endfunction()
 
-# Collect, into out_var, those of ARGN accepted as linker flags.
+# Collect into `out_var` the flags in ARGN that the linker accepts.
 function(yeast_supported_link_flags out_var)
     set(_ok "")
     foreach(flag IN LISTS ARGN)
@@ -63,7 +63,7 @@ function(yeast_supported_link_flags out_var)
     set(${out_var} "${_ok}" PARENT_SCOPE)
 endfunction()
 
-# Strict warnings. The full set on the library.
+# Strict warnings. The library takes the full set.
 add_library(yeast_warnings INTERFACE)
 if(MSVC)
     yeast_supported_flags(YEAST_WARN_FLAGS /W4 /WX /permissive- /sdl /analyze)
@@ -80,8 +80,8 @@ else()
 endif()
 target_compile_options(yeast_warnings INTERFACE ${YEAST_WARN_FLAGS})
 
-# POSIX baseline, Debug sanitizers and Release hardening. This applies them to the library and the test executable
-# (ASan needs the whole program instrumented).
+# POSIX baseline, Debug sanitizers and Release hardening. The library and the test executable both take those flags. ASan needs the whole
+# program instrumented.
 add_library(yeast_build INTERFACE)
 if(NOT MSVC)
     target_compile_options(
@@ -90,7 +90,7 @@ if(NOT MSVC)
     )
     target_link_options(yeast_build INTERFACE $<$<CONFIG:Debug>:-fsanitize=address,undefined>)
 
-    # See the YEAST_PROBE_FLAGS note. -O2 spares FORTIFY. -Werror prunes inert flags.
+    # See the `YEAST_PROBE_FLAGS` note. -O2 spares FORTIFY. -Werror prunes inert flags.
     set(YEAST_PROBE_FLAGS "-O2 -Werror")
     yeast_supported_flags(YEAST_HARDEN_C
         -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong
@@ -109,19 +109,18 @@ if(NOT MSVC)
         target_link_options(yeast_build INTERFACE $<$<CONFIG:Release>:${_f}>)
     endforeach()
 else()
-    # MSVC. AddressSanitizer on the Debug build. It catches a heap, stack or global overflow, and a use-after-free.
-    # MSVC has no UBSan or LeakSanitizer counterpart. ASan clashes with the Debug run-time checks and with incremental
-    # linking. CMake injects /RTC1 into CMAKE_C_FLAGS_DEBUG. Strip /RTC* and disable /INCREMENTAL for the Debug config.
+    # Under MSVC, the Debug build turns on AddressSanitizer. AddressSanitizer catches a heap, stack or global overflow, and a use-after-free.
+    # MSVC has no UBSan or LeakSanitizer counterpart. AddressSanitizer clashes with the Debug run-time checks and with incremental
+    # linking. CMake injects `/RTC1` into `CMAKE_C_FLAGS_DEBUG`. Strip the run-time check flags and disable
+    # `/INCREMENTAL` for the Debug config.
     string(REGEX REPLACE "/RTC[1csu]+" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
     target_compile_options(yeast_build INTERFACE $<$<CONFIG:Debug>:/fsanitize=address>)
     target_link_options(yeast_build INTERFACE $<$<CONFIG:Debug>:/INCREMENTAL:NO>)
 endif()
 
-# Library. The shared and the static build come off the same source, under the same base name.
+# The targets below build the library. The shared build and the static build compile the same source. Both builds take the same base name.
 #
-# The glob uses CONFIGURE_DEPENDS, and that is what makes it safe. CMake re-checks the glob when it builds and
-# reconfigures when the set of files changes. A new source cannot slip out of the library unnoticed. That is exactly
-# what a hand-kept list lets happen.
+# The source glob uses `CONFIGURE_DEPENDS`. CMake re-checks the glob at build time. CMake reconfigures when the set of files changes.
 file(GLOB YEAST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c)
 add_library(yeast SHARED ${YEAST_SOURCES})
 add_library(yeast_static STATIC ${YEAST_SOURCES})
@@ -130,8 +129,8 @@ foreach(_t IN ITEMS yeast yeast_static)
         ${_t}
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
     )
-    # POSIX baseline is our code's contract, not imposed on third-party test code. The version string comes from the
-    # project version. That version is the source of truth.
+    # The POSIX baseline governs this project's code. The baseline does not cover third-party test code. The version string comes from the
+    # project version.
     target_compile_definitions(
         ${_t}
         PRIVATE
@@ -147,31 +146,31 @@ endforeach()
 set_target_properties(yeast_static PROPERTIES OUTPUT_NAME yeast POSITION_INDEPENDENT_CODE ON)
 set_target_properties(yeast PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
 
-# Symbol export control. Hide a symbol by default, and export the YS_API ones. The shared build exports the public
-# API. The static build has no import/export decoration.
+# Symbol export control. Hide a symbol by default, and export the `YS_API` ones. The shared build exports the public
+# API. The static build has no import or export decoration.
 set_target_properties(yeast yeast_static PROPERTIES C_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 target_compile_definitions(yeast PRIVATE YEAST_BUILDING)
 target_compile_definitions(yeast_static PUBLIC YS_STATIC)
 
-# Tests. Optional so packagers can skip them (and the acutest dev dependency).
+# Tests. A packager may turn the tests off, along with the acutest dev dependency.
 option(YEAST_BUILD_TESTS "Build the test suite" ON)
 if(YEAST_BUILD_TESTS)
     enable_testing()
     add_executable(test_c tests/test_c.c)
     target_include_directories(test_c PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/acutest)
-    # The fixture round-trip reads the .output wires and .input fragments in tests/spec/.
+    # The fixture round-trip reads the `.output` wires and `.input` fragments in `tests/spec/`.
     target_compile_definitions(test_c PRIVATE YS_SPEC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/spec")
     target_link_libraries(test_c PRIVATE yeast)
-    # The test TU includes vendored acutest.h, not held to the full strict set.
+    # The test TU includes vendored `acutest.h`. The build does not hold that TU to the full strict set.
     if(NOT MSVC)
         target_compile_options(test_c PRIVATE -Wall -Wextra -Werror)
     endif()
     target_link_libraries(test_c PRIVATE yeast_build)
     add_test(NAME test_c COMMAND test_c)
 
-    # The other tests/test_*.c files test something internal. Such a file links the static archive and includes src/
-    # directly. The archive's symbols survive -fvisibility=hidden. That flag reaches the dynamic symbol table, and the
-    # archive is not that. The glob picks the list up, and a new test file is a test the moment it exists.
+    # A `tests/test_*.c` file that tests something internal links the static archive and includes `src/`
+    # directly. The archive's symbols survive -fvisibility=hidden. That flag governs the dynamic symbol table rather
+    # than the archive. A glob over `tests/test_*.c` picks the files up, and a new test file is a test the moment it exists.
     file(GLOB YEAST_INTERNAL_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.c)
     list(REMOVE_ITEM YEAST_INTERNAL_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_c.c)
     foreach(_test IN LISTS YEAST_INTERNAL_TESTS)

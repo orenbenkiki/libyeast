@@ -14,7 +14,7 @@ from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
 
 
 class YeastConan(ConanFile):
-    """The `yeast` package, built with CMake."""
+    """The `yeast` package. CMake builds it."""
 
     name = "yeast"
     license = "MIT"
@@ -52,7 +52,7 @@ class YeastConan(ConanFile):
         cmake_layout(self)
 
     def generate(self):
-        """Write the CMake toolchain, with the tests turned off."""
+        """Write the CMake toolchain and turn the tests off."""
         tc = CMakeToolchain(self)
         tc.cache_variables["YEAST_BUILD_TESTS"] = False
         tc.generate()

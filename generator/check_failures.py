@@ -2,25 +2,29 @@
 """
 Check `failures-are-not-ignored`.
 
-A failure ignored produces output that looks like success. Nobody goes back to check it.
+A failure ignored produces output that looks like success.
 
-A surface has its own shape of the fault. A shell script that does not stop on a failed command. A `Makefile` recipe
-that swallows a failure. A workflow that reads an agent's result without asking whether the agent answered. A workflow
-that asks that of an agent answering under a schema, and stops there. Python that suppresses an exception. Python that
-reads a command's output without reading its status.
+The rule covers the code of the tree, and the shape a failure takes is no part of it. This gate reads the shapes below.
+A shape this gate leaves alone breaks the rule the same way.
 
-An agent that could not do the work reports the refusal and answers under its schema anyway. That answer is present and
-empty. A guard asking merely whether an answer arrived passes it through, and what follows reads emptiness as work.
+A surface has its own shape of the fault. A faulty shell script goes on past a failed command. A faulty `Makefile`
+recipe swallows a failure. A faulty workflow reads an agent's result without asking whether the agent answered. Another
+faulty workflow asks that only of an agent answering under a schema. Faulty Python suppresses an exception, or reads a
+command's output without reading its status.
 
-An `except` that puts the caught exception into what the run reports takes `failure-is-reported:` on its own line. That
-marker says where the failure comes out. A gate collecting divergences over a corpus wants the whole set rather than the
-first crash, and the crash is a divergence like any other.
+An agent may fail at a task. Such an agent reports a failure. That agent still answers under a schema. Such an answer is
+present and empty. A guard asking only whether an answer arrived passes an empty answer through. Code after that guard
+reads emptiness as work.
 
-An `except` whose exception is an ordinary answer takes `not-a-failure:` on its own line. That marker says what the
-answer means. The decoder takes in a malformed UTF-8 sequence, and `(None, 1)` is what it answers about the byte.
+An `except` may put the caught exception into the run's report. Such an `except` takes `failure-is-reported:` on a line
+of its own. That marker says where the failure comes out. A gate collecting divergences over a corpus wants the whole
+set rather than the first crash. A crash is a divergence like any other.
 
-A marker sits on the line it excuses. A store keyed by `file:line` moves under any edit above it, and a stale key reads
-as a site that stopped ignoring anything.
+An `except` whose exception is an ordinary answer takes `not-a-failure:` on a line of its own. That marker says what the
+answer means. The decoder answers `(None, 1)` about a byte of a malformed UTF-8 sequence.
+
+A marker sits on the line it excuses. A store keyed by `file:line` goes stale under an edit above the line. A stale key
+reads as a site that stopped ignoring anything.
 
 Usage: `python3 generator/check_failures.py`.
 """
@@ -45,17 +49,16 @@ _SWALLOWED_IN_MAKE = re.compile(r"^\t-|\|\|\s*true\b|\|\|\s*:")
 _BOUND_AGENT = re.compile(r"\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+agent\s*\(")
 _BARE_AGENT = re.compile(r"^\s*await\s+agent\s*\(", re.MULTILINE)  # the unbound call. Its answer goes unread.
 
-# The expressions that ask whether a bound answer holds anything. A length read off the answer. Also the keys or the
-# values of that answer.
+# An expression in this set asks whether a bound answer holds anything. It reads the length, the keys or the values of
+# the answer.
 _ASKS_IF_EMPTY = r"Object\.(?:keys|values)\(\s*{name}\b|\b{name}\b[\w.\[\]]*\.length"
 
-# The keyword that a call says it will not raise on a failure with. `subprocess.run(check=False)` is where it is
-# written.
+# A call writes this keyword to raise no error on a failure. `subprocess.run(check=False)` writes it.
 _UNRAISED = "check"
 
-# The markers on an `except` a reader has answered for. Both sit on the `except` line and state their reason.
+# The markers on an `except` a reader has already ruled on. Both sit on the `except` line and state their reason.
 # `failure-is-reported:` says where the failure comes out. `not-a-failure:` says what the exception answers instead.
-_IS_ANSWERED_FOR = re.compile(r"#.*\b(?:failure-is-reported|not-a-failure):\s*(\S.*)$")
+_IS_EXCUSED = re.compile(r"#.*\b(?:failure-is-reported|not-a-failure):\s*(\S.*)$")
 
 
 def _shell_faults() -> list[tuple[str, str]]:
@@ -73,11 +76,11 @@ def _shell_faults() -> list[tuple[str, str]]:
 
 
 def _make_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` per `Makefile` recipe that discards the status of what it runs."""
+    """`(site, what is wrong)` per `Makefile` recipe that discards the status of its own command."""
     held = []
     for at, line in enumerate(pathlib.Path(gate.TREE, "Makefile").read_text(encoding="utf-8").splitlines(), start=1):
         if _SWALLOWED_IN_MAKE.search(line):
-            held.append((f"Makefile:{at}", f"Makefile:{at} discards the status of {line.strip()}"))
+            held.append((f"Makefile:{at}", f"the Makefile line {at} discards the status of {line.strip()}"))
     return held
 
 
@@ -123,9 +126,7 @@ def _does_swallow(handler: ast.ExceptHandler) -> bool:
     """
     Whether an `except` handler answers with nothing rather than raising.
 
-    This reports such a handler unless its `except` line has a marker. Reading the body to guess which absorptions are
-    sound would put that judgement in this file. A guess that is a little wrong lets the next case through in silence.
-    The marker puts the judgement beside the handler, where a reader arrives at it.
+    This reports such a handler unless its `except` line has a marker.
     """
     return not any(isinstance(node, ast.Raise) for node in ast.walk(handler))
 
@@ -141,7 +142,7 @@ def _python_faults() -> list[tuple[str, str]]:
         for node in ast.walk(tree):
             if not isinstance(node, ast.ExceptHandler) or not _does_swallow(node):
                 continue
-            if _IS_ANSWERED_FOR.search(lines[node.lineno - 1]):
+            if _IS_EXCUSED.search(lines[node.lineno - 1]):
                 continue
             caught = ast.unparse(node.type) if node.type else "everything"
             at = f"{name}:{node.lineno}"
@@ -175,7 +176,7 @@ def _check() -> None:
         "ignored failure(s). Read the status, or raise, or ask whether the answer holds anything. Or mark the handler "
         "`failure-is-reported:` with where the failure comes out. Or mark the handler `not-a-failure:` with what it "
         "answers instead.",
-        "failures: a handler reports its failure, bar one whose line answers for the handler",
+        "failures: a handler reports its failure, bar a handler a marker excuses",
     )
 
 

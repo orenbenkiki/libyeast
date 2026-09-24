@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // The yeast wire format. A token is a pair of lines. The first line is the position. The second is the code character
 // followed by the escaped text. The wire lets a tool pipe a token stream onward or store it. A caller can also
-// compare a stream against what another parser produced. The comparison goes byte by byte.
+// compare a stream against the tokens another parser produced. The comparison goes byte by byte.
 
 #include "wire.h"
 #include "decoder.h"
@@ -16,13 +16,12 @@
 #include <string.h>
 #include <yeast.h>
 
-// The character that writes a code. A malformed document is '!'. That is the error a wire reports. A host failure is
+// The character that writes a code. A wire reports a malformed document as '!'. A host failure is
 // no token, and no wire character writes a host failure.
 //
-// A character in the table is printable. That is what lets '\0' mean "the wire writes nothing for this" without a
-// reader confusing the pair. A line is NUL-terminated, and a code written as `\0` would read back as an empty line
-// rather than as that code. `check_wire.py` holds the table to it, and the answer cannot quietly become a character
-// somebody uses.
+// A character in the table is printable. '\0' means "the wire writes nothing for this", and no printable code takes
+// that value. A line is NUL-terminated, and a code written as `\0` would read back as an empty line rather than as that
+// code. `check_wire.py` holds the table to that rule.
 static const char YS_WIRE[] = {
     [YS_CODE_BOM] = 'U',
     [YS_CODE_TEXT] = 'T',
@@ -92,7 +91,7 @@ int ys_code_of_char(char character, ys_code *code) {
 
 // --- Writing a token.
 
-// Put a whole buffer to the writer. A short write is a failure, a half-written token being no token.
+// `wire.h` documents this function.
 int ys_put(ys_bytes_writer *writer, const char *bytes, size_t size) {
     while (size > 0) {
         ptrdiff_t written = writer->write(writer->context, bytes, size);
@@ -203,9 +202,9 @@ int ys_wire_write(ys_bytes_writer *writer, ys_token token) {
 
 // --- Reading a token back.
 
-// The wire arm accumulates whole lines and unescapes a token's text into storage of its own. That is why replaying a
-// wire is state and parsing YAML into the same tokens is not more of it. Both buffers grow through the arm's
-// ys_memory. `ys_options::max_bytes` bounds them as that option bounds the parser. `wire.h` declares the struct.
+// The wire arm accumulates whole lines and unescapes a token's text into storage of its own. Replaying a wire holds
+// state. Parsing YAML into the same tokens holds no further state. Both buffers grow through the arm's `ys_memory`
+// handle. `ys_options::max_bytes` bounds them as that option bounds the parser. `wire.h` declares the struct.
 
 void ys_wire_init(ys_wire *wire, ys_memory memory) {
     // The rest is the zeroed state ys_memory_new left. The caller sets the reader of `ys_wire::source`.
@@ -215,13 +214,13 @@ void ys_wire_init(ys_wire *wire, ys_memory memory) {
 // The next line of the wire. The newline drops off. NULL at the end of the stream. NULL too where the source failed
 // to read, and that sets `ys_wire::fault`.
 //
-// The line stays valid until the next call, and is NUL-terminated. The newline goes, and a NUL takes its place. A
-// last line without a newline gets a NUL written past its end, in the byte the source keeps spare. Callers scan the
-// line with the string functions, and those read until a NUL rather than until a length.
+// The line stays valid until the next call. A NUL takes the newline's place. A
+// last line without a newline gets a NUL past its end. The wire writes that NUL into the byte the source keeps spare.
+// Callers scan the line with the string functions, and those read until a NUL rather than until a length.
 //
 // The search resumes where the last search gave up rather than starting over. A line arriving in pieces gets a fill
-// per piece, and rescanning the pieces already looked at would cost a long line its length squared. A wire read from
-// a pipe consists of such pieces, and a pipe is what the format is for.
+// per piece. Rescanning those pieces would cost a long line its length squared. A wire read from
+// a pipe consists of such pieces, and the format is for such a wire.
 static char *ys_next_line(ys_wire *reader, size_t *size) {
     for (;;) {
         char *bytes = (char *)reader->source.bytes;
@@ -341,12 +340,13 @@ static int ys_append_byte(ys_wire *reader, unsigned char byte) {
 // Unescape a token's text into storage the reader owns, and count the codepoints and the breaks in it. The wire
 // records the start of a token. Those counts give the end.
 //
-// A false `wants_characters` marks an unparsed-invalid token, whose text is raw bytes. Such a byte comes from its
-// \xXX, and must begin no character, the same rule the writer holds to.
+// A false `wants_characters` marks an unparsed-invalid token. The text of such a token is raw bytes. Such a byte comes
+// from its
+// \xXX escape. That byte must begin no character, and the writer follows the same rule.
 //
-// Hands back the byte past the text it read, the way `ys_next_line` does. NULL on a fault. A malformed wire reports
-// where in `escaped` the fault sat (`fault_at`) and what the fault was (`why`). A host failure sets `ys_wire::fault`
-// instead, and the caller reads that field to tell the pair apart.
+// Hands back the byte past the text it read, as `ys_next_line` does. NULL on a fault. The `fault_at` field gives the
+// fault's offset in the `escaped` text. The `why` field names the fault. A host failure sets the `ys_wire::fault`
+// field instead. The caller tells the faults apart by `ys_wire::fault`.
 static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size, bool wants_characters, ys_mark *end,
                                size_t *fault_at, ys_message_id *why) {
     reader->text_size = 0;
@@ -416,7 +416,7 @@ static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size
             end->column += 1;
         }
     }
-    // Each byte of an unparsed-invalid token must begin no character, the same rule the writer holds to. A valid
+    // Each byte of an unparsed-invalid token must begin no character, the same rule the writer follows. A valid
     // character among them would make the token a lie about what it holds. Each byte is written as one `\xXX`, and a
     // fault at byte `at` sits at `escaped` offset `at * 4`.
     if (!wants_characters) {
@@ -460,13 +460,12 @@ static const char *ys_scan(const char *at, const char *label, size_t *value) {
     return after;
 }
 
-// The wire is malformed. The token handed back is a YS_CODE_ERROR, the same code a malformed document gets. A
-// malformed wire counts as bad data, the way a bad document does. That token spends the wire, and a bad token earns
-// no trust for more.
+// The wire is malformed. The call hands back a `YS_CODE_ERROR` token. A malformed document gets the same code. That
+// token spends the wire.
 //
-// Its marks locate the fault in the wire. `line` counts from `1` and `column` counts from `0`. The byte and codepoint
-// offsets stay `0`. The fault sits in the wire rather than in something parsed from the wire. Its text is what was
-// wrong.
+// The token's marks locate the fault in the wire. `line` counts from `1` and `column` counts from `0`. The byte and
+// codepoint offsets stay `0`. The fault sits in the wire rather than in something parsed from the wire. The token's
+// text describes the fault.
 static int ys_wire_error(ys_wire *reader, ys_token *token, size_t line, size_t column, ys_message_id id) {
     reader->is_done = true;
     token->code = YS_CODE_ERROR;
@@ -476,8 +475,9 @@ static int ys_wire_error(ys_wire *reader, ys_token *token, size_t line, size_t c
     return YS_OK; // a malformed wire is a token like any other. Reading it succeeded
 }
 
-// A resource failure ys_next_line or ys_append hit. Not a token, but ys_read_token()'s return value. The allocator's
-// failure is ENOMEM. The reader's failure is whatever it left, and this passes that through.
+// A resource failure that `ys_next_line` or `ys_append` hit. The value is a `ys_read_token` return value rather than a
+// token. The allocator's failure is ENOMEM. The reader's failure is the value the reader left, and that value passes
+// through.
 static int ys_wire_resource(ys_wire *reader) {
     reader->is_done = true;
     if (reader->fault == YS_FAILED_MEMORY) {

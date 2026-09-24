@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-// A source of yeast tokens, whichever way a producer makes them. YAML parsed from memory or a stream, or a yeast wire
-// replayed from a stream. The constructors build a single type. ys_read_token(), ys_are_tokens_stable() and
-// ys_delete_token_source() work on a source of any arm. Code over tokens does not know or care which made them.
+// A source of yeast tokens. A source parses YAML from memory or from a stream. A source replays a yeast wire from a
+// stream. The constructors build a single type. `ys_read_token`, `ys_are_tokens_stable` and `ys_delete_token_source`
+// work on a source of any arm. Code over tokens does not know or care which made them.
 
 #include "token_source.h"
 

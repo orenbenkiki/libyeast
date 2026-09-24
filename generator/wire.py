@@ -12,7 +12,7 @@ The escaping follows `src/wire.c` exactly. A printable ASCII byte other than a b
 else becomes `\xXX` or `\uXXXX` or `\UXXXXXXXX`. The hex comes out lower-case.
 
 Marks advance a byte by its UTF-8 length, a character by a single step, and a line at a break. A break is CR, LF, or CR
-LF together. A line resets the column. That follows the line counting the reference does.
+LF together. A line resets the column. `src/wire.c` counts lines the same way.
 """
 
 import re
@@ -21,9 +21,9 @@ from dataclasses import dataclass
 
 ERROR = "!"  # the wire's error code. A malformed document takes it.
 
-# The wire character that writes a token code. The grammar names the code, and `src/wire.c`'s YS_WIRE table gives the
-# character. `check_wire.py` gates this copy against that table, and the pair cannot drift. `_CHAR_CODE` reads a wire
-# back.
+# The wire character that writes a token code. The grammar names the code, and the `YS_WIRE` table in `src/wire.c` gives
+# the character. `check_wire.py` gates this copy against that table, and the pair cannot drift. `_CHAR_CODE` reads a
+# wire back.
 CODE_CHAR = {
     "bom": "U",
     "text": "T",
@@ -77,8 +77,8 @@ _CHAR_CODE = {character: code for code, character in CODE_CHAR.items()}
 
 # A codepoint that writes a line break. A carriage return followed by a line feed is a single break.
 CARRIAGE_RETURN = 0x0D
-LINE_FEED = 0x0A  # the other codepoint. A line feed makes a break, or it closes a carriage return.
-# the mark the stream may open with. A consume naming that mark takes no column for it.
+LINE_FEED = 0x0A  # A codepoint that ends a line. A line feed makes a break, or it closes a carriage return.
+# A mark the stream may open with. A consume naming that mark takes no column for it.
 BYTE_ORDER_MARK = 0xFEFF
 
 # The first line of a wire token. It writes the offsets of the token's position.
@@ -99,11 +99,11 @@ class Mark:
 
 @dataclass(frozen=True)
 class Token:
-    """A wire token. The code character, the start mark, and the text escaped as the wire writes it."""
+    """A wire token. A token holds the code character, the start mark and the text."""
 
     code: str
     start: Mark
-    text: str  # escaped, as on the wire. An error holds its message. A leaf holds its escaped input.
+    text: str  # The text is wire-escaped. An error holds its message. A leaf holds its escaped input.
 
 
 def parse(text: str) -> list[Token]:
@@ -160,8 +160,8 @@ def is_clean(tokens: Sequence[Token], size: int) -> bool:
     Whether `tokens` are a clean match of the whole `size` bytes. That means no error, and no byte left unaccounted for.
 
     A production that rejects its input says so with an error token. A production that stops early says so by leaving
-    the last byte it consumed short of the end. Either way the match over the given input was not clean. That is what a
-    fixture's `invalid` claims.
+    the last byte it consumed short of the end. Either way the match over the given input was not clean. A fixture's
+    `invalid` claims exactly that.
     """
     consumed = [token for token in tokens if token.code != ERROR]
     if len(consumed) != len(tokens):
@@ -181,9 +181,9 @@ def marker_fault(tokens: Iterable[Token], is_whole: bool) -> str | None:
     Markers pair by their code. That is how the marker gate of the grammar reads them, and that is how a block scalar
     pairs at all. A block scalar opens with a marker of its own. The chomping decides where the close falls.
 
-    `is_whole` says these tokens are a whole parse, whose markers must balance exactly. A rule run outside the root is
-    not a whole parse. Such a rule may close what its caller opened, and `b-chomped-last` does exactly that. So it may
-    close a marker these tokens did not open. Leaving a marker open is a fault either way.
+    `is_whole` says these tokens are a whole parse. The markers must balance exactly. A rule run outside the root is not
+    a whole parse. Such a rule may close what its caller opened, and `b-chomped-last` does exactly that. So it may close
+    a marker these tokens did not open. Leaving a marker open is a fault either way.
     """
     open_markers = []
     for token in tokens:
@@ -205,11 +205,10 @@ def marker_fault(tokens: Iterable[Token], is_whole: bool) -> str | None:
 def escape(raw: bytes, code: str | None = None) -> str:
     r"""
     Escape raw `bytes` into wire text, as `src/wire.c` does. Under unparsed-invalid, `code` arrives as its wire
-    character. The bytes begin no character, and a byte comes out as `\xXX`.
+    character. A byte there begins no character, and it comes out as `\xXX`.
 
-    Under any other code the escaping goes by codepoint over UTF-8, and that is the default. Printable ASCII but a
-    backslash comes out as itself. Anything else becomes `\xXX` or `\uXXXX` or `\UXXXXXXXX`. The hex comes out
-    lower-case.
+    Other codes take the default. The function then escapes by UTF-8 codepoint. Printable ASCII other than a backslash
+    comes out as itself. Another codepoint becomes `\xXX`, `\uXXXX` or `\UXXXXXXXX`. The hex digits are lower-case.
     """
     if code == CODE_CHAR["unparsed-invalid"]:
         return "".join(f"\\x{byte:02x}" for byte in raw)
@@ -229,8 +228,8 @@ def escape(raw: bytes, code: str | None = None) -> str:
 
 def _advance(mark: Mark, text: str, code: str | None = None) -> Mark:
     """
-    The mark reached after consuming escaped `text` from `mark`. A byte per UTF-8 length, a line at a break. Under
-    unparsed-invalid an escape is a raw byte and a column, and an escape counts as no break.
+    The mark reached after consuming escaped `text` from `mark`. The mark advances a byte per UTF-8 length, and a line
+    at a break. Under unparsed-invalid an escape is a raw byte and a column, and an escape counts as no break.
     """
     index = 0
     pieces = units(text, code)
@@ -251,8 +250,8 @@ def _advance(mark: Mark, text: str, code: str | None = None) -> Mark:
 def units(text: str, code: str | None = None) -> list[tuple[int, int, str]]:
     """
     Split escaped wire text into units. A unit is `(value, byte_length, escaped)` per character. Under unparsed-invalid
-    an escape is a raw byte and so takes a byte. Under any other code an escape is a codepoint, and that is the default.
-    The byte length of such a unit is its UTF-8 length.
+    an escape is a raw byte and therefore takes a byte. Under any other code an escape is a codepoint, and that is the
+    default. The byte length of such a unit is its UTF-8 length.
     """
     is_invalid = code == CODE_CHAR["unparsed-invalid"]
     result = []

@@ -2,11 +2,11 @@
 """
 Reflow standalone ``#`` comment blocks to a width. The ``# `` prefix and the block's indentation stay.
 
-Black leaves comments untouched and docformatter reaches docstrings and stops there. This holds a comment to the column
-limit, for the comments that are plain prose.
+Black leaves comments untouched and docformatter reaches docstrings and stops there. This holds a plain-prose comment to
+the column limit.
 
 A standalone comment is a line whose first non-space character is ``#``. ``tokenize`` finds it. A ``#`` inside a string
-passes for none. An inline comment after code stays in place.
+is no comment. An inline comment after code stays in place.
 
 This passes over a shebang, an ``SPDX`` header, and a directive such as ``noqa`` or ``type``. This passes over a block
 with structure of its own, such as an extra indentation or a bullet. A ruler counts too.
@@ -14,11 +14,13 @@ with structure of its own, such as an extra indentation or a bullet. A ruler cou
 A block is the run of same-indent standalone comment lines. An empty comment line splits it into paragraphs. This fills
 a paragraph greedily to the width.
 
-Run with ``--apply`` to rewrite files in place, or ``--check`` to report the blocks that want a reflow and exit with a
-failing status. ``make reformat-py`` applies this, and ``make vet-format-py`` checks the result.
+Run with ``--apply`` to rewrite files in place. Run with ``--check`` to report the blocks that want a reflow. That check
+exits with a failing status when it finds such a block. ``make reformat-py`` applies this, and ``make vet-format-py``
+checks the result. ``make reformat-make`` applies it to the ``Makefile``.
 """
 
 import io
+import os
 import re
 import sys
 import textwrap
@@ -27,23 +29,37 @@ import tokenize
 _WIDTH = 120  # the column a reflow wraps a comment block to.
 
 # The lines a reflow leaves unchanged. A tool reads a directive and wants it on a single line. A ruler is a drawing
-# rather than a sentence. Wrapping a ruler would break the drawing.
+# rather than a sentence, and this reflow skips it.
 _DIRECTIVE = re.compile(r"^(SPDX-|noqa|type:|pragma:|pylint:|fmt:|isort:|yapf|mypy:|nopep8|!)")
-_RULER = re.compile(r"^[-=*|+~^]{2,}")  # a run of the same mark. A drawing rather than a sentence.
+_RULER = re.compile(r"^[-=*|+~^]{2,}")  # a run of the same mark, as `_DIRECTIVE` says.
 
 
 def _body_of(line: str) -> str:
     """
-    The comment text after ``#`` and an optional space. A reflow keeps indentation beyond that space, as a signal.
+    The comment text after ``#`` and an optional space. A reflow keeps indentation beyond that space.
     """
     after_hash = line.lstrip()[1:]
     return after_hash[1:] if after_hash.startswith(" ") else after_hash
 
 
-def _standalone(source: str, lines: list[str]) -> dict[int, int]:
+def _standalone_of_make(lines: list[str]) -> dict[int, int]:
+    """
+    Line number to indentation column, over a `Makefile`'s standalone comments.
+
+    Such a comment opens its line at the left margin. A recipe opens on a tab, and a `#` there belongs to the shell.
+    """
+    return {at: 0 for at, line in enumerate(lines, 1) if line.startswith("#")}
+
+
+def _standalone(source: str, lines: list[str], path: str) -> dict[int, int]:
     """
     Line number to indentation column, over the comments that take a line of their own.
+
+    The Python goes through `tokenize`. A `#` inside a string passes for none there. A `Makefile` writes a standalone
+    comment at the left margin, and `_standalone_of_make` reads it.
     """
+    if os.path.basename(path) == "Makefile":
+        return _standalone_of_make(lines)
     marks = {}
     for token in tokenize.generate_tokens(io.StringIO(source).readline):
         if token.type == tokenize.COMMENT:
@@ -68,11 +84,11 @@ def _is_risky(block: list[str]) -> bool:
 
 def _reflow(block: list[str], indent: int) -> list[str]:
     """
-    The block rewritten, with a prose paragraph filled greedily to the width under the ``# `` prefix.
+    The rewritten block. A reflow fills a prose paragraph greedily to the width under the ``# `` prefix.
 
-    An empty comment line splits a block into paragraphs. A paragraph with structure of its own stays verbatim. That is
-    a ruler or a directive. An indent or a bullet counts too. The reflow still fills the plain-prose paragraphs around
-    it.
+    An empty comment line splits a block into paragraphs. The reflow keeps a ruler verbatim. The reflow keeps a
+    directive verbatim. The reflow keeps an indented or bulleted paragraph verbatim. The reflow fills the plain-prose
+    paragraphs between such paragraphs.
     """
     prefix = " " * indent + "# "
     out: list[str] = []
@@ -107,7 +123,7 @@ def _offenders(path: str, is_applying: bool) -> list[int]:
     with open(path, encoding="utf-8") as handle:
         source = handle.read()
     lines = source.split("\n")
-    marks = _standalone(source, lines)
+    marks = _standalone(source, lines, path)
     result, index, changed = [], 0, []
     while index < len(lines):
         if index + 1 in marks:

@@ -10,9 +10,9 @@
 A fast, single-pass, pull-driven **YAML 1.2 parser in C**. The generator derives libyeast *from the formal grammar*, and
 conformance follows from that derivation rather than from hand-testing.
 
-> **Status: pre-alpha.** The parser does not exist yet. This repository holds the project framework and a placeholder
-> API (`ys_version`). The framework is the build and the tests. It is also the linting and the coverage. It is the docs
-> and the packaging. See [`DESIGN.md`](DESIGN.md) for the architecture and [`PLAN.md`](PLAN.md) for the roadmap.
+> **Status: pre-alpha.** The tree holds no parser. This repository holds the project framework and a placeholder API
+> (`ys_version`). The framework is the build and the tests. It is also the linting and the coverage. It is the docs and
+> the packaging. See [`DESIGN.md`](DESIGN.md) for the architecture and [`PLAN.md`](PLAN.md) for the roadmap.
 
 ## Why
 
@@ -30,30 +30,29 @@ boundaries define what that claims.
 - **It is a token parser.** libyeast turns the character stream into a _yeast_ token stream and stops there. That stream
   is a lossless representation of the document's structure.
 
-  The work above the token stream belongs to a higher layer and is out of scope. That layer composes tokens into a node
-  graph. It resolves anchors, aliases and tags, and constructs native values. It also owns the model decisions that ride
-  along. A duplicate mapping key may be an error, and a consumer may keep mapping key order. libyeast emits the keys, in
-  order, and leaves those decisions to whatever consumes the tokens.
+  The work above the token stream belongs to a higher layer and is out of scope. The higher layer composes tokens into a
+  node graph. It resolves anchors, aliases and tags, and constructs native values. It also owns the model decisions that
+  ride along. A duplicate mapping key may be an error, and a consumer may keep mapping key order. libyeast emits the
+  keys, in order, and leaves those decisions to the consumer of the tokens.
 
-- **It reads UTF-8 only.** That is its single conformance limitation. YAML 1.2 asks a conformant parser for UTF-16 as
-  well. It asks for UTF-32 where a parser accepts JSON. libyeast stops at UTF-8.
+- **It reads UTF-8 only.** YAML 1.2 asks a conformant parser for UTF-16 as well. It asks for UTF-32 where a parser
+  accepts JSON. libyeast stops at UTF-8.
 
-  The decoder classifies UTF-8 bytes straight into the grammar without assembling codepoints. The other encodings would
-  fight that design, and are forgone.
+  The decoder classifies UTF-8 bytes straight into the grammar without assembling codepoints. UTF-16 and UTF-32 would
+  fight that design, and libyeast forgoes them.
 
   A UTF-8 stream may still open with a byte-order mark. libyeast reads that mark and emits it as a mark (`U+FEFF`).
-  libyeast does not switch encoding on a BOM, and reads a single encoding. See [`DESIGN.md`](DESIGN.md) for the details.
+  libyeast does not switch encoding on a BOM. See [`DESIGN.md`](DESIGN.md) for the details.
 
 ## Requirements
 
-Building the C library needs a C99 compiler, CMake `>= 3.20`, and pkg-config on top of those. GCC serves as the
-compiler, and so do Clang and MSVC. That is the list. The generated files sit in the tree, and the build calls no
-Python. `make install-deps` installs those for you and detects your OS. That covers Debian and Ubuntu. It covers macOS
-and Windows.
+Building the C library needs a C99 compiler, CMake `>= 3.20` and pkg-config. GCC, Clang and MSVC compile it. The tree
+holds the generated sources. The build calls no Python. `make install-deps` installs the build tools on Debian and
+Ubuntu. The goal works on macOS and Windows as well.
 
-Working on the generator or running the gate needs more. That is Python 3 with PyYAML, the formatters and linters, and
-the coverage and docs tools. `make install-deps-pc` installs the whole set, and a per-sub-gate
-`make install-deps-<goal>` narrows the list. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Working on the generator or running the gate needs Python 3 with PyYAML, the formatters and linters, and the coverage
+and docs tools. `make install-deps-pc` installs the whole set, and `make install-deps-<goal>` installs the part a single
+sub-gate needs. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Build & install
 
@@ -63,7 +62,7 @@ make                              # build the shared + static libraries
 make install PREFIX=/usr/local    # (optional) install them
 ```
 
-Consume it via pkg-config or CMake.
+Consume the installed library via pkg-config or CMake.
 
 ```sh
 cc app.c $(pkg-config --cflags --libs yeast)
@@ -93,7 +92,7 @@ Goal names reflect the tree. `make <parent>` runs a group, and `make <parent>-<p
 You can build and test the C library, in pure C with no Python. You can verify the generator pipeline. You can
 regenerate its outputs. `make pc` is the developer gate over the whole tree.
 
-`make pc` is the incremental pre-commit gate. It runs these in order, and re-runs only what changed.
+`make pc` is the incremental pre-commit gate. It runs the targets listed below in order, and re-runs only what changed.
 
 - `make all`
 - `make test`
@@ -101,23 +100,23 @@ regenerate its outputs. `make pc` is the developer gate over the whole tree.
 - `make vet`
 - `make gh-pages`
 
-A CI workflow and a status badge sit behind `test` and `verify`, and behind `vet` and `gh-pages`. A target here runs on
-a pull request as well as on `main`, and the gate that refuses a change here refuses it there. Publishing the docs is
-what `main` keeps to itself.
+A CI workflow runs `test` and `verify`. The same workflow runs `vet` and `gh-pages`. A status badge shows the result of
+that workflow. The workflow runs on a pull request and on `main`. A gate that refuses a change locally refuses the same
+change in CI. The workflow publishes the docs on a push to `main` and not on a pull request.
 
 - **`make all`:** the default. It builds the shared and static libraries, in pure C with no Python.
-- **`make test`:** build and run the C parser tests. Pure C.
+- **`make test`:** build and run the C parser tests in pure C.
   - **`make test-debug`:** Debug build (sanitized) + tests
   - **`make test-release`:** Release build + tests
-- **`make verify`:** the generator pipeline is correct and its outputs current.
+- **`make verify`:** the generator pipeline is correct and its outputs are current.
   - **`make verify-roundtrip`:** the grammar round-trips through the IR losslessly
   - **`make verify-references`:** a reference resolves to a production of matching arity, and a production is reachable
   - **`make verify-spec`:** the vendored official grammar comes back once a pass erases libyeast's additions
   - **`make verify-markers`:** a `begin-` marker is closed by its own `end-` on any path
   - **`make verify-emits`:** a rule documents the tokens it emits, and the grammar bears that out
-  - **`make verify-decoder`:** `src/decoder_tables.h` is exactly what the grammar produces (not stale)
-  - **`make verify-wire`:** `wire.py`'s code map matches `src/wire.c`'s
-  - **`make verify-emitter`:** the interpreter can undo a state. Backtracking rests on that
+  - **`make verify-decoder`:** `src/decoder_tables.h` is exactly what the grammar produces
+  - **`make verify-wire`:** the code map in `wire.py` matches the map in `src/wire.c`
+  - **`make verify-emitter`:** the interpreter can undo a state
   - **`make verify-messages`:** a `(cut)` and an `(error)` name a message, and a message has a name
   - **`make verify-fixtures`:** the conformance fixtures in `tests/spec/` are intact
   - **`make verify-grammar`:** a grammar reproduces `tests/spec/` and is exercised by it from the bottom up.
@@ -125,14 +124,14 @@ what `main` keeps to itself.
     - **`make verify-grammar-base-coverage`:** the fixtures exercise the productions of the base grammar
   - **`make verify-normalize`:** a step of the pipeline preserves the tokens and keeps the pipeline's law
   - **`make verify-spaces`:** the subspace algebra answers what set arithmetic over the enumerated states does
-  - **`make verify-star`:** the YAML Test Suite, and the events it folds down to
+  - **`make verify-star`:** the parser agrees with the YAML Test Suite, and with the events the suite folds down to
   - **`make verify-documents`:** the documents and the prose beside the code describe the tree
   - **`make verify-dead-code`:** the code in `generator/` and `scripts/` is reachable
   - **`make verify-failures`:** the shell and the `Makefile` and the workflows and the Python let no failure pass
   - **`make verify-conventions`:** the whole tree obeys the conventions a gate can decide
   - **`make verify-proposals`:** a convention a review proposed has a ruling
+  - **`make verify-agent-prompts`:** an agent definition holds the copy of the conventions its sources say
   - **`make verify-hooks`:** a registered hook answers a faulty edit and passes a clean edit
-  - **`make verify-agent-tools`:** an agent asked for nothing a hook withheld, and left no fragment unfixed
   - **`make verify-fragments`:** the project breaks into fragments, and a fragment holds prose of its own
   - **`make verify-prose`:** the prose in the tree says nothing a write-time hook would refuse
   - **`make verify-ascii`:** a tracked file holds ASCII, and `check_ascii` declares what holds a wider character
@@ -140,20 +139,20 @@ what `main` keeps to itself.
   - **`make vet-format`:** the formatters run in check-only mode.
     - **`make vet-format-c`:** clang-format
     - **`make vet-format-md`:** mdformat
-    - **`make vet-format-py`:** black + format-docstring + wrap_long_comments + ruff
+    - **`make vet-format-py`:** black + format-docstring + `wrap_long_comments` + ruff
     - **`make vet-format-cmake`:** gersemi
     - **`make vet-format-sh`:** shfmt
-    - **`make vet-format-make`:** the column limit, over what no formatter reflows
+    - **`make vet-format-make`:** the column limit over the lines no formatter reflows
   - **`make vet-comments`:** the `/* */`-only-when-inline comment rule
   - **`make vet-lint`:** clang-tidy + cppcheck
   - **`make vet-pylint`:** pylint over `generator/` and `scripts/`, and `.pylintrc` configures it
-  - **`make vet-mypy`:** mypy over the same files, and `mypy.ini` configures it. It checks what has an annotation
+  - **`make vet-mypy`:** mypy over the same files, and `mypy.ini` configures it. mypy checks what has an annotation
   - **`make vet-version`:** guards the vcpkg port against version drift
   - **`make vet-packaging`:** installs, then builds a consumer against the shared and static libraries via pkg-config
-  - the leftover-marker scan. Its goal is `vet-` followed by the scaffolding marker itself. This file leaves that goal
-    unspelled, and the scan is exactly why. `vet` runs it for you.
+  - the leftover-marker scan. Its goal is `vet-` followed by the scaffolding marker itself. The scan would refuse this
+    file for writing that goal out. `vet` runs the scan.
 - **`make gh-pages`:** the GitHub Pages payload.
-  - **`make gh-pages-docs`:** Doxygen HTML, and completeness gates it
+  - **`make gh-pages-docs`:** Doxygen HTML behind a completeness gate
   - **`make gh-pages-coverage`:** the `// UNTESTED` coverage gate + HTML report
 
 Goals outside the gate.
@@ -163,7 +162,7 @@ Goals outside the gate.
   - **`make install-deps-pc`:** the deps the gate needs. `make install-deps-<sub-gate>` narrows the list, as
     `install-deps-verify` and `install-deps-vet` and `install-deps-gh-pages` do.
 - **`make install`:** install the built libraries. `PREFIX=...` sets the location, and `/usr/local` is the default.
-- **`make regen`:** regenerate the generated files that sit in the tree. That is `src/decoder_tables.h`.
+- **`make regen`:** regenerate `src/decoder_tables.h`.
 - **`make reformat`:** apply the formatters in place. A single language goes through `reformat-c` or `reformat-md`. A
   Python file goes through `reformat-py`, a CMake file through `reformat-cmake` and a shell file through `reformat-sh`.
 - **`make check-build-deps` and `make check-dev-deps`:** report whether the required tools are there.

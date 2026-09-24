@@ -1,67 +1,47 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-PreToolUse on Edit and Write. `a-comment-inside-a-body-is-a-note` rather than a passage.
+PreToolUse on Edit and Write. The hook holds a comment inside a body to `a-comment-inside-a-body-is-a-note`.
 
 A long comment restates the code in prose, or defends a decision nobody questioned.
 
-Reads only the text the edit introduces. It looks for an indented run of comment lines. A comment at column `0` sits at
-module level, and this hook skips it. A run below a field's trailing comment continues that comment, and the length
-counts them together.
+Reads only the text the edit introduces. The hook looks for an indented run of comment lines. A comment at column `0`
+sits at module level, and this hook skips it. A run below a field's trailing comment continues that comment. The hook
+counts the lines of the trailing comment and the run below it together.
 
-`check_conventions` is the authority and reads the syntax tree. This refuses the shape as the writer writes it.
+`check_conventions` is the authority and reads the syntax tree. This hook refuses a long run as the writer writes it.
 """
 
-import json
-import re
-import sys
-
-import collect_fragments
-import refusal
-
-# The length a comment inside a body may run to.
-_MOST_LINES = 2
-
-# An indented line that holds a comment and no code.
-_A_COMMENT_LINE = re.compile(r"^\s+#")
-
-# The field whose trailing comment a run below it continues.
-_A_FIELD = re.compile(r"\s*self\.\w+")
+import check_conventions
 
 
-def _long_runs(added: str) -> list[tuple[int, str]]:
-    """The indented comment runs past `_MOST_LINES`, as `(how many lines it runs, its first line)`."""
-    lines = added.split("\n")
-    held = []
-    at = 0
-    while at < len(lines):
-        if not _A_COMMENT_LINE.match(lines[at]):
-            at += 1
-            continue
-        first = at
-        while at < len(lines) and _A_COMMENT_LINE.match(lines[at]):
-            at += 1
-        before = lines[first - 1] if first else ""
-        whole = at - first + (1 if "#" in before and _A_FIELD.match(before) else 0)
-        if whole > _MOST_LINES:
-            held.append((whole, lines[first].strip()))
-    return held
-
-
-def refusal_for(prose: str, path: str) -> str | None:
+def runs_of(source: str) -> tuple[tuple[str, int], ...]:
     """
-    The refusal the length rule gives for `prose` at `path`, or None where the runs pass.
+    The long comment runs of `source`. A pair holds a run's opening line and the lines that run takes.
 
-    A caller with prose and no file asks here. `prose_answer` gives the critic's rewrite this same refusal.
+    `checkers` reads this off the file the edit would leave. A run's length is a reading of the file. Rewrapping the
+    file moves that length.
+    """
+    lines = source.split("\n")
+    return tuple((lines[first - 1].strip(), whole) for first, whole in check_conventions.long_comment_runs(source))
+
+
+def refusal_for(prose: str, path: str, runs: tuple[tuple[str, int], ...] | None = None) -> str | None:
+    """
+    Return the refusal the length rule gives for the comment runs at `path`. Return None where the length rule passes
+    those runs.
+
+    `runs` comes from `runs_of`. A caller that gives none has `runs_of` read `prose`.
     """
     if not path.endswith(".py"):
         return None
-    found = _long_runs(prose)
+    found = runs_of(prose) if runs is None else runs
     if not found:
         return None
-    said = "; ".join(f"{length} lines at `{opens}`" for length, opens in found)
+    said = "; ".join(f"{whole} lines at `{opens}`" for opens, whole in found)
     return (
-        f"This edit writes a comment of more than {_MOST_LINES} lines inside a body, into {path}: {said}.\n\n"
+        f"This edit writes a comment of more than {check_conventions.MOST_COMMENT_LINES} lines inside a body, "
+        f"into {path}: {said}.\n\n"
         "A comment inside a body is a note. A passage there is the code restated in prose, or a defence of a "
         "decision nobody has questioned. The largest one in this tree ran eight lines and came to one.\n\n"
         "CUT IT. Read the code it sits on and keep only what the code does not say. Where a reader would undo the "
@@ -69,17 +49,3 @@ def refusal_for(prose: str, path: str) -> str | None:
         "Where the block documents the field assigned under it, put it directly above that assignment.\n\n"
         "Rule: a-comment-inside-a-body-is-a-note."
     )
-
-
-def main() -> None:
-    payload = json.load(sys.stdin)
-    edit = collect_fragments.edited(payload.get("tool_input", {}))
-    if edit is None:
-        return
-    found = refusal_for(edit.now, edit.path)
-    if found:
-        refusal.refuse(found)
-
-
-if __name__ == "__main__":
-    main()

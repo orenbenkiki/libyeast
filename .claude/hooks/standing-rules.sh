@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# UserPromptSubmit. The rules go in front of the model.
+# UserPromptSubmit.
 #
-# Somebody wrote these rules down, and the model dropped them again and again inside a session. Adherence decayed with
-# conversation length. The rules held still while the model's memory of them decayed.
+# The model loses a rule it read far back in a session.
 #
-# A rule the model read a hundred turns back is gone. This puts the rules a turn back, and does so afresh per turn.
+# This hook puts the rules in the prompt afresh per turn.
 #
 # Keep this list SHORT. A long list decays the same way the conversation does.
 set -euo pipefail
@@ -35,3 +34,8 @@ Before acting, check these. They are not advisory.
 These bind your messages as much as your file edits.
 </rules>
 RULES
+
+# The settling loop records the rules this project's writers break. The lines below print those rules. `batch_pending_fragments.rules_by_use` writes
+# those rules to a list. The critic reads that list too. The hook prints nothing in a tree where the settling loop has run no round.
+PYTHONPATH="$CLAUDE_PROJECT_DIR/generator" python3 -c \
+    'import batch_pending_fragments; said = batch_pending_fragments.rules_by_use(); print(said) if said else None'

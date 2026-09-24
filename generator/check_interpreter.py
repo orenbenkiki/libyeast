@@ -5,9 +5,9 @@ Check that the interpreter reproduces the conformance fixtures it covers.
 Take a fixture whose production rests on the nodes the interpreter supports, and run that production. Compare the token
 stream the run emits against the stream the fixture froze. The comparison goes byte by byte.
 
-This is where libyeast's grammar proves it emits the reference's tokens, a production at a time. The malformed inputs
-are among them. A failed cut writes an error token and hands the remainder to the unparsed recovery. A fixture can hold
-that stream like any other.
+This is where libyeast's grammar proves it emits the reference's tokens, a production at a time. The fixtures include
+malformed inputs. A failed cut writes an error token and hands the remainder to the unparsed recovery. A fixture can
+hold that stream like any other.
 """
 
 import os
@@ -26,12 +26,12 @@ def reproduced(grammar: dict[str, ir.Prod], fixtures: list[spec_tests.Fixture] |
     whole set.
 
     Takes the grammar as an argument the way the interpreter does. A structurally-transformed grammar emits the same
-    token streams as the base grammar. The fixtures are the base's frozen output. Reproducing them means the transform
-    changed no token.
+    token streams as the base grammar. The fixtures are the base's frozen output. A transformed grammar that reproduces
+    the fixtures changed no token.
     """
     if fixtures is None:
         fixtures = spec_tests.load()
-    ir.say(f"        {len(fixtures)} fixture(s), spread over the cores")
+    ir.say(f"        {len(fixtures)} fixture(s) spread over the cores")
     held = gate.spread(_run_one, (grammar,), fixtures)
     return [error for error in held if error is not None]
 

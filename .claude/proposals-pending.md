@@ -5,3 +5,5 @@ red while this file holds such a proposal.
 
 You rule on a proposal by moving it. An accepted proposal goes into `.claude/conventions.md`. A rejected proposal goes
 into `.claude/rejected.md` with its reason. Either way it leaves this file.
+
+A run appends what it raised under a heading naming that run. The gate reads the bold list items under such a heading.

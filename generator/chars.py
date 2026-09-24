@@ -2,9 +2,9 @@
 """
 The character model the decoder rests on. `chars` derives it from the grammar IR.
 
-The literal characters the grammar names and the distinct character sets the grammar tests are what the parser can ask
-about a character. `Model.key` answers those questions at once. The key is a 32-bit word holding the character's
-named-literal id, a bit per character set the character belongs to, and the UTF-8 length.
+The parser asks whether a character is a literal the grammar names. It also asks whether the character belongs to a
+character set the grammar tests. `Model.key` answers those questions at once. The key is a 32-bit word holding the
+character's named-literal id, a bit per character set the character belongs to, and the UTF-8 length.
 
 `chars` works out a union and a subtraction here. A test in the parser is then a single bit test.
 """
@@ -20,8 +20,8 @@ if TYPE_CHECKING:
 
 MAX_CODEPOINT = 0x10FFFF  # the last codepoint Unicode has. A span reaching the top stops here.
 
-# The codepoints a node consumes. The shape names how the grammar builds the set, and `spans` says which characters that
-# comes to.
+# The codepoints a node consumes. `shape` names how the grammar builds the set, and `spans` names the characters in the
+# set.
 _Denotation = (
     tuple[Literal["literal"], int]
     | tuple[Literal["range"], int, int]
@@ -29,7 +29,7 @@ _Denotation = (
     | tuple[Literal["difference"], "_Denotation", tuple["_Denotation", ...]]
 )
 
-# The value `gathered` takes from a node it finds. The kinds `gathered` walks for settle what it hands `of`.
+# The value `gathered` takes from a node it finds. `gathered` hands `of` a value that depends on the kind of that node.
 _Taken = TypeVar("_Taken", bound="SupportsRichComparison")
 
 # The key's layout. The parser tests it with `key & YS_SET_*` and `YS_LIT(key) == YS_LIT_*`. The fields must not move
@@ -45,15 +45,15 @@ def denote(grammar: Mapping[str, ir.Prod], node: ir.Node, seen: tuple[str, ...] 
     """
     The codepoints `node` consumes, where it consumes a single character. `None` otherwise.
 
-    The question asks the kinds what this takes from the input, and whether that is a single character. The question
-    does not ask what admits it. A gate takes no width and says which ways a parse may enter, rather than what a way
+    The walk asks what `node` takes from the input, and whether `node` takes a single character. The question does not
+    ask what admits the character. A gate takes no width and says which ways a parse may enter, rather than what a way
     takes.
 
-    `ConsumeCharAction` joins the pair. The action takes the character its gate found. A way built from that pair takes
-    the set the gate admits.
+    `ConsumeCharAction` joins a gate to an action. The action takes the character its gate found. A way built from that
+    pair takes the set the gate admits.
 
-    A kind `_DENOTES` leaves out raises rather than denoting nothing. "No set" and "no answer" differ. Reading the
-    second as the first would leave a character class unlowered and unseen.
+    `denote` raises on a kind outside `_DENOTES` and does not answer `None`. "No set" and "no answer" differ. Reading
+    the second as the first would leave a character class unlowered and unseen.
     """
     return _DENOTES(node, grammar, seen)
 
@@ -104,9 +104,9 @@ def _denoted_call(node: ir.RefCall, grammar: Mapping[str, ir.Prod], seen: tuple[
     """
     A call's codepoints. The production the call names decides them.
 
-    A call passing arguments takes what its callee takes under those arguments. The callee's body does not say that
-    without them. A call the walk reaches again is a recursion. A recursion takes more than a single character, or it
-    takes none.
+    A call passing arguments takes what its callee takes under those arguments. The callee's body read without those
+    arguments does not say what the call takes. A call the walk reaches again is a recursion. A recursion takes more
+    than a single character, or it takes none.
     """
     if node.args or node.name not in grammar or node.name in seen:
         return None
@@ -115,8 +115,8 @@ def _denoted_call(node: ir.RefCall, grammar: Mapping[str, ir.Prod], seen: tuple[
 
 def _denoted_choice(node: ir.ChoiceState, grammar: Mapping[str, ir.Prod], seen: tuple[str, ...]) -> _Denotation | None:
     """
-    A choice's codepoints. The union of what the ways take, where a way takes a single character apiece. A wider way
-    leaves the choice without a denotation.
+    A choice's codepoints. The set is the union of the characters the ways take, where a way takes a single character
+    apiece. A wider way leaves the choice without a denotation.
     """
     parts: list[_Denotation] = []
     for way in node.alternatives:
@@ -129,7 +129,7 @@ def _denoted_choice(node: ir.ChoiceState, grammar: Mapping[str, ir.Prod], seen: 
     return parts[0] if len(parts) == 1 else ("union", tuple(parts))
 
 
-# A scope taking exactly what it holds. An annotation names the characters. A commit says what failing means, and a
+# A scope here takes exactly what it holds. An annotation names the characters. A commit says what failing means, and a
 # `(wrap)` puts markers around the match.
 #
 # A `(max)` is not here. A `(max)` wrapping a match takes what it holds. A bare length note takes nothing. `_DENOTES`
@@ -141,10 +141,9 @@ def _consumed_by_a_way(
     node: ir.AlternativeState, grammar: Mapping[str, ir.Prod], seen: tuple[str, ...]
 ) -> _Denotation | None:
     """
-    A way's codepoints. The action the way performs, where that action takes a single character.
+    Answer a way's codepoints where the way's action takes a single character.
 
-    The way's gate is no part of the answer. A guard takes nothing, and a consume names the set it takes. The guard in
-    front settles nothing here.
+    The way's gate is no part of the answer. A guard takes nothing, and a consume names the set it takes.
 
     A way that hands control on takes what it calls. A span, a literal or a counted run takes a longer stretch and names
     no set. A pair of things taking at once does the same.
@@ -160,16 +159,16 @@ def _consumed_by_a_way(
     return denote(grammar, taken, seen)
 
 
-# Why a kind names no set of a single character. The groups below state the reasons rather than a list beside the
-# answer. The groups hold the kinds that reach this question. A missing kind raises. The raise says a kind nobody has
-# asked this of has arrived.
+# The groups below say why a kind names no set of a single character. A group states a reason rather than a list beside
+# the answer. The groups hold the kinds that reach this question. The walk raises on a kind no group holds. The raise
+# names that kind.
 #
 # This group takes a run rather than a character. The run turns as often as the input allows, as often as a count fixes,
 # or item after item.
 _TAKES_MORE_THAN_ONE = (*ir.REPETITIONS, ir.OptTree, ir.SeqTree)
 # A kind here takes no character at all. A guard reads and gives back, and an action leaves something behind. An empty
-# match does neither. A failing match takes nothing. The parse does not make it. A comparison of counts asks about
-# neither the input nor a character.
+# match does neither. A failing match takes nothing. A comparison of counts asks about neither the input nor a
+# character.
 _TAKES_NONE = (
     ir.IsLessEqualGuard,
     ir.IsLessThanGuard,
@@ -187,8 +186,8 @@ _TAKES_NONE = (
     ir.SetVarAction,
     ir.StartOfLineGuard,
 )
-# A kind here is no match at all. A value the parse works out, and the arm of a switch. The arm pairs a parameter's
-# value with a match. The arm is no match itself.
+# A kind here is no match at all. This group holds a value the parse works out. This group also holds the arm of a
+# switch. The arm pairs a parameter's value with a match. The arm is no match itself.
 _MATCHES_NOTHING = (
     ir.AddValue,
     ir.AtoiValue,
@@ -204,16 +203,17 @@ _MATCHES_NOTHING = (
 
 
 def _takes_no_single_character(_node: ir.Node, _grammar: Mapping[str, ir.Prod], _seen: tuple[str, ...]) -> None:
-    """The answer for a kind that takes nothing, or takes more than a single character."""
+    """The result a kind gives where it takes nothing, or takes more than a single character."""
     return None
 
 
 # The groups state the reasons. `_DENOTES` decides a kind against the question rather than by the group it falls in. A
-# kind absent from here raises. Nobody has asked this of that kind. Reading the kind as taking nothing would hide that.
+# kind absent from here raises. Nobody has asked the question of such a kind. Reading that kind as taking nothing would
+# hide the missing answer.
 _DENOTES: ir.Question[_Denotation | None] = ir.Question(
-    "the codepoints that a node consumes as a denotation - `('literal', cp)`, `('range', lo, hi)`, "
-    "`('union', parts)` or `('difference', base, minus)` - and `None` for a node consuming other than a single "
-    "character",
+    "the codepoints that a node consumes as a denotation. `('literal', cp)` and `('range', lo, hi)` are two, and "
+    "`('union', parts)` is another. So is `('difference', base, minus)`. `None` says the node consumes other than a "
+    "single character",
     {
         # Takes a single character, and names the set itself.
         ir.OneCharSet: lambda node, grammar, seen: ("literal", node.cp),
@@ -232,13 +232,14 @@ _DENOTES: ir.Question[_Denotation | None] = ir.Question(
         _TAKES_MORE_THAN_ONE: _takes_no_single_character,
         _TAKES_NONE: _takes_no_single_character,
         _MATCHES_NOTHING: _takes_no_single_character,
-        # A switch takes what the branch a caller settles takes. A single set cannot answer for it.
+        # A caller settles a branch of a switch, and the switch takes what that branch takes. A single set cannot
+        # describe the switch.
         ir.CaseTree: _takes_no_single_character,
-        # A recovery takes what its item takes where the parse gets through. A recovery takes what its recovery takes
-        # where a cut fired. Those are separate answers.
+        # A recovery takes what its item takes where the item matches. A recovery takes the set its handler takes where
+        # a cut fired. Those are separate answers.
         ir.RecoverWrapper: _takes_no_single_character,
-        # The byte that begins no character. The byte belongs to no character set of its own. The interval `(-1, -1)` is
-        # how a set says it holds the byte.
+        # The byte that begins no character belongs to no character set of its own. The interval `(-1, -1)` is how a set
+        # says it holds the byte.
         ir.InvalidSet: _takes_no_single_character,
     },
 )
@@ -252,7 +253,7 @@ def _form_size(grammar: Mapping[str, ir.Prod], node: ir.Node, seen: tuple[str, .
     simpler form gives the set its name.
 
     Counting through the names makes that work. A bare call is a single node, and the production it names may be a whole
-    tree. A size stopping at the call would rank an alias ahead of what the alias calls. It would put
+    tree. A size stopping at the call would rank an alias ahead of the production the alias calls. It would put
     `c-non-specific-tag` ahead of `c-tag`.
 
     A name the walk reaches again adds nothing. A recursion writes no more the second time round.
@@ -274,7 +275,7 @@ def _form_size(grammar: Mapping[str, ir.Prod], node: ir.Node, seen: tuple[str, .
 
 def _nested_count(node: ir.Node) -> int:
     """
-    The number of nodes `node` is. The count holds `node` itself and the nodes nested within it, and leaves the names
+    The number of nodes under `node`. The count holds `node` itself and the nodes nested within it, and leaves the names
     `node` mentions out.
     """
     return 1 + sum(_nested_count(child) for child in children(node))
@@ -292,13 +293,12 @@ def simplest_name(grammar: Mapping[str, ir.Prod], names: Iterable[str]) -> str:
 
 def naming_productions(grammar: Mapping[str, ir.Prod]) -> dict[_Denotation, str]:
     """
-    `{denotation: the production that names it}`. A single answer per set the grammar denotes, single characters and
-    wider sets alike.
+    `{denotation: the production that names it}`. The map holds a single answer per set the grammar denotes.
 
-    A set and a lone character are the same question asked of different sizes. A single production names the set.
+    The map names a lone character the way it names a wider set.
 
-    The decoder's literal table asks that of a character, and the set table asks it of a wider set. Both read the answer
-    here, and the tables cannot answer differently.
+    The decoder's literal table asks the map for the production naming a character. The set table asks for the
+    production naming a wider set. Both read the answer here, and the tables cannot answer differently.
     """
     candidates: dict[_Denotation, list[str]] = {}
     for name, production in grammar.items():
@@ -339,7 +339,7 @@ def single_codepoint(denotation: _Denotation | None) -> int | None:
 
 
 def merged_spans(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
-    """`intervals` as sorted, coalesced `(low, high)` pairs."""
+    """`intervals` sorted and coalesced into `(low, high)` pairs."""
     merged: list[tuple[int, int]] = []
     for low, high in sorted(intervals):
         if merged and low <= merged[-1][1] + 1:
@@ -439,8 +439,9 @@ def representatives(grammar: Mapping[str, ir.Prod]) -> list[int]:
     """
     A codepoint per segment the grammar can tell apart. The list runs in codepoint order.
 
-    The grammar's literals and ranges build a set. A key holds across the codepoints between consecutive boundaries.
-    Probing a codepoint per segment is therefore exhaustive. The probes number the segments rather than the codepoints.
+    The grammar's literals and ranges build a set of boundaries. A key holds across the codepoints between consecutive
+    boundaries. Probing a codepoint per segment is therefore exhaustive. The probes number the segments rather than the
+    codepoints.
     """
     boundaries = {0}
     for codepoint in _literals(grammar):
@@ -454,7 +455,7 @@ def _tested_sets(grammar: Mapping[str, ir.Prod]) -> list[tuple[str, _Denotation]
     """
     The character sets the grammar tests, as an ordered `[(name, denotation)]`.
 
-    A tested set is a *maximal* character node, whose parent is no character node itself. So the ranges inside
+    A tested set is a *maximal* character node. Its parent is no character node itself. So the ranges inside
     `c-printable`'s union do not count. The parser asks about `c-printable` rather than about those ranges.
 
     Sets denoting the same codepoints share an entry. A set takes the name of the production defining it. A set the
@@ -516,5 +517,5 @@ class Model:
         return key
 
     def sentinel(self, literal_id: int, length: int) -> int:
-        """The key of a sentinel. A literal id and no set bits, and a membership test fails at it."""
+        """The key of a sentinel. The key holds a literal id and no set bits. A membership test fails at such a key."""
         return literal_id | (length << LEN_SHIFT)

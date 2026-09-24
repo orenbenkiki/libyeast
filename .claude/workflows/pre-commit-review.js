@@ -1,23 +1,24 @@
-// The pre-commit review. It prepares the staged change into files a reader can judge. It then asks a reader per
-// question over those files. A reader answers with findings, and with the conventions it would propose. A
-// proposal goes to `.claude/proposals-pending.md`, and `check_proposals` refuses while that file holds anything.
+// The pre-commit review. The review asks a reader per question over the files a caller prepared. A reader answers with
+// findings, and with the conventions that reader would propose. A proposal goes to `.claude/proposals-pending.md`, and
+// `check_proposals` refuses while that file holds anything.
+//
+// `review_input.py` writes a manifest. A caller runs that script first and hands the manifest in as `args.manifest`. The review calls no tool of
+// its own. `record_run` takes what comes back and writes the proposals.
 
 export const meta = {
   name: 'pre-commit-review',
   description: 'The questions a review asks of a change, with a reviewer per question',
-  whenToUse: 'After `make pc` passes and before asking to commit. Pass a sentence saying what the change is about.',
+  whenToUse: 'After `make pc` passes and before asking to commit. Run `review_input.py`, then pass the manifest it wrote beside a sentence saying what the change is about.',
   phases: [
-    { title: 'Prepare', detail: 'build the diff, the joined hunks and the surviving references' },
     { title: 'Review', detail: 'a reviewer per question, run over the prepared input' },
   ],
 }
 
-// The input the caller sent, and the shape it arrived in. `args` reaches a script as an object where the caller
+// The input the caller sent arrives in differing shapes. `args` reaches a script as an object where the caller
 // passed an object. It reaches the script as a string where the caller passed a sentence. A caller passing JSON
-// *text* looks exactly like a caller passing a bare sentence until something parses it.
+// *text* looks like a caller passing a bare sentence. A parse tells JSON text from a bare sentence.
 //
-// Read here rather than trusted. Taking the text at face value makes `.facts` and `.diff` quietly undefined. That is
-// not an error anywhere, just a review that does not receive what the caller sent. That has happened twice.
+// The script parses the text rather than trusting it. A script that takes the text at face value leaves `.facts` and `.diff` undefined and raises no error.
 const SAID = (() => {
   if (args && typeof args === 'object') {
     return args
@@ -33,32 +34,30 @@ const SAID = (() => {
   return text ? { note: text } : {}
 })()
 
-// The subject of the change. A reviewer told nothing reads the diff cold. That is slower and no better.
+// The subject of the change. A reviewer who gets no subject reads the diff cold. That is slower and no better.
 const NOTE = SAID.note || 'nothing said. read the diff cold.'
 
-// Whatever the caller measured and wants the readers to take as given. Checking a documented count against the code is
-// the gate's job rather than a reader's job. `check_documents` refuses a number that nothing justifies. That covers
-// `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`. So this is for anything else a reader would otherwise go and run.
+// The caller states here what it measured. The readers take that as given. `check_documents` refuses a number that
+// nothing justifies in `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`. A reader checks no documented count against the code.
+// The field holds anything else a reader would otherwise run.
 const FACTS = SAID.facts || null
 
 // The agent type the reviewers run as. `.claude/agents/reader.md` gives them `Read`, `Grep` and `Glob`, and stops
-// there. That is both the ban made structural and a smaller context to prefill a turn.
+// there. That set leaves a reviewer no tool that writes. That set also prefills a turn with a smaller context.
 //
-// The type gives those tools. A reviewer run as the default type gets whatever the session has. That set holds
-// neither `Grep` nor `Glob`. Such a reviewer then reads a file whole where a search would have settled the question.
-// It then reports as unestablished what the search could have found.
+// A reviewer run as the default type gets the tool set the session has instead. The session's set holds neither `Grep` nor `Glob`. Such a reviewer then reads a file whole where a search would have settled the question.
+// Such a reviewer then reports the question as unestablished.
 //
-// That is the expensive failure, and it is silent. A review that could not look has the same shape as a review that
+// A reviewer that cannot search fails expensively. A review that could not look has the same shape as a review that
 // looked and found nothing.
 //
-// `args.reader` overrides the name, for a session that registers its agent types under a different name.
+// `args.reader` overrides the agent type name. A session may register its agent types under another name.
 const READER = { agentType: SAID.reader || 'reader' }
 
-// The questions this project asks of a change. The list does not depend on what the change touched. These are the
-// project's fixed checks. This file writes the questions once rather than composing them per commit.
+// The questions this project asks of a change. The list does not depend on the files the change touched. This file writes the questions once rather than composing them per commit.
 const RULES = `
 DESIGN.md gives context. It gives perspective and architecture. That says what makes the code and its comments
-easier to read. DESIGN.md repeats no code comment. CHANGELOG.md is history, in the present tense, about what the
+easier to read. DESIGN.md repeats no code comment. CHANGELOG.md is history, in the present tense, about the work a
 change did. PLAN.md holds what the tree still owes. A document keeps to its own domain. Text anywhere narrates no
 plan step. It writes no comparison of an earlier state with the present, such as \`now has\`, \`no longer\` or
 \`used to\`. Text says what IS.
@@ -77,7 +76,7 @@ taste as violation falls silent on no round. Nobody can violate a rule nobody wr
 work, and the author rules on it. Asserting it as a defect helps nobody.
 
 The tree as it stood before this change is correct. A review passed that tree at the time. Your job is what this
-change disturbs, rather than a re-audit of what it left standing. That cuts both ways. A fault the change did not
+change disturbs, rather than a re-audit of the code it left alone. That cuts both ways. A fault the change did not
 touch is out of scope. A fault outside the diff that the change created is in scope.
 
 **The gate has proved the following. Nobody need spend a reader on it.** \`make pc\` is green. A checker decides the
@@ -113,7 +112,7 @@ executions. The gate is those executions, and it is green.
 
 Something you cannot settle by reading is itself the finding. Say what you could not establish, and say why.
 
-**Ask for what you can in one message.** Independent lookups go together and cost one round trip. Six greps and four
+**Ask the lookups you can in one message.** Independent lookups go together and cost one round trip. Six greps and four
 files are such lookups. So are a diff and a definition. Sent one at a time they cost six round trips. A lookup
 rarely needs the answer to another before you can ask it. This decides whether the review takes four minutes or
 forty.
@@ -136,20 +135,19 @@ const FINDINGS = {
         properties: {
           file: { type: 'string', description: 'the repo-relative path the finding names' },
           line: { type: 'integer', description: 'omit where the finding is something absent' },
-          summary: { type: 'string', description: 'one sentence naming what is wrong or what is missing' },
+          summary: { type: 'string', description: 'a sentence naming what is wrong or what is missing' },
           evidence: { type: 'string', description: 'the reading or the run that settles it' },
-          rule: { type: 'string', description: 'the exact NAME of the rule in .claude/conventions.md this breaks' },
+          rule: { type: 'string', description: 'the exact NAME of the rule in `.claude/conventions.md` this breaks' },
         },
       },
     },
-    // The report of what a reader checked and held. Findings by themselves cannot tell a reader that looked hard
-    // from a reader that looked at little. Both report nothing when nothing is wrong.
+    // The report of the questions a reader checked and held. A reader that looked hard files the same findings as a reader that looked at little. Both report nothing when nothing is wrong.
     confirmed: {
       type: 'array',
       description: 'checkable claims read against the code and found true, written a line per claim',
       items: { type: 'string' },
     },
-    // Kept apart from the findings and blocking nothing. A convention that nobody wrote down is not a thing the code
+    // A proposal sits apart from the findings and blocks nothing. A convention that nobody wrote down is not a thing the code
     // can violate. Proposing such a convention is the honest way to raise it. The author's ruling retires the whole
     // class rather than the place a reader noticed it.
     proposals: {
@@ -169,7 +167,7 @@ const FINDINGS = {
 }
 
 // The shape a claim-checker answers in. A refuted claim quotes the code that refutes it, and that is the
-// contract. A contract asked for in a prompt is a contract somebody drops. The schema requires the code instead. A
+// contract. Somebody drops a contract a prompt asks for. The schema requires the code instead. A
 // finding without the span cannot come back at all.
 const CLAIMS = {
   type: 'object',
@@ -186,7 +184,7 @@ const CLAIMS = {
           sentence: { type: 'string', description: 'the sentence quoted exactly as written' },
           code: { type: 'string', description: 'the verbatim code that refutes it' },
           code_at: { type: 'string', description: 'file:line of that code' },
-          summary: { type: 'string', description: 'one sentence naming what the code does instead' },
+          summary: { type: 'string', description: 'a sentence naming what the code does instead' },
         },
       },
     },
@@ -198,67 +196,47 @@ const CLAIMS = {
   },
 }
 
-// The phase that builds the prepared input, and the manifest it yields. The building is a phase of this workflow
-// rather than something a caller remembers to do first. Files prepared by hand go stale the moment somebody fixes
-// anything. A reviewer handed a stale file reports on a change that has moved on, and the run still looks well.
-//
-// The phase is a single short agent, and this script cannot run the preparer from here. This file touches no
-// filesystem. The agent runs the script and reads back the manifest the script wrote. The agent hands over what is on
-// disk rather than what it read off a printout.
-//
-// A question does not get the manifest whole. `wants` says which parts a question needs. A question about naming has
-// no use for a changelog, and a question about counts has no use for a decoder.
-const PREPARED_INTO = "$(git rev-parse --git-dir)/review-input"
+// `review_input.py` writes a manifest per run from the staged change. The manifest is `{name: [path, ...]}`. A question does not get the manifest whole. `wants` says which parts a question needs.
+const GIVEN = SAID.manifest || null
 
-// The shape `review_input.py` writes its manifest in. The preparer hands that file back rather than the printout.
-// These are the manifest's keys, and the manifest holds no others.
-const MANIFEST = {
-  type: 'object',
-  required: ['code', 'docs', 'fixtures', 'hunks', 'references'],
-  properties: {
-    code: { type: 'array', items: { type: 'string' }, description: 'the paths to the parts of the code diff' },
-    docs: { type: 'array', items: { type: 'string' }, description: 'the paths to the parts of the documents diff' },
-    fixtures: { type: 'array', items: { type: 'string' }, description: 'the paths to the parts of the fixtures file' },
-    hunks: { type: 'array', items: { type: 'string' }, description: 'the paths to the parts of the hunks file' },
-    references: { type: 'array', items: { type: 'string' }, description: 'the paths to the parts of the references file' },
-  },
+// `review_input.py` exits on a path it will not show, and writes no manifest. Without that exit, `handed` reads an empty list as truthy and sends a reviewer to the files the last run left on disk.
+const prepared = GIVEN ? Object.values(GIVEN).flat().filter(Boolean) : []
+if (!prepared.length) {
+  throw new Error('the review takes the manifest `review_input.py` wrote, as `args.manifest`.')
 }
 
-// The contents of a prepared file. A question asking for a part learns what it is getting rather than a bare path.
+// The contents of a prepared file. A reviewer asking for a part reads the contents rather than a bare path.
 const PREPARED = {
   code: 'the staged diff of the code. generator, scripts and src are in it. include and grammar are in it. so are the C tests and the build files.',
-  docs: 'the staged diff of the documents. DESIGN.md, PLAN.md and CHANGELOG.md are in it. so are README.md and CONTRIBUTING.md.',
+  docs: 'the staged diff of the documents. `DESIGN.md`, `PLAN.md` and `CHANGELOG.md` are in it. `README.md` and `CONTRIBUTING.md` are in it too.',
   fixtures:
-    'the staged change to the conformance fixtures under tests/spec. a status and a path take the place of a diff. they say what arrived, what went and what a rename touched.',
+    'the staged change to the conformance fixtures under `tests/spec`. a status and a path take the place of a diff. they say what arrived, what went and what a rename touched.',
   hunks:
     'the changed runs of Python. a run comes with the function it falls in. that function\'s docstring comes too, in the form this change leaves and the form HEAD holds. three lines either side come with the run, and `>` marks what moved. the text and the code sit side by side, and so do the before and the after. `git show HEAD:` has nothing to add.',
   references:
-    'the identifiers and swept terms the change took out of a file. a term comes with its surviving mentions in the tree, found by a repo-wide grep. the search for what still refers to the change is done.',
+    'the identifiers and swept terms the change took out of a file. a term comes with its surviving mentions in the tree, found by a repo-wide grep. the search for the sites still naming those terms is done.',
 }
 
 function handed(wants) {
-  // A named and empty part is not a prepared part. A part with no path would announce itself to a reviewer as
-  // something handed over.
+  // A named and empty part is not a prepared part. A part with no path would announce itself to a reviewer as a part the run handed over.
   const parts = (wants || []).filter((name) => [].concat(GIVEN[name] || []).length)
   if (!parts.length) {
     return ''
   }
-  // Paths rather than the text. A prompt cannot hold the text, and the script cannot read a file to inline a part.
-  // Reading a prepared file is a single lookup. Rebuilding what a file holds is the lookups the turn counts came
-  // from.
+  // The prompt names a path rather than holding the prose. The script inlines no part of a file.
+  // Reading a prepared file is a single lookup.
   return (
     `\nThis is prepared for you. Read it rather than search:\n` +
     parts
       .map((name) => {
-        // A prepared thing may split into files of a single read apiece. The naming groups those files under what
-        // they hold. A reader wanting a file wants the whole group.
+        // A prepared thing may split into files of a single read apiece. A name groups those files under the contents they hold. A reader wanting a file wants the whole group.
         const paths = [].concat(GIVEN[name])
         return `${paths.map((path) => `  ${path}`).join('\n')}\n      ${PREPARED[name]}`
       })
       .join('\n') +
     `\nRead ${parts.flatMap((name) => [].concat(GIVEN[name])).length > 1 ? 'them all' : 'it'} first, in one message, ` +
     `with \`Read\` - each is sized to one call and hands you the whole of it.\n\n` +
-    `**Each of these is COMPLETE for what it covers.** It was built by a script for this review, from the change you ` +
+    `**Each of these is COMPLETE over the ground it covers.** It was built by a script for this review, from the change you ` +
     `would otherwise have gone looking for. If your question is answered by what is in there, it is answered, and ` +
     `checking it against the repository is the fishing this exists to make unnecessary.\n\n` +
     `**Where something that should be in there is not, that is a FINDING, not an errand.** A docstring shown as ` +
@@ -266,12 +244,11 @@ function handed(wants) {
     `whose record stops short of the lines around it - report it and move on. Two reasons, and the second is the one that ` +
     `matters: the preparation may be wrong, which is worth knowing; and if the text itself does not say, then what ` +
     `you would have to do to find out is exactly what every future reader would have to do, which is the defect.\n\n` +
-    `Go outside the prepared files only for what they plainly never covered, and say in the finding what sent you.\n`
+    `Go outside the prepared files only for ground they plainly never covered, and say in the finding what sent you.\n`
   )
 }
 
-// A question per slice, and a question is about the change as a whole. Verifying that a particular edit does what it
-// meant to is the author's job with a command. These are what a change has to answer forever.
+// A slice asks a question about the change as a whole. The author verifies a particular edit with a command. Such a question holds across changes.
 const QUESTIONS = [
   {
     key: 'claim-check',
@@ -341,35 +318,6 @@ report that: a name whose fit cannot be seen from the function it is in is one n
   },
 ]
 
-phase('Prepare')
-
-// Built here per run from the staged change. The alternative is a caller who builds it by hand and forgets
-// some day. A review of a change somebody has since fixed reads exactly like a review of the change in front of the
-// reader.
-const GIVEN = await agent(
-  `Prepare the input for a code review of the staged change in this repository. Run two commands.\n\n` +
-    `  \`mkdir -p "${PREPARED_INTO}" && python3 generator/review_input.py "${PREPARED_INTO}"\`\n` +
-    `  \`cat "${PREPARED_INTO}/manifest.json"\`\n\n` +
-    `The first takes about twenty seconds. It writes \`code\` and \`docs\`. It writes \`fixtures\`, \`hunks\` and ` +
-    `\`references\` too. A part comes whole or split into numbered parts. The second command prints the manifest ` +
-    `that run wrote. The manifest is \`{name: [path, ...]}\` and it is your answer.\n\n` +
-    `The script refuses a tree the writer has not staged in full, and names the loose paths. That refusal is not ` +
-    `yours to work around. Report it and stop. The change then gets staged, and the review reads what will land. ` +
-    `A refused run writes no manifest.\n\n` +
-    `Hand back the manifest word for word. Do not transcribe the printout. Do not sort or renumber anything. Do not ` +
-    `add a path the manifest does not name. Do not read the prepared files. Do not review anything. Run none of the ` +
-    `other commands. You are preparing, not reviewing.`,
-  { label: 'prepare', phase: 'Prepare', schema: MANIFEST },
-)
-
-// A refusal arrives as an answer naming no file. It does not arrive as silence. `review_input.py` exits on a path it
-// will not show. The preparer reports that and stops. A manifest of empty lists comes back here. An empty list is
-// truthy, and `handed` then tells a reviewer the run gave it something. The reviewer goes looking, and finds whatever
-// the last run left on disk.
-const prepared = GIVEN ? Object.values(GIVEN).flat().filter(Boolean) : []
-if (!GIVEN || !prepared.length) {
-  throw new Error('the preparation failed, and a review without its input is a review of nothing in particular')
-}
 log(`prepared: ${Object.entries(GIVEN).map(([name, paths]) => `${name} ${[].concat(paths).length}`).join(', ')}`)
 
 phase('Review')
@@ -383,7 +331,7 @@ const answered = await parallel(
         `Do not widen.\n\n` +
         `${question.ask}\n\n${RULES}\n${handed(question.wants)}\n` +
         `Read what your question needs and no more. The change is above. Do not fetch it again. Go to the files ` +
-        `only for what the diff cannot show. That is the code around a changed line, and whatever your question ` +
+        `only for the code the diff cannot show. That is the code around a changed line, and the text your question ` +
         `sends you looking for. Report concrete findings. Give the file and the line where the finding has one. Say ` +
         `in the evidence what you read that settles the finding. Be harsh. The user wants flaws rather than balance, ` +
         `and wants no positives listed. Be harsh about the text the author wrote down. A finding is a broken rule or ` +
@@ -397,8 +345,7 @@ const answered = await parallel(
 const findings = QUESTIONS.flatMap((question, at) =>
   ((answered[at] && answered[at].findings) || []).map((one) => ({ question: question.key, ...one })),
 )
-// Kept apart the whole way out. A proposal that arrives mixed in with the findings reads as a finding. This
-// separation exists to stop that.
+// The workflow keeps a proposal apart from a finding the whole way out. A proposal that arrives mixed in with the findings reads as a finding.
 const proposals = QUESTIONS.flatMap((question, at) =>
   ((answered[at] && answered[at].proposals) || []).map((one) => ({ question: question.key, ...one })),
 )
@@ -417,29 +364,10 @@ for (const question of QUESTIONS) {
   )
 }
 
-// Written down rather than reported. A proposal that arrives in a result and gets no ruling comes back next round,
-// and the round after. `verify-proposals` refuses while this file holds anything. A ruling clears the gate. The
+// The workflow writes a proposal down rather than reporting it. A proposal may arrive in a result and get no ruling. Such a proposal comes back round after round. `verify-proposals` refuses while this file holds anything. A ruling clears the gate. The
 // proposal moves into `.claude/conventions.md` or `.claude/rejected.md` and comes out of here.
 if (proposals.length) {
-  const recorded = await agent(
-    `Append the proposals below to \`.claude/proposals-pending.md\`. Create the file where it does not exist. ` +
-      `Group the proposals under a \`## From \\\`reviewer\\\`\` heading. That heading names the reviewer who raised ` +
-      `the proposal. Write a proposal as a numbered list item opening with the rule in bold, then an indented ` +
-      `\`*Why:*\` paragraph and an indented \`*Seen:*\` paragraph. \`check_proposals\` counts the bold list items ` +
-      `and skips any other line. Write no more than that. Do not rule on a proposal. Do not argue with one. Do not edit ` +
-      `\`.claude/conventions.md\` or \`.claude/rejected.md\`.\n\n` +
-      proposals
-        .map((one) => `- from \`${one.question}\`: **${one.rule}**\n  - why ${one.why}\n  - seen ${one.seen}`)
-        .join('\n'),
-    { label: 'record-proposals', phase: 'Review' },
-  )
-  if (!recorded) {
-    throw new Error(
-      `${proposals.length} proposal(s) came back and reached no place in .claude/proposals-pending.md. ` +
-        `They live in this run's result and no place else. Record them by hand before you trust the gate.`,
-    )
-  }
-  log(`${proposals.length} proposal(s) recorded - the gate stays red until you rule on them`)
+  log(`${proposals.length} proposal(s) came back. \`record_run\` writes them down. The gate stays red until you rule on them.`)
 }
 
 return { note: NOTE, findings, proposals, confirmed }

@@ -13,8 +13,8 @@ This guards the migrated suite against a fixture orphaned by a grammar change. T
 broke a name. It covers an output that is not a token stream. It covers a name that claims what the fixture does not
 show. The guard runs before anybody asks the interpreter to reproduce a fixture.
 
-The marker rule is what `check_markers` cannot reach. That gate settles the grammar's clean paths. That gate says
-nothing about what an error leaves behind.
+`check_markers` cannot reach the marker rule. That gate settles the grammar's clean paths. That gate says nothing of the
+tokens an error leaves behind.
 
 A fixture of the root is a whole parse and balances exactly. A fixture of a rule run outside the root may close what its
 caller would have opened. Neither may leave a marker open.
@@ -38,9 +38,9 @@ def main() -> None:
     inputs = {os.path.basename(fixture.input_path)[: -len(".input")] for fixture in fixtures}
     outputs = {path.name[: -len(".output")] for path in gate.named_in(spec_tests.TESTS_DIR, ".output")}
     for stem in sorted(inputs - outputs):
-        errors.append(f"{stem}.input: has no matching .output")
+        errors.append(f"the input of {stem} has no matching output")
     for stem in sorted(outputs - inputs):
-        errors.append(f"{stem}.output: has no matching .input")
+        errors.append(f"the output of {stem} has no matching input")
 
     for fixture in fixtures:
         name = os.path.basename(fixture.input_path)

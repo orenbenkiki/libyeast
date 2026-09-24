@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-// A sink of yeast tokens, whichever way a consumer takes them. A sink serializes to a yeast wire, or emits YAML. The
-// mirror of a ys_token_source. ys_write_token() feeds a sink and ys_delete_token_sink() releases a sink. Code writing
-// tokens does not know or care where they go.
+// A sink takes yeast tokens. A sink serializes the tokens to a yeast wire, or emits YAML. A sink mirrors a
+// `ys_token_source`. `ys_write_token` feeds a sink and `ys_delete_token_sink` releases a sink. Code
+// writing tokens does not know or care where they go.
 
 #include "token_sink.h"
 

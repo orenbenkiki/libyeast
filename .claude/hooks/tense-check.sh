@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse on Edit and Write. A comment or a document describes the thing rather than its history.
 #
-# A warning rather than a block. Some of these words are legitimate in prose about the parse itself
+# The hook warns rather than blocks. A word the hook matches can be legitimate in prose about the parse itself
 # ("a later failure"). `PLAN.md` and `CHANGELOG.md` are exempt.
 set -euo pipefail
 
@@ -27,5 +27,5 @@ if [ -z "$found" ]; then
 fi
 
 jq -nc --arg found "$found" --arg path "$path" '{
-    systemMessage: ("Tense check - " + $path + " gained: " + $found + ". A comment or doc states the current state. The path that produced it belongs to the changelog, and what is coming belongs to PLAN.md. Memory `describe-current-state-never-steps`.")
+    systemMessage: ("Tense check - " + $path + " gained: " + $found + ". A comment or doc states the current state. The path that produced it belongs to the changelog, and the work still owed belongs to the plan.")
 }'

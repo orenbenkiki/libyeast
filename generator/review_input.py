@@ -5,8 +5,8 @@ Prepare a change for review. The lookups that a reviewer would otherwise make by
 Writes `code`, `docs` and `fixtures` into a directory. Writes `hunks` and `references` alongside. Prints what it wrote.
 A prepared file running past `_MOST_LINES` splits into numbered parts.
 
-`_MANIFEST` names the paths those went to, as `{name: [path, ...]}`. A caller reads the manifest rather than reading the
-printout back. A reviewer then gets what is on disk.
+`_MANIFEST` names the paths the written files went to, as `{name: [path, ...]}`. A caller reads the manifest rather than
+reading the printout back. A reviewer then gets what is on disk.
 
 Usage: `python3 generator/review_input.py <directory>`. The directory defaults to the working directory.
 """
@@ -27,17 +27,17 @@ _MANIFEST = "manifest.json"
 # The length past which a prepared file is split into numbered parts.
 _MOST_LINES = 800
 
-# The number of mentions of a name the report lists before a further mention comes out as a count.
+# Above this many mentions of a name, the report gives a count instead of naming the mention again.
 _MOST_MENTIONS = 200
 
-# The number of lines either side of a change that go with it.
+# A diff shows this many lines on both sides of a change.
 _AROUND = 3
 
 # Above how many mentions an ordinary word gets a count instead of its lines.
 _FEW_MENTIONS = 150
 
-# A word worth asking about where the change took it out of a file. The words that a sweep retires are short. `run` is
-# such a word.
+# A word is worth asking about where the change took it out of a file. The words that a sweep retires are short. `run`
+# is such a word.
 _A_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 
 # Words too common for a surviving mention to say anything. A word this project renames stays out of this list. The
@@ -96,8 +96,9 @@ def _unstaged() -> list[str]:
     The changes the working tree holds and the index lacks. A tracked file with edits nobody staged, or a file nobody
     added.
 
-    `hunks` quotes line numbers taken from `git diff --cached` beside the file on disk. Those agree where the tree is
-    clean. A file that has grown quotes the wrong lines. A file that has shrunk sends the read off the end.
+    `hunks` quotes line numbers taken from `git diff --cached` beside the file on disk. The staged numbers agree with
+    the on-disk file where the tree is clean. A file that has grown quotes the wrong lines. A file that has shrunk sends
+    the read off the end.
     """
     changed = _ran("git", "diff", "--name-only").splitlines()
     untracked = _ran("git", "ls-files", "--others", "--exclude-standard").splitlines()
@@ -124,8 +125,8 @@ def _holders(source: str) -> dict[str, tuple[int, int, str]]:
 
     The key is the path of definitions holding the name, as `_holders.walk` rather than `walk`. A pair of helpers of the
     same name in different functions are then a pair of entries. `normalize` holds a `move` under more than a single
-    function, and a bare name would keep whichever the walk reached last. A HEAD lookup goes by that path too. The
-    versions agree on a path where they would disagree on a line number.
+    function, and a bare name would keep the helper the walk reached last. A HEAD lookup goes by that path too. The walk
+    and the HEAD lookup agree on a path but may disagree on a line number.
     """
     tree = ast.parse(source)
     found: dict[str, tuple[int, int, str]] = {}
@@ -149,12 +150,13 @@ def _hunks() -> str:
     The changes in a Python file.
 
     A record gives the changed lines. It gives the function those lines fall in. The record holds that function's
-    docstring from the working file. It holds the HEAD docstring beside that. The lines either side come with them. A
-    change outside any function gets a record of its own changed lines. That record holds no docstring. This leaves
-    deleted files out.
+    docstring from the working file. It holds the HEAD docstring beside that. The lines either side come with the
+    docstrings. A change outside any function gets a record of its own changed lines. That record holds no docstring.
+    This leaves deleted files out.
 
-    The source is split on the newline the parse counts. `splitlines` splits on more than that, and `star.py` writes
-    U+2028 in a string literal. Rebuilt from those pieces the literal ran off its line, and the file stopped parsing.
+    The parse splits the source on the newline it counts. `splitlines` splits on more than that, and `star.py` writes
+    U+2028 in a string literal. Once rebuilt from those pieces, the literal ran off its line, and the file stopped
+    parsing.
     """
     written = []
     for path in _staged_paths():
@@ -259,8 +261,8 @@ def _references() -> str:
     return head + "\n" + ("\n".join(written) or "(the change removed nothing that anything else mentions)")
 
 
-# The headings a prepared file's records begin with. The heading this module writes, and the header `git` puts before a
-# file it diffs. A split falls on such a heading, and no record comes out cut in half.
+# A pair of headings begins a prepared file's records. The heading this module writes, and the header `git` puts before
+# a file it diffs. A split falls on such a heading, and no record comes out cut in half.
 _STARTS_A_RECORD = ("### ", "diff --git ")
 
 
@@ -268,8 +270,8 @@ def _written(into: str, name: str, prepared: str) -> list[str]:
     """
     Write `prepared` under `name`, split at the first record boundary past `_MOST_LINES`. Returns the paths.
 
-    Past and not before. A record comes out whole, and a part runs as long as the record it is finishing. A part opens
-    on a fresh record. That is what a reader paging through them wants.
+    The split falls past `_MOST_LINES` rather than before it. A record comes out whole, and a part runs as long as the
+    record it is finishing. A part opens on a fresh record.
     """
     lines = prepared.splitlines()
     if len(lines) <= _MOST_LINES:
@@ -336,7 +338,7 @@ _THE_DOCUMENTS = (
 )
 
 # The paths named rather than diffed. A fixture is an input and its expected tokens, and a change to the corpus touches
-# more fixtures than a diff can hold. A status and a path apiece is what a reviewer can act on.
+# more fixtures than a diff can hold. A reviewer can act on a status and a path apiece.
 _THE_FIXTURES = ("tests/spec",)
 
 # The vendored paths. A change here is somebody else's code arriving, and this project's conventions do not reach it.
@@ -361,9 +363,9 @@ def _fixtures() -> str:
 
 def _uncovered() -> list[str]:
     """
-    The staged paths no prepared file shows. That set should come back empty.
+    The staged paths that no prepared file shows. That set should come back empty.
 
-    A slice takes the paths it names. A path the slices leave out reaches no reviewer, and does so quietly. A vendored
+    A slice takes the paths it names. A path the slices leave out reaches no reviewer, and drops out quietly. A vendored
     path reaches nobody on purpose.
     """
     covered = (*_THE_CODE, *_THE_DOCUMENTS, *_THE_FIXTURES)

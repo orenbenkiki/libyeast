@@ -7,10 +7,11 @@ back as the character it names. Leaves out the rules libyeast adds of its own. C
 vendored `yaml-spec-1.2.yaml`, a production at a time.
 
 A production that differs is either a mistake or a departure we chose. A departure we chose goes into DEVIATIONS with
-its reason, and this fails otherwise. An addition therefore cannot quietly become a change.
+its reason, and the check fails on a differing production DEVIATIONS leaves out. An edit meant to add a rule therefore
+cannot quietly change an official production.
 
-`a-declared-exception-carries-its-reason`. This holds DEVIATIONS in both directions. This reports a production that has
-stopped differing. A stale declaration would otherwise hide the next drift in that production.
+The check holds DEVIATIONS to `a-declared-exception-carries-its-reason` in both directions. The check also reports a
+production that has stopped differing. A stale declaration would otherwise hide the next drift in that production.
 """
 
 import os
@@ -24,10 +25,10 @@ import validate_grammar
 
 _VENDORED = os.path.join(gate.TREE, "third_party", "yaml-grammar", "yaml-spec-1.2.yaml")  # the official grammar.
 
-# The places libyeast departs from the official grammar, and why. A deviation is a decision rather than an escape. A
-# departure that correcting the grammar would fix belongs elsewhere. The cases libyeast completes share a reason. The
-# official grammar leaves a context out and libyeast writes the decline. Shared rather than repeated. The cases read as
-# the same departure made again.
+# A deviation names a place libyeast departs from the official grammar, and says why. A deviation is a decision rather
+# than an escape. A departure that correcting the grammar would fix belongs elsewhere. The cases libyeast completes
+# share a reason. The official grammar leaves a context out and libyeast writes the decline. This binding writes that
+# reason once. The cases read as the same departure made again.
 _TOTAL_CASE = (
     "the official grammar's case names values of its parameter and stays silent about any other value. the official "
     "spec reads that silence as declining those values. libyeast names the values and writes the decline as <fail>. a "
@@ -35,8 +36,8 @@ _TOTAL_CASE = (
     "language is the same, and libyeast writes down the implicit part."
 )
 
-# The productions libyeast writes differently, mapped to what they depart over. A production this table does not name
-# has to match the official grammar.
+# The productions libyeast writes differently. The value beside a production says why it departs. A production this
+# table does not name has to match the official grammar.
 _DEVIATIONS = {
     "s-line-prefix": _TOTAL_CASE,
     "nb-double-text": _TOTAL_CASE,
@@ -56,7 +57,7 @@ _DEVIATIONS = {
         "left the parse, rather than from a number worked out beside the rule."
     ),
     "l-chomped-empty": (
-        "passes i to the two rules below. those rules need to know whether a rule established an indentation. the "
+        "passes i to the rules below. those rules need to know whether a rule established an indentation. the "
         "parse may reach them with no indentation. the trailing lines would then have established it."
     ),
     "l-strip-empty": (
@@ -100,12 +101,12 @@ _DEVIATIONS = {
         "the official grammar's header is two orderings. those are indent-then-chomp and chomp-then-indent, and they "
         "begin alike. the official grammar tells them apart by backtracking, and calls no header malformed. libyeast "
         "guards the first ordering with a lookahead. a parse then reaches the second without backtracking. a junk "
-        "header commits to a BLOCK_HEADER error rather than failing to match in silence."
+        "header commits to a `BLOCK_HEADER` error rather than failing to match in silence."
     ),
     "l-literal-content": (
         "the official grammar's first content chunk is l-nb-literal-text. its l-empty* consumes the leading empty "
         "lines in silence. libyeast routes that chunk through l-nb-literal-first. that rule consumes the empties and "
-        "holds them to section 8.1.1.1 of the spec's prose. it raises BLOCK_SCALAR_UNDER_INDENT where the first "
+        "holds them to section 8.1.1.1 of the spec's prose. it raises `BLOCK_SCALAR_UNDER_INDENT` where the first "
         "content line is shallower than the widest leading empty line. the official BNF does not state that rule."
     ),
     "l-nb-diff-lines": (
@@ -117,26 +118,26 @@ _DEVIATIONS = {
         "the official grammar's `:` value indicator has no guard. it leans on greedy ns-plain. ns-plain swallows the "
         "mid-scalar `:` of a plain `a:b`. a parse therefore reaches the value `:` with a space or a break after it. "
         "a backtracking parser can shorten the key and hand that `:` back. libyeast guards the `:` with "
-        "<not_followed_by_an_ns-char>. the official grammar already puts that guard on the `-` of "
+        "`<not_followed_by_an_ns-char>`. the official grammar already puts that guard on the `-` of "
         "c-l-block-seq-entry. the guard prunes that path and changes no token stream."
     ),
     "c-l-block-map-explicit-key": (
         "the folded twin for `?`. the official grammar makes `?foo` a plain scalar through ns-plain-first, and does "
-        "not reach the explicit-key `?` for it. libyeast guards that `?` with the same <not_followed_by_an_ns-char>. "
+        "not reach the explicit-key `?` for it. libyeast guards that `?` with the same `<not_followed_by_an_ns-char>`. "
         "a backtracking parser then does not reach it for a plain scalar beginning with `?`."
     ),
     "c-ns-esc-char": (
         "a `\\` at the end of a line is an escaped break. the official grammar reaches that line continuation "
         "through s-double-escaped rather than through this rule. this rule's escape alternation holds no break, and "
-        "fails to match one. libyeast's INVALID_ESCAPE would fire on that failure. libyeast guards the escape with "
-        "<not_followed_by_a_break>. the guard hands the `\\<break>` back to s-double-escaped and changes no token "
+        "fails to match one. libyeast's `INVALID_ESCAPE` would fire on that failure. libyeast guards the escape with "
+        "`<not_followed_by_a_break>`. the guard hands the `\\<break>` back to s-double-escaped and changes no token "
         "stream."
     ),
     "ns-anchor-name": (
         "`:` is an ns-anchor-char rather than a c-flow-indicator. a name takes it greedily, and `*a:` is the alias "
         "`a:`. the official grammar's ns-anchor-char+ is possessive under the reference's PEG. that PEG does not "
-        "re-enter the name to hand a trailing `:` back. a backtracking parser can, and shortens the name to `a` so "
-        "the `:` opens a mapping. libyeast guards the name with <not_followed_by_an_ns-anchor-char>. the name then "
+        "re-enter the name to hand a trailing `:` back. a backtracking parser can, and shortens the name to `a`. the "
+        "`:` then opens a mapping. libyeast guards the name with `<not_followed_by_an_ns-anchor-char>`. the name then "
         "commits to its greedy match, and the token stream stays the same."
     ),
 }
@@ -146,9 +147,9 @@ def _match_drift(vendored: dict[str, ir.Prod], ours: dict[str, ir.Prod]) -> list
     """
     The productions whose `(match)` the grammars disagree about.
 
-    This reads a `(match)` as the open run, the token the rule is building. The official grammar means the text the rule
-    matched. Both meanings coincide wherever a production has a `(match)` in both grammars, and that is what this holds.
-    A `(match)` the official grammar reads and libyeast does not is a meaning nothing here justifies.
+    libyeast reads a `(match)` as the open run, the token a rule is building. The official grammar means the text a rule
+    matched. The meanings coincide where both grammars give a production a `(match)`. This function reports a production
+    holding a `(match)` in a single grammar. This module records no deviation for a `(match)` that libyeast drops.
     """
     holders = {
         label: {
@@ -157,7 +158,7 @@ def _match_drift(vendored: dict[str, ir.Prod], ours: dict[str, ir.Prod]) -> list
         for label, grammar in (("official", vendored), ("libyeast", ours))
     }
     return [
-        f"{name}: the official grammar reads a `(match)` here and libyeast reads none. the two need not agree."
+        f"{name}: the official grammar reads a `(match)` here and libyeast reads none. the pair need not agree."
         for name in sorted(holders["official"] - holders["libyeast"])
     ]
 

@@ -9,8 +9,8 @@ imports it.
 `refuse` turns the call back. `amend` lets it through with other arguments. `prose_answer` amends, and the shape it
 sends came out of a probe rather than a document.
 
-This is not a hook. `.claude/settings.json` registers the hooks and does not name this module. Python puts the directory
-of a script run by its own path first on the import path. A hook beside this file finds this module there.
+This is not a hook. `.claude/settings.json` registers the hooks and does not name this module. Python runs a hook by its
+path and puts the hook's directory first on the import path. A hook beside this file finds this module there.
 """
 
 import json

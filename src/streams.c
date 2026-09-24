@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-// The adapters that make a ys_bytes_reader or a ys_bytes_writer out of what the host already has. A file descriptor
-// and a `FILE *`. Both come in a reading form and a writing form. An adapter says whether it owns the handle the
-// caller gave. An owning adapter closes that handle.
+// The adapters here make a `ys_bytes_reader` or a `ys_bytes_writer` out of a file descriptor or a `FILE *`. Both come
+// in a reading form and a writing form. An adapter says whether it owns the handle the caller gave. An owning adapter
+// closes that handle.
 
 #include <limits.h>
 #include <stdint.h>
@@ -21,8 +21,8 @@
 #define YS_OS_CLOSE close
 #endif
 
-// The adapters that make a file descriptor or a FILE * into a ys_bytes_reader or a ys_bytes_writer. The context holds
-// the descriptor or the stream. The ownership picks whether the close callback goes in at all.
+// An adapter holds a file descriptor or a stream in its context. An adapter that owns its handle sets a close callback.
+// An adapter that borrows its handle sets no callback.
 
 // --- Reading.
 
@@ -34,9 +34,8 @@ static ptrdiff_t ys_fd_read(void *context, char *buffer, size_t size) {
     return (ptrdiff_t)YS_OS_READ((int)(intptr_t)context, buffer, capped);
 }
 
-// Closing a descriptor is the same act whichever side used it. The readers and the writers share this close, and that
-// is why they share a file. close() already answers `0` or `-1` with errno set. A ys_bytes_reader's close and a
-// ys_bytes_writer's close must answer the same way. This translates nothing.
+// Close a descriptor. The readers and the writers share this close. close() already answers `0` or `-1` with errno set.
+// A `ys_bytes_reader`'s close and a `ys_bytes_writer`'s close must answer the same way. This translates nothing.
 static int ys_fd_close(void *context) {
     return YS_OS_CLOSE((int)(intptr_t)context);
 }
@@ -49,8 +48,7 @@ ys_bytes_reader ys_fd_reader(int fd, ys_ownership ownership) {
     return reader;
 }
 
-// A `FILE *` gets the same treatment. A short read is the end of the file, and `ferror` is what tells that from a
-// failure.
+// A `FILE *` gets the same treatment. A short read is the end of the file. `ferror` tells that end from a failure.
 static ptrdiff_t ys_fp_read(void *context, char *buffer, size_t size) {
     FILE *file = context;
     size_t read_count = fread(buffer, 1, size, file);
@@ -61,10 +59,10 @@ static ptrdiff_t ys_fp_read(void *context, char *buffer, size_t size) {
     }
 }
 
-// Closing a FILE * goes the same way. The readers and the writers share that too. fclose answers `0` or EOF rather
-// than `0` or `-1`, and EOF is just some negative value. Those answers differ, and this says so. A writer feels that
-// difference. fwrite buffers, and the bytes reach the disk at the flush a close performs. A full disk turns up here,
-// long after ys_write_token() has returned YS_OK.
+// Close a FILE *. The readers and the writers share this close. fclose answers `0` or EOF rather
+// than `0` or `-1`, and EOF may be any negative value. A writer sees that difference. fwrite buffers, and the bytes
+// reach the disk at the flush a close performs. A full disk turns up here, long after `ys_write_token` has returned
+// `YS_OK`.
 static int ys_fp_close(void *context) {
     return fclose(context) == 0 ? 0 : -1;
 }
@@ -79,8 +77,8 @@ ys_bytes_reader ys_fp_reader(FILE *file, ys_ownership ownership) {
 
 // --- Writing.
 
-// Write up to `size` bytes of `buffer` to the descriptor. The count written, or `-1` with errno set. The count caps
-// the way the read's does, and the caller continues from a short write.
+// Write up to `size` bytes of `buffer` to the descriptor. The call returns the count written, or `-1` with errno set.
+// The call caps the count the way `ys_fd_read` caps the count it hands back. The caller continues from a short write.
 static ptrdiff_t ys_fd_write(void *context, const char *buffer, size_t size) {
     unsigned int capped = size > (unsigned int)INT_MAX ? (unsigned int)INT_MAX : (unsigned int)size;
     return (ptrdiff_t)YS_OS_WRITE((int)(intptr_t)context, buffer, capped);

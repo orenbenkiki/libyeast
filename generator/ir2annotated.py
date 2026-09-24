@@ -43,7 +43,7 @@ def _args_yaml(arguments: Sequence[ir.Node]) -> object:
 
 
 def _expr_yaml(value: ir.Node) -> object:
-    """Regenerate a value/parameter expression."""
+    """Regenerate a value expression or a parameter expression."""
     return _EXPR_YAML(value)
 
 
@@ -86,7 +86,8 @@ def _max_yaml(node: ir.MaxWrapper) -> dict[str, object]:
 
 def _case_yaml(node: ir.CaseTree) -> dict[str, object]:
     """
-    A `(case)`'s form. The variable the case switches on, a branch per value, and the else where a case has an else.
+    A `(case)`'s form. The form writes the variable the case switches on and a branch per value. It writes the else
+    where a case has an else.
     """
     default = {"else": _node_yaml(node.default)} if node.default is not None else {}
     branches = {branch.value: _node_yaml(branch.item) for branch in node.branches}

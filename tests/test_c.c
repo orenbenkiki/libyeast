@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // The C library's tests, over the surface a caller sees. That is the token sources and sinks, the readers and
-// writers, and the allocator and the version. The tests cover what those refuse as well as what they do.
+// writers, and the allocator and the version. The tests cover what that surface refuses and what it does.
 
 #include "acutest.h"
 #include <errno.h>
@@ -13,13 +13,13 @@
 #include <unistd.h>
 #endif
 
-// TEST_ASSERT that the static analyzers trust. acutest's TEST_ASSERT aborts the test on a false condition. Neither
-// clang-tidy nor cppcheck can see that it does. Past a `TEST_ASSERT(pointer != NULL)` they still treat the pointer as
-// possibly-NULL, and warn at the next use.
+// A `TEST_ASSERT` that the static analyzers trust. acutest's `TEST_ASSERT` aborts the test on a false condition.
+// Neither clang-tidy nor cppcheck can see that it does. Past a `TEST_ASSERT(pointer != NULL)` they still treat the
+// pointer as possibly-NULL, and warn at the next use.
 //
-// The trailing abort() states the same fact in a form they read. Both know abort() does not return. TEST_ASSERT has
+// The trailing abort() states the same fact in a form they read. Both know abort() does not return. `TEST_ASSERT` has
 // already aborted by then, and the abort() itself does not run. The whole macro is a single source line. It stays
-// covered with no // UNTESTED guard to write. `cond` is evaluated twice. It must have no side effects.
+// covered with no // UNTESTED guard to write. The macro evaluates `cond` twice. `cond` must have no side effects.
 #define TEST_ASSERT_HINT(cond)                                                                                         \
     do {                                                                                                               \
         TEST_ASSERT(cond);                                                                                             \
@@ -38,13 +38,13 @@ static void test_ys_version_matches_components(void) {
     TEST_CHECK(version != NULL);
     if (version != NULL) {
         TEST_CHECK(strcmp(version, expected) == 0);
-        TEST_MSG("ys_version()=\"%s\" components=\"%s\"", version, expected);
+        TEST_MSG("`ys_version` gave \"%s\" and the components say \"%s\"", version, expected);
     }
 }
 
-// The parser does not exist yet. A read yields a "not implemented" error at the first character. The parse continues
-// past that error, the way it continues past a malformed document. A further read yields the error again, as YS_OK
-// with the token.
+// The parser does not exist. A read yields a "not implemented" error at the first character. The parse continues
+// past that error, the way it continues past a malformed document. A further read yields the error again. The reader
+// answers `YS_OK` and hands back the token.
 static void test_yaml_memory_parser(void) {
     const char *input = "hello: world\n";
     ys_token_source *source = ys_new_yaml_memory_parser(input, strlen(input), NULL);
@@ -66,7 +66,7 @@ static void test_yaml_memory_parser(void) {
     ys_delete_token_source(source);
 }
 
-// A stream parser routed through the counting allocator. The test can then assert nothing leaked.
+// The test routes a stream parser through the counting allocator. The test can then assert nothing leaked.
 static void test_yaml_stream_parser(void) {
     ys_counting_allocator *counter = ys_new_counting_allocator();
     TEST_ASSERT(counter != NULL);
@@ -88,7 +88,7 @@ static void test_yaml_stream_parser(void) {
     ys_delete_counting_allocator(counter);
 }
 
-static bool is_closed; // the flag note_close sets. A test reads it back to see the close happened.
+static bool is_closed; // the flag `note_close` sets. A test reads it back to see the close happened.
 
 // A close that records it ran and then fails. The failure lets a test see whose errno a caller gets.
 static int note_close(void *context) {
@@ -98,7 +98,7 @@ static int note_close(void *context) {
     return -1;
 }
 
-// An allocate that refuses whatever a caller asks for. It reaches the out-of-memory path without exhausting the
+// An allocate that refuses any size a caller asks for. It reaches the out-of-memory path without exhausting the
 // machine.
 static void *failing_allocate(void *context, size_t size) {
     (void)context;
@@ -121,8 +121,8 @@ static void test_alloc_failure(void) {
     TEST_CHECK(errno == ENOMEM);
 }
 
-// A bad argument is EINVAL, told apart from a memory failure. A string parser given a NULL buffer with a length is
-// such a case. So is a stream parser or token reader given a reader with nothing to read from.
+// A bad argument is EINVAL. That status tells such a case apart from a memory failure. A string parser given a NULL
+// buffer with a length is such a case. So is a stream parser or token reader given a reader with nothing to read from.
 static void test_bad_arguments(void) {
     errno = 0;
     TEST_CHECK(ys_new_yaml_memory_parser(NULL, 5, NULL) == NULL);
@@ -136,7 +136,7 @@ static void test_bad_arguments(void) {
     TEST_CHECK(ys_new_yeast_stream_reader(empty, NULL) == NULL);
     TEST_CHECK(errno == EINVAL);
 
-    // A bad reader is handed over too. An owned reader is closed even when it is what failed. The EINVAL survives the
+    // A bad reader is handed over too. An owned reader is closed even when that reader failed. The EINVAL survives the
     // close, which sets its own errno.
     ys_bytes_reader owned = {NULL, note_close, NULL}; // no read callback, but an owned resource to close
     is_closed = false;
@@ -154,7 +154,7 @@ static void test_bad_arguments(void) {
     ys_delete_token_source(parser);
 }
 
-// Deleting NULL is a no-op rather than a crash, over the deleters a caller has.
+// Deleting NULL is a no-op rather than a crash. The deleters a caller has behave the same way.
 static void test_free_null(void) {
     ys_delete_token_source(NULL);       // no-op
     ys_delete_counting_allocator(NULL); // no-op
@@ -169,9 +169,9 @@ static ptrdiff_t read_nothing(void *context, char *buffer, size_t size) {
     return 0; // an empty input, which is a valid one
 }
 
-// Freeing reports its reader's close. A buffered close is where a failure surfaces. A free returns YS_FAILED_STREAM
-// with the close's errno rather than swallowing it. The default allocator has no close. The reader is what can fail
-// here.
+// Freeing reports its reader's close. A buffered reader surfaces a failure at its close. A free returns
+// `YS_FAILED_STREAM` with the close's errno rather than swallowing the failure. The default allocator has no close. The
+// reader can fail here and the allocator cannot.
 static void test_free_reports_close_failure(void) {
     ys_bytes_reader owned = {read_nothing, note_close, NULL}; // its close fails with EIO
 
@@ -181,7 +181,7 @@ static void test_free_reports_close_failure(void) {
     errno = 0;
     TEST_CHECK(ys_delete_token_source(parser) == YS_FAILED_STREAM); // the reader's close failed
     TEST_CHECK(is_closed);
-    TEST_CHECK(errno == EIO); // and its reason is what stands
+    TEST_CHECK(errno == EIO); // and its reason survives
     TEST_MSG("freeing a parser left errno at %d rather than EIO", errno);
 
     ys_token_source *tokens = ys_new_yeast_stream_reader(owned, NULL);
@@ -203,10 +203,10 @@ static int allocator_close_fails(void *context) {
     return -1;
 }
 
-// A free can report a pair of failures beyond the reader failure. A failing allocator close is YS_FAILED_MEMORY.
-// Both together are YS_FAILED_BOTH. There errno holds the reader's reason. The reader failed before the allocator did.
-// The return says the allocator failed as well. The test uses the counting allocator with its close swapped for a
-// failing close. The library really gives the memory back before the close fails.
+// A free can report a pair of failures beyond the reader failure. A failing allocator close is `YS_FAILED_MEMORY`.
+// Both together are `YS_FAILED_BOTH`. There errno holds the reader's reason. The reader failed before the allocator
+// did. The return says the allocator failed as well. The test uses the counting allocator. The test swaps that
+// allocator's close for a failing close. The library really gives the memory back before the close fails.
 static void test_free_reports_both_closes(void) {
     ys_counting_allocator *counter = ys_new_counting_allocator();
     TEST_ASSERT(counter != NULL);
@@ -214,17 +214,17 @@ static void test_free_reports_both_closes(void) {
     allocator.close = allocator_close_fails;
     ys_options options = {allocator, YS_RESUME_NONE, 0};
 
-    // A string parser has no reader to close. The allocator's close is what can fail. That is YS_FAILED_MEMORY, and
+    // A string parser has no reader to close. Only the allocator's close can fail. That is `YS_FAILED_MEMORY`, and
     // its errno stands.
-    ys_token_source *string = ys_new_yaml_memory_parser("a: 1\n", 5, &options);
+    ys_token_source *string = ys_new_yaml_memory_parser("a: 1\n", 5, &options); // not-prose: The literal is YAML input.
     TEST_ASSERT(string != NULL);
     errno = 0;
     TEST_CHECK(ys_delete_token_source(string) == YS_FAILED_MEMORY);
     TEST_CHECK(errno == ENOSPC);
     TEST_MSG("the allocator's close left errno at %d rather than ENOSPC", errno);
 
-    // A stream parser with a failing reader close and this allocator fails both ways. That is YS_FAILED_BOTH. errno is
-    // the reader's, the first one.
+    // A stream parser with a failing reader close and this allocator fails both ways. That is `YS_FAILED_BOTH`. errno
+    // is the reader's, the first one.
     ys_bytes_reader owned = {read_nothing, note_close, NULL}; // its close fails with EIO
     ys_token_source *stream = ys_new_yaml_stream_parser(owned, &options);
     TEST_ASSERT(stream != NULL);
@@ -324,8 +324,8 @@ static void test_counting_allocator_shared(void) {
     allocator.close = NULL; // reused. the freeing of one parser does not check it
     ys_options options = {allocator, YS_RESUME_NONE, 0};
 
-    ys_token_source *first = ys_new_yaml_memory_parser("a: 1\n", 5, &options);
-    ys_token_source *second = ys_new_yaml_memory_parser("b: 2\n", 5, &options);
+    ys_token_source *first = ys_new_yaml_memory_parser("a: 1\n", 5, &options);  // not-prose: The literal is YAML input.
+    ys_token_source *second = ys_new_yaml_memory_parser("b: 2\n", 5, &options); // not-prose: The literal is YAML input.
     TEST_ASSERT(first != NULL && second != NULL);
     TEST_CHECK(ys_counting_allocator_live_buffers(counter) == 2); // both live at once
 
@@ -338,8 +338,8 @@ static void test_counting_allocator_shared(void) {
     ys_delete_counting_allocator(counter);
 }
 
-// A code has a wire character. Reading that character back gives the code again. YS_CODE_ERROR is the wire's '!'. It
-// is no exception. '!' reads back as it.
+// A code has a wire character. Reading that character back gives the code again. `YS_CODE_ERROR` is the wire's '!'. It
+// reads back as `YS_CODE_ERROR`.
 static void test_wire_codes(void) {
     for (int code = YS_CODE_BOM; code <= YS_CODE_DETECTED; code++) {
         char character = ys_code_char((ys_code)code);
@@ -358,13 +358,13 @@ static void test_wire_codes(void) {
     TEST_CHECK(ys_code_of_char('\0', &code) ==
                YS_FAILED_ACTION); // and nothing reads back the "writes nothing" sentinel
 
-    // Each code the enum names has a wire character. A malformed document is YS_CODE_ERROR's '!'. A host failure is no
-    // code at all. So ys_code_char()'s '\0', and the write it refuses, answer an out-of-range code alone. Such a code
-    // cannot be handed over from a test without undefined behavior.
+    // Each code the enum names has a wire character. A malformed document is the '!' of `YS_CODE_ERROR`. A host failure
+    // is no code at all. So ys_code_char()'s '\0', and the write it refuses, answer an out-of-range code alone. Such a
+    // code cannot be handed over from a test without undefined behavior.
 }
 
-// A sink and a source over a single buffer. The wire tests then want no file. They exercise the ys_bytes_writer and
-// ys_bytes_reader abstractions rather than the FILE* adapters. The adapters have tests of their own.
+// A sink and a source over a single buffer. The wire tests then want no file. They exercise the `ys_bytes_writer` and
+// `ys_bytes_reader` abstractions rather than the FILE* adapters. The adapters have tests of their own.
 typedef struct wire_buffer {
     char bytes[4096];
     size_t size;
@@ -395,7 +395,7 @@ static ptrdiff_t wire_read(void *context, char *bytes, size_t size) {
 // A token written to the wire and read back is the same token. That is the code, the marks, and the text.
 static void test_wire_round_trip(void) {
     // The wire records a token's start alone. Its end is worked out from that start and its text. Each component of
-    // the end is, not the byte offset alone. `characters` and `breaks` are what the text holds. `column` is where the
+    // the end is, not the byte offset alone. `characters` and `breaks` count what the text holds. `column` is where the
     // text leaves the token when it holds a break, the count having started over.
     static const struct {
         const char *name;
@@ -411,7 +411,7 @@ static void test_wire_round_trip(void) {
         {"content", YS_CODE_TEXT, "hello", 5, 5, 0, 0},
         {"a backslash the writer must escape", YS_CODE_TEXT, "a\\b", 3, 3, 0, 0},
         {"a line break the writer must escape", YS_CODE_LINE_FEED, "\n", 1, 1, 1, 0},
-        {"two lines and what follows them", YS_CODE_TEXT, "a\nb\ncd", 6, 6, 2, 2},
+        {"a pair of lines and what follows them", YS_CODE_TEXT, "a\nb\ncd", 6, 6, 2, 2},
         {"two-byte non-ASCII", YS_CODE_TEXT, "\xC3\xA9", 2, 1, 0, 0},             // U+00E9
         {"three-byte non-ASCII", YS_CODE_TEXT, "\xE4\xB8\x80", 3, 1, 0, 0},       // U+4E00
         {"beyond the basic plane", YS_CODE_TEXT, "\xF0\x9F\x98\x80", 4, 1, 0, 0}, // U+1F600
@@ -462,8 +462,8 @@ static void test_wire_round_trip(void) {
     ys_delete_token_source(tokens);
 }
 
-// The wire escapes by codepoint. It has no form for a byte that is not one. The writer refuses a token holding
-// such a byte rather than answering with something that reads back as different bytes.
+// The wire escapes by codepoint. The wire has no form for a byte that is not a codepoint. The writer refuses a token
+// holding such a byte. An answer holding that byte would read back as different bytes.
 static void test_wire_refuses_ill_formed_text(void) {
     static const struct {
         const char *name;
@@ -497,19 +497,19 @@ static void test_wire_refuses_ill_formed_text(void) {
         TEST_MSG("%s: errno is %d, not EINVAL", cases[index].name, errno);
         ys_delete_token_sink(writer);
 
-        // What YS_CODE_UNPARSED_INVALID exists to hold, it holds. It does so if each byte of it qualifies.
+        // The token holds the bytes `YS_CODE_UNPARSED_INVALID` covers. A byte of that text encodes no character.
         wire_buffer held = {{0}, 0, 0};
         ys_token_sink *to_held = ys_new_yeast_stream_writer((ys_bytes_writer){wire_write, NULL, &held}, NULL);
         token.code = YS_CODE_UNPARSED_INVALID;
         TEST_CHECK((ys_write_token(to_held, token) == YS_OK) == cases[index].throughout);
-        TEST_MSG("%s: UNPARSED_INVALID wanted the token %s", cases[index].name,
+        TEST_MSG("%s: `YS_CODE_UNPARSED_INVALID` wanted the token %s", cases[index].name,
                  cases[index].throughout ? "written" : "refused");
         ys_delete_token_sink(to_held);
     }
 }
 
-// The other half of the same rule. An escape under YS_CODE_UNPARSED_INVALID writes a byte. The writer refuses text
-// that does encode characters there. The code would be a lie about what its escapes mean.
+// An escape under `YS_CODE_UNPARSED_INVALID` writes a byte. The writer refuses
+// text that encodes characters there. Such escapes would name characters rather than bytes.
 static void test_wire_refuses_well_formed_invalid_text(void) {
     static const struct {
         const char *name;
@@ -531,7 +531,7 @@ static void test_wire_refuses_well_formed_invalid_text(void) {
 
         errno = 0;
         TEST_CHECK(ys_write_token(writer, token) == YS_FAILED_ACTION);
-        TEST_MSG("%s: YS_CODE_UNPARSED_INVALID wrote the token rather than refusing it", cases[index].name);
+        TEST_MSG("%s: `YS_CODE_UNPARSED_INVALID` wrote the token rather than refusing it", cases[index].name);
         TEST_CHECK(errno == EINVAL);
         TEST_MSG("%s: errno is %d, not EINVAL", cases[index].name, errno);
         ys_delete_token_sink(writer);
@@ -560,8 +560,8 @@ static ptrdiff_t drip_source_read(void *context, char *bytes, size_t size) {
 }
 
 // A caller hands a reader over to the constructor. An owned reader then belongs to the parser. A caller whose parser
-// fails to build holds nothing to free the reader with. The constructor closes it itself. The memory failure's ENOMEM
-// survives the close. The close set an errno of its own.
+// fails to build holds nothing to free the reader with. The constructor closes the reader itself. The memory failure's
+// ENOMEM survives the close. The close sets an errno of its own.
 static void test_owned_reader_is_closed_when_construction_fails(void) {
     ys_options tiny = {{0}, YS_RESUME_NONE, 8}; // smaller than either object
     wire_buffer wire = {{0}, 0, 0};
@@ -612,11 +612,11 @@ static void test_wire_round_trips_an_error(void) {
     ys_delete_token_source(tokens);
 }
 
-// An error's text comes out as a string rather than as a span. It must be NUL-terminated. The writer takes its length
-// with strlen.
+// An error's text comes out as a string rather than as a span. The text must end on a NUL byte. The writer takes its
+// length with strlen.
 //
-// A message that fills the reader's buffer exactly is where a missing terminator reads off the end. The writer would
-// then overread. The round-trip through the writer is what a sanitizer watches.
+// A message may fill the reader's buffer exactly. A missing terminator then makes the writer read off the end. A
+// sanitizer watches the round-trip through the writer.
 static void test_wire_error_text_is_terminated(void) {
     wire_buffer wire = {{0}, 0, 0};
     // Four four-byte codepoints unescape to sixteen bytes, a size the growth lands on exactly.
@@ -660,8 +660,8 @@ static void test_wire_empty_error_text(void) {
     ys_delete_token_source(tokens);
 }
 
-// A reader that fails partway is a host failure. It is not a stream that ended, and not a malformed wire. It is
-// YS_FAILED_STREAM, with the reader's errno and no token. The source is then spent.
+// A reader that fails partway is a host failure. Such a failure is not a stream that ended, and it is not a malformed
+// wire. It is `YS_FAILED_STREAM`. The reader hands back its errno and no token. The source is then spent.
 static void test_wire_reader_failure(void) {
     drip_source source = {"# B: 0, C: 0, L: 0, c: 0\nThello\n", 8, 0}; // it hands out 8 bytes, then fails
     ys_bytes_reader reader = {drip_source_read, NULL, &source};
@@ -678,7 +678,7 @@ static void test_wire_reader_failure(void) {
 }
 
 // A reader can fail after the position line, part way through the token line. That is a different path through the
-// reader than a failure on the position line itself. It reports the same YS_FAILED_STREAM.
+// reader than a failure on the position line itself. The reader reports the same `YS_FAILED_STREAM`.
 static void test_wire_reader_failure_mid_token(void) {
     drip_source source = {"# B: 0, C: 0, L: 0, c: 0\nThello\n", 25, 0}; // hands out the position line, then fails
     ys_bytes_reader reader = {drip_source_read, NULL, &source};
@@ -692,8 +692,9 @@ static void test_wire_reader_failure_mid_token(void) {
     ys_delete_token_source(tokens);
 }
 
-// A wire error token gets a code that a legitimate wire does not hold. Nobody then mistakes the reader's trouble
-// for the error tokens the wire replays. Its marks locate the fault. A caller can point at where in the wire.
+// A wire error token gets a code that a legitimate wire does not hold. A caller then does not mistake the reader's
+// trouble for the error tokens the wire replays. The token's marks locate the fault. A caller can point at the place in
+// the wire.
 static void test_wire_error_is_located(void) {
     wire_buffer wire = {{0}, 0, 0};
     // A valid token, then a bad escape on the fourth line at the sixth character. The code is 'T', then `ab`, then
@@ -776,8 +777,9 @@ static void test_wire_rejects_rubbish(void) {
     }
 }
 
-// An unparsed-invalid token round-trips its raw bytes. The writer writes a byte \xXX. The reader hands them back as the
-// bytes themselves. That is a span of a pair of bytes, rather than the pair of codepoints \x80 and \x81 would name.
+// An unparsed-invalid token round-trips its raw bytes. The writer writes a byte \xXX. The reader hands back the raw
+// bytes themselves. The token holds a span of a pair of bytes. The codepoints \x80 and \x81 would name a different
+// span.
 static void test_wire_reads_unparsed_invalid(void) {
     wire_buffer wire = {{0}, 0, 0};
     const char *written = "# B: 3, C: 3, L: 1, c: 3\n~\\x80\\x81\n";
@@ -799,7 +801,7 @@ static void test_wire_reads_unparsed_invalid(void) {
     ys_delete_token_source(tokens);
 }
 
-// The FILE* writer adapter. The bytes it writes come back, and YS_BORROW leaves the stream untouched.
+// The bytes the FILE* writer adapter writes come back, and `YS_BORROW` leaves the stream untouched.
 static void test_fp_writer(void) {
     FILE *file = tmpfile();
     TEST_ASSERT(file != NULL);
@@ -843,8 +845,8 @@ static void test_fd_writer(void) {
 // A writer with no write callback is a bad argument, and the answer is EINVAL. The constructor closes an owned writer
 // even so. A reader with no read callback closes the same way when a source constructor refuses it.
 //
-// An allocator that refuses closes the writer too, and the answer is ENOMEM. The sink gets the writer whether or not
-// the constructor can build it.
+// The constructor closes the writer when the allocator refuses, and the answer is ENOMEM. The sink gets the writer
+// whether or not the constructor succeeds.
 static void test_yeast_stream_writer_bad_argument(void) {
     ys_bytes_writer empty = {NULL, NULL, NULL};
     errno = 0;
@@ -883,9 +885,9 @@ static void test_sink_delete_reports_close_failure(void) {
     TEST_CHECK(ys_delete_token_sink(NULL) == YS_OK); // deleting nothing cannot fail
 }
 
-// The emitter renders tokens rather than judging them. An error's text is a message rather than input. It is not a
-// token the emitter can emit. ys_write_token() refuses it with YS_FAILED_ACTION and EINVAL, for a caller to filter
-// above.
+// An error is not
+// a token the emitter can emit. `ys_write_token` refuses an error with `YS_FAILED_ACTION` and EINVAL. A caller filters
+// an error above that call.
 static void test_yaml_emitter_refuses_error(void) {
     wire_buffer out = {{0}, 0, 0};
     ys_token_sink *emitter = ys_new_yaml_stream_emitter((ys_bytes_writer){wire_write, NULL, &out}, NULL);
@@ -903,7 +905,7 @@ static void test_yaml_emitter_refuses_error(void) {
 }
 
 #ifndef _WIN32
-// A growable byte buffer. The emitter's output is not bounded by a fixed size.
+// A growable byte buffer. An emitter writes output of no fixed size.
 typedef struct grow_buffer {
     char *bytes;
     size_t size;
@@ -930,7 +932,7 @@ static ptrdiff_t grow_write(void *context, const char *bytes, size_t size) {
     return (ptrdiff_t)size;
 }
 
-// Serve the bytes of a file to a ys_bytes_reader. The wire reader can then replay a fixture's wire.
+// Serve the bytes of a file to a `ys_bytes_reader`. The wire reader can then replay a fixture's wire.
 typedef struct file_bytes {
     char *bytes;
     size_t size;
@@ -963,9 +965,9 @@ static char *slurp(const char *path, size_t *size) {
     return bytes;
 }
 
-// The bytes of `input` a fixture named `name` begins past. The `p=N` in the name counts the characters before
-// the rule. Those are UTF-8. The count walks the characters rather than adding them. A name without a `p=N`
-// begins at the first byte.
+// A fixture named `name` begins past a prefix of `input`. The bytes of that prefix are the answer. The `p=N` in the
+// name counts the UTF-8 characters before the rule. The count walks the characters rather than adding them.
+// A name without a `p=N` begins at the first byte.
 static size_t reached_through(const char *name, const char *input, size_t input_size) {
     const char *named = strstr(name, ".p=");
     if (named == NULL) {
@@ -982,13 +984,14 @@ static size_t reached_through(const char *name, const char *input, size_t input_
     return offset;
 }
 
-// The round-trip the emitter exists for. The emitter renders a fixture's tokens as YAML, with the errors filtered out
-// above it. They reconstruct the input the tokens came from. The render leaves out the prefix the fixture begins past.
-// The parse takes those characters before the run begins, and the run matches no part of them.
+// The test runs the round-trip through the emitter. The emitter renders a fixture's tokens as YAML. A filter above the
+// emitter drops the errors. The YAML reconstructs the input the tokens came from. A fixture begins past a prefix. The
+// render leaves that prefix out. The parse takes the prefix before the token run begins. That run matches no part of
+// the prefix.
 //
-// A fixture's `.output` is a yeast wire. Reading a wire back and emitting it is the yeast -> YAML half of the
-// pipeline. That runs over the whole corpus. The tokens are byte-complete. A consumed byte lies in a single token, and
-// an error spans no byte at all.
+// A fixture's `.output` is a yeast wire. The emitter reads such a wire back. That pass is the yeast -> YAML half of the
+// pipeline. The test runs that pass over the corpus. The tokens are byte-complete. A consumed byte lies in a single
+// token, and an error spans no byte at all.
 static void test_emitter_reconstructs_fixtures(void) {
     DIR *directory = opendir(YS_SPEC_DIR);
     TEST_ASSERT_HINT(directory != NULL);
@@ -1053,7 +1056,7 @@ static void test_emitter_reconstructs_fixtures(void) {
     closedir(directory);
 
     TEST_CHECK(checked > 0);
-    TEST_MSG("no fixtures were found under %s", YS_SPEC_DIR);
+    TEST_MSG("%s holds no fixture", YS_SPEC_DIR);
 }
 #endif
 
@@ -1078,8 +1081,8 @@ static void test_wire_odds_and_ends(void) {
     ys_delete_token_source(NULL); // freeing nothing is not an error
 }
 
-// A reader held under a cap too small for the input reports failure rather than growing past it. The constructor
-// refuses a cap too small to build a reader under. It does not build a useless reader.
+// A cap may be too small for the input. A reader under such a cap reports failure rather than growing past that cap.
+// The constructor refuses a cap too small to build a reader under.
 static void test_wire_memory_cap(void) {
     wire_buffer wire = {{0}, 0, 0};
     const char *line = "# B: 0, C: 0, L: 0, c: 0\nThello\n";
@@ -1105,8 +1108,8 @@ static void test_wire_memory_cap(void) {
     ys_delete_token_source(tokens);
 }
 
-// An allocator that hands out a set number of buffers and refuses the next. A failure of the second allocation is then
-// reachable without guessing the size of the reader itself. The second allocation is the reader's text.
+// An allocator that hands out a set number of buffers and refuses the next. A test then reaches a failure of the second
+// allocation without guessing the reader's size. The second allocation is the reader's text.
 static size_t buffers_left;
 
 // A reallocate that refuses once the allocator has handed out a set number of buffers. It fails a growth at a chosen
@@ -1122,7 +1125,7 @@ static void *counted_reallocate(void *context, void *pointer, size_t size) {
 }
 
 // The reader's text buffer is under the same cap as its line buffer. The reader reports a text failure the same way.
-// The text grows through ys_append for a character token, and through ys_append_byte for an unparsed-invalid one.
+// The text grows through `ys_append` for a character token, and through `ys_append_byte` for an unparsed-invalid one.
 static void test_wire_text_out_of_memory(void) {
     static const char *wires[] = {
         "# B: 0, C: 0, L: 0, c: 0\nThello\n", // characters, unescaped via ys_append
@@ -1151,7 +1154,8 @@ static void test_wire_text_out_of_memory(void) {
 }
 
 // Even a token with no text gets a NUL terminator. That terminator costs an allocation. A cap refusing that
-// allocation makes the reader say out of memory. It does not hand back a token whose empty text points at nothing.
+// allocation makes the reader say out of memory. The reader does not hand back a token whose empty text points at
+// nothing.
 static void test_wire_terminator_out_of_memory(void) {
     wire_buffer wire = {{0}, 0, 0};
     const char *written = "# B: 0, C: 0, L: 0, c: 0\nS\n"; // a begin-scalar marker. a code with no text
@@ -1173,8 +1177,8 @@ static void test_wire_terminator_out_of_memory(void) {
     ys_delete_token_source(tokens);
 }
 
-// A source of `left` identical token records, made as the reader reads them. The reader must then refill its line
-// buffer many times over. The whole stream is not in memory at once.
+// A source of `left` identical token records. The source makes a record as the reader reads it. The reader must then
+// refill its line buffer as the records arrive. The whole stream is not in memory at once.
 typedef struct wire_stream {
     size_t left;     // the records still to come.
     char record[40]; // the record going out.
@@ -1203,8 +1207,8 @@ static ptrdiff_t wire_stream_read(void *context, char *bytes, size_t size) {
 }
 
 // The reader reuses the line buffer rather than growing it. The reader discards a line it has handed back. The buffer
-// grows where the remainder really does fill it. So a long stream of short lines reads under a cap that a buffer
-// growing once per refill would pass in a moment. It is a stream, and the cap is the point.
+// grows where the remainder really does fill it. So a long stream of short lines reads under a cap.
+// A buffer that grows once per refill passes that cap.
 static void test_wire_long_stream(void) {
     wire_stream stream = {2000, {0}, 0, 0};
     ys_options options = {{0}, YS_RESUME_NONE, 16384};
@@ -1224,7 +1228,7 @@ static void test_wire_long_stream(void) {
     ys_delete_token_source(tokens);
 }
 
-// The wire is written with lower-case hexadecimal, but a stream written by another hand may use upper-case, and it
+// The writer writes lower-case hexadecimal. A stream written by another hand may use upper-case. Upper-case
 // means the same thing.
 static void test_wire_reads_upper_case_hex(void) {
     wire_buffer wire = {{0}, 0, 0};

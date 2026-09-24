@@ -7,8 +7,8 @@ A fixture holds the tokens the base grammar emits. That content has to come from
 hand. An indent or a white token holds the characters as text. Trailing spaces sit among those characters. A page hides
 a trailing space. A stream typed out therefore loses it. Authoring a fixture means running it.
 
-This freezes a fixture the caller names. This sweeps no set of fixtures. Rewriting the whole set would re-freeze
-whatever the interpreter emits on the day of the sweep. That is the oracle copying the thing it judges. Naming a fixture
+This freezes a fixture the caller names. This sweeps no set of fixtures. Rewriting the whole set would re-freeze the
+tokens the interpreter emits on the day of the sweep. That is the oracle copying the thing it judges. Naming a fixture
 says the author meant the change to it. This prints how a new stream differs from the stream the fixture already holds.
 The author reads a re-freeze before committing it.
 
@@ -31,13 +31,16 @@ import wire
 
 
 def _emitted(fixture: spec_tests.Fixture, grammar: dict[str, ir.Prod]) -> str:
-    """The token stream `fixture`'s input makes, as the wire text a `.output` holds."""
+    """`fixture`'s input makes a token stream. `_emitted` writes that stream as the wire text a `.output` file holds."""
     arguments = spec_tests.arguments(fixture, grammar)
     return wire.serialize(interpreter.run(grammar, fixture.production, fixture.input, arguments))
 
 
 def _differences(was: str, now: str) -> list[str]:
-    """The lines on which the frozen stream differs from the emitted stream, or none where the pair agree."""
+    """
+    The lines on which the frozen stream differs from the emitted stream, or none where the frozen stream and the
+    emitted stream agree.
+    """
     lines = []
     old, new = was.split("\n"), now.split("\n")
     for index in range(max(len(old), len(new))):
@@ -50,7 +53,7 @@ def _differences(was: str, now: str) -> list[str]:
 
 def _frozen(stem: str) -> list[str]:
     """
-    Write the fixture named `stem`'s output from the interpreter. `stem` is the filename without its extension.
+    Write the interpreter's output to the fixture named `stem`. `stem` is the filename without its extension.
 
     Reports where what the fixture holds differs from what the interpreter emits. A re-freeze says what it gave up.
     """
@@ -71,7 +74,7 @@ def _frozen(stem: str) -> list[str]:
 
 
 def _stem(fixture: spec_tests.Fixture) -> str:
-    """A fixture's name without its extension. That is what names it on the command line."""
+    """Returns a fixture's name without its extension. The command line uses that name to select the fixture."""
     return os.path.basename(fixture.input_path)[: -len(".input")]
 
 

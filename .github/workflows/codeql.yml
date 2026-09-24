@@ -1,4 +1,4 @@
-# CodeQL static analysis for C. An analyzer alongside clang-tidy and cppcheck. CodeQL aims at security. Results appear
+# CodeQL analyzes the C code for security faults. Clang-tidy and cppcheck analyze the same code. Results appear
 # under the repository's Security tab.
 
 name: codeql
@@ -8,7 +8,7 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 6 * * 1" # not-prose: The literal is a cron schedule.
 
 jobs:
   analyze:

@@ -2,12 +2,12 @@
 """
 Check that no proposal waits for a ruling.
 
-A review proposes a convention. The author rules on the proposal. It goes into `.claude/conventions.md` where accepted
-and into `.claude/rejected.md` where not. A proposal ruled on in conversation and written down in no file comes back the
-next round. It comes back the round after that too.
+A review proposes a convention. The author rules on the proposal. An accepted proposal goes into
+`.claude/conventions.md`. A rejected proposal goes into `.claude/rejected.md`. A proposal ruled on in conversation and
+written down in no file comes back the next round. It comes back the round after that too.
 
 The workflow appends what it proposed to `.claude/proposals-pending.md`. This refuses while that file holds anything.
-Ruling a proposal empties it.
+The author empties that file by ruling on the proposals it holds.
 
 **Usage:** `python3 generator/check_proposals.py`.
 """
@@ -16,15 +16,19 @@ import os
 import re
 
 import gate
+import settling_state
 
-_PENDING = os.path.join(gate.TREE, ".claude", "proposals-pending.md")  # the file a review writes its proposals into.
+_PENDING = settling_state.PENDING  # the file a review writes its proposals into.
 
-# A proposal. A list item opening with the rule in bold. The item takes a number or a bullet. The checker is the bold
-# rather than any wording around it. A pattern matching the whole line stops matching the day the file is laid out
-# differently. A gate with no match left reports green.
-_A_PROPOSAL = re.compile(r"^\s*(?:[0-9]+\.|[-*])\s+\*\*(.+?)(?:\*\*|$)", re.MULTILINE)
+# A proposal is a list item that starts at the left margin and opens with the rule in bold. The item takes a number or a
+# bullet. The pattern matches the bold rather than the wording around it. A pattern matching the whole line stops
+# matching the day somebody lays the file out differently. A gate with no match left reports green.
+#
+# An indented item is a label under a proposal. `record_run` writes such a label in bold, and the colon rule spares a
+# bold definition term.
+_A_PROPOSAL = re.compile(r"^(?:[0-9]+\.|[-*])\s+\*\*(.+?)(?:\*\*|$)", re.MULTILINE)
 
-# Who raised the proposals under it.
+# A heading names who raised the proposals under it.
 _A_HEADING = re.compile(r"^#+\s+From\s+`([^`]+)`", re.MULTILINE)
 
 

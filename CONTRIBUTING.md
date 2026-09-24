@@ -2,13 +2,14 @@
 
 ## Prerequisites
 
-- **To build and install the C library:** a C99 compiler (GCC, Clang, or MSVC). CMake `>= 3.20` and GNU make.
-  pkg-config. That is the list. The generated files sit in the tree, and the build calls no Python. `make install-deps`
-  installs these, auto-detecting your OS. Debian and Ubuntu, macOS, and Windows.
-- **To run the gate or work on the generator:** Python 3 with PyYAML. Also the formatters and linters, and the coverage
-  and docs tools. `make install-deps-pc` installs the whole set. `make install-deps-<sub-gate>` (`verify`, `vet`,
-  `gh-pages`) narrows it to a sub-gate's tools. These wrap the per-OS scripts in `scripts/`, and nobody chases a
-  hand-maintained list.
+- **To build and install the C library:** a C99 compiler (GCC, Clang, or MSVC) and CMake `>= 3.20`. The build also needs
+  GNU make and pkg-config. The generated files sit in the tree, and the build calls no Python. `make install-deps`
+  detects the OS and installs these tools. The target covers Debian and Ubuntu, macOS and Windows.
+
+- **To run the gate or work on the generator:** Python 3 with PyYAML, the formatters and linters, and the coverage and
+  docs tools. `make install-deps-pc` installs the whole set. `make install-deps-<sub-gate>` (`verify`, `vet`,
+  `gh-pages`) narrows the set to a sub-gate's tools. Both targets wrap the per-OS scripts in `scripts/`.
+
 - To check what is present without installing anything, run `make check-build-deps` for the build tools. Run
   `make check-dev-deps` for the gate tools. Both call `scripts/check-deps.sh`.
 
@@ -16,64 +17,69 @@ On macOS, `clang-tidy` ships in the keg-only Homebrew `llvm`. The Makefile finds
 
 ## The gate
 
-An incremental pre-commit target verifies the tree. CI does not run that target. A lighter workflow runs on its own.
+An incremental pre-commit target verifies the tree. CI does not run that target. A lighter workflow runs there instead.
 
 ```sh
 make pc
 ```
 
-The gate builds the Debug (ASan/UBSan) and Release (hardened) configs, then runs the tests. It checks formatting and
-lints with clang-tidy and cppcheck. It enforces the `// UNTESTED` coverage contract. It checks documentation
-completeness. It verifies the installed package is consumable. It re-runs only what changed.
+The gate builds the Debug config under ASan and UBSan, and the hardened Release config, then runs the tests. It checks
+formatting and lints with clang-tidy and cppcheck. It enforces the `// UNTESTED` coverage contract. It checks
+documentation completeness. It verifies the installed package is consumable. It re-runs only what changed.
 
-**A non-WIP commit must pass `make pc`.** A commit that intentionally does not is an in-progress checkpoint, and its
-message says `(WIP)`.
+**A non-WIP commit must pass `make pc`.** A commit that fails `make pc` on purpose is an in-progress checkpoint. The
+message of such a commit says `(WIP)`.
 
 ## Style
 
-- `clang-format` formats the C code, on an LLVM base at 120 columns with a 4-space indent. `make reformat-c` reformats;
-  `make pc` fails on drift.
-- A public API symbol has `YS_API` and a Doxygen comment. An exposed function needs `@return`/`@param` (the docs gate
-  enforces it).
+- `clang-format` formats the C code. The format builds on the LLVM style. `make reformat-c` reformats the code.
+  `make pc` fails on C code that `clang-format` would change.
+- A public API symbol has `YS_API` and a Doxygen comment. An exposed function needs `@return` and `@param`. The docs
+  gate refuses a function missing either.
 - Any line the tests do not cover must have a `// UNTESTED` comment. A stale marker on a covered line fails too.
 - Use conventional commit messages, such as `feat:` and `fix:` and `build:` and `chore:`.
 
 ## Design docs
 
-[`DESIGN.md`](DESIGN.md) maps the architecture, and [`PLAN.md`](PLAN.md) holds the roadmap. Read them before large
-changes.
+[`DESIGN.md`](DESIGN.md) maps the architecture, and [`PLAN.md`](PLAN.md) holds the roadmap. Read both documents before a
+large change.
 
-A rule covers the documents and `make pc` enforces it. **A number a document states is a fault unless something answers
-for it.** They differ in the list of what a document may write, and `check_documents` holds that list.
+`make pc` enforces a rule over `DESIGN.md` and `PLAN.md`. **A document may state a number only where a list in
+`check_documents` allows that number.** `DESIGN.md` and `PLAN.md` may write differing numbers. `check_documents` holds
+the list of numbers a document may write.
 
-- **`DESIGN.md` may state a count of the tree, and such a count must be checkable.** Put the number immediately in front
-  of the words that name the quantity. Name that quantity in `check_documents.NAMES_A_DOCUMENT_MAY_STATE` first. The
-  gate then compares what the document says against what the code measures.
+- **`DESIGN.md` may state a count of the tree where `check_documents` can check that count.** Put the number immediately
+  in front of the words that name the quantity. Name that quantity in `check_documents.NAMES_A_DOCUMENT_MAY_STATE`
+  first. `check_documents` then compares the count in the document against the count the code measures.
 
-  A count written any other way falls to the gate. That makes "must be checkable" a rule rather than an intention.
-  Somebody wrote the stale ones found by hand some other way. They reached nothing.
+  `check_documents` refuses a count written any other way.
 
-- **`PLAN.md` states no count of the tree.** It says what the project owes, rather than how much of the work remains.
-  The gate prints the live figures per run. A number there duplicates a readout into a file somebody must then maintain.
+- **`PLAN.md` states no count of the tree.** `PLAN.md` names the work the project owes and leaves out how much of that
+  work remains. `make pc` prints the live counts when it runs. A count in `PLAN.md` copies that output, and a writer
+  then has to keep the copy current.
 
-- **`CHANGELOG.md` states no count of the tree either.** Once the tree has moved, nobody can check a number in it.
+- **`CHANGELOG.md` states no count of the tree either.** A number in `CHANGELOG.md` describes the tree as the entry
+  found it, and a later tree may differ.
 
 A count written in words is the same fault as a count written in digits. `six rules` reads exactly as `1454 productions`
 reads. A heading counts the tree as much as a sentence does.
 
-A document's pattern names what a document may write besides a checkable count. A spec version or a codepoint. An RFC or
-a milestone. A bound the specification sets, or an effort estimate. For `DESIGN`, a width in bits and a numeral counting
-what the sentence has just enumerated.
+A document's pattern lists the numbers a document may write besides a checkable count. A pattern passes a spec version
+and a codepoint. A pattern passes an RFC and a milestone. A pattern passes a bound the specification sets. A pattern
+passes an effort estimate. The pattern for `DESIGN` also passes a width in bits. That pattern passes a numeral that
+counts the items its own sentence lists.
 
-A number outside those wants either a name the code measures or a rewrite that states no number.
+`check_documents` refuses a number outside the list a document may write. A writer puts such a number in front of a name
+the code measures. A writer with no such name drops the number from the sentence.
 
-`check_documents` covers the prose beside the code, and a second rule covers it too. A comment or a docstring may state
-no count of the tree. The narrower pattern there governs the generator and the C alike. A number in front of a noun this
-project owns is a measurement. Any other number is prose.
+`check_documents` also reads the prose beside the code. A comment or a docstring may state no count of the tree.
+`check_documents` matches a narrower number pattern in a comment than in a document. The narrower pattern covers the
+generator and the C alike. A number in front of a noun this project owns is a measurement. Any other number is prose.
 
-A name such a text cites in backticks must name something the code writes. A hyphenated name names a step, an invariant
-or a production of some stage. So a comment naming a helper a rename retired fails `make pc`. So does a comment with a
-count nobody re-derived.
+A comment or a document may cite a name in backticks. Such a name must name something the code writes. A hyphenated name
+names a step, an invariant or a production of some stage. `make pc` fails a comment citing a helper that a rename
+retired. `make pc` also fails a comment stating a count that nobody re-derived.
 
-A citation the tree really cannot answer is declared in `check_documents`, by the file that writes it. That is a
-placeholder a worked example invents, or a name an entry cites *as* gone.
+`check_documents` declares a citation the tree cannot answer. The declaration names the file that writes the citation.
+Such a citation may be a placeholder that a worked example invents. It may also be a name that a document entry cites
+*as* gone.

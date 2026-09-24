@@ -2,24 +2,25 @@
 """
 Check that the interpreter's emitter can be undone.
 
-The backtracking rests on a promise `Emitter` makes in its own docstring. A checkpoint captures the state whole. An
-alternative that fails can be undone to the point before it. An `(any)`, a `(---)` and a repetition take that on trust.
-This gate is the first check to hold the emitter to that promise.
+The backtracking rests on a promise `Emitter` makes in its own docstring. A checkpoint captures the state whole. The
+interpreter can rewind a failed alternative to the checkpoint before it. An `(any)`, a `(---)` and a repetition take
+that on trust.
 
-The fixtures cannot check it. A leak shows where a rule sets a parameter in a branch of an alternation and reads it in a
-later branch. The grammar's sites of that shape are `c-chomping-indicator` twice and `c-indentation-indicator`. A site
-sets the same parameter in its branches, and the branch that matches overwrites whatever leaked. That is why an aliased
-`env` reproduced the fixtures byte for byte while quietly breaking the promise.
 
-So this checks the promise rather than an incident. The promise breaks in a pair of ways. A field that no checkpoint
-captures, and a field a checkpoint hands out rather than copies.
+The fixtures cannot check that promise. A leak shows where a rule sets a parameter in a branch of an alternation and
+reads it in a later branch. The grammar's sites of that shape are `c-chomping-indicator` twice and
+`c-indentation-indicator`. A site sets the same parameter in its branches, and the branch that matches overwrites the
+leaked value. That is why an aliased `env` reproduced the fixtures byte for byte while quietly breaking the promise.
+
+So this checks the promise rather than an incident. The promise breaks in a pair of ways. A checkpoint may miss a field.
+A checkpoint may also hand a field out rather than copy it.
 
 The first is why this file names the field list. A field added to `Emitter` and forgotten is a field nothing rewinds. It
 fails this gate instead of passing quietly.
 
 This checks the provisional run too. An `Emitter` holds that run, and the fixtures do not reach it. A retype rewrites
-the held tokens on the side of the mark its region names, and rewrites by the kind of a token. An injection puts a
-marker where the injection says, ahead of the run or between its sides.
+held tokens by kind. A retype's region names the side of the mark that the retype rewrites. An injection puts a marker
+where the injection says, ahead of the run or between its sides.
 """
 
 import gate
@@ -30,9 +31,7 @@ import wire
 # The run reads the input and writes it at no point. The run writes the record of the productions it reached, and reads
 # that record back at no point.
 #
-# A rewind leaves that record untouched. A production a fixture reached stays reached whatever the parse did after.
-#
-# Naming them is the point. A new field lands in a list here, and the gate says so rather than assuming.
+# A rewind leaves that record untouched. A production a fixture reached stays reached under any later parse.
 _RESTORED = (  # in alphabetical order.
     "ceiling",
     "ceiling_message",
@@ -64,10 +63,11 @@ _READ_ONLY = (  # in alphabetical order.
     "passing_arguments",
     "raw",
 )
-# Its own pushes and pops balance this. A checkpoint does not. The production stack the depth guard traces is the live
-# chain of entered productions, pushed on entry and popped on exit even as an exception unwinds. A rewind happens inside
-# a production, with its entry still on the stack. The rewind must leave the stack untouched rather than cut it back.
-# The return points of those same productions go on and come back with them, a return point per production.
+# The emitter's own pushes and pops balance this. A checkpoint does not. The depth guard traces the production stack.
+# That stack holds the live chain of entered productions. A production goes on at entry and comes off at exit, even as
+# an exception unwinds. A rewind happens inside a production, and that production's entry stays on the stack. The rewind
+# must leave the stack untouched rather than cut it back. A production holds a single return point. That return point
+# goes on and comes off with the production's entry.
 _TRANSIENT = ("entered", "failing", "returns", "unwinding")
 
 
@@ -109,9 +109,8 @@ def _state(emitter: interpreter.Emitter) -> dict[str, object]:
     """
     The state a checkpoint is supposed to restore, keyed by the field it comes from. A value here compares by equality.
 
-    Keyed rather than listed. `RESTORED` and this cannot then drift apart. A field named there and not read here would
-    be a field the rewind below silently does not look at. That is the silence this gate exists to refuse. It shows up a
-    level up.
+    The rewind below compares the fields this function reads. A gate a level up refuses a field that `RESTORED` names
+    and this function does not read.
     """
     return {
         "position": emitter.position,
@@ -140,22 +139,21 @@ def _fields_are_accounted(errors: list[str]) -> None:
     """A field of an `Emitter` is either restored by a checkpoint or declared read-only."""
     held = set(vars(interpreter.Emitter(b"x")))
     for name in sorted(held - set(_RESTORED) - set(_READ_ONLY) - set(_TRANSIENT)):
-        errors.append(f"Emitter.{name}: nothing says whether a checkpoint restores it")
+        errors.append(f"`Emitter.{name}`: nothing says whether a checkpoint restores it")
     for name in sorted((set(_RESTORED) | set(_READ_ONLY) | set(_TRANSIENT)) - held):
-        errors.append(f"Emitter.{name}: named here but no such field")
+        errors.append(f"`Emitter.{name}`: named here but no such field")
     # And what the rewind check reads is exactly what `RESTORED` names, or a field is declared restored and never looked
     # at.
     read = set(_state(interpreter.Emitter(b"x")))
     for name in sorted(set(_RESTORED) - read):
-        errors.append(f"RESTORED names Emitter.{name}, and the rewind check leaves that field unread")
+        errors.append(f"`RESTORED` names `Emitter.{name}`, and the rewind check leaves that field unread")
     for name in sorted(read - set(_RESTORED)):
-        errors.append(f"Emitter.{name}: the rewind check reads that field and RESTORED does not name it")
+        errors.append(f"`Emitter.{name}`: the rewind check reads that field and `RESTORED` does not name it")
 
 
 def _rewind_restores(errors: list[str]) -> None:
     """
-    A checkpoint taken, the state dirtied, then the checkpoint rewound to. The state comes back as the checkpoint took
-    it.
+    Take a checkpoint, dirty the state, and rewind to the checkpoint. The state comes back as the checkpoint took it.
     """
     emitter = interpreter.Emitter(_ENOUGH_TO_DIRTY)
     before = _state(emitter)
@@ -170,8 +168,8 @@ def _rewind_is_repeatable(errors: list[str]) -> None:
     """
     A single checkpoint rewound to twice restores the same state twice.
 
-    This is what an alternation does, with a checkpoint rewound to once per branch. A checkpoint that hands out its own
-    mutable state rather than a copy lets a branch reach into what the next rewinds to.
+    An alternation rewinds to a checkpoint once per branch. A checkpoint may hand out its own mutable state rather than
+    a copy. A branch can then reach into the state the next branch rewinds to.
     """
     emitter = interpreter.Emitter(_ENOUGH_TO_DIRTY)
     before = _state(emitter)
@@ -217,7 +215,7 @@ def _retype_selects_by_region(errors: list[str]) -> None:
 
 
 def _retype_selects_by_kind(errors: list[str]) -> None:
-    """A retype over the whole run rewrites a break by `breaks` and anything else by `rest`, as a pair of classes."""
+    """A retype over the whole run rewrites a break by `breaks` and anything else by `rest`."""
     emitter = interpreter.Emitter(b"\n ")
     emitter.open_provisional()
     emitter.code = "break"
@@ -250,7 +248,8 @@ def _inject_inserts_in_order(errors: list[str]) -> None:
 
 def _inject_at_mark(errors: list[str]) -> None:
     """
-    An injection at the mark sits between the sides of the run, behind the pre-mark tokens and ahead of what follows.
+    An injection at the mark sits between the sides of the run. It comes behind the pre-mark tokens and ahead of the
+    post-mark tokens.
     """
     emitter = interpreter.Emitter(b"\na")
     emitter.open_provisional()

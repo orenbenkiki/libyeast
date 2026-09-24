@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 """
-Check that libyeast's grammar documents the tokens it emits.
+Check that libyeast's grammar documents the tokens its rules emit.
 
-The grammar that it derives from is a document. A rule is preceded by its spec BNF, and a rule that needs explaining
+The grammar libyeast derives from is a document. A rule is preceded by its spec BNF, and a rule that needs explaining
 gets a section of prose. libyeast's additions deserve no less. A reader should not have to work out for themselves why
 `c-quoted-quote` marks the second quote `meta` while the first is an `indicator`.
 
@@ -25,23 +25,21 @@ def _emitted(node: ir.Node) -> list[str]:
     """
     The codes that a node emits, in the order the node emits them. Repeats come out.
 
-    A kind this question does not name raises rather than walking into its children. A new way of emitting would
-    otherwise contribute no code of its own. A rule using that new way would read as documented while saying nothing
-    about it.
+    A kind this question does not name raises rather than walking into its children.
     """
     return list(dict.fromkeys(_EMITTED(node)))
 
 
 def _emitted_around_it(node: ir.Wrapper) -> list[str]:
     """
-    A `(wrap)`'s codes. The opening marker comes first. Then come the codes of the item it holds. The closing marker
-    comes last.
+    A `(wrap)`'s codes. The opening marker comes first. The codes of the item the wrap holds come next. The closing
+    marker comes last.
     """
     return [node.begin, *_emitted(node.item), node.end]
 
 
 def _emitted_by_what_it_holds(node: ir.Node) -> list[str]:
-    """Anything holding parts. The codes the parts emit, in the order the parts run."""
+    """A node holding parts emits the codes of its parts, in the order the parts run."""
     return [code for child in chars.children(node) for code in _emitted(child)]
 
 
@@ -75,7 +73,10 @@ _EMITTED: ir.Question[list[str]] = ir.Question(
 
 
 def _documented(text: str) -> dict[str, list[str]]:
-    """The codes a rule's comment block says it emits. `{name: [code, ...]}`, over the rules that say so."""
+    """
+    Map a rule to the codes its comment block says the rule emits, as `{name: [code, ...]}`. A rule whose block names no
+    code gets no entry.
+    """
     said = {}
     for match in re.finditer(r"^:\d+: ([\w+.-]+)\n((?:#.*\n)*)", text, re.M):
         emits = _EMITS.search(match.group(2))

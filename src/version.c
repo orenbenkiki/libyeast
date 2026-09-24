@@ -18,10 +18,10 @@
 #define YS_VERSION_PATCH 0 // the third component. CMake injects it the same way.
 #endif
 
-// Compose "MAJOR.MINOR.PATCH" from the components at preprocess time.
+// Compose the major, the minor and the patch into a dotted string at preprocess time.
 #define YS_STRINGIFY_(x) #x
 #define YS_STRINGIFY(x) YS_STRINGIFY_(x) // the outer pass. It expands x, and the inner pass then quotes the result.
-// The components above joined with full stops. ys_version() hands this back.
+// The components above joined with full stops. `ys_version` hands this back.
 #define YS_VERSION_STRING                                                                                              \
     YS_STRINGIFY(YS_VERSION_MAJOR) "." YS_STRINGIFY(YS_VERSION_MINOR) "." YS_STRINGIFY(YS_VERSION_PATCH)
 

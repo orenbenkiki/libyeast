@@ -62,7 +62,7 @@ def _unescape_wire(text: str) -> str:
 
 
 def _uri_unescape(text: str) -> str:
-    """A tag URI's `%XX` escapes as the characters they denote. A run of escaped bytes decodes as UTF-8."""
+    """A tag URI's `%XX` escapes come back as the characters they denote. A run of escaped bytes decodes as UTF-8."""
     out, raw, index = [], bytearray(), 0
     while index < len(text):
         if text[index] == "%" and index + 3 <= len(text):
@@ -84,7 +84,7 @@ def _expand_tag(handle: str, suffix: str, tags: Mapping[str, str]) -> str:
     A tag's `handle` and `suffix` as the event shows it. The handle resolves through `tags`. That mapping holds the
     document's `%TAG` directives over the default primary `!` and secondary `!!`. So `!!str` is `tag:yaml.org,2002:str`,
     a local `!foo` stays `!foo`, and a verbatim `!<uri>` is the URI it wrote. A URI's `%XX` escapes decode. A named
-    handle needs a `%TAG` to resolve it. The resolution this fold models reports an unresolved handle as an error.
+    handle needs a `%TAG` to resolve it. This fold models the resolution and reports an unresolved handle as an error.
     """
     if handle.startswith("!<") and handle.endswith(">"):
         return _uri_unescape(handle[2:-1])  # a verbatim !<uri>, written with no handle span
@@ -95,8 +95,8 @@ def _expand_tag(handle: str, suffix: str, tags: Mapping[str, str]) -> str:
 
 class _Event:
     """
-    An event. The kind is `+MAP` or `=VAL` or another such marker. The parts written after the kind, compared as far as
-    they settle.
+    An event. The kind is `+MAP` or `=VAL` or another such marker. The suite compares the parts after the kind only as
+    far as they settle.
     """
 
     __slots__ = ("kind", "anchor", "tag", "style", "value")
@@ -116,7 +116,7 @@ class _Event:
         self.value = value
 
     def __repr__(self) -> str:
-        """The event written as the suite writes it. A disagreement comes out in that form."""
+        """Writes the event in the form the suite uses. A disagreement comes out in that form."""
         parts = [self.kind]
         if self.anchor:
             parts.append(f"&{self.anchor}")
@@ -172,8 +172,8 @@ def parse_events(text: str) -> list[_Event]:
 
 def _unescape_event(text: str) -> str:
     r"""
-    The escaping a `test.event` value uses, back to the characters it names. That is `\n` and `\t` and `\r` and `\\` and
-    `\0` and `\b`.
+    Turn the escaping a `test.event` value uses back into the characters it names. That is `\n` and `\t` and `\r` and
+    `\\` and `\0` and `\b`.
     """
     out, index = [], 0
     while index < len(text):
@@ -188,19 +188,19 @@ def _unescape_event(text: str) -> str:
     return "".join(out)
 
 
-# The wire character a marker the fold cares about takes.
+# The wire character a fold-relevant marker takes.
 _C = wire.CODE_CHAR
 _BEGIN = {_C["begin-document"]: "+DOC", _C["begin-mapping"]: "+MAP", _C["begin-sequence"]: "+SEQ"}  # the opening event.
 _END = {_C["end-document"]: "-DOC", _C["end-mapping"]: "-MAP", _C["end-sequence"]: "-SEQ"}  # the closing event.
 
-# The tag handles a document starts with, ahead of any `%TAG` directive of its own. The primary `!` names a local tag,
+# A document starts with these tag handles, ahead of any `%TAG` directive of its own. The primary `!` names a local tag,
 # and the secondary `!!` resolves to the YAML tag namespace.
 _DEFAULT_TAGS = {"!": "!", "!!": "tag:yaml.org,2002:"}
 
 
 @dataclasses.dataclass
 class _Scalar:
-    """A scalar being gathered. It holds the style and the text of the `begin-scalar`..`end-scalar` span."""
+    """The scanner is gathering a scalar. It holds the style and the text of the `begin-scalar`..`end-scalar` span."""
 
     style: str | None = None
     parts: list[str] = dataclasses.field(default_factory=list)
@@ -362,7 +362,8 @@ def _fold(tokens: Iterable[wire.Token]) -> list[_Event]:
 
 def _resolve_escape(parts: Iterable[str]) -> str:
     r"""
-    A double-quoted `\`-escape as the character it denotes. The indicator and the digits arrive gathered in `parts`.
+    Resolves a double-quoted `\`-escape to the character it denotes. The indicator and the digits arrive gathered in
+    `parts`.
     """
     body = "".join(parts)
     if not body:
@@ -374,7 +375,7 @@ def _resolve_escape(parts: Iterable[str]) -> str:
 
 
 class Incompatible(Exception):
-    """libyeast rejects the document. An error token, or a resolution error only the fold can see."""
+    """libyeast rejects the document. Incompatible holds an error token, or a resolution error only the fold can see."""
 
 
 def run_case(grammar: dict[str, ir.Prod], data: bytes) -> list[_Event]:

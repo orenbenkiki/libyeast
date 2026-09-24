@@ -1,7 +1,7 @@
 #!/bin/sh
 # Verify the given tools are available. An argument is either a command name (checked on PATH) or `python3:MODULE`
 # (checked by importing MODULE). Prints a line per entry. Exits with a failing status and a count where any are missing.
-# Usage: check-deps.sh <tool-or-path-or-python3:module>...
+# A run takes an argument per tool.
 set -eu
 
 missing=0

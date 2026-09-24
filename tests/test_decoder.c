@@ -7,8 +7,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// An empty window is the end of the input. The key has no set bits, and a membership test fails there of its own
-// accord. A test site in the parser needs no end-of-input case of its own.
+// An empty window is the end of the input. The key has no set bits, and a membership test fails there.
+// A test site in the parser needs no end-of-input case of its own.
 static void test_end_of_input(void) {
     ys_char character = ys_next_char((const uint8_t *)"", 0);
     TEST_CHECK(character == YS_LIT_KEY_EOF);
@@ -29,7 +29,7 @@ static void test_ascii_character(void) {
     ys_char space = ys_next_char((const uint8_t *)" ", 1);
     TEST_CHECK(space == YS_LIT_KEY_SPACE);
     TEST_CHECK((space & YS_SET_BIT_S_WHITE) != 0);
-    TEST_CHECK((space & YS_SET_BIT_NS_CHAR) == 0); // ns-char is what is printable but not white space
+    TEST_CHECK((space & YS_SET_BIT_NS_CHAR) == 0); // ns-char holds the printable characters bar white space
 
     ys_char seven = ys_next_char((const uint8_t *)"7", 1);
     TEST_CHECK(seven == YS_KEY_DIGIT); // the grammar names '0' but no other digit
@@ -55,7 +55,8 @@ static void test_named_non_ascii(void) {
     TEST_CHECK((byte_order_mark & YS_SET_BIT_NB_CHAR) == 0); // nb-char withholds the byte-order mark
 }
 
-// Ordinary content above ASCII. A single key whatever its length. The grammar cannot tell such characters apart.
+// Ordinary content above ASCII. A single key covers such a character at any length. The grammar cannot tell such
+// characters apart.
 static void test_content_non_ascii(void) {
     ys_char latin = ys_next_char((const uint8_t *)"\xC3\xA9", 2);         // U+00E9
     ys_char cjk = ys_next_char((const uint8_t *)"\xE4\xB8\x80", 3);       // U+4E00
@@ -72,7 +73,8 @@ static void test_content_non_ascii(void) {
     }
 }
 
-// The C1 controls and the pair of noncharacters. JSON-compatible, but not printable, and so not content either.
+// A C1 control is JSON-compatible. A C1 control is neither printable nor content. This test checks a pair of
+// noncharacters as well.
 static void test_not_printable_non_ascii(void) {
     ys_char control = ys_next_char((const uint8_t *)"\xC2\x80", 2);          // U+0080
     ys_char noncharacter = ys_next_char((const uint8_t *)"\xEF\xBF\xBE", 3); // U+FFFE
@@ -122,14 +124,14 @@ static void test_malformed_utf8(void) {
 
         // The same question, asked of the one caller that has bytes nothing has classified yet.
         TEST_CHECK(ys_utf8_length((const uint8_t *)cases[index].bytes, cases[index].size) == 0);
-        TEST_MSG("%s: ys_utf8_length called it well-formed", cases[index].name);
+        TEST_MSG("%s: `ys_utf8_length` called it well-formed", cases[index].name);
     }
 }
 
-// `ys_utf8_length` answers for the bytes the wire format takes in. Those bytes reach it unclassified. It agrees with
-// `ys_next_char` on the ill-formed shapes above. Here it runs on the well-formed ones, and on the empty window that
-// `ys_next_char` cannot answer for. `ys_next_char` reads the end of the input as a character, where a length of no
-// bytes is simply no sequence.
+// `ys_utf8_length` measures the bytes the wire format takes in. Those bytes reach it unclassified. `ys_utf8_length`
+// agrees with `ys_next_char` on the ill-formed shapes above. This test runs the call on a well-formed shape, and on the
+// empty window that `ys_next_char` rejects. `ys_next_char` reads the end of the input as a character. A length of no
+// bytes is no sequence.
 static void test_utf8_length(void) {
     static const struct {
         const char *name;
@@ -153,11 +155,11 @@ static void test_utf8_length(void) {
     }
 }
 
-// A codepoint UTF-8 can encode reports the length of its encoding, and the decoder rejects a surrogate. The encoder
-// here goes independently of the decoder. That makes this a check rather than a tautology.
+// The decoder reports the length of the encoding for a codepoint UTF-8 can encode. It rejects a surrogate. The encoder
+// here goes independently of the decoder. That independence makes the test a check rather than a tautology.
 //
 // The sweep holds the first codepoint to disagree and reports it at the end rather than at once. The sweep then
-// has no failure-only branch. Such a branch is a branch no passing run could ever cover.
+// has no failure-only branch. A passing run covers no such branch.
 static void test_every_codepoint(void) {
     uint32_t first_wrong = 0; // no codepoint below U+0080 is swept. Zero can mean "none"
     ys_char wrong_key = 0;
@@ -193,7 +195,7 @@ static void test_every_codepoint(void) {
     TEST_MSG("U+%04X: key 0x%08X, length %u", first_wrong, (unsigned)wrong_key, (unsigned)YS_LEN(wrong_key));
 }
 
-// Consuming a set. This is what the parser does for a (***) or a (+++) over a character set.
+// Consume a set for a (***) or a (+++) over a character set.
 static void test_consume_set(void) {
     ys_consumed spaces = ys_consume_set((const uint8_t *)"    x", 5, YS_SET_ID_S_WHITE);
     TEST_CHECK(spaces.bytes == 4 && spaces.characters == 4);
@@ -229,8 +231,8 @@ static void test_consume_trim_sets(void) {
     ys_trim taken = ys_consume_trim_sets((const uint8_t *)"a b  ", 5, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
     TEST_CHECK(taken.span.bytes == 3 && taken.trim.bytes == 2);
 
-    // Nothing but the given-back kind. The kept span is empty and the whole of what was taken is trim. That is what a
-    // line of only spaces comes to.
+    // Nothing but the given-back kind. The kept span is empty and the whole take is trim. A line of only spaces comes
+    // to that.
     taken = ys_consume_trim_sets((const uint8_t *)"    ", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
     TEST_CHECK(taken.span.bytes == 0 && taken.trim.bytes == 4);
 

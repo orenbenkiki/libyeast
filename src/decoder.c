@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
-// Decoding a UTF-8 character of 0x80 or above. Consuming a run of characters the grammar names. `ys_next_char` in the
-// header settles an ASCII byte from a table and hands a wider byte here.
+// Decode a UTF-8 character of 0x80 or above. Consume a run of characters the grammar names. `ys_next_char` in the
+// header decodes an ASCII byte from a table. It hands a byte of 0x80 or above to this file.
 
 #include "decoder.h"
 #include <stdbool.h>
 
-// The shape a lead byte says the sequence it begins takes. The number of bytes, and the bytes that may follow it
-// immediately. That second range rejects an overlong encoding (0xE0 admits just 0xA0..0xBF), a surrogate (0xED admits
+// A lead byte says what shape the sequence it begins takes. That shape is a byte count and a range of bytes that may
+// immediately follow. That range rejects an overlong encoding (0xE0 admits just 0xA0..0xBF), a surrogate (0xED admits
 // just 0x80..0x9F) and a codepoint beyond U+10FFFF (0xF4 admits just 0x80..0x8F). Such a rejection needs no working
 // out of the codepoint. A length of `0` marks a byte that cannot begin a sequence at all.
 typedef struct ys_lead {
@@ -111,9 +111,8 @@ ys_char ys_next_char_slow(const uint8_t *bytes, size_t size) {
 
 // A (***) or a (+++) over a character set compiles to this. The parse consumes the bytes of a YAML document in
 // stretches. A stretch is a plain scalar or comment text. Indentation and quoted content are stretches as well.
-// Consuming a stretch must not cost a classification per byte forever. The ASCII loop is where the time goes, and the
-// place for a vector kernel. A nibble-table lookup classifies `16` bytes at a time under SSSE3 or NEON, behind this
-// same signature, without the generated parser changing a line.
+// The ASCII loop classifies a byte at a time. A vector kernel replaces that loop. A nibble-table lookup classifies `16`
+// bytes at a time under SSSE3 or NEON. The signature holds, and the generated parser changes no line.
 ys_consumed ys_consume_set(const uint8_t *bytes, size_t size, ys_set_id set) {
     const uint32_t wanted = YS_SET_BITS[set];
     ys_consumed taken = {0, 0};
@@ -135,10 +134,10 @@ ys_consumed ys_consume_set(const uint8_t *bytes, size_t size, ys_set_id set) {
     return taken;
 }
 
-// The consume behind a trimmed span. It takes the `full` set as `ys_consume_set` does. It also remembers how far the
-// last character not in `trim` reached. That is the span kept. The bytes `full` took past that point are the
-// given-back trim. The same nibble-table kernel that vectorizes a plain consume vectorizes this. That kernel tests a
-// pair of masks a block at a time.
+// `ys_consume_trim_sets` is the consume behind a trimmed span. The function takes the `full` set as `ys_consume_set`
+// does. The function also remembers the split. `decoder.h` says which bytes the span keeps and which go back. A
+// nibble-table kernel vectorizes a plain consume and a trimmed consume. The kernel tests a pair of masks a block at a
+// time.
 ys_trim ys_consume_trim_sets(const uint8_t *bytes, size_t size, ys_set_id full, ys_set_id trim) {
     const uint32_t in_full = YS_SET_BITS[full];
     const uint32_t in_trim = YS_SET_BITS[trim];

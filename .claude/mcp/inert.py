@@ -11,7 +11,7 @@ and no network.
 `.mcp.json` registers this server. `.claude/agents/prose-critic.md` and `.claude/agents/prose-compare.md` list only
 `mcp__inert__nothing`.
 
-Speaks JSON-RPC over stdin and stdout, a message to a line.
+Speaks JSON-RPC over stdin and stdout. A line holds a single message.
 """
 
 import json

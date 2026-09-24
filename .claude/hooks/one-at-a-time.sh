@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# PreToolUse on any tool, and PermissionDenied. This holds a turn to what the user has asked for.
+# PreToolUse on any tool, and PermissionDenied. This hook holds a turn to the requests the user has made.
 #
 # A session is serial. The user answers, and the answer shapes what comes next. Stacking a second question behind the
 # first buries the first. Launching work while a question waits spends tokens on an answer the user is about to change.
 # A `STOP` in that window lands after the damage.
 #
 # A refused tool call is the user saying no, and the turn stops there. Approving a prompt is the user saying yes, and
-# the turn goes on. An earlier form marked an approved prompt too, and a build of many edits then took a turn apiece.
+# the turn goes on. This hook marks no approved prompt.
 #
 # `.git/one-at-a-time` marks a launch, and a launch is a question or a fleet of agents. `.git/floor-is-yours` marks a
-# refusal. `clear-one-at-a-time.sh` deletes both on `UserPromptSubmit`. The user speaking is what clears them.
+# refusal. The user speaking fires `UserPromptSubmit`. `clear-one-at-a-time.sh` deletes both marks on that event.
 set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/refusal.sh"
 
 root=${CLAUDE_PROJECT_DIR:-.}
 launched="$root/.git/one-at-a-time"
@@ -22,17 +23,6 @@ tool=$(printf '%s' "$payload" | jq -r '.tool_name // "a tool call"')
 
 # The tools that put something in front of the user and wait. A turn runs a single one of these.
 _A_LAUNCH='^(AskUserQuestion|Workflow|Agent)$'
-
-deny() {
-    jq -nc --arg why "$1" '{
-        hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            permissionDecision: "deny",
-            permissionDecisionReason: $why
-        }
-    }'
-    exit 0
-}
 
 if [ "$event" = "PermissionDenied" ]; then
     printf '%s' "$tool" >"$denied"

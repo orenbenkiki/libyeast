@@ -4,7 +4,7 @@ Normalize the grammar, a goal at a time.
 
 The pipeline runs a sequence of phases. A phase owns an invariant and adds steps until nothing breaks it. The gate
 enforces that invariant from the end of the phase. The law "none stays none" then makes a later step keep it. A phase
-that finishes with a green corpus is a checkpoint worth landing on its own.
+that finishes with a green corpus is a checkpoint worth landing.
 
 `_PHASES` says what a phase is for, beside the steps that serve it. A second telling of the order is a second thing to
 hold true, and it is the telling rather than the list that goes stale. `invariant_faults` holds `STEPS` to the law.
@@ -12,11 +12,11 @@ hold true, and it is the telling rather than the list that goes stale. `invarian
 nothing checks. The pipeline's claims are then answerable rather than described.
 
 **A question that dispatches on node kinds names the kinds it accepts and raises on any other kind.** It has no trailing
-default. A `return None` catches a kind nobody thought about, and so do `return True`, `continue` and `break`. A default
-answer for a form the question does not recognise is not caution. It reports the blindness of the question as a fact
-about the grammar. A count taken from it then reads plausible and wrong. `_is_nullable` and `_split` are `ir.Question`s
-for that reason. So are `_shortest_match` and `_entered_unconsumed`. A question written beside them follows the same
-rule.
+default. A `return None` catches a kind nobody thought about. So do `return True`, `continue` and `break`. A default
+answer covering a form the question does not recognise is not caution. It reports the blindness of the question as a
+fact about the grammar. A count taken from it then reads plausible and wrong. `_is_nullable` and `_split` are
+`ir.Question`s for that reason. So are `_shortest_match` and `_entered_unconsumed`. A question written beside them
+follows the same rule.
 
 **And a caller asks a question in a single place.** `_gated_by` states where a parse may enter a way, and
 `_accepted_way` says what a way consumes. `_is_nullable` says whether a match can consume nothing. `_split` names a
@@ -45,7 +45,7 @@ import ir
 import spaces
 import wire
 
-# The ways into a production, as the guards asked along them.
+# The ways into a production. A way holds the guards a parse asks along it.
 _Paths = frozenset[frozenset[ir.Node]]
 
 # The guards a parse asks on entering a production. A key is the production name.
@@ -70,16 +70,16 @@ _Moved = tuple[dict[spaces.GuardAnswers, frozenset[spaces.GuardAnswers]], bool]
 @dataclasses.dataclass(frozen=True)
 class _Invariant:
     """
-    Something the grammar must satisfy, and how to count where the grammar breaks it.
+    An invariant names a property the grammar must satisfy and counts the places where the grammar breaks that property.
 
-    The name is what a fault reads as, and the name is how a reader knows the invariant. A step naming an invariant
-    already named is therefore reducing that same count rather than a count of its own. `test` takes a grammar and gives
-    back the places the grammar breaks it, as error strings. The list's length is the count, and the strings say where.
+    A fault reads as the invariant's name. A step naming an invariant that another step names reduces the count of that
+    invariant rather than a count of its own. `test` takes a grammar and gives back an error string per place the
+    grammar breaks the invariant. The list's length is the count, and the strings say where.
 
     A test asks about a grammar rather than changing it. The counting pass can therefore hand the same grammars to the
-    invariants at once, in whatever order the cores take them. The pass reads the grammar before and after to hold a
-    test to that. A production is frozen. A grammar differs only where something put a production there. A test that
-    puts a production there answers about a grammar the invariants did not get.
+    invariants at once, in the order the cores take them. The counting pass reads the grammar before and after a test
+    runs, and holds the test to asking rather than changing. A production is frozen. A grammar can differ only where a
+    test put a new production in it. Such a test answers about a grammar the other invariants did not get.
     """
 
     name: str
@@ -99,7 +99,8 @@ class _Invariant:
 
 class _Namer:
     """
-    Fresh helper-production names, `<base>_<N>`, the `<N>` the next unused per base across the whole pipeline.
+    The namer mints fresh helper-production names of the form `<base>_<N>`. The `<N>` is the next count unused for that
+    base.
 
     The steps thread a single namer through, and a base's count runs across them. A helper minted for `foo` takes the
     name `foo_1`, and `foo_2` follows. A helper minted while a later step processes `foo_3` comes out `foo_4` rather
@@ -107,10 +108,10 @@ class _Namer:
     collide. The namer mints the pairs the scope actions name as well, on a single count for the whole pipeline rather
     than per base.
 
-    The namer hands a name out once, and not a name a grammar it has seen already holds. Counting did not cover that. A
-    namer that had seen no grammar would hand back `foo_1` over the `foo_1` the grammar holds. A step writes what it
-    mints into the same dict. The minting would then silently replace a production rather than adding a fresh
-    production. A grammar the namer sees goes into `_taken`, and the count skips what is there.
+    The namer hands a name out once. The namer also hands out no name that a grammar it has seen already holds. A namer
+    that had seen no grammar would hand back `foo_1` over the `foo_1` the grammar holds. A step writes what it mints
+    into the same dict. The minting would then silently replace a production rather than adding a fresh production. A
+    grammar the namer sees goes into `_taken`, and the count skips what is there.
     """
 
     def __init__(self) -> None:
@@ -120,7 +121,7 @@ class _Namer:
 
     def sees(self, grammar: Mapping[str, ir.Prod]) -> None:
         """
-        Take `grammar`'s names as ones not to hand out. That is what keeps a fresh name from replacing a production.
+        Take `grammar`'s names as ones not to hand out.
         """
         self._taken.update(grammar)
 
@@ -130,8 +131,7 @@ class _Namer:
 
         A single count serves the pairs. The count does not run per kind, per step, or per base the way the names do. A
         name has to differ from the names of its own base. A pair has to differ from the other pairs. A `PushCodeAction`
-        pair cannot collide with a `PushIndentAction` pair even by accident. The kinds are then a second thing to
-        disagree on.
+        pair cannot collide with a `PushIndentAction` pair even by accident.
         """
         self._pairs += 1
         return frozenset({self._pairs})
@@ -164,8 +164,7 @@ def _branch(node: ir.CaseTree | ir.FlipValue, value: object) -> ir.Node:
 
 def _is_using(node: object, param: str) -> bool:
     """
-    Whether `Param(param)` appears anywhere in `node`. This walks the fields itself. The parameters are what this looks
-    for.
+    Whether `Param(param)` appears anywhere in `node`. This walks the fields itself.
     """
     if isinstance(node, ir.ParamValue):
         return node.name == param
@@ -280,7 +279,7 @@ def _reads_a_finite(
 def _passes_a_finite(
     node: ir.RefCall, grammar: dict[str, ir.Prod], _direct: set[str], references: list[tuple[str, set[str]]]
 ) -> None:
-    """Append to `references` the callee `node` names, with the finite parameters it hands an argument for."""
+    """Append to `references` the callee `node` names, with the finite parameters `node` hands an argument for."""
     passed = {p for p, _argument in zip(grammar[node.name].params, node.args) if p in ir.FINITE_PARAMS}
     references.append((node.name, passed))
 
@@ -333,7 +332,7 @@ def _relevant_finite(grammar: dict[str, ir.Prod]) -> dict[str, set[str]]:
         _gather_finite(production.body, grammar, direct, references)  # noqa: E501
         reads[name], calls[name] = direct, references
     relevant = {name: set(direct) for name, direct in reads.items()}
-    # A worklist and not rounds. When a production's set grows, its callers are what have anything to reconsider.
+    # A worklist and not rounds. When a production's set grows, only its callers have anything to reconsider.
     callers: dict[str, set[str]] = {}
     for name in grammar:
         for callee, _passed in calls[name]:
@@ -351,8 +350,8 @@ def _relevant_finite(grammar: dict[str, ir.Prod]) -> dict[str, set[str]]:
 
 def _finite_value(expression: ir.Node, grammar: dict[str, ir.Prod], env: Mapping[str, object]) -> str | None:
     """
-    A finite (c/t/r) value expression as its concrete value under `env`. This inlines a value function the way a call to
-    it would. A value function such as `in-flow` maps a context to another.
+    A finite value expression over `c`, `t` or `r`, as its concrete value under `env`. This inlines a value function the
+    way a call to it would. A value function such as `in-flow` maps a context to another.
     """
     return _FINITE_VALUE(expression, grammar, env)
 
@@ -365,9 +364,8 @@ def _finite_value_of_call(node: ir.RefCall, grammar: dict[str, ir.Prod], env: Ma
 
 
 # A node that settles a finite parameter. That is the parameter itself or a literal. A switch over a parameter settles a
-# parameter too, and so does a call to a production that is a value function. A kind absent from here settles no finite
-# value. The kind raises rather than reading as a settled value. A specialization that guessed would fix a copy's name
-# to a value the grammar did not say.
+# parameter too. A call to a production that is a value function settles a parameter as well. A kind absent from here
+# settles no finite value. The walk raises on such a kind rather than guessing a value.
 _FINITE_VALUE: ir.Question[str | None] = ir.Question(
     "the string a finite parameter is settled to by an expression, and `None` where the expression settles none",
     {
@@ -382,15 +380,15 @@ _FINITE_VALUE: ir.Question[str | None] = ir.Question(
 def _monomorphize(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Prod]:
     """
     Specialize the lexical finite parameters away. Those are the context c. The walk reaches a production under a
-    combination of context values, and this copies the production once per combination. The walk from the root follows
-    references and finds the combinations that occur. Those are the copies made. A copy evaluates its `CaseTree` and
-    `FlipValue` down to the values that copy fixes. The name becomes `ir.specialized`, and the signature drops those
-    parameters. `n`, `m` and `f` stay parameters. So do the runtime state `t` and `r`.
+    combination of context values. `_monomorphize` copies the production once per combination. The walk from the root
+    follows references and finds the combinations that occur. A copy evaluates its `CaseTree` and `FlipValue` down to
+    the values that copy fixes. The name becomes `ir.specialized`, and the signature drops those parameters. `n`, `m`
+    and `f` stay parameters. So do the runtime state `t` and `r`.
     """
     result, done, pending = {}, set(), []
 
     def runtime_value(expression: ir.Node, env: Mapping[str, object]) -> ir.Node:
-        """A runtime (n/m/f) argument reduced under `env`, with the arithmetic and the runtime parameters left."""
+        """Reduce a runtime argument under `env`. The arithmetic over `n`, `m` and `f` stays."""
         if isinstance(expression, ir.RefCall):
             callee = grammar[expression.name]
             inner = {
@@ -471,19 +469,20 @@ def _does_fail_outright(items: Iterable[ir.Node]) -> bool:
 
 def _pruned(node: ir.Node, failing: set[str]) -> ir.Node:
     """
-    `node` with the matches nothing makes taken out of it. The parts are rewritten first. The run holding a way then
-    sees what that way became.
+    Prune the parts of `node` that match nothing. The walk rewrites the parts first. The run holding a way then sees
+    what that way became.
 
-    This is a rewrite rather than a question. A shape says what the shape becomes where it holds a `<fail>`. Anything
-    else comes back unchanged. A choice drops the ways nothing takes, and the choice itself matches nothing where that
-    leaves no way. A run holding such a way takes no input. A repetition of such a match takes no turn. That is the
-    empty match where the grammar asks for none. It matches nothing where the grammar asks for a match. A call of a
-    production that matches nothing matches nothing.
+    This is a rewrite rather than a question. The rewrite says what a shape becomes where the shape holds a `<fail>`.
+    Anything else comes back unchanged. A choice drops the ways nothing takes. The choice itself matches nothing where
+    the drop leaves no way. A run holding such a way takes no input. A repetition of such a match takes no turn. The
+    repetition is then the empty match where the grammar asks for no turn. The repetition matches nothing where the
+    grammar asks for a turn. A call of a production that matches nothing matches nothing.
 
-    A recovery whose handler nothing enters is no recovery. The cut that asked goes on unwinding to the handler above.
+    A recovery is no recovery if nothing enters its handler. The cut that asked goes on unwinding to the handler above.
     The rewrite did the same with a handler that took no input. The rewrite keeps a commit, and it keeps a recovery's
-    protected match. A refusal under either is the error the commit names, or the handler's turn. A `<fail>` under
-    either means what the commit and the recovery say, and not what this rewrite decides.
+    protected match. A refusal under the commit is the error the commit names. A refusal under the recovery is the
+    handler's turn. A `<fail>` under the commit or the recovery means what the commit and the recovery say, and not what
+    this rewrite decides.
     """
     node = ir.rebuilt(node, lambda child: _pruned(child, failing))
     if isinstance(node, ir.RecoverWrapper):
@@ -509,9 +508,9 @@ def _repeated(node: ir.Node) -> ir.Node | None:
     return _REPEATED(node)
 
 
-# The kinds where a `<fail>` can be the entire match they hold. A commit and a recovery answer for a refusal themselves
-# and do not reach here. A kind writing its match some third way raises rather than answering for an `item` the kind may
-# not have. A `TrimStarTree` writes it `full`, and that shape once hid here.
+# The kinds where a `<fail>` can be the entire match they hold. A commit and a recovery handle a refusal themselves and
+# do not reach here. A kind writing its match some third way raises rather than guessing at an `item` the kind may not
+# have. A `TrimStarTree` writes its match as `full`.
 _REPEATED: ir.Question[ir.Node | None] = ir.Question(
     "the match a node holds inside it",
     {
@@ -534,13 +533,12 @@ def _prune_failures(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir
     """
     Take out the matches nothing makes. A way the parse offers is then a way some input takes.
 
-    The specialization is what puts them there. A `(case)` naming `<fail>` for a value leaves that value's copy unable
-    to match. A caller offering that copy as a way offers a way nothing enters. Keeping such a way would give the
-    machine a decision point no input reaches. A later question would have to answer for a shape no input reaches.
+    Specialization puts such matches into the grammar. A `(case)` naming `<fail>` for a value leaves that value's copy
+    unable to match. A caller offering that copy as a way offers a way nothing enters. Keeping such a way would give the
+    machine a decision point no input reaches. A later question would have to cover a shape no input reaches.
 
     This is a fixed point over the productions. A body that becomes `<fail>` makes a call of it fail too. The rounds
-    settle when no production's body changes. That is when the failing set has stopped growing. A commit or a recovery
-    holds whatever is under it. A refusal there is the error or the handler's turn, and not a choice's way.
+    settle when no production's body changes.
     """
     for _round in ir.rounds("the ways nothing takes"):
         failing = {name for name, production in grammar.items() if isinstance(production.body, ir.FailTree)}
@@ -556,8 +554,8 @@ def _prune_failures(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir
 
 def _bound(node: ir.Node, mapping: Mapping[str, ir.Node]) -> ir.Node:
     """
-    `node` with the `ParamValue`s the `mapping` names replaced by their expressions. That makes the substitution a call
-    makes lexical. This walks the fields itself. Here the parameters are exactly what changes.
+    `node` with the `ParamValue`s the `mapping` names replaced by their expressions. A call then substitutes lexically.
+    This walks the fields itself.
     """
     if isinstance(node, ir.ParamValue):
         return mapping.get(node.name, node)
@@ -585,8 +583,8 @@ def _bound(node: ir.Node, mapping: Mapping[str, ir.Node]) -> ir.Node:
 # form nobody had written down. A simplification that looks impossible is a missing normalizing step first, and an
 # inherent conflict second.
 #
-# **Nothing is singled out by name.** A step names a universal rule and applies it wherever that rule holds. A step
-# does not name the productions it applies to. Ordering is where the temptation is sharpest. Under
+# **A step singles out no production by name.** A step names a universal rule and applies it wherever that rule holds.
+# A step does not name the productions it applies to. Ordering is where the temptation is sharpest. Under
 # backtracking-with-commits the order of the alternatives is semantics. A step that cannot reach a form where the
 # orderings compare equal asks what universal rule is missing, rather than which site to name.
 #
@@ -597,7 +595,7 @@ def _bound(node: ir.Node, mapping: Mapping[str, ir.Node]) -> ir.Node:
 #
 # **What a transform produces is a global or a stack entry.** The parse holds a global singleton, possibly empty, or
 # an entry in the unified stack. A value fitting neither is a value the C parser cannot hold.
-# A step producing such a value has produced something that cannot run, whatever the corpus says.
+# A step producing such a value has produced something that cannot run, and the corpus has no say in it.
 #
 # **Read the transform by hand against the semantics of the nodes it moves.** The gates are a net rather than a
 # substitute. A transformation that moves an action into another production can change nothing the corpus sees. That
@@ -620,8 +618,8 @@ class _Step:
     afterwards, and the invariant made no sense before the step ran. `reduces` means the step lowers a count that later
     steps lower further. The gate hoists work this way.
 
-    A step declares them directly, and derives none from another. Steps may share an `_Invariant` and a `transform`
-    where they do the same work on different grounds.
+    A step declares `settles`, `establishes` and `reduces` directly, and derives none from another. Steps may share an
+    `_Invariant` and a `transform` where they do the same work on different grounds.
 
     `lapses` maps an invariant name to a reason. It licenses this step to break what an earlier step settled.
     `invariant_faults` enforces the law. A settling step ends at none. A count does not rise, and a count at none stays
@@ -646,7 +644,7 @@ class _Step:
     untestable: str = ""
 
     def __post_init__(self) -> None:
-        """Take the invariants this step names as a tuple, whichever way the declaration wrote them."""
+        """Take the invariants this step names as a tuple. `_named` reads a lone invariant and a tuple alike."""
         for field in ("settles", "reduces", "establishes"):
             object.__setattr__(self, field, _named(getattr(self, field)))
 
@@ -699,8 +697,8 @@ class _Phase:
 
     def __post_init__(self) -> None:
         """
-        Take the invariants this phase names as a tuple, whichever way the declaration wrote them. A phase naming
-        neither raises.
+        Take the invariants this phase names as a tuple. `_named` reads a lone invariant and a tuple alike. A phase
+        naming nothing under `settles` or `establishes` raises.
         """
         object.__setattr__(self, "establishes", _named(self.establishes))
         object.__setattr__(self, "settles", _named(self.settles))
@@ -753,8 +751,8 @@ def _hands_a_finite_argument(node: ir.RefCall, grammar: dict[str, ir.Prod], owne
 
 
 # Whether a value is a literal. A caller asks this of a call's argument, where a finite parameter must be a literal.
-# This question answers for a `RefCall` too. The spec writes `in-flow(c)` as a production, and `c-flow-sequence` hands a
-# call of it as an argument. That call is no literal, and specialization turns it into a literal.
+# This question covers a `RefCall` too. The spec writes `in-flow(c)` as a production, and `c-flow-sequence` hands a call
+# of it as an argument. That call is no literal, and specialization turns it into a literal.
 _IS_A_LITERAL: ir.Question[bool] = ir.Question(
     "whether a value is a literal",
     {
@@ -763,8 +761,8 @@ _IS_A_LITERAL: ir.Question[bool] = ir.Question(
     },
 )
 
-# The walk that reaches the calls in a body. `_hands_a_finite_argument` decides the call itself, and the other kinds
-# take the walk down to the calls under them.
+# The walk that reaches the calls in a body. `_hands_a_finite_argument` decides the call itself, and a node of another
+# kind takes the walk down to the calls under it.
 _HANDS_A_FINITE_ARGUMENT: ir.Question[None] = ir.Question(
     "nothing, appending to `faults` a line per call handing a finite parameter something other than a literal",
     {
@@ -810,9 +808,9 @@ def untested_steps() -> list[str]:
     """
     The steps naming neither an invariant nor a reason for having none. Such a step promises what nothing checks.
 
-    This is driven to none. At none, `_Step.invariants` loses its default. A step must then name an invariant or say why
-    it cannot. Until then this measures how much of the pipeline rests on the corpus and no gate. A step with a written
-    `untestable` falls outside this count. That claim is on the record and answerable.
+    The project drives this count to none. At none, `_Step.invariants` drops its default value. A step must then name an
+    invariant or say why it cannot. Until then this measures how much of the pipeline rests on the corpus and no gate. A
+    step with a written `untestable` falls outside this count.
     """
     return [step.name for step in STEPS if not step.invariants and not step.untestable]
 
@@ -844,12 +842,12 @@ def _counted_over(
     asked: Sequence[tuple[int, str]] | None = None,
 ) -> dict[tuple[int, str], int]:
     """
-    `{(stage, invariant): count}`. `_counted_over` asks an invariant of the stages it is a question of, shared out over
-    the cores.
+    `{(stage, invariant): count}`. `_counted_over` asks an invariant of a stage it applies to, and shares the asks out
+    over the cores.
 
-    An ask is a pure question about a grammar already built. They are therefore independent. There are enough of them to
-    make up half of what this check spends. `asked` names the `(stage, invariant)` pairs to put. The default is the
-    whole cross-product, and a caller that knows an invariant answers of a stage names its own pairs.
+    An ask is a pure question about a grammar already built, and the asks run independently. `asked` names the `(stage,
+    invariant)` pairs to put. The default is the whole cross-product, and a caller that knows an invariant answers of a
+    stage names its own pairs.
     """
     if asked is None:
         asked = [(at, named) for at in range(len(built)) for named in by_name]
@@ -862,10 +860,10 @@ def _counted(invariant: _Invariant, grammar: dict[str, ir.Prod]) -> int:
     """
     The count of places `grammar` breaks `invariant`.
 
-    `_counted` asks this of the stages the invariant is a question of. That runs from the step naming the invariant
-    onward. A question raises on a shape its mapping leaves out, and a grammar the step behind has not yet reshaped
-    holds plenty. An invariant asked in front of its own step therefore raises here rather than answering. The step's
-    `establishes` says where to start asking.
+    `_counted` asks the invariant's question of the stages from the step naming the invariant onward. A question raises
+    on a shape its mapping leaves out. A grammar the invariant's step has not yet reshaped holds such shapes. An
+    invariant asked in front of its own step therefore raises here rather than answering. The step's `establishes` says
+    where to start asking.
     """
     return len(invariant(grammar))
 
@@ -888,7 +886,7 @@ def invariant_faults(built: Sequence[tuple[str, dict[str, ir.Prod]]]) -> list[st
     count does not rise. The step that settles it leaves none. Past that it stays none. A step whose `lapses` names the
     invariant may break it, and says why. A step breaking an invariant without a lapse is a fault named at that step.
 
-    The invariant is named by its test. Steps reducing a count are therefore read as a single law. A count runs from the
+    The invariant is named by its test. Steps reducing a count therefore fall under a single law. A count runs from the
     first stage whose step names it. The stages before it are no business of the invariant.
 
     A step names an invariant it settles, only lowers, or claims. Take a step naming an invariant that already read none
@@ -922,8 +920,8 @@ def invariant_faults(built: Sequence[tuple[str, dict[str, ir.Prod]]]) -> list[st
             if named not in by_name:
                 faults.append(f"[{step.name}] declares a lapse of `{named}`. The steps do not name that invariant.")
         for held in step.invariants:
-            # `establishes` is the one that says nothing about what stood before it. An already-none count is what it
-            # expects, rather than a sign it is claiming work it did not do.
+            # `establishes` is the one that says nothing of the state in front of it. It expects an already-none count,
+            # rather than reading that count as a claim of work it did not do.
             if step.is_a_claim or held in _named(step.reduces) or step.does_establish(held):
                 continue
             if counts.get((index, held.name)) == 0:
@@ -961,7 +959,7 @@ def invariant_faults(built: Sequence[tuple[str, dict[str, ir.Prod]]]) -> list[st
             is_settled = (is_settled or step.does_finish(test)) and not count
             count_before = count
     # Read over the whole of `STEPS` rather than from the first step naming the invariant. A step that settles an
-    # invariant it does not mention is what the questions above cannot see.
+    # invariant it does not mention escapes the questions above.
     for index, step in enumerate(STEPS):
         for named, test in by_name.items():
             before, after = counts.get((index, named)), counts.get((index + 1, named))
@@ -997,13 +995,12 @@ def unsettled_invariants(grammar: dict[str, ir.Prod]) -> list[tuple[str, int]]:
     """
     The invariants the pipeline names or owes that `grammar` still breaks, as `[(name, count)]` worst first.
 
-    The invariants the steps settle are not the same question as what is true at the end. An invariant settled early and
-    broken later under a declared lapse still counts as unsettled. A lapse is a reason rather than an excuse. A lapse is
-    work still owed. The step doing that work is unwritten. This is therefore the list the pipeline is finished by
-    emptying. The list says so mechanically, and nobody has to notice it.
+    A step may settle an invariant that fails at the end. An invariant settled early and broken later under a declared
+    lapse still counts as unsettled. A lapse is work still owed. The step doing that work is unwritten. The pipeline
+    finishes by emptying this list.
 
-    `unsettled_invariants` reads `OWED` beside what the steps name. This counts an invariant that no phase has taken on
-    yet. Nobody writes that count down by hand, and it cannot go stale.
+    `unsettled_invariants` reads `OWED` beside what the steps name. This counts an invariant that no phase has taken on.
+    Nobody writes that count down by hand, and it cannot go stale.
     """
     named = {held.name: held for step in STEPS for held in step.invariants}
     named.update({held.name: held for held in OWED})
@@ -1052,10 +1049,9 @@ def _purged(grammar: dict[str, ir.Prod]) -> dict[str, ir.Prod]:
 def _spliced(grammar: dict[str, ir.Prod], keep: Container[str]) -> tuple[dict[str, ir.Prod], dict[str, str]]:
     """
     `grammar` with the do-nothing productions gone. Such a production has a body that is a single ungated call. The call
-    has no action, no continuation and no recovery of its own. The production is what it calls. A reference to the
+    has no action, no continuation and no recovery of its own. The production amounts to its callee. A reference to the
     production therefore becomes a reference to that callee, and the callee's parameters bind to the call's arguments. A
-    chain of them collapses in a single pass. A production that reaches only itself stays. A call that does not return
-    reads no simpler inline.
+    chain of such productions collapses in a single pass. A production that reaches only itself stays.
     """
     passthroughs = {}
     for name, production in grammar.items():
@@ -1092,8 +1088,7 @@ def _pairs_blanked(body: ir.Node) -> tuple[ir.Node, tuple[frozenset[int], ...]]:
     `(body with every pair blanked, the pairs it held)`, in the order the walk finds them.
 
     The pair a half belongs to is not what a production does. A pair of productions differing only there behave alike
-    and merge. This reads whether the node has a `pair` at all, rather than a list of the kinds that do. A pair added to
-    the IR is then alike-compared from the day it exists.
+    and merge. This reads whether the node has a `pair` at all, rather than a list of the kinds that do.
     """
     held: list[frozenset[int]] = []
 
@@ -1134,12 +1129,12 @@ def _pairs_written(body: ir.Node, pairs: Iterable[frozenset[int]]) -> ir.Node:
 
 def _grouped(grammar: dict[str, ir.Prod]) -> dict[str, int]:
     """
-    `{name: group}`, productions that behave alike sharing a group. Alike is the same parameters and the same body. The
-    comparison blanks the pairs the scope actions name. A reference means the group of what it names, rather than the
-    name itself. A pair of loops differing only in the names of their helpers then come out alike. So does a pair
-    differing only in which pair they hold. Comparing the bodies as written cannot see that. The groups are the coarsest
-    partition that stays stable under that checker. The groups start alike, a difference splits them, and the rounds end
-    when a round splits nothing.
+    `{name: group}`. Productions that behave alike share a group. Alike is the same parameters and the same body. The
+    comparison blanks the pairs the scope actions name. A reference means the group of the production it names, rather
+    than the name itself. A pair of loops differing only in the names of their helpers then come out alike. So does a
+    pair differing only in which pair they hold. Comparing the bodies as written cannot see that. The groups are the
+    coarsest partition that stays stable under that checker. The groups start alike, a difference splits them, and the
+    rounds end when a round splits nothing.
     """
 
     def blanked(body: ir.Node) -> tuple[ir.Node, tuple[str, ...]]:
@@ -1176,12 +1171,13 @@ def _merged(grammar: dict[str, ir.Prod], keep: Container[str]) -> tuple[dict[str
     """
     `grammar` with productions that behave alike written once. A call to a group's member is a call to any other member
     of that group. A reference to a duplicate therefore becomes a reference to the kept production. A production the
-    parse enters by name stays. A redirect cannot reach past that name. Both stay where a group holds a pair of those.
+    parse enters by name stays. A redirect cannot reach past that name. A group may hold a pair of productions the parse
+    enters by name, and both of those productions stay.
 
     The kept production replaces the productions that go. The kept scope actions take the pairs of the productions that
     went. A half holds the pairs the halves it replaced held. A close asking whether it shares a pair with the open on
-    the stack reads that. A merge's cost is paid there too. The grammar itself stopped telling a pair of pairs apart. A
-    close cannot tell them apart either.
+    the stack reads that. That close pays the cost of the merge too. The grammar itself stopped telling a pair of pairs
+    apart. A close cannot tell them apart either.
     """
     block = _grouped(grammar)
     kept_name: dict[int, str] = {}
@@ -1215,8 +1211,7 @@ def _flattened(node: ir.Node) -> ir.Node:
     sequence matches at that place and moves nothing.
 
     The flattening changes nothing the grammar matches or emits. `<empty>` is the continuation itself, and concatenation
-    and ordered choice are both associative. That is what makes it business for the sweep rather than for a step. Nobody
-    asks a step to tidy the shape it built. Nobody asks a step to take away a duplicate production either.
+    and ordered choice are both associative.
 
     A choice of *nothing* is not litter and stays. It is the path no input takes. A specialization leaves that where a
     value has no branch.
@@ -1249,13 +1244,13 @@ def _cleaned(grammar: dict[str, ir.Prod], namer: _Namer | None = None) -> dict[s
     """
     `grammar` with what a transformation leaves behind swept up. `_flattened` takes a body down to the shape it denotes.
     `_spliced` takes out the productions that only call something else. `_merged` folds together the productions that
-    write the very same thing. `_purged` drops a production no parse can enter, and that comes last, where it sees what
-    the earlier passes strand.
+    write the very same thing. `_purged` drops a production no parse can enter. `_purged` runs last and sees what the
+    earlier passes strand.
 
     Splicing feeds merging. Merging feeds splicing. A merge makes a pair of productions the same call, and a splice
-    makes a pair of callers identical. They therefore run to a fixpoint. The sweep changes nothing the grammar matches
-    or emits. A flattened body denotes what it denoted. A spliced production ran no action and made no decision. A
-    merged production is the production kept, and it matches character for character.
+    makes a pair of callers identical. The splice and the merge therefore run to a fixpoint. The sweep changes nothing
+    the grammar matches or emits. A flattened body denotes what it denoted. A spliced production ran no action and made
+    no decision. A merged production is the production kept, and it matches character for character.
 
     The flattening comes first. The merge reads shape rather than meaning. A pair of productions can say the same thing
     with a singleton alternation in different places. Those are structurally unequal and do not merge. Said flat they
@@ -1278,19 +1273,18 @@ def stages(grammar: dict[str, ir.Prod]) -> list[tuple[str, dict[str, ir.Prod]]]:
     The grammar after a step, as `(label, grammar)` pairs. The list opens with `("base", grammar)`. `check_normalize`
     diffs the interpreter's token stream across those pairs, and names a step that changes the stream. The steps thread
     a single `Namer` through, and the helper productions they mint number `<base>_<N>` off a count shared across the
-    steps. A sweep cleans a step's grammar of what the step leaves behind. That is the do-nothing productions, the
-    duplicates, and the productions the root stopped reaching. A transformation that replaces a call site strands the
-    callee. A do-nothing or a duplicate the sweep missed would hold the meter of the work still to decide above its
-    honest floor. The base grammar stays whole. That is the grammar as the completeness gate froze it. The sweep leaves
-    that grammar untouched.
+    steps. A sweep cleans a step's grammar of the leavings the step made. The leavings are the do-nothing productions,
+    the duplicates, and the productions the root stopped reaching. A transformation that replaces a call site strands
+    the callee. A do-nothing or a duplicate the sweep missed would hold the meter of the work still to decide above its
+    honest floor. The sweep leaves the base grammar as the completeness gate froze it.
 
     A claim is not a step in this sense. It transforms nothing. It joins the list to say where a property already holds.
     A claim therefore repeats the stage it got rather than making a stage.
 
-    A step must change the grammar, and a step that does not is a fault. A step earns its place by doing something. A
-    step goes idle when the shape it looks for stops arriving. An earlier step writes that shape differently. That is a
-    regression in the step before it, and not a step to keep. The check reads the transform's output before the sweep
-    runs. The check then judges a step on the step's work rather than on the sweep's work.
+    A check refuses a step that leaves the grammar unchanged. A step goes idle when the shape it looks for stops
+    arriving. An earlier step writes that shape differently. That is a regression in the step before it, and not a step
+    to keep. The check reads the transform's output before the sweep runs. The check then judges a step on the step's
+    work rather than on the sweep's work.
     """
     namer = _Namer()
     namer.sees(grammar)
@@ -1315,9 +1309,9 @@ def _every_difference_is_between_character_sets(grammar: dict[str, ir.Prod]) -> 
     """
     Check that both sides of a `(---)` denote a character set.
 
-    The base must match a single character. A subtracted side must have codepoints this can work out. Annotations around
-    a subtracted character do not count against it. A difference reads the text a match takes, and not the code it
-    holds.
+    The base must match a single character. A subtracted side must have codepoints the check can work out. Annotations
+    around a subtracted character do not count against it. A difference reads the text a match takes, and not the code
+    it holds.
     """
     return [
         f"{name}: a `(---)` takes characters from something that is not a character set"
@@ -1335,7 +1329,7 @@ _EVERY_DIFFERENCE_IS_BETWEEN_CHARACTER_SETS = _Invariant(
 )
 
 # The count a shortest match runs up to. A difference takes a set of single characters. It can therefore remove only a
-# match of a single character. Past that, how much more a way takes makes no difference to what the subtraction reaches.
+# match of a single character. Past that, how much more a way takes makes no difference to the reach of the subtraction.
 _SHORTEST_CAP = 2
 
 
@@ -1343,11 +1337,9 @@ def _shortest_match(node: ir.Node, grammar: dict[str, ir.Prod], seen: frozenset[
     """
     The fewest characters `node` can match. The count runs no further than `_SHORTEST_CAP`.
 
-    A lower bound is what the count is for. A difference therefore contributes its base's count. The exclusions only
-    remove matches. A production reached again contributes the cap. A match that bottoms out is not the recursive way.
-    `_SHORTEST_MATCH` names the kinds, and a kind it leaves out raises. A kind answered for by accident would say a way
-    takes a pair of characters where it can take a single character. The subtraction would then come off a way it
-    reaches.
+    The count is a lower bound. A difference contributes its base's count. The exclusions only remove matches. A
+    production reached again contributes the cap. A match that bottoms out is not the recursive way. `_SHORTEST_MATCH`
+    names the kinds, and a kind it leaves out raises.
     """
     return _SHORTEST_MATCH(node, grammar, seen)
 
@@ -1371,7 +1363,7 @@ def _shortest_counted(count: ir.Node, taken: ir.Node, grammar: dict[str, ir.Prod
 
 
 def _shortest_call(node: ir.RefCall, grammar: dict[str, ir.Prod], seen: frozenset[str]) -> int:
-    """A call's is its callee's. A recursion takes the cap, a match that bottoms out not being the recursive way."""
+    """A call takes the fewest characters its callee takes. A recursion takes the cap."""
     if node.name in seen:
         return _SHORTEST_CAP
     return _shortest_match(grammar[node.name].body, grammar, seen | {node.name})
@@ -1380,7 +1372,7 @@ def _shortest_call(node: ir.RefCall, grammar: dict[str, ir.Prod], seen: frozense
 _SHORTEST_MATCH: ir.Question[int] = ir.Question(
     "the fewest characters a match can take, as an integer counted no further than `_SHORTEST_CAP`",
     {
-        # A single character, whichever of the set the input holds.
+        # A single character from the set.
         (ir.OneCharSet, ir.CharSet, ir.InvalidSet, ir.RangeSet): lambda node, grammar, seen: 1,
         ir.DiffSet: lambda node, grammar, seen: _shortest_match(node.base, grammar, seen),
         # An action or a guard takes nothing, and a repetition of none or more takes no turn.
@@ -1410,7 +1402,8 @@ _SHORTEST_MATCH: ir.Question[int] = ir.Question(
 
 def _difference_ways(base: ir.Node, grammar: dict[str, ir.Prod]) -> tuple[ir.Node, ...]:
     """
-    The ways `base` offers, in order. Those are the items of a choice, read through the reference that names it.
+    The ways `base` offers, and the order is the order a choice writes them in. Those are the items of a choice, read
+    through the reference that names it.
 
     A difference's base is a name, and the ways are therefore the callee's ways. The production the reference names
     stays for its own callers. A call passing arguments raises rather than splicing without them.
@@ -1434,14 +1427,14 @@ def _taken(ways: Sequence[ir.Node], minus: tuple[ir.Node, ...]) -> tuple[ir.Node
 
 def _distribute_differences(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Prod]:
     """
-    Take a difference into the ways of what it subtracts from. The difference then holds a pair of sets.
+    Take a difference into the ways of the item it subtracts from. The difference then holds a pair of sets.
 
     A difference over a choice is the choice of the differences, and the ways keep their order. `(A | B) - m` is `(A -
     m) | (B - m)`. A run of ways taking a single character apiece takes the subtraction once, as the union those ways
     already write. That leaves a difference of a pair of character sets wherever the subtraction reaches anything.
 
     A way that takes more than a single character keeps its whole language. A subtracted set takes a single character.
-    It can remove a match of a single character and nothing wider. That is what the step does. `nb-double-char` is an
+    It can remove a match of a single character and nothing wider. The step removes exactly that. `nb-double-char` is an
     escape or a character. `ns-double-char` subtracts the whitespace. The escape alternative matches no whitespace, and
     the subtraction lands on the character alternative.
 
@@ -1462,7 +1455,7 @@ def _distribute_differences(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict
                 run.append(way)
                 continue
             if _shortest_match(way, grammar) < _SHORTEST_CAP:
-                raise ValueError("a `(---)` reaches a way that may take one character and is not a set")
+                raise ValueError("a `(---)` reaches a way that may take a single character and is not a set")
             ways.extend(_taken(run, node.minus))
             ways.append(way)
             run = []
@@ -1475,7 +1468,7 @@ def _distribute_differences(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict
 
 
 # A subtraction between a pair of sets is a set. The lowering then says that difference as a single `CharSet`. The
-# notation is gone. The parser gets a bit to test, rather than an algebra to walk.
+# parser gets a bit to test, rather than an algebra to walk.
 _NO_DIFF_NODES = _absent("no-diff-nodes", ir.DiffSet)
 
 
@@ -1499,23 +1492,23 @@ _EVERY_PEEK_IS_A_CHARACTER_SET = _Invariant("every-peek-is-a-character-set", _ev
 
 def _peeked_question(node: ir.Node, grammar: dict[str, ir.Prod]) -> ir.Node | None:
     """
-    The question a peek of `node` asks, with what only shapes the output read off it. That is what the machine puts to
-    the input.
+    Give back the question a peek of `node` asks. The parts of `node` that only shape the output come off it. The
+    machine puts the question that survives to the input.
 
     A probe emits nothing and gives back what it read. An annotation inside a probe is therefore dead. `c-comment` is a
     `#` under the code its character takes. Peeking `c-comment` asks whether the character is a `#`. A peek reads
-    through a name. A match keeps the name. The caller's hold on a production is what a match wants, and a peek has no
-    use for it.
+    through a name. A match keeps the name. A match wants the caller's hold on a production, and a peek has no use for
+    that hold.
     """
     return _PEEKED_QUESTION(node, grammar)
 
 
 def _asked_through_a_call(node: ir.RefCall, grammar: dict[str, ir.Prod]) -> ir.Node | None:
     """
-    A call's question is what the production it names asks.
+    A call asks the question the production it names asks.
 
     A call passing arguments asks what its callee asks under those arguments. The callee's body does not say that
-    without them. The question is then the call itself, and a reader of it holds the name.
+    without them. The question is then the call itself, and a reader of that question holds the name.
     """
     if node.args:
         return node
@@ -1536,7 +1529,7 @@ _PEEKED_QUESTION: ir.Question[ir.Node | None] = ir.Question(
         # A set is already the question, however the grammar wrote it.
         (ir.AltTree, ir.CharSet, ir.DiffSet, ir.OneCharSet): lambda node, grammar: node,
     },
-    # A `(wrap)` reads through exactly as an annotation does, and no peek has held a `(wrap)` yet.
+    # A `(wrap)` reads through exactly as an annotation does, and no peek in this grammar holds a `(wrap)`.
     untested=(ir.Wrapper,),
 )
 
@@ -1545,22 +1538,21 @@ def _lower_char_sets(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, i
     """
     Rewrite a character set as a single `CharSet`, the shape the parser asks its question in.
 
-    The grammar writes a set of characters many ways. It is a character or a range. It is a union of those, or a base
-    with exclusions. They come to the same thing. The parser tests a key for a bit. The rewrite says the set once here,
-    as the sorted disjoint intervals it denotes. There is then a single shape to convert, and the codegen has no algebra
-    left to walk.
+    The grammar writes a set of characters in the ways below. It is a character or a range. It is a union of those, or a
+    base with exclusions. Both forms denote the same characters. The parser tests a key for a bit. The rewrite says the
+    set once here, as the sorted disjoint intervals it denotes. The rewrite then leaves a single shape to convert, and
+    the codegen walks no algebra.
 
-    The rewrite also makes the form canonical. That is what lets the sweep do its own work. A pair of productions can
-    denote the same characters differently, as a union written in either order. Those are structurally unequal and do
-    not merge. The merge reads shape rather than extension. Said as intervals the pair is the same node, and it merges
-    like anything else.
+    The rewrite also makes the form canonical. A pair of productions can denote the same characters differently, as a
+    union written in either order. The pair are structurally unequal and do not merge. The merge reads shape rather than
+    extension. The rewrite says the pair as intervals. The pair is then a single node, and the sweep merges that node.
 
     The rewrite takes a maximal set rather than the sets inside it. The intervals of a union belong to the union, and
     nobody asks about them apart. A reference stays where a match takes it. A character set with a production of its own
     keeps that production, and the callers hold the reference. The purge then takes nothing, and the fixtures stay
-    reachable. Inside a lookaround the rewrite reads through the reference instead, along with an annotation on what the
-    reference names. A peek holds the question whether the character falls in a given set. Neither a name nor a code is
-    a question the machine can put to the input.
+    reachable. Inside a lookaround the rewrite reads through the reference instead. The rewrite also reads through an
+    annotation on what the reference names. A peek holds the question whether the character falls in a given set.
+    Neither a name nor a code is a question the machine can put to the input.
     """
 
     def lowered(node: ir.Node) -> ir.Node:
@@ -1583,11 +1575,11 @@ def _every_character_question_is_a_character_set(grammar: dict[str, ir.Prod]) ->
     Check that a question about a character is a `CharSet`. That is the shape the parser can take.
 
     A question is about a character when what it matches is a single character. That is a union, a difference, or a raw
-    character node. It is also the item a lookaround peeks. A reference is a hold on the production where the grammar
-    says the set. A match taking a reference is no fault. Inside a lookaround a reference is a fault. A peek holds the
-    question rather than the hold. A guard over more than a single character asks nothing about a character and is no
-    business of this count. An `(exclude)` is such a guard, and so is a difference between a pair of multi-character
-    productions.
+    character node. A question about a character is also the item a lookaround peeks. A reference is a hold on the
+    production where the grammar says the set. A match taking a reference is no fault. Inside a lookaround a reference
+    is a fault. A peek holds the question rather than the hold. A guard over more than a single character asks nothing
+    about a character, and the check passes it. An `(exclude)` is such a guard. A difference between a pair of
+    multi-character productions is such a guard as well.
     """
     faults: list[str] = []
     for name, production in grammar.items():
@@ -1611,7 +1603,7 @@ def _asked_by_a_peek(
 
 def _asked_where_it_sits(node: ir.Node, grammar: dict[str, ir.Prod], owner: str, faults: list[str]) -> None:
     """
-    Anything else. A match of a single character is a set, and this counts it. This walks into whatever holds parts.
+    Anything else. A match of a single character is a set, and this counts it. This walks into a node holding parts.
     """
     if ir.is_one_char(node, grammar):
         faults.append(f"{owner}: a {type(node).__name__} is a character set and is not a `CharSet`")
@@ -1619,8 +1611,7 @@ def _asked_where_it_sits(node: ir.Node, grammar: dict[str, ir.Prod], owner: str,
     ir.rebuilt(node, lambda child: (_CHARACTER_QUESTIONS(child, grammar, owner, faults), child)[1])
 
 
-# A kind `_CHARACTER_QUESTIONS` leaves out raises rather than getting walked into. A shape holding a question this had
-# not heard of would go by unread, and the set it asks about would go uncounted.
+# The walk raises on a kind `_CHARACTER_QUESTIONS` leaves out, and does not walk into it.
 _CHARACTER_QUESTIONS: ir.Question[None] = ir.Question(
     "nothing, appending to `faults` a line per question about a character written as anything but a `CharSet`",
     {
@@ -1642,8 +1633,8 @@ _CHARACTER_QUESTIONS: ir.Question[None] = ir.Question(
 )
 
 
-# The invariant that `_CHARACTER_QUESTIONS` above walks for. The invariant sits beside that walk rather than beside its
-# checker.
+# `_CHARACTER_QUESTIONS` above walks for this invariant. The invariant sits beside that walk rather than beside the
+# invariant's checker.
 _EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET = _Invariant(
     "every-character-question-is-a-character-set", _every_character_question_is_a_character_set
 )
@@ -1653,9 +1644,10 @@ def _as_char_set(node: ir.Node | None, grammar: dict[str, ir.Prod]) -> ir.Node |
     """
     `node` said as a `CharSet` where `node` is a character set. `node` itself otherwise.
 
-    This decides it. The lowering step and what builds a gate afterwards therefore agree. This reads through a reference
-    rather than keeping it. In a peek the reference is the question "is the character one of these", and not the hold on
-    a production a match needs. An alternation of such references is a set like any other.
+    The lowering step and the code that later builds a gate both ask this function whether `node` is a character set.
+    This reads through a reference rather than keeping it. In a peek the reference is the question "is the character one
+    of these", and not the hold on a production a match needs. An alternation of such references is a set like any
+    other.
     """
     if node is None or not ir.is_one_char(node, grammar):
         return node
@@ -1678,9 +1670,9 @@ def _spans_node(spans: Iterable[tuple[int, int]]) -> ir.CharSet:
 def _peek_spans(peek: ir.Node, grammar: dict[str, ir.Prod]) -> list[tuple[int, int]] | None:
     """
     The codepoint intervals `peek` accepts, or `None` where the grammar leaves the set open. The invalid-byte class is
-    the interval `(-1, -1)`. That is a unit no character class can also hold, and it overlaps only itself. An
-    alternation holding it beside character classes is the classes' intervals with that unit. The recovery's any-byte
-    peek is such an alternation.
+    the interval `(-1, -1)`. That is a unit no character class can also hold, and the unit overlaps only itself. An
+    alternation holding the unit beside character classes is the classes' intervals with that unit. The recovery's
+    any-byte peek is such an alternation.
     """
     return _PEEK_SPANS(peek, grammar)
 
@@ -1720,10 +1712,9 @@ _PEEK_SPANS: ir.Question[list[tuple[int, int]] | None] = ir.Question(
 
 def _held(node: ir.Node) -> Iterable[ir.Node]:
     """
-    `node` and the nodes inside `node`, whatever field holds them. This walks the fields rather than going through the
-    generic walker. That walker takes a `ParamValue` a field holds directly as a value, and does not visit it. A
-    comparison's operands are where that hides. `s-indent-floor`'s `Le(f, n)` reads a pair of parameters the walker sees
-    neither of.
+    `node` and the nodes inside it. A field of any kind may hold them. This walks the fields rather than going through
+    the generic walker. The generic walker skips a `ParamValue` a field holds directly, such as the parameters of
+    `s-indent-floor`'s `Le(f, n)`.
     """
     yield node
     if isinstance(node, ir.Node):
@@ -1735,11 +1726,11 @@ def _held(node: ir.Node) -> Iterable[ir.Node]:
 
 def _parameter_uses(grammar: dict[str, ir.Prod], wanted: Iterable[str]) -> list[str]:
     """
-    The places that still hold a parameter in `wanted`. That is a production declaring a parameter. It is also a call
-    passing a parameter at the position the callee declares. It is also an expression reading a parameter.
+    The places that still hold a parameter in `wanted`. Such a place is a production declaring a parameter. It is also a
+    call passing a parameter at the position the callee declares. It is also an expression reading a parameter.
 
-    A parameter is the grammar's implicit thing. A read of `t` means nothing until the reader knows the caller. A step
-    past it may lean on what the grammar means with nothing resolved first.
+    A read of `t` means nothing until the reader knows the caller. A step after this one may read the grammar with no
+    parameter left to resolve.
     """
     faults = []
     for name, production in grammar.items():
@@ -1756,19 +1747,19 @@ def _parameter_uses(grammar: dict[str, ir.Prod], wanted: Iterable[str]) -> list[
     return faults
 
 
-# Phase 0's invariant, and what the phase is finished by. The grammar holds neither parameter it sets by matching. Those
-# are the chomping `t` and the block scalar's indentation mode `i`. The grammar sets both parameters in a production and
-# reads them productions away. A read of either means nothing until the reader knows the caller. The same specialization
-# settles both.
+# `specialize` establishes this invariant, and the phase finishes once it holds. The grammar then holds neither the
+# chomping `t` nor the block scalar's indentation mode `i`. A production sets both by matching, and a production further
+# away reads them. A read of either means nothing until the reader knows the caller. The same specialization settles
+# both.
 _NO_I_T_PARAMETERS = _Invariant("no-i-t-parameters", lambda grammar: _parameter_uses(grammar, {"i", "t"}))
 
-# Phase 3's invariant covers the block scalar's leading-empty floor.
+# The invariant of `drop-f` covers the block scalar's leading-empty floor.
 _NO_F_PARAMETER = _Invariant("no-f-parameter", lambda grammar: _parameter_uses(grammar, {"f"}))
 
-# Phase 4's invariant covers the detected indent.
+# The invariant of `drop-m` covers the detected indent.
 _NO_M_PARAMETER = _Invariant("no-m-parameter", lambda grammar: _parameter_uses(grammar, {"m"}))
 
-# Phase 5's invariant covers the indentation. The parse's stack holds it.
+# The invariant of `drop-n` covers the indentation. The parse's stack holds it.
 _NO_N_PARAMETER = _Invariant("no-n-parameter", lambda grammar: _parameter_uses(grammar, {"n"}))
 
 
@@ -1778,7 +1769,8 @@ def _every_indentation_change_is_pushed(grammar: dict[str, ir.Prod]) -> list[str
     establishes a level a later item reads.
 
     A push and a pop put a level where a read reaches that level without a call passing the level down. The check looks
-    for the pair immediately around the call. The level is there, and the caller runs nothing between.
+    for the pair immediately around the call. The caller runs nothing between the push and the call, or between the call
+    and the pop.
     """
     faults = []
     establishing = _establishing(grammar)
@@ -1793,7 +1785,7 @@ def _every_indentation_change_is_pushed(grammar: dict[str, ir.Prod]) -> list[str
                 if isinstance(before, ir.PushIndentAction) and isinstance(after, ir.PopIndentAction):
                     guarded.add(id(item))  # entered under a level this way pushes and takes back
                 if isinstance(after, ir.PushIndentAction) and isinstance(node.items[-1], ir.PopIndentAction):
-                    guarded.add(id(item))  # establishes a level, pushed where it returns and held to the way's end
+                    guarded.add(id(item))  # establishes a level, pushed where it returns and kept to the way's end
         for node in _held(production.body):
             if id(node) in guarded or not isinstance(node, ir.RefCall):
                 continue
@@ -1819,7 +1811,7 @@ _EVERY_INDENTATION_CHANGE_IS_PUSHED = _Invariant(
 
 def _replaced(node: ir.Node, swap: Callable[[ir.Node], ir.Node]) -> ir.Node:
     """
-    `node` with `swap` applied to `node` and to what it holds. This walks the fields itself.
+    `node` with `swap` applied to `node` and to the fields it holds. This walks the fields itself.
 
     The generic walker takes a `ParamValue` as a value, and does not visit a `ParamValue` a field holds directly. That
     is where a read hides. A rewrite of the reads therefore goes through this rather than through the generic walker.
@@ -1843,15 +1835,15 @@ def _replaced(node: ir.Node, swap: Callable[[ir.Node], ir.Node]) -> ir.Node:
 
 def _read_off(param: str, held: ir.Node) -> Callable[[dict[str, ir.Prod], _Namer], dict[str, ir.Prod]]:
     """
-    A transform taking `param` off the calls. It takes the declaration off the productions and the argument off the
-    calls. It turns a read of the parameter into `held`. `held` is where the value lives, a global's single slot or the
-    stack the parse holds.
+    Take `param` off the productions and the calls. It takes the declaration off the productions and the argument off
+    the calls. It turns a read of the parameter into `held`. `held` is where the value lives, a global's single slot or
+    the stack the parse holds.
 
     A global holds where its value does not nest. The leading empty lines of a block scalar measure the floor, and that
-    scalar's first content line reads it, a construct at a time. The clear is what holds it to that. A read past the
-    region raises rather than answering. The stack holds where a read of the parameter agrees with the stack top. A
-    check over the whole corpus found that. The transform does not touch the writes. A `(set)` and a `(clear)` name the
-    parameter as a string, and reach the slot once no production declares it.
+    scalar's first content line reads it, a construct at a time. The `(clear)` holds the global to a construct at a
+    time. A read past the region raises rather than answering. The stack holds where a read of the parameter agrees with
+    the stack top. A check over the whole corpus found that. The transform does not touch the writes. A `(set)` and a
+    `(clear)` name the parameter as a string, and reach the slot once no production declares it.
     """
 
     def transform(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Prod]:
@@ -1902,17 +1894,18 @@ def _pushed_level(grammar: dict[str, ir.Prod], node: ir.Node) -> ir.Node | None:
 def _span_consumes(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Prod]:
     """
     Write a run over a character class as a consume. The parse enters the consume on the class. `x+` is the guard that
-    the class is in front, with the span behind it. `x*` is that same way beside the way the class is not in front of.
+    the class is in front. The span comes behind it. `x*` is that same way beside the way the class is not in front of.
 
-    Such a run takes a value the input decides rather than a way the parse chooses. Said as a consume, the codegen can
-    make a single repeated-char-set call of it. A span with the class in front takes what a `PlusTree` takes, a
-    character of the class at least.
+    Such a run takes a value the input decides rather than a way the parse chooses. The codegen makes a single
+    repeated-char-set call of such a consume. A span with the class in front takes at least a character of the class, as
+    a `PlusTree` does.
 
     A `StarTree`'s second way asks that the class is *not* there rather than matching empty beside it. The consume that
     replaces the run is possessive. The consume takes the run where the class is in front, and no shorter match remains
     to hand back. An empty way would be exactly that shorter match. `s-indent-le` is a run of spaces judged against the
-    indentation afterwards. A run too long would fail the judgement, fall back to no spaces at all, and pass it. Told
-    apart on the character, neither way is reachable where the parse took the other, and the alternation is the consume.
+    indentation afterwards. A run too long would fail the judgement. The fallback to no spaces would then pass that same
+    judgement. The character tells the ways apart. Neither way is reachable where the parse took the other, and the
+    alternation is the consume.
 
     The gate takes the guard rather than the class itself, though either admits the same text. A match of the class is a
     call, and a call is where `mint-continuations` ends a way. The span would then land in a continuation entered after
@@ -1924,9 +1917,9 @@ def _span_consumes(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.
     The guard asks whether the run reached `n`. The taking cannot fail. It takes what is there and says how much. A
     count falling short is therefore a question asked past the run, rather than a way failing on what the way performs.
     A count the parse works out is a pair of ways. The first is the run entered on a character of the set. At a count of
-    none or below the second is the run that takes no character and says so. That second way performs
-    `ConsumeNoCharAction` rather than nothing at all, on the ground a `StarTree`'s second way does. A length read past a
-    way that performed nothing is whatever the last run left.
+    none or below, the second way is the run that takes no character and says so. That second way performs
+    `ConsumeNoCharAction` rather than nothing at all, as a `StarTree`'s second way does. A way that performs nothing
+    still reports a length. That length is the length the last run left.
 
     A run over anything else stays. The run is a way, and the empty match inside it is a question about the parse rather
     than about a consume.
@@ -1965,7 +1958,7 @@ def _span_consumes(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.
             if isinstance(node, ir.PlusTree):
                 return taken
             # The way that takes none says so, rather than performing nothing. `(match)` past a way that performed
-            # nothing is whatever the last run left, which is a different run's answer.
+            # nothing is the length the last run left. That is a different run's answer.
             none = ir.SeqTree(items=(ir.NegLookGuard(item=_a_set(asked)), ir.ConsumeNoCharAction()))
             return ir.AltTree(items=(taken, none))
         return node
@@ -1981,8 +1974,8 @@ def _every_character_run_is_a_span(grammar: dict[str, ir.Prod]) -> list[str]:
     a way the parse repeats.
 
     `ir.repeated` says what repeats, rather than a list of kinds kept here. A list goes stale the moment the grammar
-    writes a repetition a new way. This count would then read none on the kinds it named going, rather than on the
-    character runs going.
+    writes a repetition a new way. Once the named kinds went, the count would read none while character runs still
+    remained.
     """
     return [
         f"{name}: repeats a character class instead of consuming it"
@@ -2000,10 +1993,10 @@ _EVERY_CHARACTER_RUN_IS_A_SPAN = _Invariant("every-character-run-is-a-span", _ev
 _NO_STAR_OR_PLUS_NODES = _absent("no-star-or-plus-nodes", ir.StarTree, ir.PlusTree)
 
 
-# Phase 7's first. A scope that holds what it covers becomes the pair bracketing that scope. A `(wrap)` says so
-# outright. A `(wrap)` is a node rather than a pair of markers. A `begin` cannot then lose its `end`. The pair holds
-# that guarantee instead. The parse holds a close to the open it shares a pair with. `check_markers` still owes for the
-# markers.
+# `lower-wraps` runs in `lower-scopes`. A scope that holds what it covers becomes the pair bracketing that scope. A
+# `(wrap)` says so outright. A `(wrap)` is a node rather than a pair of markers. A `begin` cannot then lose its `end`.
+# After `lower-wraps`, the parse holds the guarantee instead. The parse holds a close to the open that shares its pair.
+# `check_markers` still owes for the markers.
 _NO_WRAP_NODES = _absent("no-wrap-nodes", ir.Wrapper)
 
 
@@ -2012,8 +2005,8 @@ def _lower_wraps(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Pr
     Write a `(wrap)` as the pair of markers it names. `Wrap(begin, end, x)` becomes `Emit(begin) x Emit(end)`.
 
     A scope that holds what it covers has no place in an alternative. An alternative has a place for an action and none
-    for a node enclosing a call. The node is sugar and says so. It exists so the markers come out paired by
-    construction. It is the sequence written here. The interpreter emits the begin, matches the item, and emits the end.
+    for a node enclosing a call. The node is sugar for the sequence this step writes. The interpreter emits the begin,
+    matches the item, and emits the end.
 
     The markers come out adjacent in a single way of a single production. The markers stay adjacent until a split of the
     calls separates them.
@@ -2030,7 +2023,7 @@ def _lower_wraps(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Pr
     }
 
 
-# Phase 7's second. The `(max)` window is the pair that opens and closes it.
+# `lower-windows` runs in `lower-scopes`. The `(max)` window is the pair that opens and closes it.
 _NO_MAX_NODES = _absent("no-max-nodes", ir.MaxWrapper)
 
 
@@ -2039,14 +2032,14 @@ def _lower_windows(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.P
     Write a `(max)` as the window pair. `Max(limit, message, x)` becomes `OpenWindow(limit, message) x CloseWindow()`.
 
     Windows do not nest. The outermost applies. An inner window sits inside the budget the outer already bounds. The
-    pair counts the opens, where the wrapper asked whether an earlier open set a ceiling. The pair and the wrapper agree
-    where the grammar writes a window in a single way. An open counting nothing has no ceiling to answer for. The step
-    therefore leaves no `MaxWrapper` at all. Lowering the sites that want a window and leaving the other sites would not
-    do.
+    pair counts the opens, where a `MaxWrapper` asked whether an earlier open set a ceiling. The pair and the wrapper
+    agree where the grammar writes a window in a single way. An open counting nothing sets no ceiling. The step
+    therefore leaves no `MaxWrapper` at all. The step cannot lower the sites that want a window while leaving the other
+    sites untouched.
 
     A `(max)` with nothing in it is the vendored grammar's bare length note. libyeast writes that around a production
-    rather than in front of a production. The pipeline places none. Finding such a `(max)` here is an error rather than
-    a window to open.
+    rather than in front of a production. The pipeline places none. The step raises an error on such a `(max)` rather
+    than opening a window.
     """
 
     def lowered(node: ir.Node) -> ir.Node:
@@ -2069,7 +2062,7 @@ def _lower_windows(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.P
     }
 
 
-# Phase 7's third. The region that a failed cut answers for is the pair that opens and closes it.
+# `lower-commits` runs in `lower-scopes`. The region catching a failed cut is the pair that opens and closes it.
 _NO_COMMIT_NODES = _absent("no-commit-nodes", ir.CommitWrapper)
 
 
@@ -2077,14 +2070,14 @@ def _lower_commits(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.P
     """
     Write a `(commit)` as the message pair. `Commit(message, x)` becomes `PushMessage(message) x PopMessage()`.
 
-    A commit is the error where the item under it fails to reach the end of that item. A commit says no more than that.
-    A continuation that fails past a matched item backtracks like any other match. The commitment does not reach past
-    that item. The pair says exactly that. The push records a region and the pop marks it reached. An unwind that gets
-    back to a push through a region left unclosed is the error. The interpreter says so where it implements the push.
-    Those are a `(commit)` scope's terms. The close goes where the scope ends.
+    The parser raises a commit error when the guarded item does not reach its own end. A continuation that fails past a
+    matched item backtracks like any other match. The commitment does not reach past that item, and the pair enforces
+    the same bound. The push records a region and the pop marks it reached. The parse may unwind to a push while the
+    region of that push stays open. Such an unwind is the error. The interpreter says so where it implements the push.
+    The pop goes where the `(commit)` scope ends.
 
-    The change is where the record lives. The wrapper keeps it in a Python local. The pair keeps it on the list of open
-    commitments the emitter holds. That is what survives a split of the pair across a call.
+    The pair changes where the pushed region's record lives. The wrapper keeps that record in a Python local. The pair
+    keeps it on the list of open commitments the emitter holds. The list survives a split of the pair across a call.
     """
 
     def lowered(node: ir.Node) -> ir.Node:
@@ -2107,16 +2100,18 @@ def _lower_commits(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.P
 
 def _mint_forbidden_probes(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Prod]:
     """
-    Give what an exclusion forbids a copy of its own. The copy holds what matches and asks, and no more.
+    The pattern an exclusion forbids gets a copy of its own. The copy holds only what the pattern matches and what it
+    answers.
 
-    The pattern answers whether the forbidden text is there. The parse goes back, whatever the pattern answers. A
-    `(token)` inside the pattern therefore says what code characters take that nothing keeps. The copy drops the
-    annotation and matches the same text. The annotation is the whole difference.
+    The pattern answers whether the forbidden text is there. The parse goes back under either answer. A `(token)` inside
+    the pattern therefore gives a code to characters that no token keeps. The copy drops the annotation and matches the
+    same text.
 
-    This mints a copy rather than rewriting the original. Both ways reach the same production. `c-directives-end` is the
-    `---` a document really opens with, and the `---` a plain scalar must not run into. The parse matches the second to
-    throw it away, and keeps the first. The whole reach gets a copy, and the callers inside it name the copies. The
-    sweep behind this collapses a copy that came out the same as its original.
+    This mints a copy rather than rewriting the original. A way inside the pattern and a way outside it reach the same
+    production. `c-directives-end` is the `---` a document really opens with, and the `---` a plain scalar must not run
+    into. The parse matches the second to throw it away, and keeps the first. The whole reach that minting touches gets
+    a copy, and the callers inside that reach name the copies. The sweep that follows minting collapses a copy that came
+    out the same as its original.
     """
     copies = {name: namer.fresh(name) for name in sorted(_forbidden_productions(grammar))}
 
@@ -2140,7 +2135,8 @@ def _mint_forbidden_probes(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[s
     return {**written, **minted}
 
 
-# Phase 7's last. A pair sets the code the characters of a run take, and a pair takes that code back.
+# `lower-tokens` runs in `lower-scopes`. A pair sets the code the characters of a run take, and a pair takes that code
+# back.
 _NO_TOKEN_NODES = _absent("no-token-nodes", ir.TokenWrapper)
 
 
@@ -2149,15 +2145,14 @@ def _lower_tokens(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Pr
     Write a `(token)` as the code pair. `Token(code, x)` becomes `PushCode(code) x PopCode()`.
 
     An annotation does not make a token. An annotation says what code the characters consumed within it take. The
-    annotation cuts the run at both edges. The characters before and after fall into tokens of their own. Both halves do
-    that. A half cuts, the push sets the code, and the pop takes back the code it displaced. The characters between them
-    take the same code either way.
+    annotation cuts the run at both edges. The characters before and after fall into tokens of their own. A half cuts,
+    the push sets the code, and the pop takes back the code it displaced. The characters between them take the same code
+    either way.
 
     The change is where the displaced code waits. The wrapper keeps it in a Python local. That local is the frame of the
-    running match. The pair puts the code on the stack the parse holds. That is what lets the halves end up in different
-    productions once a way is split into a call and a continuation. The step exists for that. A half names its pair on
-    the same ground. A pop takes back whatever is on top. A pair cut apart carelessly would take back what another way
-    had put there, and the pair says so where it happens.
+    running match. The pair puts the code on the stack the parse holds. The halves can then end up in different
+    productions once the step splits a way into a call and a continuation. A half names its pair on the same ground. A
+    pop takes back the entry on top. A pop cut apart from its push would take back an entry another way had put there.
     """
 
     def lowered(node: ir.Node) -> ir.Node:
@@ -2178,11 +2173,11 @@ def _reached_forbidden(
     node: ir.Node, forbidden: ir.Node | None, reached: dict[str, set[ir.Node | None]]
 ) -> ir.Node | None:
     """
-    The set forbidden where `node` ends. This records against `reached` what a call `node` makes holds on entry.
+    The set forbidden where `node` ends. This records in `reached` the set that holds on entry to a call `node` makes.
 
-    A sequence passes the set along its parts. An `(exclude)` sets the set for what follows it. Any other shape hands
-    its parts what reaches the shape. A branch of a choice therefore takes no exclusion from its sibling and hands none
-    on.
+    A sequence passes the set along its parts. An `(exclude)` sets the set for the parts behind it. Any other shape
+    hands its parts what reaches the shape. A branch of a choice therefore takes no exclusion from its sibling and hands
+    none on.
     """
     return _REACHED_FORBIDDEN(node, forbidden, reached)
 
@@ -2191,7 +2186,8 @@ def _forbidden_along_a_run(
     node: ir.SeqTree, forbidden: ir.Node | None, reached: dict[str, set[ir.Node | None]]
 ) -> ir.Node | None:
     """
-    A sequence's. A part gets what the part before it left. The order is the order the parts perform in.
+    The set forbidden where a sequence ends. A part takes the set the part before it left. The order is the order the
+    parts perform in.
     """
     for item in node.items:
         forbidden = _reached_forbidden(item, forbidden, reached)
@@ -2201,7 +2197,7 @@ def _forbidden_along_a_run(
 def _forbidden_at_a_call(
     node: ir.RefCall, forbidden: ir.Node | None, reached: dict[str, set[ir.Node | None]]
 ) -> ir.Node | None:
-    """A call's. The callee gets what reaches the call, and the call itself forbids nothing."""
+    """The callee of a call gets what reaches the call. The call itself forbids nothing."""
     reached[node.name].add(forbidden)
     return forbidden
 
@@ -2209,16 +2205,16 @@ def _forbidden_at_a_call(
 def _forbidden_at_the_whole(
     node: ir.Node, forbidden: ir.Node | None, reached: dict[str, set[ir.Node | None]]
 ) -> ir.Node | None:
-    """Anything that hands its parts what reaches the whole."""
+    """A node hands its parts the set that reaches the node."""
     ir.rebuilt(node, lambda child: (_reached_forbidden(child, forbidden, reached), child)[1])
     return forbidden
 
 
-# A kind `_REACHED_FORBIDDEN` leaves out raises. It does not walk into that kind by default. The default would wrongly
-# hand the parts of a shape that passes the set along what reaches the whole. An exclusion set would go missing halfway
+# The walk raises on a kind missing from `_REACHED_FORBIDDEN`. The walk holds no default for such a kind. A default
+# would hand a shape's parts what reaches the whole. A shape passing the set along would lose an exclusion set halfway
 # through.
 _REACHED_FORBIDDEN: ir.Question[ir.Node | None] = ir.Question(
-    "the node forbidden where a match ends. That node reaches whatever follows the match.",
+    "the node forbidden where a match ends. That node reaches the actions following the match.",
     {
         ir.SeqTree: _forbidden_along_a_run,
         ir.ExcludeAtAction: lambda node, forbidden, reached: node.item,
@@ -2238,18 +2234,17 @@ _REACHED_FORBIDDEN: ir.Question[ir.Node | None] = ir.Question(
 
 def _forbidden_entries(grammar: dict[str, ir.Prod]) -> dict[str, set[ir.Node | None]]:
     """
-    `{name: sets}`, what may not match at a start of line where the parse enters a production. `None` is among them
-    where nothing may.
+    Answer `{name: sets}`. The sets hold what may not match at a start of line where the parse enters a production.
+    `None` is among them where nothing may.
 
-    This is a least fixpoint over the calls. A parse enters by name with nothing forbidden. A call passes in whatever
-    the call site forbids. The parse usually enters a production a single way. Under a line-bounded policy the parse
-    enters `l-unparsed` from the stream's recovery and from a block entry's recovery. The stream's recovery reaches
-    `l-unparsed` with nothing forbidden, and the block entry's recovery reaches it inside a document.
+    This is a least fixpoint over the calls. A parse enters by name with nothing forbidden. A call passes in the set the
+    call site forbids. The parse enters a production a single way, except `l-unparsed` under a line-bounded policy.
+    Under a line-bounded policy the parse enters `l-unparsed` from the stream's recovery and from a block entry's
+    recovery. The stream's recovery reaches `l-unparsed` with nothing forbidden, and the block entry's recovery reaches
+    it inside a document.
 
-    `ir.rounds` counts this, as it counts the fixpoints here. A fixpoint that stops settling says so. The alternative is
-    a bound per fixpoint, and a message raised apart from the walk. A per-fixpoint bound came to the size of the
-    grammar. This is tighter than that. `ir.ROUNDS` is a backstop. `ir.deepest_rounds` reports how far a fixpoint really
-    reaches. Nobody has to guess.
+    `ir.rounds` counts this, as it counts the fixpoints here. A fixpoint that stops settling says so. `ir.ROUNDS` is a
+    backstop. `ir.deepest_rounds` reports how far a fixpoint really reaches.
     """
     entries: dict[str, set[ir.Node | None]] = {name: set() for name in grammar}
     for name in _entered_by_name(grammar):
@@ -2270,19 +2265,20 @@ def _lower_exclusions(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, i
     Write an `(exclude)` as the pair of writes that bound it. `ExcludeAt(x)` over the rest of a way becomes
     `SetForbidden(x)` in its place and `SetForbidden(<what follows>)` where the way ends.
 
-    A rewrite rather than a question. `lowered` reshapes `ExcludeAtAction`. `RefCall` and `SeqTree` hand the forbidden
-    set down. Any other kind gets rebuilt with its parts lowered.
+    The step is a rewrite rather than a question. `lowered` reshapes `ExcludeAtAction`. `RefCall` and `SeqTree` hand the
+    forbidden set down. Any other kind gets rebuilt with its parts lowered.
 
     The exclusion in force reaches `lowered` as `forbidden`.
 
     An exclusion is in force until the production holding it returns. That is a frame's worth of scope, and the last
-    scope phase 6 has to take off. The writes say outright what the frame kept. A step that moves a way's parts into
-    another production therefore takes the end with them. The exclusion covers no more than it did.
+    scope `lower-scopes` has to take off. The writes say outright what the frame kept. A step that moves a way's parts
+    into another production therefore takes the end with them. The exclusion covers no more than it did.
 
     The closing write names what follows. It does not take back what the opening write displaced. The set is a single
     value for the parse. A production holding an exclusion that a pair of callers reach in different states cannot name
-    a single set. The step copies the production per state, and a caller enters the copy for its own state. That is the
-    same specialization `monomorphize` makes of a parameter, made here of the thing that is not a parameter.
+    a single set. The step copies the production per state, and a caller enters the copy for its own state.
+    `monomorphize` makes the same specialization of a parameter. This step makes it of the forbidden set, and that set
+    is no parameter.
     """
     entries = _forbidden_entries(grammar)
     held = {
@@ -2334,26 +2330,25 @@ _NO_EXCLUDE_AT_NODES = _absent("no-exclude-at-nodes", ir.ExcludeAtAction)
 def _lower_runs(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Prod]:
     """
     Say the repetitions as ways instead. Those are a turn, a recursion taking the turns behind it, and a settled region
-    around the turns after the first. `x*` offers the untaken turn beside them. `x+` withholds that turn. That is the
-    whole difference between the forms.
+    around the turns after the first. `x*` offers the untaken turn beside them. `x+` withholds that turn.
 
     A turn takes a character. A turn taking none would repeat for ever, and a run ends where the parse does not take a
     turn. The region settles the turns it holds. A failure past its close gives the whole run up. The parse does not
-    take fewer turns, and it does not take a turn another way. That is what makes the run the longest one. The grammar
+    take fewer turns, and it does not take a turn another way. The run is therefore the longest match. The grammar
     therefore fixes the backtrack points a run has. The first turn is outside the region, and the turns after it are in.
 
     The turn is a production of its own, and both places call that production. The recursion is a production too. A loop
-    is a state the machine jumps to. `AltTree` and `SeqTree` appear here after that like anything else, and the phases
-    behind this shape them. The guard past the turn is what cuts the way, and the gates arrive where a gate does.
+    is a state the machine jumps to. Later phases shape the resulting `AltTree` and `SeqTree` like any other node. The
+    guard past the turn cuts the way.
 
     A run over a character class is the same operation said as the consume a parser makes of it. `span-consumes` has
-    already written that as a `ConsumeSpanAction`. A run over anything else repeats a way, and this says a repeated way
-    as ways.
+    already written that as a `ConsumeSpanAction`. A run over anything else repeats a way, and `_lower_runs` says a
+    repeated way as ways.
     """
     minted = {}
 
     def said(name: str, number: int, node: ir.PlusTree | ir.StarTree) -> ir.Node:
-        """`node` as the ways it is. This mints the turn and the recursion as productions."""
+        """`node` written out as the ways it offers. This mints the turn and the recursion as productions."""
         # A loop is a state the machine jumps to. The recursion is a production, and so is the turn where it is not
         # already a call.
         loop = namer.fresh(name)
@@ -2398,13 +2393,13 @@ def _lower_optionals(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, i
 
     The interpreter says the match is the same. An `OptTree` tries its item with the continuation behind that item. The
     `OptTree` rewinds where that fails, and takes the continuation without the item. That is an alternation of the item
-    and `<empty>`. The item comes first. The item takes as much as before, and the step needs no knowledge of what
-    follows.
+    and `<empty>`. The item comes first. The item takes as much as before, and the step needs no knowledge of the
+    continuation.
 
-    This writes the `<empty>` even where the item can already take nothing, and the corpus is what says so. The optional
+    This writes the `<empty>` even where the item can already take nothing, and the corpus bears that out. The optional
     offers the item's ways and *then* an empty match. The item offers its own ways. Its empty way may sit ahead of the
-    ways that read. Dropping the second empty match there changes which parse the parse prefers, and much of the corpus
-    reads differently for it. A pair of ways that both take nothing is what the empties phase splits apart later.
+    ways that read. Dropping the second empty match there changes which way the parse prefers, and the corpus then
+    parses differently. The empties phase later splits apart a pair of ways that both take nothing.
     """
 
     def lowered(node: ir.Node) -> ir.Node:
@@ -2416,9 +2411,9 @@ def _lower_optionals(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, i
     }
 
 
-# The point of this step, on the way to the count the empties phase keeps. An optional hides no empty match here. A
-# `StarTree` hides the same thing and is not this. Lowering a `StarTree` is no identity. The run is possessive, where an
-# alternation's empty way is a fallback the continuation can reach.
+# An optional hides no empty match once the step removing optional nodes runs. The empties phase counts such matches. A
+# `StarTree` hides an empty match as well, and this property leaves it out. Lowering a `StarTree` changes the parse. A
+# run is possessive. An alternation's empty way is a fallback the continuation can reach.
 _NO_OPT_NODES = _absent("no-opt-nodes", ir.OptTree)
 
 
@@ -2451,8 +2446,8 @@ def _nested_matches(grammar: dict[str, ir.Prod], reported: type | tuple[type, ..
     nested match wherever that match sits.
 
     This counts a nested match where it sits rather than at the outermost only. Lifting a match therefore takes a single
-    item off the count, and uncovers no fault the walk had not already read. A kind `_INNER_WAYS` leaves out raises. An
-    item answered for by accident is a shape the machine would arrive at with no state to be in.
+    item off the count, and uncovers no fault the walk had not already read. The walk raises on a kind `_INNER_WAYS`
+    leaves out. An item covered by accident is a shape the machine would arrive at with no state to be in.
     """
     faults: list[str] = []
 
@@ -2488,14 +2483,14 @@ _EVERY_CHOICE_IS_A_PRODUCTION = _Invariant(
     "every-choice-is-a-production", lambda grammar: _nested_matches(grammar, ir.AltTree)
 )
 
-# The second. A recovery is a handler over a match. An alternative holds such a handler on its edge. A recovery has no
-# edge to ride until the step makes the alternatives. A recovery gets a production of its own meanwhile. The re-encode
-# reads that body as a way. The item is the call, and the recovery is what rides the push.
+# A recovery is a handler over a match. An alternative holds such a handler on its edge. A recovery has no edge until
+# this step makes the alternatives. Until then a recovery gets a production of its own. A later re-encode reads the body
+# of that production as a way. The call is the item, and the recovery rides the push.
 _EVERY_RECOVERY_IS_A_PRODUCTION = _Invariant(
     "every-recovery-is-a-production", lambda grammar: _nested_matches(grammar, ir.RecoverWrapper)
 )
 
-# The last. A binding is a match and the write that follows it. The vocabulary already writes those separately.
+# A binding is a match and the write that follows it. The vocabulary already writes the match and the write apart.
 _NO_BIND_NODES = _absent("no-bind-nodes", ir.BindTree)
 
 
@@ -2503,10 +2498,9 @@ def _is_bounded_question(node: ir.Node, grammar: dict[str, ir.Prod], entered: fr
     """
     Whether `node` asks what a bounded number of the machine's steps answers.
 
-    Repetition and recursion are what make a question unbounded. A call costs what its callee costs. A call reaching
-    itself costs without bound. Anything else is a fixed run of steps, and a span is among those. A run of spaces
-    measured against the indentation is a consume and a comparison. A loop over the same characters is a turn per
-    character.
+    Repetition and recursion make a question unbounded. A call costs what its callee costs. A call reaching itself costs
+    without bound. Anything else is a fixed run of steps, and a span is among those. A run of spaces measured against
+    the indentation is a consume and a comparison. A loop over the same characters is a turn per character.
     """
     # A repetition costs a turn per character rather than a single step. A run taken whole is a value the input decides,
     # judged once. What it costs does not grow with what it takes.
@@ -2528,13 +2522,13 @@ def _is_bounded_question(node: ir.Node, grammar: dict[str, ir.Prod], entered: fr
 
 def _every_exclusion_is_bounded(grammar: dict[str, ir.Prod]) -> list[str]:
     """
-    Check that an `(exclude)` asks what a bounded number of the machine's steps answers.
+    Check that an `(exclude)` asks a question a bounded number of the machine's steps can answer.
 
-    An `(exclude)` is a guard the parse holds, tested at the starts of line while it is in force. The question has to be
-    answerable where the parse asks it. `c-forbidden` is a line beginning `---` or `...`. A break, a space or the end
-    follows. That is a bounded run of steps. The line-at-this-indentation question is another. Its run of spaces is a
-    consume, judged against the indentation once. A loop over those spaces would cost a turn per space, and would not
-    answer in a bounded number of steps.
+    An `(exclude)` is a guard the parse holds. While the guard is in force, the parse tests it at the starts of line.
+    The question has to be answerable where the parse asks it. `c-forbidden` is a line beginning `---` or `...`. A
+    break, a space or the end follows. This pattern is a bounded run of steps. Whether the line sits at this indentation
+    is another such question. Its run of spaces is a consume, and the parse judges that consume against the indentation
+    once. A loop over those spaces would cost a turn per space, and would not answer in a bounded number of steps.
     """
     return [
         f"{name}: an `(exclude)` asks what no bounded run of steps answers"
@@ -2559,15 +2553,16 @@ def _does_every_part_only_match_and_ask(node: ir.Node) -> bool:
     return all(_ONLY_MATCHES_AND_ASKS(child) for child in held)
 
 
-# The kinds an exclusion's pattern may hold, asked of a single node rather than of what it calls. The production a call
-# names answers for that call, and `_forbidden_productions` reaches that production in its own right.
+# The kinds an exclusion's pattern may hold, asked of a single node rather than of the productions it calls. A call
+# names a production, and the probe asks about the call rather than that production. `_forbidden_productions` reaches
+# the production in its own right.
 _ONLY_MATCHES_AND_ASKS: ir.Question[bool] = ir.Question(
     "whether what an exclusion forbids only matches and asks",
     {
-        # A match takes characters and says whether they were there. That is what the probe wants.
+        # A match takes characters and says whether they were there. The probe wants exactly that.
         (ir.OneCharSet, ir.CharSet, ir.ConsumeCharAction, ir.ConsumeSpanAction, ir.RangeSet): True,
         # A guard reads where the parse is and leaves it there, and an empty match does neither. A run that took no
-        # character is the second of those. It says how long the match was, and the match was nothing.
+        # character is an empty match. It says how long the match was, and the match was nothing.
         (
             ir.ConsumeNoCharAction,
             ir.IsLessEqualGuard,
@@ -2576,8 +2571,8 @@ _ONLY_MATCHES_AND_ASKS: ir.Question[bool] = ir.Question(
             ir.StartOfLineGuard,
         ): True,
         ir.RefCall: True,
-        # A shape holding parts takes whatever its parts take. A difference and a lookaround are among them. Both ask
-        # about a match of their own.
+        # A shape holding parts takes the characters its parts take. A difference and a lookaround are among them. Both
+        # ask about a match of their own.
         (
             ir.AltTree,
             ir.AlternativeState,
@@ -2597,8 +2592,8 @@ _ONLY_MATCHES_AND_ASKS: ir.Question[bool] = ir.Question(
 
 def _forbidden_productions(grammar: dict[str, ir.Prod]) -> set[str]:
     """
-    The productions an exclusion's pattern reaches, and the productions those reach. That is what the parse runs at a
-    start of line to answer whether what it must not find is there.
+    The productions an exclusion's pattern reaches, and the productions those reach. The parse runs these productions at
+    a start of line, to answer whether the forbidden text is there.
     """
     seen = set()
     worklist = [
@@ -2621,12 +2616,12 @@ def _every_forbidden_only_matches_and_asks(grammar: dict[str, ir.Prod]) -> list[
     """
     Check that what an exclusion forbids only matches characters and asks questions.
 
-    The parse runs the pattern at the starts of line, to answer whether what must not be there is there. The parse goes
-    back where it was whatever the answer. The pattern may therefore take characters and ask, and do no more. An action
-    leaves a mark. A match nothing keeps has nothing left to take that mark back with.
+    The parse runs the pattern at a start of line. The parse then goes back to its old position. The pattern may take
+    characters and ask questions, and do no more. An action leaves a mark. The parse discards the match and cannot undo
+    that mark.
 
     This asks the productions the pattern reaches, rather than the sites naming it. A pattern reached from more than a
-    single site is a single thing to answer for, and a step that copies a site copies no fault.
+    single site is a single thing to check, and a step that copies a site copies no fault.
     """
     return [
         f"{name}: an exclusion forbids a node that does more than match and ask"
@@ -2646,10 +2641,10 @@ def _no_choice_of_choices(grammar: dict[str, ir.Prod]) -> list[str]:
 
     `a | P | c` with `P` as `d | e` shows fewer ways than it decides between. The hidden way sits behind a call. The
     outer choice can see nothing of it. `a | d | e | c` writes the same ways. The ways then sit where the choice can ask
-    about them. That is what lets a gate go on a way.
+    about them. A gate can then go on a way.
 
-    Read of the tree's form, an `AltTree` of ways one of which names an `AltTree`. Past the re-encode there are no
-    `AltTree` nodes at all. The shape settles this, and not a promise.
+    The check reads the tree's form. It looks for an `AltTree` with a way that names an `AltTree`. The re-encode leaves
+    no `AltTree` nodes.
     """
     return [
         f"{name}: a way of a choice that is a call to a choice"
@@ -2672,11 +2667,11 @@ def _no_sequence_of_sequences(grammar: dict[str, ir.Prod]) -> list[str]:
     does first therefore stops at the call rather than at `d`. `a d e c` writes the same run. The parts then sit where
     the way holds them.
 
-    A call last in the way is not one of them. The continuation past a way's call is a production of its own by design.
-    The phase behind this is what mints that. A call in the middle hides a run, and only that.
+    The check spares a call last in the way. An earlier phase mints the continuation past a way's call as a production
+    of its own. A call in the middle hides a run.
 
-    Read of the tree's form, a `SeqTree` of items one of which names a `SeqTree`. Past the re-encode there are no
-    `SeqTree` nodes at all. The shape settles this, and not a promise.
+    The check reads the tree's form. There the fault is a `SeqTree` holding an item that names a `SeqTree`. Past the
+    re-encode there are no `SeqTree` nodes at all. The shape of the tree settles the check.
     """
     return [
         f"{name}: an item of a way that is a call to a run of items"
@@ -2692,23 +2687,22 @@ _NO_SEQUENCE_OF_SEQUENCES = _Invariant("no-sequence-of-sequences", _no_sequence_
 
 # A way is a gate, actions and the calls it hands control to. An empty match is none of those. It asks nothing. It does
 # nothing and calls nothing. A way that matches the empty input is the way with no gate, no action and no call. The
-# machine's words leave an empty match no place to be, and the empty match goes where the step builds the ways.
+# machine's form holds no empty match. The step that builds the ways handles an empty match.
 _NO_EMPTY_NODES = _absent("no-empty-nodes", ir.EmptyTree)
 
 
 def _items_of_way(way: ir.Node) -> tuple[ir.Node, ...]:
     """
-    The items a way *performs*, whichever way the grammar wrote it. This is **not** its gate.
+    The items a way *performs*. This is **not** its gate.
 
-    An alternative says its parts by name. Those are what the way does, what the way calls, and where it continues. A
-    sequence says them in a row instead. A question that walks a way wants the parts in the order the parse performs
-    them. Both forms answer alike. The item a recovery rides is not among them. It answers for a cut rather than running
-    among the parts the way performs.
+    An alternative holds the actions, the call and the continuation in named fields. A sequence says them in a row
+    instead. A question that walks a way wants the parts in the order the parse performs them. Both forms answer alike.
+    The item a recovery rides is not among them. It catches a cut rather than running among the parts the way performs.
 
-    Leaving the gate out is right for a rewrite. A rewrite keeps the gate untouched. It is wrong for a question about
-    what the parse does. The gate decides whether the parse enters the way at all. A walk that cannot see the gate
-    reports what a way would do whatever the input. `_parts_of_way` answers that instead. This is for callers that mean
-    the performing parts and no more.
+    Leaving the gate out is right for a rewrite. A rewrite keeps the gate untouched. Leaving the gate out is wrong for a
+    question about the parse's own run. The gate decides whether the parse enters the way at all. A walk that cannot see
+    the gate reports what a way would do under any input. `_parts_of_way` answers that instead. This is for callers that
+    mean the performing parts and no more.
     """
     if isinstance(way, ir.AlternativeState):
         return (*way.actions, *_calls_of_way(way))
@@ -2717,11 +2711,8 @@ def _items_of_way(way: ir.Node) -> tuple[ir.Node, ...]:
 
 def _calls_of_way(way: ir.AlternativeState) -> tuple[ir.RefCall, ...]:
     """
-    The calls `way` makes, in the order the way makes them. That is a tail call with nothing behind, or a call and where
-    the way continues past that call.
-
-    This is a single checker. An asker that filtered `(first, second)` itself would be a place to be wrong about a way
-    that makes none. So would a test of `first` against `None`, or a `first or second`.
+    The calls `way` makes, in the order the way makes them. The way makes a tail call with nothing behind it. Or the way
+    makes a call and then continues past it.
     """
     return tuple(held for held in (way.first, way.second) if held is not None)
 
@@ -2730,8 +2721,8 @@ def _first_call_of_way(way: ir.AlternativeState) -> ir.RefCall | None:
     """
     The call `way` makes first, or `None` where it makes none.
 
-    The answer is `first` where a way holds one. A way holds the call it makes before continuing there. The answer is
-    `second` otherwise, where the way is a tail call and `second` is the call itself.
+    The answer is `first` where a way makes a call and then continues past it. The answer is `second` otherwise, where
+    the way is a tail call and `second` is the call itself.
     """
     return way.first if way.first is not None else way.second
 
@@ -2742,20 +2733,20 @@ def _parts_of_way(way: ir.Node) -> tuple[ir.Node, ...]:
     order the parse arrives at them.
 
     The parse asks a gate before entering the way. A question that leaves the gate out answers about a way the parse may
-    not take. The gate's guards take no width and sit among a way's parts as readily as an action would. A walk over
-    these therefore asks the guards the question it already asks of what the way performs.
+    not take. The gate's guards take no width and sit among a way's parts as readily as an action would. A walk over a
+    way's parts therefore asks the guards the question it already asks of the way's actions.
 
-    The peek is not among them. The peek is the question about the character in front. It is not something the way does.
-    A walk that took the peek for a part would read a peeked way as one that must take a character. That is what a peek
-    says about the input, and not about the way. `_gated_by` reads the peek.
+    The peek is not among a way's parts. The peek is the question about the character in front. A walk that took the
+    peek for a part would read a peeked way as one that must take a character. A peek says that of the input rather than
+    of the way. `_gated_by` reads the peek.
     """
     return (*way.gate.guards, *_items_of_way(way)) if isinstance(way, ir.AlternativeState) else _items_of_way(way)
 
 
 def _ways_or_items(node: ir.Node) -> tuple[ir.Node, ...]:
     """
-    The ways that a choice offers, or the items that an alternative performs. A walk goes into those. Either form
-    answers.
+    The ways that a choice offers, or the items that an alternative performs. A walk calls this to descend in the
+    machine's form and in the tree's form alike.
 
     A choice says its ways as `alternatives` in the machine's form, and as `items` in the tree's form. An alternative
     says its parts by name. A sequence says them in a row.
@@ -2766,7 +2757,7 @@ def _ways_or_items(node: ir.Node) -> tuple[ir.Node, ...]:
 
 
 def _way_items(body: ir.Node) -> tuple[tuple[ir.Node, ...], ...]:
-    """The ways `body` opens, as runs of items. That is what phase 7 leaves a body holding."""
+    """The ways `body` opens, as runs of items. `one-step-per-item` leaves a body holding these ways."""
     return tuple(_items_of_way(way) for way in (_inner_ways(body) if isinstance(body, ir.BODY_KINDS) else (body,)))
 
 
@@ -2779,8 +2770,8 @@ def _a_way_is_actions_a_call_and_a_continuation(grammar: dict[str, ir.Prod]) -> 
     continues. The continuation holds what comes past the first call. A second call is where to continue, rather than a
     third thing to do.
 
-    This counts by the way rather than by the item in the wrong place. A way is what the minting rewrites. The rest of a
-    way after the split is a way of its own, and the same question goes to that way.
+    This counts by the way rather than by the item in the wrong place. The minting rewrites a way at a time. A way's
+    tail after the split is a way of its own, and the same question goes to that way.
     """
     faults = []
     for name, production in grammar.items():
@@ -2810,12 +2801,12 @@ def _every_body_is_a_choice_or_a_set(grammar: dict[str, ir.Prod]) -> list[str]:
     Check that a body is a choice or a set. Those are the shapes the machine has a state for.
 
     A terminal is a set of characters and no more. Anything else is an ordered list of alternatives, a way of the
-    machine apiece. That is a gate to enter on and the actions it performs. An alternative is also the call it hands
+    machine apiece. A way is a gate to enter on and the actions it performs. An alternative is also the call it hands
     control to, and where the way continues past that call. The recovery rides the push. A loop is such an alternative
     too. The grammar says a run as the ways it holds. The state a run jumps back to is a choice like any other.
 
-    This checks the shape through rather than at the top. A body is canonical where nothing inside it is the tree again.
-    An alternative's actions hold no call, and what it calls is a name.
+    This checks the shape throughout the body rather than at its top. A body is canonical where nothing inside it is the
+    tree again. An alternative's actions hold no call, and what it calls is a name.
     """
     faults = []
     for name, production in grammar.items():
@@ -2834,7 +2825,7 @@ def _every_body_is_a_choice_or_a_set(grammar: dict[str, ir.Prod]) -> list[str]:
                 held is not None and not isinstance(held, ir.RefCall)
                 for held in (alternative.first, alternative.second)
             ):
-                faults.append(f"{name}: an alternative handing control to what is not a name")
+                faults.append(f"{name}: an alternative handing control to a node that is not a name")
     return faults
 
 
@@ -2858,10 +2849,10 @@ def _no_guard_comes_past_an_action(grammar: dict[str, ir.Prod]) -> list[str]:
     Check that no guard comes past an action. A way then asks its guards first. The performing parts come next. The call
     and where it continues come last.
 
-    A guard is what decides. A guard reached past an action decides nothing the parse can act on. The action has already
+    A guard decides. A guard reached past an action decides nothing the parse can act on. The action has already
     happened. Failing there kills the parse. It does not send the parse to another way. In front of the actions, a guard
     a way holds is a guard its gate could take. Behind them is a straight run of things that happen throughout. A way
-    holding no guard at all is the shape this is working towards, and holds trivially.
+    holding no guard at all passes trivially.
 
     A split can therefore cut a way into the part that takes characters and the part that takes none. Such a split walks
     the parts in order and hands a half the parts that belong to it. A guard sitting behind an action belongs to neither
@@ -2884,13 +2875,14 @@ def _guards_in_force(parts: Sequence[ir.Node], at: int, entering: Iterable[ir.No
     The guards that hold where `parts[at]` sits. This is the accessor for "what the parse has asked about this
     position".
 
-    The places saying it agree. The first is what a way entering this production asked where it entered.
-    `_asked_where_entered` works that out, and a caller passes it in. The second is what the gate of the way asks. That
-    gate sits among the parts `_parts_of_way` gives. The third is what a guard already passed over asked. A question
-    that moved from any of those places to any other is the same question. A single walk therefore reads them.
+    The places that record a question about the position agree. The first holds the questions a way entering this
+    production asked where it entered. `_asked_where_entered` works those out, and a caller passes them in. The second
+    holds the questions the gate of the way asks. That gate sits among the parts `_parts_of_way` gives. The third holds
+    the questions a guard already passed over asked. A question that moved from any of those places to any other is the
+    same question. A single walk therefore reads those places.
 
-    A part that takes characters clears them. Past a take the parse is somewhere else. A question asked before the take
-    was about a position the parse has left.
+    A part that takes characters clears the guards in force. Past a take the parse is somewhere else. A question asked
+    before the take was about a position the parse has left.
     """
     held = list(entering)
     for item in parts[:at]:
@@ -2903,10 +2895,10 @@ def _guards_in_force(parts: Sequence[ir.Node], at: int, entering: Iterable[ir.No
 
 def _admits(guard: ir.Node, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
     """
-    The states `guard` lets a parse through in, as a `spaces.SubSpace`.
+    Answer the states in which `guard` lets a parse through, as a `spaces.SubSpace`.
 
-    A guard takes no width. It says something about the state the parse is in, and no more. That is what makes a
-    subspace hold as much of a guard as the axes can. The answer is sound rather than decisive. A constraint it states
+    A guard takes no width. It says something about the state the parse is in, and no more. A subspace can therefore
+    hold as much of a guard as the axes allow. The answer is sound rather than decisive. A constraint the answer states
     is one the guard really makes, and a guard the axes cannot put admits throughout. A way's accepted space therefore
     holds the states the way can succeed in, and may hold more. A state that a gate admits and the space refuses is a
     hole the grammar really has.
@@ -2914,26 +2906,28 @@ def _admits(guard: ir.Node, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
     A pair of shapes admit throughout, and both are losses rather than truths. The guard constrains something the answer
     does not say. The first is a set a peek does not pin down. `_peek_spans` answers `None` for such a set. The second
     is a look-behind at any set but `ns-char`. `ns-char` is the set the `is_after_ns_char` axis names. A comparison is
-    neither. A comparison the grammar makes is an axis. A comparison the grammar does not make raises where this asks
-    it. It does not admit throughout.
+    neither. A comparison the grammar makes is an axis. This function raises on a comparison the grammar does not make.
+    Such a comparison does not admit throughout.
 
-    The grammar has neither loss. A peek pins its set down, and both look-behinds ask about `ns-char`. The grammar holds
-    no guard that admits throughout. That is a fact about the grammar and not about this. The count of guards answering
-    `COMPLETE` says it, rather than an assumption that there are none.
+    The grammar has neither loss. A peek pins its set down, and both look-behinds ask about `ns-char`. The count of
+    guards answering `COMPLETE` shows that the grammar holds no guard that admits throughout.
     """
     return _ADMITS(guard, grammar)
 
 
 def _peeked_admits(guard: ir.LookGuard, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
-    """A lookahead's. That is the characters its set holds. A set the peek does not pin down admits throughout."""
+    """
+    The states a lookahead admits. Those are the characters its set holds. A set the peek does not pin down admits
+    throughout.
+    """
     spans = _peek_spans(guard.item, grammar)
     return spaces.COMPLETE if spans is None else spaces.characters(spans)
 
 
 def _refused_admits(guard: ir.NegLookGuard, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
     """
-    A negative lookahead's. That is the characters the set does not hold. A set the peek does not pin down admits
-    throughout.
+    The states a negative lookahead admits. Those are the characters the set does not hold. A set the peek does not pin
+    down admits throughout.
     """
     spans = _peek_spans(guard.item, grammar)
     return spaces.COMPLETE if spans is None else spaces.not_characters(spans)
@@ -2941,8 +2935,8 @@ def _refused_admits(guard: ir.NegLookGuard, grammar: dict[str, ir.Prod]) -> spac
 
 def _behind_admits(guard: ir.LookBehindGuard, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
     """
-    A look-behind's. That is whether the character behind is an `ns-char`. `ns-char` is the set the grammar looks back
-    at. Another set is no axis `GuardAnswers` names, and admits throughout.
+    The states a look-behind admits. Those turn on whether the character behind is an `ns-char`. `ns-char` is the set
+    the grammar looks back at. Another set is no axis `GuardAnswers` names, and admits throughout.
     """
     spans = _peek_spans(guard.item, grammar)
     named = _peek_spans(ir.RefCall(name="ns-char", args=()), grammar)
@@ -2952,7 +2946,7 @@ def _behind_admits(guard: ir.LookBehindGuard, grammar: dict[str, ir.Prod]) -> sp
 
 def _quantity(value: ir.Node) -> str | None:
     """
-    The parse's quantity `value` reads. The name is a word. The answer is `None` where `value` reads none of them.
+    The parse's quantity `value` reads. The name is a word. The answer is `None` where `value` reads no quantity.
 
     The indentation and the floor read either way. A read is the register the parse holds, or the parameter a call
     passed before the lowering that made it a register. Both forms are the same quantity.
@@ -2970,9 +2964,9 @@ def _quantity(value: ir.Node) -> str | None:
     return None
 
 
-# The axis a comparison the grammar makes is, and which side of it that comparison admits. The comparisons are here, and
-# they are exact. A `GuardAnswers` says how the quantities compare. The states that a comparison lets a parse through in
-# are therefore the answers that agree with it, no more and no fewer.
+# An entry names the axis of a grammar comparison and the side that comparison admits. The comparisons are here, and
+# they are exact. A `GuardAnswers` says how the quantities compare. A comparison lets a parse through in exactly the
+# answers that agree with it, no more and no fewer.
 _COMPARES = {
     ("zero", "<", "the indentation"): ("is_indented", True),
     ("the indentation", "<=", "zero"): ("is_indented", False),
@@ -2986,9 +2980,9 @@ _COMPARES = {
     ("the floor", "<=", "the indentation"): ("is_indent_at_least_the_floor", True),
 }
 
-# The form this writes a quantity in, for a comparison minted rather than read. A quantity gets a form apiece. A reader
-# takes the indentation and the floor either as the register the parse holds or as the parameter a call passed. By the
-# time anything mints a comparison the parameters are gone.
+# The module writes a quantity in this form for a comparison it mints rather than reads. A quantity gets a form apiece.
+# A reader takes the indentation and the floor either as the register the parse holds or as the parameter a call passed.
+# By the time anything mints a comparison the parameters are gone.
 _QUANTITY_NODES = {
     "zero": ir.LitValue(value=0),
     "the indentation": ir.IndentValue(),
@@ -3015,13 +3009,12 @@ def _compared_admits(
     guard: ir.IsLessThanGuard | ir.IsLessEqualGuard, said: str, _grammar: dict[str, ir.Prod]
 ) -> spaces.SubSpace:
     """
-    A comparison admits the answers that agree with the comparison as it asks.
+    A comparison admits an answer that agrees with the question it asks.
 
-    A shape `_COMPARES` does not name raises rather than admitting throughout. The quantities run without bound, and no
-    quantity is a coordinate. An axis exists where the grammar asks for one. A comparison asked here that no axis states
-    is a question the space cannot put. That is news about the space, rather than a fact about the grammar. A guard
-    admitted throughout joins the guards that constrain nothing. Read that way it would report blindness as a decision
-    the grammar cannot make.
+    A shape `_COMPARES` admits throughout. It does not name a raise. The quantities run without bound, and no quantity
+    is a coordinate. An axis exists where the grammar asks for one. A comparison asked here may name no axis the grammar
+    states. Such a comparison is a question the space cannot put. A guard that admits throughout joins the guards that
+    constrain nothing. Such a guard hides a case the grammar cannot decide.
     """
     shape = (_quantity(guard.a), said, _quantity(guard.b))
     if shape not in _COMPARES:
@@ -3031,17 +3024,17 @@ def _compared_admits(
 
 
 def _is_less_than_admits(guard: ir.IsLessThanGuard, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
-    """A `(<)`'s. `_compared_admits` answers under the axis the quantities name."""
+    """The states a `(<)` admits. `_compared_admits` answers under the axis the quantities name."""
     return _compared_admits(guard, "<", grammar)
 
 
 def _is_less_equal_admits(guard: ir.IsLessEqualGuard, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
-    """A `(<=)`'s, read as `_is_less_than_admits` reads a `(<)`'s."""
+    """The states a `(<=)` admits. `_is_less_than_admits` reads a `(<)` the same way."""
     return _compared_admits(guard, "<=", grammar)
 
 
 _ADMITS: ir.Question[spaces.SubSpace] = ir.Question(
-    "the states a guard lets a parse through in, as a `spaces.SubSpace` of the states it really admits",
+    "the states a guard lets a parse through in, as a `spaces.SubSpace` of the states the guard really admits",
     {
         ir.LookGuard: _peeked_admits,
         ir.NegLookGuard: _refused_admits,
@@ -3062,8 +3055,7 @@ def _accepted_part(part: ir.Node, grammar: dict[str, ir.Prod], known: dict[str, 
     takes none.
 
     A call answers from `known`, what the fixpoint below has reached for its production. A take of a set answers with
-    that set. A take of the character its gate found answers throughout. The gate narrowed the set, and the walk holds
-    that already.
+    that set. A take of the character its gate found answers throughout.
     """
     return _ACCEPTED_PART(part, grammar, known)
 
@@ -3084,8 +3076,9 @@ _ACCEPTED_PART: ir.Question[spaces.SubSpace] = ir.Question(
         ir.CONSUMES_NOTHING: lambda part, grammar, known: spaces.NOWHERE,
         # A set that is the take itself names its own characters.
         ir.CharSet: lambda part, grammar, known: _accepted_characters(part, grammar),
-        # A consume names the characters it takes, whatever gate is in front. A reader takes the field by name, and the
-        # name belongs to the kind. A trimmed run names the field `full`, and another kind names it `set`.
+        # A consume names the characters it takes, under any gate in front. A reader takes the field holding the set by
+        # name, and the kind of consume decides that name. A trimmed run names the field `full`, and another kind names
+        # it `set`.
         (ir.ConsumeCharAction, ir.ConsumeLimitedSpanAction, ir.ConsumeSpanAction): (
             lambda part, grammar, known: _accepted_characters(part.set, grammar)
         ),
@@ -3102,17 +3095,18 @@ def _accepted_way(
 
     Read off what the way consumes and no more. **A guard says nothing here.** The gated space answers what admits a
     way. A consume names the set the grammar wrote it to take. The pair therefore comes off different halves of the way,
-    and either can hold the other to account. Mixing them would narrow this by the gate in front. This would then
-    restate the gate, and a pair of answers that cannot disagree says nothing when they agree.
+    and either can hold the other to account. Mixing the guard and the consume would narrow the answer by the gate in
+    front, and the answer would then restate the gate. Yet a pair of answers that cannot disagree says nothing when they
+    agree.
 
-    A part contributes the states it consumes a character in. A part that cannot consume none ends the walk. The parts
-    behind it go unreached with the way still unentered. A part that may consume nothing leaves the walk going, and what
-    sits behind it comes in too.
+    A part contributes the states it consumes a character in. A part that must consume a character ends the walk. The
+    walk reaches no part behind it. A part that may consume nothing leaves the walk going, and what sits behind it comes
+    in too.
 
     This is empty where a way consumes nothing at all. That is the answer rather than a gap. A way that succeeds without
-    consuming succeeds at any position. That says nothing about anything. Whether a way can do so is `_split_ways`'
-    answer already. The pair stays apart. A caller reaching such a callee continues and adds what sits behind it. That
-    is what makes the pair compose.
+    consuming succeeds at any position. Whether a way can do so is `_split_ways`' answer already. This walk and
+    `_split_ways` stay apart. A caller reaching such a callee continues and adds what sits behind it. The pair compose
+    on that ground.
     """
     consumes = spaces.NOWHERE
     for part in _parts_of_way(way):
@@ -3146,14 +3140,14 @@ def _accepted_spaces(grammar: dict[str, ir.Prod]) -> dict[str, spaces.SubSpace]:
     `{name: spaces.SubSpace}`, the states a production can begin taking a character in.
 
     This is a least fixed point from `NOWHERE`. A production reaching back to itself contributes nothing until some way
-    of it says otherwise. A cycle in the grammar takes a character somewhere inside it. The take is what lifts the
-    cycle, and the answers settle. Starting anywhere else would have a cycle answer for itself. An unknown treated as a
-    poison does not lift. A start that admits throughout would say a production accepts what nothing in it takes.
+    of it says otherwise. A cycle in the grammar takes a character somewhere inside it. That take lifts the cycle, and
+    the answers settle. Starting anywhere else would let a cycle decide itself. An unknown treated as a poison does not
+    lift. A start that admits throughout would say a production accepts what nothing in it takes.
 
     A worklist drives this, rather than a sweep of the grammar per round. A production's answer can change only where a
     callee's has. A callee that has just grown therefore puts its callers back on the list, and the sweep does not ask
-    the other names again. The sweep takes a name at a time, in whatever order the list gives them. A least fixed point
-    is the same answer whichever route reaches it.
+    the other names again. The sweep takes a name at a time, in the order the list gives them. A least fixed point does
+    not depend on the order of the list.
     """
     ways = _split_ways(grammar)
     callers: dict[str, set[str]] = {}
@@ -3248,7 +3242,7 @@ _CAN_BE_REFUSED: ir.Question[bool] = ir.Question(
         ): True,
         (ir.OptTree, ir.StarTree): False,
         ir.PlusTree: lambda node, grammar, seen: _can_be_refused(node.item, grammar, seen),
-        # A count of none takes nothing whatever happens. any other count turns on what it repeats.
+        # A count of none takes nothing under any input. any other count turns on what it repeats.
         ir.RepTree: lambda node, grammar, seen: not (
             isinstance(node.count, ir.LitValue) and isinstance(node.count.value, int) and node.count.value <= 0
         )
@@ -3267,7 +3261,7 @@ _CAN_BE_REFUSED: ir.Question[bool] = ir.Question(
             node.item is not None and _can_be_refused(node.item, grammar, seen)
         ),
         ir.BindTree: lambda node, grammar, seen: _can_be_refused(node.cond, grammar, seen),
-        # A switch the specialization settles. a switch goes back only where the branches it could take go back.
+        # The specialization settles a switch. A switch goes back only where the branches it could take go back.
         ir.CaseTree: lambda node, grammar, seen: all(
             _can_be_refused(item, grammar, seen)
             for item in [branch.item for branch in node.branches] + ([node.default] if node.default else [])
@@ -3278,18 +3272,19 @@ _CAN_BE_REFUSED: ir.Question[bool] = ir.Question(
 
 def _every_option_is_reachable(grammar: dict[str, ir.Prod]) -> list[str]:
     """
-    Check that some input reaches a way a choice offers, the ways in front of it being ones an input can refuse.
+    Check that some input reaches a way a choice offers. An input can refuse the ways in front of such a way.
 
     A choice goes on to the next way exactly where the parse refuses the way in front. A way that no input refuses is
     therefore the last way the machine takes. Such a way matches throughout, or its failure is the error a commit names.
-    A way behind it is a way nothing can enter. Backtracking hides the first half. The way matches and the continuation
-    fails. The parse returns and tries the next way. A machine that does not return simply loses them.
+    A way behind it is a way nothing can enter. Backtracking hides the case where the way matches. The way matches and
+    the continuation fails. The parse returns and tries the next way. A machine that does not return loses the ways
+    behind.
 
     A choice may therefore hold a single such way, and it must come last. There it is the fallthrough a choice ends in.
-    A pair of them is worse than undecidable. The second is unreachable. The grammar leaves which of the pair the author
-    meant open.
+    A pair of such ways is worse than undecidable. The second is unreachable. The grammar leaves which of the pair the
+    author meant open.
 
-    A different question is what the gates *leave* undecided, and no invariant here asks it.
+    A different question asks what the gates *leave* undecided, and no invariant here asks it.
     """
     faults = []
     for name, production in grammar.items():
@@ -3316,11 +3311,12 @@ def _mint_continuations(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str,
     the call therefore belong to that continuation rather than to the way. `a P1 b P2 c` becomes `a` and the call `P1`.
     A production of its own then holds `b P2 c`. That splits the same way until no part comes past a call. A way ending
     in a pair of calls is already that shape. The second call is where to continue rather than a third thing to do. This
-    mints no production for it.
+    function mints no production for the second call.
 
-    A scope opened before the call and closed after it comes apart here. That is what phase 6 was for. The pairs hold on
-    the stack the parse holds rather than in the frame of the running match. A `PushCodeAction` left in the way and its
-    `PopCodeAction` moved into the continuation therefore still find one another.
+    A scope opened before the call and closed after it comes apart here. `lower-scopes` already split that scope apart.
+    A Push and Pop pair sits on the stack the parse holds, rather than in the frame of the running match. The
+    `PushCodeAction` stays in the way, and its `PopCodeAction` moves into the continuation. The pair still finds one
+    another.
     """
     minted = {}
 
@@ -3356,15 +3352,15 @@ def _mint_continuations(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str,
 
 def _as_alternative(way: ir.Node, recovery: ir.Node | None = None) -> ir.AlternativeState:
     """
-    A way of a body in the machine's form. The alternative holds the actions the way performs, the call the way hands
-    control to, and where the way continues.
+    Represent a way of a body in the machine's form. The alternative holds the actions the way performs, the call the
+    way hands control to, and where the way continues.
 
     A way with a single call is a tail-goto, and that call is where it continues. With a pair, the first is the call the
-    way comes back from and the second is where the way goes then. A recovery rides whichever of the pair holds the call
-    it protects. A way with a single call and a recovery is therefore a tail-goto like any other.
+    way comes back from and the second is where the way goes then. A recovery rides the member of the pair holding the
+    call it protects. A way with a single call and a recovery is therefore a tail-goto like any other.
 
     The gate is empty here. The parse enters a way on a question about the character in front, and the hoist answers
-    that. Until then the parse tries the alternatives in order. The tree said that too.
+    that. Until the hoist runs, the parse tries the alternatives in order.
     """
     items = way.items if isinstance(way, ir.SeqTree) else (way,)
     calls = tuple(item for item in items if isinstance(item, ir.RefCall))
@@ -3380,8 +3376,8 @@ def _build_alternatives(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str
 
     This is a change of form and not of meaning. By the time it runs, a body already *is* a choice of ways. A way is
     actions, a call and a continuation. The interpreter reads an alternative as exactly the sequence the tree wrote.
-    That is the gate's guards, then the actions, then the call with its continuation. The gain is that the shape says
-    what the machine does rather than leaving a reader to work it out. A question from here on rests on that.
+    That is the gate's guards, then the actions, then the call with its continuation. A question from here on rests on
+    that.
     """
 
     def told(production: ir.Prod) -> ir.Prod:
@@ -3404,19 +3400,18 @@ def _every_ungated_way_has_actions_or_a_call(grammar: dict[str, ir.Prod]) -> lis
     """
     Check that a way with no gate does actions or makes a call, and not both. A gate can then still reach the way.
 
-    A way with no gate is a way still waiting for one. There are a pair of ways to give it one. The first hoists a guard
-    up out of its callee. The second writes the callee's ways into it. Both need the callee's guards to reach where the
-    parse enters the way. The way's actions tell the pair apart. A guard crosses an action, or it provably stays put.
-    `GUARD_CROSSES_ACTION` says which. A guard behind an action that refuses it is a guard nothing can bring up. Such a
-    way is a way nothing can gate.
+    A way with no gate is a way still waiting for one. A pair of ways gives it one. The first hoists a guard up out of
+    its callee. The second writes the callee's ways into it. Both need the callee's guards to reach where the parse
+    enters the way. The way's actions tell the pair apart. A guard crosses an action, or it provably stays put.
+    `GUARD_CROSSES_ACTION` says which. An action that sits in front of a guard can refuse it, and such a guard is a
+    guard nothing can bring up. Such a way is a way nothing can gate.
 
-    Of a way that has a gate this asks nothing. The parse enters such a way on the questions that way asks. The way does
-    what it does, and calls. The machine runs that as a single edge. This therefore empties itself.
-    `every-conditional-way-is-gated` at none leaves no ways for this to be about.
+    This check asks nothing of a way that has a gate. The parse enters such a way on the questions that way asks. The
+    way performs its actions, and then calls. The machine runs that as a single edge. `every-conditional-way-is-gated`
+    at none leaves no ungated way, and this check then has no way to judge.
 
     A continuation is not a call. The parse enters a continuation where the callee left off, rather than where the way
-    began. A way that acts and then hands control on is therefore a thing done and then handed on. That is what a way is
-    for.
+    began. A way that acts and then hands control on to a continuation therefore passes.
     """
     return [
         f"{name}: an ungated way acts before it calls. A guard of the callee cannot reach those actions."
@@ -3476,15 +3471,15 @@ def _mint_guard_states(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, 
     Give the parts from a way's first late guard onward a state of their own. The way keeps its gate and the parts up to
     there, then hands control on. The guard and what sits behind it are the minted state's way.
 
-    This is a cut and not a reordering. That is why it is safe. A way's parts run in order. Making the tail a production
-    the parse enters where the way left off is therefore the same run. The guard asks at exactly the position it asked
-    at before. A guard moved past a consume would ask about another character. This has to know nothing about what an
-    action takes or what it writes, and no condition says which guards may go.
+    This is a cut and not a reordering. That is why it is safe. A way's parts run in order. The parse enters the tail as
+    a production where the way left off. The tail therefore runs the same parts in the same order. The guard asks at
+    exactly the position it asked at before. A guard moved past a consume would ask about another character. This has to
+    know nothing of an action's take or of its writes, and no condition says which guards may go.
 
     The way keeps its gate, the actions and a tail call. A tail call is no push, and the scopes close where they closed.
     The call the way made and the recovery riding it go with the tail.
 
-    This runs until nothing moves. A minted state holds the guard at its head and whatever followed. That tail may ask
+    This runs until nothing moves. A minted state holds the guard at its head, and the tail follows. That tail may ask
     late again.
     """
 
@@ -3542,11 +3537,11 @@ def _every_guard_is_in_a_gate(grammar: dict[str, ir.Prod]) -> list[str]:
     Check that a guard a way asks sits in the gate rather than among the actions.
 
     The parse asks a gate where it enters the way. `no-guard-comes-past-an-action` puts a guard a way holds in the run
-    before the way performs anything. The pair therefore sits at the same position, and the gate is the half a caller
-    can see. Left among the actions, the question comes only from entering the way. That is the entering the gate exists
-    to decide.
+    before the way performs anything. The guard and the gate therefore sit at the same position, and the gate is the
+    half a caller can see. A guard left among the actions asks its question only when the parse enters the way. The gate
+    decides that entering.
 
-    A fault per guard rather than per way. A way holding a pair of them owes a pair of moves.
+    The check reports a fault per guard rather than per way. A way holding a pair of guards owes a pair of moves.
     """
     return [
         f"{name}: a way asks a guard among its actions. The gate of that way asks at the same position."
@@ -3567,12 +3562,12 @@ def _hoist_guards_to_gates(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[
 
     A guard takes no width. Asking at the gate and asking where the guard sits are the same question. Anything between
     the pair could change the answer. `no-guard-comes-past-an-action` leaves a guard in the run before the way performs
-    anything, and the run between is empty. That is the argument. It is why this needs no account of which action writes
-    what a comparison reads, nor of what commits where.
+    anything, and the run between is empty. That is the argument. This therefore needs no account of which action writes
+    a value a comparison reads, and no account of the commits and their places.
 
-    The gain is that the question sits in the field a caller can see. A guard among the actions comes only from entering
-    the way. In the gate the guard decides that entering. A lift can also take the guard to the ways that call the
-    production.
+    The gain is that the question sits in the field a caller can see. A caller reaches a guard among the actions only
+    after it enters the way. In the gate the guard decides that entering. A lift can also take the guard to the ways
+    that call the production.
     """
 
     def hoisted(way: ir.AlternativeState) -> ir.AlternativeState:
@@ -3607,15 +3602,14 @@ def _merge_gate_peeks(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, 
     Say a gate's questions about the character in front of it as one.
 
     A pair of peeks in a gate ask about the same character at the same position. The sets therefore say between them
-    what a single set says. The set the `LookGuard`s admit together is what they come to. The set any `NegLookGuard`
-    refuses stays refused. A gate holding both admits the first less the second. The gate keeps whatever else it holds.
-    That is the character behind, where the parse is in the line, and how the indentation compares. Those are about
-    something other than this character.
+    what a single set says. The `LookGuard`s together admit the intersection of their sets. The set any `NegLookGuard`
+    refuses stays refused. A gate holding both admits the first less the second. The gate keeps its other guards. They
+    ask about the character behind, where the parse is in the line, and how the indentation compares.
 
-    A gate reading ahead twice in a way this cannot say as a single set is a fault, and not a shape to leave in place.
-    An `EndOfStreamGuard` holds no set. A fold into a `LookGuard` is impossible, and it cannot sit beside one. The
-    machine would ask twice about a character the parse reads once. The grammar would not say which answer the machine
-    acts on.
+    A gate may read ahead twice where no single set says both reads. Such a gate is a fault rather than a shape to leave
+    in place. An `EndOfStreamGuard` holds no set. It does not fold into a `LookGuard`. It does not sit beside a
+    `LookGuard` either. The machine would ask twice about a character the parse reads once. The grammar would not say
+    which answer the machine acts on.
     """
 
     def merged(way: ir.AlternativeState) -> ir.AlternativeState:
@@ -3626,7 +3620,9 @@ def _merge_gate_peeks(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, 
             return way
         if len(looks) + len(nots) != len(ahead):
             kinds = ", ".join(sorted(type(guard).__name__ for guard in ahead))
-            raise AssertionError(f"a gate reads ahead as {kinds}. That form asks two questions about one character.")
+            raise AssertionError(
+                f"a gate reads ahead as {kinds}. That form asks a pair of questions about a single character."
+            )
         rest = [guard for guard in way.gate.guards if not isinstance(guard, (ir.LookGuard, ir.NegLookGuard))]
         refused = chars.merged_spans([span for guard in nots for span in getattr(guard.item, "spans")])
         if looks:
@@ -3657,14 +3653,14 @@ def _every_gate_looks_ahead_at_most_once(grammar: dict[str, ir.Prod]) -> list[st
     """
     Check that a gate reads the character in front of the parse at most once.
 
-    These are questions about the same characters at the same position. A pair of them in a gate is therefore a single
-    question said twice. A pair of `LookGuard`s is the set they both admit. A `LookGuard` beside a `NegLookGuard` is the
-    set the first admits and the second refuses. A pair of `NegLookGuard`s is the set neither admits. A gate that keeps
-    them apart makes the machine ask twice what a single question answers. It also makes a question about what admits a
-    way take the guards together first.
+    The lookahead guards ask about the same character at the same position. A pair of them in a gate is therefore a
+    single question said twice. A pair of `LookGuard`s is the set they both admit. A `LookGuard` beside a `NegLookGuard`
+    is the set the first admits and the second refuses. A pair of `NegLookGuard`s is the set neither admits. A gate that
+    keeps them apart makes the machine ask twice what a single question answers. A question about the set admitting a
+    way then takes the guards together first.
 
-    This is only about what reads ahead. A look behind is about something else. So are where the parse is in the line
-    and how the indentation compares. A gate may hold such a guard beside its lookahead.
+    This covers the lookahead. A look behind is about something else. So are where the parse is in the line and how the
+    indentation compares. A gate may hold such a guard beside its lookahead.
     """
     return [
         f"{name}: a gate reads what is in front of it {held} times, where once would say the same"
@@ -3683,12 +3679,12 @@ _EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE = _Invariant(
 
 def _decided_ways(grammar: dict[str, ir.Prod]) -> dict[str, tuple[ir.AlternativeState, ...]]:
     """
-    The ways that something decides between, as `{name: ways}`.
+    The ways a production decides between, as `{name: ways}`.
 
     A body offering a single way is no decision. A caller reaches such a way by calling the production rather than by
     picking a way. The last way of a choice is that choice's else. The parse enters that way where the ways in front
-    refused, rather than on a question of its own. A machine has to tell the ways in front apart. This says that once
-    for the askers.
+    refused, rather than on a question of its own. A machine has to tell the ways in front apart. This function tells
+    those ways apart once, and callers reuse that answer.
     """
     return {
         name: production.body.alternatives[:-1]
@@ -3699,11 +3695,11 @@ def _decided_ways(grammar: dict[str, ir.Prod]) -> dict[str, tuple[ir.Alternative
 
 def _ungated_ways(grammar: dict[str, ir.Prod]) -> list[tuple[str, ir.AlternativeState]]:
     """
-    The gateless ways that something decides to enter, as `(name, way)` pairs.
+    The gateless ways a production decides to enter, as `(name, way)` pairs.
 
-    The meaning of "ungated", asked once and read by the askers. It is a way something decides between whose own gate
-    holds no guard, and where some path into the production asked none. A guard asked where the parse enters the
-    production asks at the position the way begins at.
+    This function says once what "ungated" means, and callers reuse that answer. An ungated way is a way a production
+    decides between. Its own gate holds no guard, and some path into the production asked none. The parse enters the
+    production where the way begins. A guard asked there is a guard asked at the way's start.
     """
     entering = _asked_where_entered(grammar)
     return [
@@ -3718,27 +3714,26 @@ def _every_conditional_way_is_gated(grammar: dict[str, ir.Prod]) -> list[str]:
     """
     Check that a way something decides to enter has a gate.
 
-    A machine takes a way by asking the gate before entering. A way the gate says nothing about is a way the machine
-    would have to try and give back. That is the backtracking the whole shape is for getting rid of. The gate's contents
-    come second. A guard is a question the machine can put at that position. That is the character in front or the
-    character behind. It is whether the input holds any more, where the parse is in the line, or how the indentation
-    compares. `every-peek-is-a-character-set` says the machine can answer at all. That invariant holds of a lookaround
-    wherever it appears, and a gate is such a place.
+    A machine takes a way by asking the gate before entering. Take a way the gate says nothing about. The machine would
+    have to try that way and give it back. The gate's contents come second. A guard is a question the machine can put
+    where the way begins. A guard names the character in front or behind. The guard also asks whether more input
+    remains, the line position, or how indentation compares. `every-peek-is-a-character-set` says the machine can answer
+    at all. That invariant holds of a lookaround wherever it appears, and a gate is such a place.
 
     The question is separate from the place somebody asked it. Take a guard the ways entering this production asked.
     That guard asks at the position where the parse enters this way. `_asked_where_entered` says so. A hoist that takes
-    a guard up to the callers has moved the guard. It has not lost it. A way is therefore gated where its gate holds a
-    guard *or* the paths into that way asked one. `every-consume-is-protected-by-a-gate` accepts a question a call up
-    the same way.
+    a guard up to the callers moves the guard rather than losing it. A way is therefore gated where its gate holds a
+    guard *or* the paths into that way asked one. `every-consume-is-protected-by-a-gate` accepts a question that a call
+    further up asked in the same way.
 
-    A pair of shapes are not a decision. This asks nothing of them. The first is a way nothing chooses to enter. That is
-    a body offering a single way. A caller reaches it by calling the production and not by picking a way. The
-    continuation that pops what a consuming production opened is such a way, and so are the root and the recovery. The
-    second is the last way of a choice. That way is the choice's else. An empty gate there is the fallthrough. Something
-    has to happen where no gate fired.
+    A pair of shapes are not a decision. This asks nothing of that pair. The first is a way nothing chooses to enter.
+    That is a body offering a single way. A caller reaches it by calling the production and not by picking a way. A
+    consuming production opens a scope, and its continuation pops that scope. This continuation is such a way. The root
+    and the recovery are such ways as well. The second is the last way of a choice. `_decided_ways` calls that way the
+    choice's else. An empty gate there is the fallthrough. The parse still enters the choice's last way where no gate
+    fired.
 
-    Whether the gates of a choice tell its ways apart is a later question and not this one. This asks only that a way
-    something decides between has a gate.
+    Whether the gates of a choice tell its ways apart is a later question.
     """
     return [
         f"{name}: a way nothing has asked anything about, where another way sits behind it"
@@ -3750,9 +3745,7 @@ _EVERY_CONDITIONAL_WAY_IS_GATED = _Invariant("every-conditional-way-is-gated", _
 
 
 # The state the questions below share, per grammar somebody has asked them about. That is the grammar itself and the
-# tables. Keeping the grammar stops a reuse of the key under it. A table is a fixed point over the whole grammar, and
-# this reads both invariants stage by stage. Working the tables out per invariant per stage is what the counting pass
-# would spend.
+# tables. A table is a fixed point over the whole grammar, and the questions below read the tables stage by stage.
 _TABLES: ir.Kept = {}
 
 
@@ -3760,8 +3753,9 @@ def _leaf_tables(
     grammar: dict[str, ir.Prod],
 ) -> tuple[dict[str, spaces.SubSpace], dict[str, tuple[bool, bool, bool]], _Entered]:
     """
-    `(accepted, ways, entering)`, worked out once for a grammar and kept. `accepted` is what a production begins taking.
-    `ways` is which of the pair a production can do. `entering` is what the parse asks on entry.
+    Work out `(accepted, ways, entering)` once for a grammar and keep the result. `accepted` holds the states a
+    production begins taking in. `ways` says whether a production consumes or calls. `entering` holds the questions the
+    parse asks on entry.
     """
     return ir.kept_for(
         _TABLES, grammar, lambda: (_accepted_spaces(grammar), _split_ways(grammar), _asked_where_entered(grammar))
@@ -3770,14 +3764,14 @@ def _leaf_tables(
 
 def _ways_consuming_by_themselves(grammar: dict[str, ir.Prod], ways: _Ways) -> list[tuple[str, ir.AlternativeState]]:
     """
-    The ways whose first part that must consume is an action of their own, as `(name, way)` pairs.
+    The ways whose first action is a consume of their own, as `(name, way)` pairs.
 
-    The parse enters such a way on what that action reads. The walk stops there. Whatever comes past the action has no
-    bearing on the answer. That is more actions, a call, or a continuation. A way that consumes and then calls therefore
-    answers exactly as a way that only consumes.
+    The parse enters such a way on what that action reads. The walk stops there. A call or a continuation may follow
+    that action, and neither changes the answer. A way that consumes and then calls therefore answers exactly as a way
+    that only consumes.
 
-    This leaves out a way whose first take belongs to a callee. The set belongs to that callee, and the callee's ways
-    say it. That is a wider question than this one asks.
+    This leaves out a way whose first take belongs to a callee. The set of characters such a way consumes belongs to
+    that callee, and the callee's ways say it. That is a wider question than this one asks.
     """
     found = []
     for name, production in grammar.items():
@@ -3796,11 +3790,12 @@ def _ways_consuming_by_themselves(grammar: dict[str, ir.Prod], ways: _Ways) -> l
 
 def _gated_by(path: Iterable[ir.Node], way: ir.AlternativeState, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
     """
-    The states that a parse may enter `way` in along a path into its production, as a `spaces.SubSpace`.
+    The states in which a parse may enter `way` along a path into its production, as a `spaces.SubSpace`.
 
-    A path is what `_asked_where_entered` hands back. It is the guards the ways leading here asked, gathered from the
-    last take onward. A caller that consumed before its call asks about somewhere else. The parse asks the way's gate at
-    that same position, and that gate is part of what admits the way. The pair therefore comes together.
+    `_asked_where_entered` hands back a path. That path holds the guards the ways leading here asked since the last
+    take. A caller that consumed before its call asks about somewhere else. The parse asks the way's gate at that same
+    position, and that gate is part of the set admitting the way. The set therefore takes the path's guards and the gate
+    together.
     """
     space = spaces.COMPLETE
     for guard in (*path, *way.gate.guards):
@@ -3819,17 +3814,18 @@ def _accepted_and_gated_charsets_are_equal(grammar: dict[str, ir.Prod]) -> list[
     that is ordinary. `l-folded-content` decides whether a space is here, and its ways both continue into the same tail.
     The way that found a space consumes it. Past that the parse knows no more, and a space may follow again. The way
     that found none consumed nothing, and its `NegLook{' '}` still speaks where the parse enters the tail. The tail's
-    gate admits a tab or a space. That gate is right on the first route and over-wide on the second. Their union is what
-    the tail consumes. A narrower union would say the way consumes characters nothing brings it. A wider union would say
-    the parse enters the way on characters it does not consume.
+    gate admits a tab or a space. That gate is right on the first route and over-wide on the second. The tail consumes
+    their union. A narrower union would say the way consumes characters nothing brings it. A wider union would say the
+    parse enters the way on characters the way does not consume.
 
     The comparison runs answer by answer, and on the characters only. A path may reach a way under fewer answers than
     the way has an opinion about. A caller may know the parse is at a line start where the way asks only about the
-    character. That is the caller knowing more. The pair does not disagree. An answer nothing reaches goes uncompared.
+    character. The caller then knows more than the way, and the caller and the way do not disagree. An answer nothing
+    reaches goes uncompared.
 
-    This asks the ways whose first consume is their own, whatever comes past that consume. A way consuming no character
-    goes unasked. There are no characters for its gate to be equal to. A way whose first consume belongs to a callee
-    goes unasked too.
+    This asks the ways whose first consume is their own, under any actions past that consume. A way consuming no
+    character goes unasked. There are no characters for its gate to be equal to. A way whose first consume belongs to a
+    callee goes unasked too.
     """
     accepted, ways, entering = _leaf_tables(grammar)
     faults = []
@@ -3853,14 +3849,13 @@ _ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL = _Invariant(
 
 def _does_the_same(one: ir.AlternativeState, other: ir.AlternativeState) -> bool:
     """
-    Whether a pair of ways of a choice do the same thing, whichever way the parse enters.
+    Whether a pair of ways of a choice do the same thing. The gate the parse enters on makes no difference.
 
     A machine takes the first way whose gate holds and does not come back. A pair of ways alike but for their gates are
     therefore a single way reached along a pair of routes. `s-separate-lines` runs its flow prefix at a line start and
     at the end of the stream. Its ways perform the same actions and call the same productions. The same thing happens
-    whichever gate answers first, and the parse reads the same input. The input decides nothing here. There is nothing
-    to tell apart. The gates cannot become a single gate. A gate is the guards holding at once, and this is either
-    holding.
+    when either gate answers first, and the parse reads the same input. The input decides nothing here. The gates cannot
+    become a single gate. A gate holds where its guards hold together, and the pair of ways asks that either gate hold.
     """
     return dataclasses.replace(one, gate=ir.GatePart()) == dataclasses.replace(other, gate=ir.GatePart())
 
@@ -3885,26 +3880,26 @@ def _no_choice_ways_partially_overlap(grammar: dict[str, ir.Prod]) -> list[str]:
     Of the ways a pair can relate, only apart and together are of any use. **Apart** is where no state enters both and
     the input itself says which to take. **Together** is where the states enter both. The input says nothing there.
     Something else has to tell the ways apart. **Half apart** is where the machine has to tell a state in the overlap
-    from a state just outside it. That is the shape that makes a machine ask twice where it should ask once, and that a
-    later step would have to name.
+    from a state just outside it. That shape makes a machine ask twice where it should ask once. A later step would have
+    to name the shape.
 
-    Driving this to none leaves a single shape behind. That is a pair of ways entered in exactly the same states. The
-    determinizing has to answer for that shape, and can do so once rather than once per way it half-covers.
+    A grammar passing this check holds no pair half apart. The parse enters both ways of a remaining pair in exactly the
+    same states. The determinizing has to settle that shape, and can do so once rather than once per way it half-covers.
 
-    This reads a way's gate as `accepted-and-gated-charsets-are-equal` reads it. The answer is what the way's gate
-    admits, crossed with what the paths into its production ask together. A guard asked a call up asks at the position
-    the way begins at. The guard narrows the ways of the choice alike, and an overlap outside it is an overlap no parse
-    reaches.
+    This reads a way's gate as `accepted-and-gated-charsets-are-equal` reads it. The answer crosses the states the way's
+    gate admits with the states the paths into its production ask for together. A guard that a call hoists up asks at
+    the position where the way begins. The guard narrows the ways of the choice alike, and an overlap outside it is an
+    overlap no parse reaches.
 
     The choice's else is not among the pair. This asks nothing of it. The else has no gate, and admits any state at all.
     Asked, the else would half overlap the ways in front of it that ask anything. Splitting could not settle that. The
-    parse enters the else in whatever states the ways in front left. That is a shape rather than a question. A machine
-    has to tell apart the ways it decides between. The else is where the machine has failed to.
+    parse enters the else in the states the ways in front left. That is a shape rather than a question. A machine has to
+    tell apart the ways it decides between. The else is where the machine has failed at that.
 
     The checker is exact over the grammar here. `_admits` puts the guards it holds without approximation. A gate is a
     set of characters at this position crossed with the state the parse is in. A `GuardAnswers` holds both. A pair read
     together is therefore together, rather than a guess the determinizing would inherit. A guard admitting throughout
-    would make it a guess, and the grammar holds none. `_admits` says which kinds could be.
+    would make that reading a guess, and the grammar holds none. `_admits` names the kinds a guard can hold.
     """
     faults = []
     spaces_of, decided = _spaces_paths_enter_ways_in(grammar), _decided_ways(grammar)
@@ -3924,9 +3919,9 @@ def _no_choice_ways_partially_overlap(grammar: dict[str, ir.Prod]) -> list[str]:
 _NO_CHOICE_WAYS_PARTIALLY_OVERLAP = _Invariant("no-choice-ways-partially-overlap", _no_choice_ways_partially_overlap)
 
 
-# The states a parse enters a decided way in. `_TABLES` holds a table per grammar. The walk is the expensive one, and
-# the askers ask for it stage by stage. This is therefore kept the way `_leaf_tables` is, rather than walked once per
-# asker.
+# The states a parse enters a decided way in. `_TABLES` holds a table per grammar. The walk behind a table is expensive,
+# and the askers ask for it stage by stage. `_TABLES` keeps the tables the way `_leaf_tables` keeps its own, and no
+# asker walks again.
 _SPACES_PATHS_ENTER_WAYS_IN: ir.Kept = {}
 
 
@@ -3950,17 +3945,17 @@ def _spaces_paths_enter_ways_in(grammar: dict[str, ir.Prod]) -> dict[str, list[s
 
 def _conflicts(grammar: dict[str, ir.Prod]) -> list[tuple[str, int, int]]:
     """
-    `(name, at, behind)`. A way something decides between sits beside a way behind it. The parse enters both in exactly
-    the same states. They do something else there. There is an entry per way behind. A way appears here as often as the
-    machine cannot tell it apart.
+    `(name, at, behind)`. A way that a gate must choose between sits beside the way behind it. The parse enters both in
+    exactly the same states. The pair of ways do different things there. There is an entry per way behind. A way appears
+    here once per way the machine cannot tell it from.
 
     A pair of ways doing the same thing is no conflict, and neither appears here. A way the parse enters in no state at
     all conflicts with nothing. A conflict needs a state where the machine has to choose, and that way has none. A pair
     of ways alike but for their gates is a single way reached along a pair of routes, and `_does_the_same` says so. The
-    same thing happens whichever gate answers first. The input decides nothing between them.
+    same thing happens when either gate answers first, and the input decides nothing between the gates.
 
-    Anything wanting to know what conflicts reads this. `every-choice-way-is-different` counts the ways.
-    `every-conflict-is-a-tail-call` asks where a caller reaches the productions holding them.
+    A caller wanting to know what conflicts reads this. `every-choice-way-is-different` counts the ways.
+    `every-conflict-is-a-tail-call` asks where a caller reaches the productions holding the conflicting ways.
     """
     held, decided = [], _decided_ways(grammar)
     for name, spaced in _spaces_paths_enter_ways_in(grammar).items():
@@ -3978,18 +3973,21 @@ def _conflicts(grammar: dict[str, ir.Prod]) -> list[tuple[str, int, int]]:
 
 def _conflicted_ways(grammar: dict[str, ir.Prod]) -> list[str]:
     """
-    The production holding a way that the parse enters in exactly the same states as a way behind it. There is a name
-    per such way. A production holding a pair of them is therefore named twice.
+    The production holding a way that the parse enters in exactly the same states as a way behind it. Such a way holds a
+    name. A production holding a pair of them is therefore named twice.
 
-    `_conflicts` gives the conflicts. A way appears there once per way the machine cannot tell it from. Here it appears
-    once. The deduplication turns on where the way sits in the production. An asker wants the name rather than the
-    position, and this hands back the name. Both askers count ways, and report the name.
+    `_conflicts` gives the conflicts. A way appears there once per way the machine cannot tell it from. Here the way
+    appears once. The deduplication turns on where the way sits in the production. An asker counts ways and reports the
+    name rather than the position, and this function hands back the name.
     """
     return [name for name, _at in dict.fromkeys((name, at) for name, at, _behind in _conflicts(grammar))]
 
 
 def _offered_ways(body: ir.Node) -> tuple[ir.AlternativeState, ...]:
-    """The ways that a body offers the machine to decide between, none where it is the characters a terminal takes."""
+    """
+    The ways that a body offers the machine to decide between. A body holding the characters a terminal takes offers
+    none.
+    """
     return _OFFERED_WAYS(body)
 
 
@@ -4007,17 +4005,17 @@ def _every_choice_way_is_different(grammar: dict[str, ir.Prod]) -> list[str]:
     Check that no pair of ways something decides between shares a state.
 
     The input says nothing about which way to take where a pair share a state. A machine reading a character and asking
-    a question of it has the same answer for both. The machine takes the way that comes first and gives it back where
-    that was wrong. That is the backtracking the whole shape exists to remove, and the remainder once the ways have
-    gates.
+    a question of it gets the same answer on both. The machine takes the way that comes first and gives it back where
+    that was wrong. The whole shape removes that backtracking, and the ways then have gates.
 
-    `no-choice-ways-partially-overlap` leaves a pair sharing their states or sharing none. That is what makes this a
-    simple question. Without it a way could share some of another's states and not the whole set. Telling those apart
-    would be a question about the overlap rather than about the ways.
+    `no-choice-ways-partially-overlap` leaves a pair sharing their states or sharing none. This question is simple on
+    that ground. Without it a way could share some of another's states and not the whole set. Telling those apart would
+    be a question about the overlap rather than about the ways.
 
     This counts per way rather than per pair. The gating count does the same. A way the parse enters in the states of a
     way behind it is a way no gate can point the machine to. Settling it settles that way. This asks nothing of the
-    choice's else. The else is what happens where the parse took no way in front, rather than a way the input picks.
+    choice's else. The parse takes the else where no way in front fired, rather than on a character the input picks it
+    by.
     """
     return [
         f"{name}: a parse enters a way in the states it enters the way behind" for name in _conflicted_ways(grammar)
@@ -4040,7 +4038,7 @@ def _conflicted_productions(grammar: dict[str, ir.Prod]) -> set[str]:
 
 
 def _ending_in(grammar: dict[str, ir.Prod], held: set[str]) -> set[str]:
-    """`held`, and whatever offers a way that ends in one of them, and so on up."""
+    """`held` plus the productions offering a way that ends in one of them. The sweep then goes on up."""
     held = set(held)
     while True:
         grew = {
@@ -4057,16 +4055,16 @@ def _ending_in(grammar: dict[str, ir.Prod], held: set[str]) -> set[str]:
 
 def _every_conflict_is_a_tail_call(grammar: dict[str, ir.Prod]) -> list[str]:
     """
-    Check that something the machine cannot find its way through is only ever reached at the end of a way.
+    Check that a way calls a conflicting production as its last step.
 
-    A conflict the position cannot decide needs what follows to settle it. The parse can look at what follows only
-    inside the call. A way calling such a production and continuing holds that continuation in its own frame, out of
-    reach of what the call does. The choice then happens in front of the thing that decides it. That is the backtracking
-    `every-choice-way-is-different` counts. The backtracking happens a frame up.
+    A conflict the position cannot decide waits on the text behind it. The parse reads that text inside the call. A way
+    that continues past the call keeps the continuation in its own frame. The call cannot reach that frame. The machine
+    then chooses before it reads the text that decides. `every-choice-way-is-different` counts that backtracking a frame
+    up.
 
-    This counts per call site. That is what a step moves. The step lowers the continuation into what the way calls, and
-    the call becomes the way's end. A conflict reached only at the end holds its own future. The gate telling its ways
-    apart is then a gate the flattening can walk to.
+    This check counts call sites. A step lowers the continuation of a call site into the callee. The call then ends the
+    way. A conflicting production called last holds its own future. The flattening can then walk to the gate inside that
+    production.
     """
     conflicting = _conflicted_productions(grammar)
     return [
@@ -4082,18 +4080,19 @@ _EVERY_CONFLICT_IS_A_TAIL_CALL = _Invariant("every-conflict-is-a-tail-call", _ev
 
 def _productions_decided_from_outside(grammar: dict[str, ir.Prod]) -> set[str]:
     """
-    The productions a continuation has to move into, and whatever sits between them and such a production.
+    The productions a continuation has to move into, and the productions that sit between the continuation and one of
+    them.
 
-    These hold a pair of ways alike until they continue. That is the pair a continuation is any use to. A pair parting
-    at what it calls tells apart by the call rather than by anything behind. Some input refusing the continuation lets
-    the parse settle the pair at that position. The parse takes the way in front, hands its continuation back, and
-    reaches the way behind. The parse takes the way in front where nothing past what the pair shares can come back. The
-    thing telling them apart is not in the production at all. It sits past the whole call, in a frame neither way can
-    see.
+    Such productions hold a pair of ways alike until the pair continues. That is the pair a continuation is any use to.
+    A pair that parts at a call differs by that call rather than by anything behind it. Some input refusing the
+    continuation lets the parse settle the pair at that position. The parse takes the way in front, hands its
+    continuation back, and reaches the way behind. The parse also takes that way where nothing past what the pair shares
+    can come back. The production sitting between the continuation and its target holds nothing that tells the pair
+    apart. It sits past the whole call, in a frame neither way can see.
 
     A production with a way ending in such a call is here too. That is the road the continuation travels. The way ending
-    in such a call holds nothing behind it either. The continuation has to come from further up again, and the copies
-    made on the way down pass it along.
+    in such a call holds nothing behind it either. The continuation has to come from further up again. This step makes
+    copies on the way down, and those copies pass the continuation along.
     """
     held: set[str] = set()
     decided = _decided_ways(grammar)
@@ -4109,37 +4108,36 @@ def _productions_decided_from_outside(grammar: dict[str, ir.Prod]) -> set[str]:
 
 def _lower_continuations_into_conflicts(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Prod]:
     """
-    Say a call of something conflicting that continues somewhere as a call of that thing with the continuation inside
-    it. `A = |actA ->B contA| |...|` with `B` conflicting becomes `A = |actA ->B'|`. `B'` is `B` with `contA` run past
-    what `B` does.
+    Say a call to a conflicting thing that continues somewhere. Restate the call as a call to that thing. Move the
+    continuation inside that thing. `A = |actA ->B contA| |...|` with `B` conflicting becomes `A = |actA ->B'|`. `B'` is
+    `B` with `contA` run past the body of `B`.
 
     A conflict the machine cannot find its way through is settled by what comes after. The caller holds that remainder
-    until this moves it. Moved, the ways of the copy end where the whole call ends. The gate telling those ways apart
-    then sits inside the production holding them. A frame up, those ways could reach nothing of it.
+    until this moves it. Once this moves it, the ways of the copy end where the whole call ends. The gate telling those
+    ways apart then sits inside the production holding them. A frame up, those ways could reach nothing of the gate.
 
     This recurses the continuation into the callee rather than pushing it in front. A way of `B` ending in nothing
     continues to `contA`. A way ending in `R` continues to `R` with `contA` inside it the same way. A tail therefore
     stays a tail, and this adds no frame. A copy a pass makes takes the same continuation. That holds the copies to a
-    copy per production and continuation, rather than a copy per stack a parse could hold. It is also what ends the
-    recursion through the ways. This mints a copy once for a name and a continuation. A way reaching a name this is
-    already copying under the same continuation therefore takes the copy already begun. A terminal offers no way to
-    continue from, and this cannot copy it. That raises. Writing the push it would have to be is the alternative.
+    copy per production and continuation, rather than a copy per stack a parse could hold. The same bound ends the
+    recursion through the ways. This mints a copy once for a name and a continuation. A way may reach a name that this
+    step is already copying under the same continuation. Such a way takes the copy already begun. A terminal offers no
+    way to continue from, and this cannot copy it. This raises there rather than write the push that call would need.
 
-    This moves into the conflicts nothing inside can settle. Those are the conflicts whose ways part over a continuation
-    no input hands back. Whatever sits between such a conflict and a call site holding a continuation is here too. Some
-    input handing the continuation back reaches the way behind, and the parse settles the pair at that position. A move
-    buys nothing there. Moving into whatever conflicts instead trades a call site for a copy of the sites inside the
-    copy. A conflict over another gets a copy per conflict below it.
+    This moves into the conflicts that nothing inside can settle. Those are the conflicts whose ways part over a
+    continuation no input hands back. A production between such a conflict and a call site holding a continuation is
+    here too. Some input handing the continuation back reaches the way behind, and the parse settles the pair at that
+    position. A move buys nothing there. This moves into the conflicting production instead. That trades a call site for
+    a copy of the sites inside the copy. A conflict over another gets a copy per conflict below it.
 
     This leaves a way with a recovery untouched. The recovery rides the call it protects. A cut unwinding out of that
     call stops at a place the frame fixes, and this would take that frame away.
 
-    This runs until nothing moves. A pass takes a continuation a call down. The copies a pass makes take continuations
-    from outside the copies. A pass therefore leaves the same question a level in. This mints a copy once for a
-    production and a continuation, both drawn from what the grammar already holds. That ends it.
+    This runs until nothing moves. A pass takes a continuation down through a call. The copies a pass makes take
+    continuations from outside the copies. A pass therefore leaves the same question a level in. The grammar holds a
+    finite set of productions and continuations. The loop stops when no new pair of them appears.
 
-    A pass ends with a sweep of the productions no root reaches. The merging of duplicates waits for the sweep behind
-    the step. That is the expensive half, and no use to a pass that has not finished.
+    A pass ends with a sweep of the productions no root reaches. The step merges duplicates once the last pass ends.
     """
     for _round in ir.rounds("lower-continuations-into-conflicts"):
         settled = _purged(_lowered_once(grammar, namer))
@@ -4164,7 +4162,7 @@ def _lowered_once(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Pr
     made: dict[tuple[str, str | None], str] = {}
 
     def variant(name: str, tail: str | None) -> str:
-        """`name` with `tail` run past what that production does, minted once per pair and shared by the sites."""
+        """`name` with `tail` run past what that production does. This mints the copy once per pair."""
         if (name, tail) in made:
             return made[name, tail]
         made[name, tail] = fresh = namer.fresh(name)
@@ -4219,7 +4217,7 @@ def _is_alike_up_to_where_it_continues(name: str, one: ir.AlternativeState, othe
         return False
     if one.actions != other.actions:
         if sorted(map(repr, one.actions)) == sorted(map(repr, other.actions)):
-            raise ValueError(f"{name}: two ways doing the same actions in a different order")
+            raise ValueError(f"{name}: a pair of ways doing the same actions in a different order")
         return False
     return True
 
@@ -4239,7 +4237,7 @@ def _is_alike_and_continues_elsewhere(name: str, one: ir.AlternativeState, other
     )
 
 
-# The answers the bookkeeping of a parse gives. These are the bits an action may set. A reader takes the bits off a
+# The bookkeeping of a parse answers with bits, and an action may set those bits. A reader takes the bits off a
 # `spaces.GuardAnswers`. A move that leaves a bit untouched says so by handing that bit back.
 def _bits_of(guard_answers: spaces.GuardAnswers) -> tuple[bool, ...]:
     """The bits `guard_answers` holds, in the order `spaces.GuardAnswers` names them."""
@@ -4263,7 +4261,7 @@ def _taken_apart(
     spans: Sequence[tuple[int, int]],
 ) -> tuple[list[tuple[int, int]], list[tuple[int, int]], list[tuple[int, int]]]:
     """
-    `(the breaks, the mark, the rest)` of a consumed set, the kinds of take as intervals.
+    Split a consumed set by the kind of take into `(the breaks, the mark, the rest)`, and give a kind as intervals.
 
     A set may hold more than a single kind. The scalar content classes hold the byte-order mark in their upper range
     beside the content characters. A consume of such a set therefore reads as any of the kinds.
@@ -4271,9 +4269,9 @@ def _taken_apart(
     That is deliberately wider than the parse for the mark. A mark takes no column only where the consume names it and
     no more. `interpreter._is_only_the_mark` asks the set rather than the character. A set holding the mark among a
     scalar's content therefore takes a column there. The checker below admits both outcomes for it. A space wider than
-    the parse says a parse may reach a state it cannot reach. That costs the sharpness of whatever a reader takes off
-    it, and cannot make an assertion fire. Splitting a set by what its characters are is what the checker can see. The
-    grammar wrote the consume for a particular kind. The checker cannot see which kind.
+    the parse says a parse may reach a state it cannot reach. That costs the sharpness of the answer a reader takes off
+    it, and cannot make an assertion fire. The checker sees the characters of a set. The grammar wrote the consume for a
+    particular kind. The checker cannot see which kind.
     """
     breaks = chars.intersected_spans(spans, list(_LINE_BREAK_SPANS))
     mark = chars.intersected_spans(spans, list(_BYTE_ORDER_MARK_SPANS))
@@ -4305,13 +4303,13 @@ def _consumed(
     """
     The answers a consume of `spans` leaves a parse with. `limit` bounds how many characters the consume may take.
 
-    A break puts the parse at the start of the next line. Whatever the line before consumed belongs elsewhere. The mark
-    takes no column and leaves the line start as it was, and a length reads across no mark. Anything else advances the
-    column by the characters taken. That count is the consumed length.
+    A break puts the parse at the start of the next line. The characters the line before consumed belong elsewhere. The
+    mark takes no column and leaves the line start as it was, and a length reads across no mark. A character that is
+    neither a break nor the mark advances the column by the characters taken. That count is the consumed length.
 
-    `behind` is what may sit behind the parse once the consume is done, where that is narrower than what it takes. A
-    trimmed consume gives its trailing characters back. The parse therefore has no such character behind it. The caller
-    passing `behind` is that consume. `check_dead_code` declares that kind unbuilt.
+    `behind` names what may sit behind the parse after the consume. A caller passes `behind` where that set is narrower
+    than the set the consume takes. A trimmed consume gives its trailing characters back. The parse therefore has no
+    such character behind it. The caller passing `behind` is that consume. `check_dead_code` declares that kind unbuilt.
     """
     breaks, mark, rest = _taken_apart(spans)
     answers = _ns_answers(rest if behind is None else behind, grammar) if rest else ()
@@ -4364,7 +4362,8 @@ def _any_indent(_quantities: spaces._Quantities) -> range:
 
 def _any_length(_quantities: spaces._Quantities) -> Iterable[int]:
     """
-    The values a length may hold. They run from none up to the top. That is the floor, and what the last consume took.
+    The values a length may hold. They run from none up to the top. The empty length is the floor, and the top is the
+    length the last consume took.
     """
     return range(0, spaces.TOP + 1)
 
@@ -4397,7 +4396,7 @@ def _taken_spans(item: ir.Node, grammar: dict[str, ir.Prod]) -> list[tuple[int, 
 
 
 def _took_one_character(action: ir.ConsumeCharAction, grammar: dict[str, ir.Prod]) -> _Moved:
-    """The answers taking the character the gate found leaves a parse with."""
+    """The answers a parse holds after it takes the character the gate found."""
     return _consumed(_taken_spans(action.set, grammar), 1, grammar)
 
 
@@ -4409,7 +4408,7 @@ def _took_no_character(_action: ir.Node, _grammar: dict[str, ir.Prod]) -> _Moved
 
 
 def _took_a_run(action: ir.ConsumeSpanAction, grammar: dict[str, ir.Prod]) -> _Moved:
-    """The answers a maximal consume of the set leaves a parse with. The limits of the line bound it."""
+    """The answers a maximal consume of the set leaves a parse with. The limits of the line bound the run."""
     return _consumed(_taken_spans(action.set, grammar), spaces.TOP, grammar)
 
 
@@ -4451,18 +4450,18 @@ def _pushed_indent(action: ir.PushIndentAction, _grammar: dict[str, ir.Prod]) ->
     if level == ir.AddValue(a=ir.IndentValue(), b=ir.GlobalValue(name="m")):
         # The detected indent is no less than `0`. what is pushed is no less than what it displaces
         return _moved("n", lambda quantities: range(quantities.n, spaces.TOP + 1))
-    raise ValueError(f"this question has no answer for an indentation of {level}")
+    raise ValueError(f"this question covers no indentation of {level}")
 
 
 def _popped_indent(action: ir.PopIndentAction, _grammar: dict[str, ir.Prod]) -> _Moved:
     """
-    The answers taking the indentation `action` names off leaves a parse with. The push it undoes displaced an
-    indentation, and this puts that back.
+    The answers a parse holds once it takes off the indentation `action` names. `action` undoes a push, and that push
+    displaced an indentation. This function restores that indentation.
 
-    The level is what its push worked out *from the indentation this restores*. The arithmetic runs the other way where
-    the level names that indentation, and gives it back exactly. A level naming the column, the floor or a literal says
-    nothing about what comes back. The same push runs over a wider indentation, an equal indentation and a narrower one.
-    This therefore opens the axes reading the indentation.
+    The push worked the level out *from the indentation this restores*. A level can name that indentation. The
+    arithmetic then runs backward and restores the indentation exactly. A level naming the column, the floor or a
+    literal says nothing of the indentation the push displaced. The same push runs over a wider indentation, an equal
+    indentation and a narrower one. This function therefore opens the axes reading the indentation.
     """
     level = action.level
     if level == ir.LitValue(value=None):
@@ -4492,12 +4491,12 @@ def _opened_a_turn(_action: ir.Node, _grammar: dict[str, ir.Prod]) -> _Moved:
 
 def _closed_a_turn(_action: ir.Node, _grammar: dict[str, ir.Prod]) -> _Moved:
     """
-    The answers closing a turn that must take a character leaves a parse with. The region the turn was inside answers
-    again.
+    Update the answers a parse holds after closing a turn that must take a character. Answer again for the region around
+    that turn.
 
-    The opens hold positions that do not fall going up the parse's stack. A character taken since the inner open is
-    therefore a character taken since the outer open. True stays true. The outer open keeps its own answer where the
-    parse took nothing since the inner open. The parse took something before the inner open was ever reached.
+    Positions of opens do not fall going up the stack. A character taken since the inner open counts as one taken since
+    the outer open. An outer open already answering true keeps answering true. An outer open keeps its own answer where
+    the parse takes nothing since the inner open closes. The parse took something before it reached the inner open.
     """
 
     def move(
@@ -4511,7 +4510,7 @@ def _closed_a_turn(_action: ir.Node, _grammar: dict[str, ir.Prod]) -> _Moved:
 
 
 def _changed_nothing(_action: ir.Node, _grammar: dict[str, ir.Prod]) -> _Moved:
-    """Exactly where it was. An action that moves no axis comes to this."""
+    """An action that moves no axis leaves the answers of a parse unchanged."""
     return _MOVES_NOTHING
 
 
@@ -4522,7 +4521,7 @@ def _wrote_a_variable(action: ir.SetVarAction, _grammar: dict[str, ir.Prod]) -> 
     if action.param != "f":
         return _MOVES_NOTHING
     if not isinstance(action.value, ir.LitValue):
-        raise ValueError(f"this question has no answer for a floor of {action.value}")
+        raise ValueError(f"this question covers no floor of {action.value}")
     written = getattr(action.value, "value")
     assert isinstance(written, int), f"the floor becomes {written!r}, and that value is no indentation"
     return _moved("floor", lambda _quantities: (written,))
@@ -4530,28 +4529,26 @@ def _wrote_a_variable(action: ir.SetVarAction, _grammar: dict[str, ir.Prod]) -> 
 
 def _cleared_a_variable(action: ir.ClearVarAction, _grammar: dict[str, ir.Prod]) -> _Moved:
     """
-    The answers ending `action`'s slot leaves a parse with. Past it nothing holds a value. The axes reading that slot
-    then speak of nothing, and this opens them.
-
-    This opens the axes and does not freeze them. A pushed null indentation does the opposite. There the pop puts the
-    value back, and the axes go on answering for that value. A clear ends the value outright, and the next construct
-    brings a different one. The interpreter holds a read past this to being a fault. It raises where nothing holds a
-    value. This only says the space cannot answer for a value.
+    Clearing a variable ends the value the `action`'s slot held. Past the end of the slot nothing holds a value. The
+    axes reading that slot then speak of nothing. Clearing opens the axes without freezing them. A pushed null
+    indentation does the opposite. There the pop puts the value back, and the axes go on describing that value. A clear
+    ends the value outright, and the next construct brings a different one. The interpreter raises on a read past the
+    clear. The clear only says the space describes no value.
     """
     return _MOVES_NOTHING if action.param != "f" else _moved("floor", _any_length)
 
 
 def _raised_the_floor(action: ir.IncreaseAction, _grammar: dict[str, ir.Prod]) -> _Moved:
-    """The answers raising the floor to the column leaves a parse with. That is what `(increase)` does."""
+    """Give the answers a parse holds once the floor rises to the column. `(increase)` raises the floor that way."""
     if action.param != "f":
         raise ValueError(f"a step increases {action.param} rather than the floor")
     return _moved("floor", lambda quantities: (max(quantities.floor, quantities.column),))
 
 
-# The change performing an action makes to the states a parse may be in. A kind here does not pass on the word of its
-# name. Somebody took the kinds handled by `_changed_nothing` to say so. They write no axis. That is the token under
-# construction, what a failure comes to, and what may not match at a line start. A kind the table does not name raises.
-# An action added to the IR therefore gets an answer here. It does not pass as an action that changes nothing.
+# An action changes the states a parse may be in. A kind here does not pass on the word of its name. The kinds
+# `_changed_nothing` handles write no axis. The axes are the token under construction, what a failure comes to, and what
+# may not match at a line start. A kind the table does not name raises. An action added to the IR therefore gets an
+# answer here. It does not pass as an action that changes nothing.
 _AFTER_ACTION: ir.Question[_Moved] = ir.Question(
     "the answers performing an action leaves a parse with, beside whether it took a character",
     {
@@ -4567,7 +4564,7 @@ _AFTER_ACTION: ir.Question[_Moved] = ir.Question(
         ir.IncreaseAction: _raised_the_floor,
         ir.StartMustConsumeAction: _opened_a_turn,
         ir.EndMustConsumeAction: _closed_a_turn,
-        # The token under construction, and where the cuts fall in its runs.
+        # The axis holds the token under construction and where the cuts fall in its runs.
         ir.EmitAction: _changed_nothing,
         ir.PushCodeAction: _changed_nothing,
         ir.PopCodeAction: _changed_nothing,
@@ -4577,7 +4574,7 @@ _AFTER_ACTION: ir.Question[_Moved] = ir.Question(
         ir.InjectBeforeAction: _changed_nothing,
         ir.CommitProvisionalAction: _changed_nothing,
         ir.ErrorAction: _changed_nothing,
-        # The place a failure comes to, and where the parse answers it.
+        # The axis holds the place a failure comes to and where the parse answers it.
         ir.PushMessageAction: _changed_nothing,
         ir.PopMessageAction: _changed_nothing,
         ir.PushRecoveryAction: _changed_nothing,
@@ -4585,7 +4582,7 @@ _AFTER_ACTION: ir.Question[_Moved] = ir.Question(
         ir.PushBackTrackAction: _changed_nothing,
         ir.PopBackTrackAction: _changed_nothing,
         ir.CutAction: _changed_nothing,
-        # The budget that a committed consume may not pass, and what may not match at a line start.
+        # The axis holds the budget a committed consume may not pass and what may not match at a line start.
         ir.OpenWindowAction: _changed_nothing,
         ir.CloseWindowAction: _changed_nothing,
         ir.SetForbiddenAction: _changed_nothing,
@@ -4610,7 +4607,10 @@ _WHERE_AN_ACTION_LEAVES_A_SPACE: ir.Kept = {}
 
 
 def after_action(action: ir.Node, space: spaces.SubSpace, grammar: dict[str, ir.Prod]) -> spaces.SubSpace:
-    """`space` with `action` performed in it. That is where a parse anywhere in it reaches by doing that."""
+    """
+    Perform `action` in `space` and answer the result. A parse at a place of `space` reaches a place of the answer by
+    performing `action`.
+    """
     if not space:
         return space
     leaves = ir.kept_for(_WHERE_AN_ACTION_LEAVES_A_PARSE, grammar, lambda: _AFTER_ACTION(action, grammar), under=action)
@@ -4634,12 +4634,10 @@ def _through_a_way(
     grammar: dict[str, ir.Prod],
 ) -> tuple[spaces.SubSpace, list[tuple[str, spaces.SubSpace]]]:
     """
-    `(where the way leaves the parse, what it hands its calls)`. `_through_a_way` takes `space` through what the way
-    does.
+    `(where the way leaves the parse, what it hands its calls)`. `_through_a_way` takes `space` along the way's parts.
 
     The actions come first, then the call, then what the way continues to. A part starts where the part in front left
-    the parse. A call leaves the exit of the callee rather than a walk into it. That is what the fixpoint below is for.
-    That is what lets a way run through without a walk of the whole grammar under it.
+    the parse. A call leaves the exit of the callee rather than a walk into it. The fixpoint below supplies that exit.
     """
     handed = []
     space = _after_actions(way.actions, space, grammar)
@@ -4655,10 +4653,10 @@ def _entered_by_matching(grammar: dict[str, ir.Prod]) -> set[str]:
     those reach.
 
     A way names what it calls in `first` and `second`, and the fixpoint takes a space along those. A way matches
-    anything else it names. That is the item a lookaround asks about. It is also what an exclusion forbids.
-    `interpreter._is_forbidden_here` probes that at the line starts, where the grammar names it in no way. It is also
-    the recovery a cut unwinds to. A call reaches none of those. The caller therefore does not say where a parse enters
-    such a production. A parse can begin it at any position.
+    anything else it names. A lookaround asks about such an item. An exclusion forbids such an item.
+    `interpreter._is_forbidden_here` probes an exclusion at the line starts, where the grammar names it in no way. A cut
+    unwinds to such an item as its recovery. A call reaches none of those. The caller therefore does not say where a
+    parse enters such a production. A parse can begin it at any position.
     """
     named = set()
     for production in grammar.values():
@@ -4675,7 +4673,7 @@ def _referenced_from(named: set[str], grammar: dict[str, ir.Prod]) -> set[str]:
     """
     `named`, the productions it references, and the productions those reach in turn.
 
-    The name says what this follows. That is the `references` of a production. The name does not say reaching.
+    The name says that the walk follows the `references` of a production. The name does not say reaching.
     `check_dead_code` walks reaching for definitions and modules. A pair of walks is a pair of questions, and a shared
     name is how a reader comes to take them for one.
     """
@@ -4696,17 +4694,17 @@ def _entry_and_exit_spaces(
     `(entry, exit)`, both as `{name: spaces.SubSpace}`. The first is where a parse may be on entering a production. The
     second is where a parse is when that production hands control back.
 
-    The pair is a single question. A production's entry is the states the sites calling it are in. That is what the ways
-    making those calls leave. The exits of what a way calls decide what the way leaves. Entry therefore grows downward
-    from the productions a parse enters by name, and exit grows upward from the ways that call nothing. The pair feeds
-    itself. Both grow together from empty until neither moves.
+    The pair is a single question. A production's entry is the states the sites calling it are in. The ways making those
+    calls leave the parse in those states. The exits of the productions a way calls decide what the way leaves. Entry
+    therefore grows downward from the productions a parse enters by name, and exit grows upward from the ways that call
+    nothing. The pair feeds itself. Both grow together from empty until neither moves.
 
     A body that offers no way is the characters a terminal takes. Such a body leaves its entry with a character
     consumed.
 
     This reads a parse starting at the root. Entry starts at the productions a parse enters by name and the productions
     a match enters. A production the root does not reach has no entry. Seeding that production with a start of its own
-    would answer the question of that caller, rather than of the machine that ships.
+    would describe a caller starting there, rather than the machine that ships.
     """
     named = _entered_by_name(grammar) | _entered_by_matching(grammar)
     entry = {name: (spaces.COMPLETE if name in named else spaces.NOWHERE) for name in grammar}
@@ -4767,11 +4765,11 @@ def spaces_of_ways(
     """
     `{id(the way): (its production's name, where it stands among that production's ways, its entry, its exit)}`.
 
-    The spaces the assertions are held to, keyed by the identity of the way. Whoever holds a way in hand can then ask
-    about it. The key is the identity and not the value. A way is a frozen dataclass. A pair of productions offering the
-    same way are equal. Keying by value would hand the spaces of a production back for the way of another. A way's entry
-    is its production's entry crossed with the way's gate. The exit is that taken through what the way does, and the
-    exits of the callees the way calls come in there.
+    An assertion checks against these spaces. This function keys a way's spaces by the identity of that way. Whoever
+    holds a way in hand can then ask about it. A way is a frozen dataclass. A pair of productions offering the same way
+    are equal. Keying by value would hand the spaces of a production back for the way of another. A way's entry is its
+    production's entry crossed with the way's gate. A way's exit is its entry taken along the way's parts. A call in the
+    way resumes from the exit of its callee.
     """
     entry, left = _entry_and_exit_spaces(grammar)
     held = {}
@@ -4787,16 +4785,15 @@ def _every_path_reaches_a_leaf_way(grammar: dict[str, ir.Prod]) -> list[str]:
     """
     Check that a path into a production of leaf ways reaches one of them.
 
-    A path gathers the guards asked on the way here, and the parse asks a way's gate with them. A way whose gate cannot
-    hold beside them is therefore a way that path does not take. That is ordinary. `l-document-prefix` offers a way that
-    takes a byte order mark and a way that takes nothing. The path reaching it at the end of the stream can only take
-    the second. The stream holds no mark there to take. A path that can take *none* of them is not ordinary. That is a
-    call no input can complete, and it is what this counts.
+    A path gathers the guards asked on the way here, and the parse asks a way's gate with them. Such a way's gate cannot
+    hold beside those guards. The path therefore does not take that way. That is ordinary. `l-document-prefix` offers a
+    way that takes a byte order mark and a way that takes nothing. The path reaching `l-document-prefix` at the end of
+    the stream can only take the second way. The stream holds no mark there to take. A path that can take *none* of them
+    is not ordinary. That is a call no input can complete, and this counts it.
 
     This asks the productions whose ways are leaf ways throughout, the productions that answer by themselves. A way
     whose gate a path rules out counts as reached where its production reaches some other way. This asks a way taking no
-    character as much as a way taking a run. The questions along a path are what make it impossible. A way's doing once
-    reached has no part in that.
+    character as much as a way taking a run.
     """
     _accepted, _ways, entering = _leaf_tables(grammar)
     faults = []
@@ -4818,9 +4815,9 @@ class _Crossing:
     Whether a parse may ask a guard in front of an action that came before it. There is an entry per pair of kinds.
 
     An entry says first whether the table names the pair. Somebody worked out a pair the table names. A pair the table
-    leaves out is a pair nobody has worked out. The difference between "no" and "not yet" is the whole point. A walk
-    taking an unnamed pair for `False` would look settled while it was only ignorant. An unnamed pair therefore refuses
-    the move, and the table records that it came up. The gate reports both of these as faults.
+    leaves out is a pair nobody has worked out. A walk taking an unnamed pair for `False` would look settled while it
+    was only ignorant. An unnamed pair therefore refuses the move, and the table records that it came up. The gate
+    reports both of these as faults.
 
     - **a pair consulted with nothing recorded**. The table is then behind what the grammar holds.
     - **a pair recorded that nothing consulted**. The table then claims to know something nobody asked.
@@ -4831,8 +4828,8 @@ class _Crossing:
 
     A named pair says `True` where asking early is the same question. It says `False` where asking early differs. An
     entry holds a question where the kinds do not settle the pair. The effect of the pair then depends on which guard
-    and which action. This works that last case out like any other entry. The answer says the instances decide. It is
-    therefore neither of the faults above.
+    and which action. The table works such an entry out like any other entry. The answer says the instances decide. Such
+    an entry is therefore neither of the faults above.
     """
 
     def __init__(self, told: Mapping[tuple[str, str], "bool | Callable[..., bool]"]) -> None:
@@ -4864,7 +4861,7 @@ def _may_cross_every(pairs: Iterable[tuple[ir.Node, ir.Node]], grammar: dict[str
     Whether a `(guard, action)` pair may cross.
 
     This asks a pair behind a refusal too. Stopping at the first refusal would leave those unconsulted. The table's
-    faults are for saying what the table is missing.
+    faults are for saying which pairs the table is missing.
     """
     answered = [GUARD_CROSSES_ACTION.may_cross(guard, action, grammar) for guard, action in pairs]
     return all(answered)
@@ -4887,8 +4884,8 @@ def _does_read_nothing_the_write_writes(
 
     A comparison names a pair of the values a parse holds, and a write names a slot. The guard naming that slot reads a
     value in front of the write and another value behind it. The write is no business of a guard naming something else.
-    The answer is a fact about the pair in hand and not about their kinds. A pair of the comparison shapes the grammar
-    holds read the block scalar's floor, and the writes there are write it.
+    The answer is a fact about the pair in hand and not about their kinds. The grammar holds a pair of comparison shapes
+    that read the block scalar's floor, and the writes there write that floor.
     """
     return not _does_name_the_slot(guard, action.param)
 
@@ -4899,14 +4896,14 @@ def _does_read_none_of_the_forbidden(
     """
     Whether `guard` reads nothing `action` forbids. The parse may then ask the guard in front of the write.
 
-    The parse asks the refusal at a start of line, of a character taken at one. A lookaround matches its item through
-    that same refusal. The lookaround therefore reads the set in force where the parse asks the guard. Moving the guard
-    across the write changes that set. The set it reads is a fact about the pair of instances. The guard admits a range
-    of states, and what the write forbids can begin taking a character in a range of its own. The ranges may fail to
-    cross, and the guard then answers alike either side of the write.
+    The parse asks the refusal of a character it takes at a start of line. A lookaround matches its item through that
+    same refusal. The lookaround therefore reads the set in force where the parse asks the guard. Moving the guard
+    across the write changes that set. The set the guard reads is a fact about the pair of characters the parse
+    compares. The guard admits a range of states. The write's forbidden range can start at a different character than
+    the guard's range does. The ranges may fail to cross, and the guard then answers alike either side of the write.
 
-    The accepted space errs wide. A pair that does not cross in it does not cross at all. A write that forbids nothing
-    raises. The write displaces whatever was there, and this action names no replacement.
+    The range of states the guard admits errs wide. A pair that does not cross in it does not cross at all. A write that
+    forbids nothing raises. The write displaces the value that was there, and this action names no replacement.
     """
     if action.item is None:
         return False
@@ -4915,7 +4912,7 @@ def _does_read_none_of_the_forbidden(
 
 
 # The actions a parse may ask a guard in front of. An entry maps `(guard, action)` to whether asking the guard there is
-# the same question. An entry may instead map to what decides that for the pair the walk is holding. A pair absent here
+# the same question. An entry may instead map to the node deciding that for the pair the walk is holding. A pair absent
 # is a pair nobody has worked out. Consulting it is a fault rather than a no.
 GUARD_CROSSES_ACTION = _Crossing(
     {
@@ -4946,7 +4943,8 @@ GUARD_CROSSES_ACTION = _Crossing(
         ("LookGuard", "PopMessageAction"): False,
         ("IsLessEqualGuard", "PushMessageAction"): False,
         ("LookGuard", "PushMessageAction"): False,
-        # The value the parse hands back. A question about the input or about a count reads none of it.
+        # These actions write the value the parse hands back. A question about the input or about a count reads none of
+        # it.
         ("EndOfStreamGuard", "EmitAction"): True,
         ("LookGuard", "EmitAction"): True,
         ("NegLookGuard", "EmitAction"): True,
@@ -4970,21 +4968,21 @@ GUARD_CROSSES_ACTION = _Crossing(
         ("StartOfLineGuard", "StartMustConsumeAction"): True,
         # A settled region's close says where a later failure goes, and a guard reads none of that.
         ("LookGuard", "PopBackTrackAction"): True,
-        # A turn that must take a character asks where the parse is against its own open. A take changes that answer,
-        # and so does a committed region's close.
+        # A turn that must take a character asks where the parse is against its own open. A take changes that answer. A
+        # committed region's close changes it as well.
         ("DidConsumeSinceOpenGuard", "ConsumeSpanAction"): False,
         ("DidConsumeSinceOpenGuard", "EmitAction"): True,
         ("DidConsumeSinceOpenGuard", "PopCodeAction"): True,
         ("DidConsumeSinceOpenGuard", "PopMessageAction"): False,
         ("DidConsumeSinceOpenGuard", "PushCodeAction"): True,
-        # The indentation the parse holds is neither the input nor where the parse is in the line. These guards read
-        # those.
+        # The indentation the parse holds is neither the input nor where the parse is in the line. These guards read the
+        # input and where the parse is in the line.
         ("EndOfStreamGuard", "PushIndentAction"): True,
         ("LookGuard", "PushIndentAction"): True,
         ("NegLookGuard", "PushIndentAction"): True,
         ("StartOfLineGuard", "PushIndentAction"): True,
         # A lookahead matches its item through the refusal at a start of line. `_does_read_none_of_the_forbidden`
-        # answers for the pair. The other guards match nothing and read none of it.
+        # decides the pair. The other guards match nothing and read none of it.
         ("EndOfStreamGuard", "SetForbiddenAction"): True,
         ("LookGuard", "SetForbiddenAction"): _does_read_none_of_the_forbidden,
         ("StartOfLineGuard", "SetForbiddenAction"): True,
@@ -4996,8 +4994,8 @@ def _every_way_takes_at_most_once(grammar: dict[str, ir.Prod]) -> list[str]:
     """
     Check that a way takes characters at most once. The way then takes what its own gate found.
 
-    A gate cannot test a second take in the same way. A separate way gives the second take a position where a gate can
-    test it.
+    A gate cannot test a second take inside a single way. A separate way gives the second take a position where a gate
+    can test it.
     """
     return [
         f"{name}: a way takes twice, and its gate can speak for only the first"
@@ -5085,23 +5083,24 @@ def _asked_where_entered(grammar: dict[str, ir.Prod]) -> _Entered:
     `{name: paths}`. A name holds an entry per way that enters the production. An entry is the set of guards asked where
     that way enters it.
 
-    A gate tests the position where the parse enters the way. A call made before the way performs anything is at that
-    same position. A question the caller asked therefore holds where the callee begins, and it holds however many calls
-    deep. A guard can therefore move up to the choice that needs it. The question survives whatever the guard protected.
+    A gate tests the position where the parse enters the way. The way may take a call before it performs anything. Such
+    a call sits at that same position. A question the caller asked therefore holds where the callee begins, and it holds
+    however many calls deep. A guard can therefore move up to the choice that needs it. The question survives the
+    actions the guard protected.
 
     There is an entry per path rather than the guards the paths share. A pair of questions come here and they differ.
-    Whether a path asked about the character at all is a yes-or-no. Many escapes reaching a shared tail ask about
-    different characters, though they do ask. That character's range is a set, and the answer is the union over the
-    paths. The parse takes any of them. Handing the paths back lets a site say which it wants. `_gated_by` reads a path
-    into a subspace, and what reads them together unions those.
+    Whether a path asked about the character at all is a yes-or-no. Escapes reaching a shared tail ask about different
+    characters, though they do ask. That character's range is a set, and the answer is the union over the paths. The
+    parse takes any character of that union. The paths come back separately. A site then says which it wants.
+    `_gated_by` reads a path into a subspace, and a caller unions the subspaces of the paths that share a question.
 
     A path is a set. A gate holds no order between its guards. A pair of paths asking the same questions is a single
     path.
 
     A path that has moved contributes nothing. A caller taking a character before the call asks about somewhere else. A
     production entered by name has no caller to ask, and neither has a production nothing calls. Both come back as the
-    empty path, and no guard sits where they begin. This is a least fixed point. The knowledge at a call site includes
-    the knowledge where the caller itself began.
+    empty path, and no guard sits where they begin. The walk computes a least fixed point. The knowledge at a call site
+    includes the knowledge where the caller itself began.
     """
 
     def worked_out() -> _Entered:
@@ -5140,8 +5139,8 @@ def _asked_where_entered(grammar: dict[str, ir.Prod]) -> _Entered:
     return ir.kept_for(_ENTERED, grammar, worked_out)
 
 
-# The answer `_asked_where_entered` keeps, per grammar somebody has asked it about. That is the grammar itself and the
-# answer. Keeping the grammar stops a reuse of the key under it.
+# `_asked_where_entered` keeps an answer per grammar somebody has asked it about. An entry holds the grammar itself
+# beside the answer. Keeping the grammar stops a reuse of the key under it.
 _ENTERED: ir.Kept = {}
 
 
@@ -5150,9 +5149,9 @@ def _no_char_set_is_an_item(grammar: dict[str, ir.Prod]) -> list[str]:
     Check that no way holds a character set among what it performs.
 
     A question and a taking are separate things. A `CharSet` among what the machine performs is both at once. The set
-    asks whether the character belongs to it, and takes the character in the same breath. The answer is then reached
-    only by entering the way, when the answer is what entering the way should have been decided by. Split, the set is
-    the question a gate holds and `ConsumeCharAction` is the taking.
+    asks whether the character belongs to it, and takes the character in the same breath. The machine then reaches the
+    answer only by entering the way. The answer should decide whether the machine enters the way. After the split, the
+    set is the question a gate holds, and `ConsumeCharAction` is the taking.
 
     The set itself does not go. It stays as the question, inside the `LookGuard` of a gate and as the class a consume
     runs over. The set stops appearing among the actions as a match of its own.
@@ -5160,7 +5159,7 @@ def _no_char_set_is_an_item(grammar: dict[str, ir.Prod]) -> list[str]:
     # A production that *is* a character set is the class itself. Calling it asks and takes at a stroke, which makes the
     # call the fault rather than the production.
     faults = [
-        f"{name}: a way calls a character set that asks and takes in one step"
+        f"{name}: a way calls a character set that asks and takes in a single step"
         for name, production in grammar.items()
         if isinstance(production.body, ir.ChoiceState)
         for way in production.body.alternatives
@@ -5168,7 +5167,7 @@ def _no_char_set_is_an_item(grammar: dict[str, ir.Prod]) -> list[str]:
         if isinstance(item, ir.RefCall) and item.name in grammar and isinstance(grammar[item.name].body, ir.CharSet)
     ]
     return faults + [
-        f"{name}: a way asks a character set and takes the character in one step"
+        f"{name}: a way asks a character set and takes the character in a single step"
         for name, production in grammar.items()
         if isinstance(production.body, ir.ChoiceState)
         for way in production.body.alternatives
@@ -5185,7 +5184,7 @@ def _does_ask_about_a_run(production: ir.Prod) -> bool:
     Whether any way of `production` asks about a run before performing anything. The callers have to have made that run.
 
     A way asks in the gate, or first among the things the way performs. Those are the same claim on a caller. A state
-    minted at a guard holds the question at the head of what it does. Moving the question into the gate says the parse
+    minted at a guard holds the question at the head of its own run. Moving the question into the gate says the parse
     enters that state on it.
     """
     body = production.body
@@ -5202,8 +5201,8 @@ def _every_span_question_follows_its_run(grammar: dict[str, ir.Prod]) -> list[st
     The guard reads what the action in front of it did and no more. That action has to be the run. The run is the item
     before the question, where the question sits among the things a way performs. The question may instead head a state
     of its own. Minting the guard states puts it there. The run is then what a way calling that state performs last, and
-    the call is the first that way makes. A call made past another call starts wherever the earlier call left off.
-    Whatever the callee performed has by then taken away what the run did.
+    the call is the first that way makes. A call made past another call starts wherever the earlier call left off. The
+    callee has by then taken away what the run did.
 
     A guard anywhere else reads an earlier run or reads nothing. The interpreter refuses that where it happens. This
     asks the same refusal of the grammar instead. A step that moves the pair apart is then a fault at the step, rather
@@ -5236,15 +5235,15 @@ _EVERY_SPAN_QUESTION_FOLLOWS_ITS_RUN = _Invariant(
 
 def _every_consume_is_protected_by_a_gate(grammar: dict[str, ir.Prod]) -> list[str]:
     """
-    Check that a gate that found what a take takes protects that take. That is a `LookGuard`, in the gate of the way or
-    in a gate asked wherever the parse enters the way.
+    Check that a gate protects a take. The gate must have found the characters the take takes. Such a gate is a
+    `LookGuard`. The `LookGuard` sits in the gate of the way. The parse may instead ask the `LookGuard` on entering the
+    way.
 
-    A take no gate tested is a match the parse has to try and give back. That is the backtracking the shape is for
-    removing. The gate is where the parse asks the input, and what the gate found is what the take may have.
+    A take no gate tested is a match the parse has to try and give back. The gate is where the parse asks the input, and
+    the take may have only the characters the gate found.
 
-    A gate outside the way counts too. A question the ways entering this way asked holds here too, at the position where
-    they enter. `_asked_where_entered` says so. A guard can therefore move up to the choice that needs one, and the
-    protected take keeps its warrant.
+    A question that the entering ways asked holds here, at the position where they enter. `_asked_where_entered` says
+    so. A guard can therefore move up to the choice that needs one, and the protected take keeps its warrant.
     """
     faults = []
     entering = _asked_where_entered(grammar)
@@ -5283,28 +5282,28 @@ def _split_consumes_into_gates(grammar: dict[str, ir.Prod], namer: _Namer) -> di
     rest|`. This is a rewrite rather than a question. It reshapes a `CharSet` among a way's actions, and hands back the
     untouched parts.
 
-    A character set among what a way performs asks whether the character belongs to the set, and takes the character in
-    the same breath. The answer is then reached only by entering the way, when the answer is what entering the way
-    should have been decided by. Split, the question is in the gate where a caller can see it, and `ConsumeCharAction`
-    takes the character the gate has already found.
+    A character set among a way's actions asks whether the character belongs to the set. The same set then takes the
+    character. A caller learns the answer only by entering the way. The answer should decide whether the caller enters.
+    The split puts the question in the gate, where a caller sees it. `ConsumeCharAction` then takes the character the
+    gate found.
 
-    This is where the gates come from. A hoist moves a question that exists. This is the step that makes one. That is
-    why the ways that decide nothing outnumber the ways that do until this has run.
+    The split creates the gates a caller then tests. A hoist moves a question that exists. Before this step runs, a way
+    with no gate decides nothing.
 
-    The question moves in front of whatever came before it, where the set is not the first thing the way does.
+    The question moves in front of the actions that came before it, where the set is not the first thing the way does.
     `GUARD_CROSSES_ACTION` says whether it may. A pass moves a single set per way. A second would have to cross the take
     the first left behind, and a character already taken is a different position.
 
-    A call to a production that is a character set is the same thing said a call away. `b-break`'s first way is
-    `b-line-feed`. That production is `LF` and no more. The set goes where the call was and is then split like any
-    other. The production stays put. A consume names the production as what it runs over. An exclusion names the
-    production as what it forbids. The production is the class there. It is not a match.
+    A call to a character-set production says the same thing indirectly. `b-break`'s first way is `b-line-feed`. That
+    production is `LF` and no more. The set goes where the call was and is then split like any other. The production
+    stays put. A consume names the production as what it runs over. An exclusion names the production as what it
+    forbids. The production is the class there. It is not a match.
     """
 
     wrapped: dict[str, str | ir.Prod] = {}
 
     def gated(name: str, body: ir.Node) -> str:
-        """The name of a way that asks for `body` and takes it, minted where a call to that class first needs one."""
+        """The first call to that class needing a way that asks for `body` and takes it mints that way's name."""
         if name not in wrapped:
             held = namer.fresh(name)
             wrapped[name] = held
@@ -5326,7 +5325,7 @@ def _split_consumes_into_gates(grammar: dict[str, ir.Prod], namer: _Namer) -> di
         return minted
 
     def pulled(way: ir.AlternativeState) -> ir.AlternativeState:
-        """`way` with the calls to a character set written as that set, or aimed at a way that asks for it."""
+        """`way` has the calls to a character set written as that set, or aimed at a way that asks for it."""
         for _round in ir.rounds("the classes a way calls"):
             settled = _pulled_once(way)
             if settled == way:
@@ -5381,7 +5380,7 @@ def _split_consumes_into_gates(grammar: dict[str, ir.Prod], namer: _Namer) -> di
 
 def _called_first(way: ir.AlternativeState, grammar: dict[str, ir.Prod]) -> str | None:
     """
-    The name of what `way` enters first, where that is a production offering ways. Anything else is `None`.
+    The name of the production `way` enters first, where that production offers ways. Anything else is `None`.
 
     `first` is the call and `second` is where the way continues from it. A way therefore enters `first`, or `second`
     where the way makes no call of its own.
@@ -5394,13 +5393,13 @@ def _called_first(way: ir.AlternativeState, grammar: dict[str, ir.Prod]) -> str 
 
 def _asked_by_every_way(name: str, grammar: dict[str, ir.Prod]) -> set[ir.Node]:
     """
-    The guards the ways of `name` ask throughout. That is what entering the production asks whichever way the parse
-    goes, and therefore what a caller could ask instead.
+    Answer the guards the ways of `name` share. The parse asks these guards as it enters the production. A caller could
+    ask them instead.
 
     A production offering a single way is the plain case. The gate of that way is the answer. A guard the ways share
-    asks before the parse chooses any of them. Taking that guard out of the ways and asking it at the call is therefore
-    the same question in the same place. A guard in a way its siblings lack is different. That guard tells the way from
-    its siblings.
+    asks before the parse chooses any of them. A caller asking that guard at the call therefore asks the same question
+    in the same place. A guard that a way asks and its siblings lack is different. That guard tells the way from its
+    siblings.
 
     A body that is not a choice offers no ways. It asks nothing a caller could ask instead.
     """
@@ -5421,25 +5420,25 @@ def _inlined_called_ways(grammar: dict[str, ir.Prod], namer: _Namer | None = Non
 
     A call to a production offering a single way is unconditional. Entering it is running that way. The work of that way
     can therefore go into the site the call had. The gain is that the question `B` would have opened on becomes a
-    question this way opens on. That is what a hoist can reach. A call in between is what kept them apart.
+    question this way opens on. A hoist can reach such a question. The call to `B` sat between the pair of questions and
+    kept the hoist from reaching both.
 
     This runs wherever the call appears, and not at a lone site only. A callee a pair of ways reach goes into both. That
-    is a copy of what the callee does rather than a second answer. A callee no site still calls goes away in the sweep.
+    is a copy of the callee's own run rather than a second answer. A callee no site still calls goes away in the sweep.
 
     This runs only where `B` asks nothing. The parse asks the gate of `B` where it enters `B`. That position is past
-    what the caller performs. Moving that gate up is therefore the hoist's business, and subject to the table. A gate
-    left in the middle of a way is a question the parse asks after entering the way. `every-guard-is-in-a-gate` forbids
-    that. The hoist takes the gate first where `B` asks something, and a later round inlines `B` with nothing left to
-    ask.
+    what the caller performs. Moving that gate up therefore falls to the hoist. A gate left in the middle of a way is a
+    question the parse asks after entering the way. `every-guard-is-in-a-gate` forbids that. The hoist takes the gate
+    first where `B` asks something, and a later round inlines `B` with nothing left to ask.
 
     This runs only where neither way has a recovery. A recovery rides the push its call makes, and that call changes
     here.
 
     A way holds a call and a continuation. Inlining brings the callee's call, the callee's continuation and the caller's
-    continuation, and the way has a pair of slots. This re-associates them rather than refusing. `(D E) C` is `D (E C)`.
-    The way calls `D` and continues to a state holding `E` and then `C`. That is the right-oriented shape, a call and a
-    tail. The state minted for the tail is therefore not the state the inlining removed. The call to `B` goes. `B`
-    follows where its callers are gone, and a site then holds a call fewer.
+    continuation, and the way has a pair of slots. This re-associates the calls and the continuations rather than
+    refusing. `(D E) C` is `D (E C)`. The way calls `D` and continues to a state holding `E` and then `C`. That is the
+    right-oriented shape, a call and a tail. The state minted for the tail is therefore not the state the inlining
+    removed. The call to `B` goes. The sweep removes `B` once no site calls it.
 
     This leaves such a way untouched where there is no namer to mint with. The sweep runs in places that have none.
     """
@@ -5509,9 +5508,9 @@ def _hoist_guards_to_callers(grammar: dict[str, ir.Prod], namer: _Namer) -> dict
     actB ...|` becomes `A = |gA gB actA ->B'|`. `B'` is `B` without the guards that moved.
 
     A guard takes nothing. A guard's position therefore changes what the parse decides and not what it matches. Anything
-    between the pair could change the answer, and `actA` sits between. `GUARD_CROSSES_ACTION` says whether a guard may
-    come in front of an action rather than behind it. A guard moves where the actions between admit it. A guard the
-    actions refuse stays put.
+    between the call and the entry could change the answer, and `actA` sits between. `GUARD_CROSSES_ACTION` says whether
+    a guard may come in front of an action rather than behind it. A guard moves where the actions between admit it. A
+    guard the actions refuse stays put.
 
     `_asked_by_every_way` says what moves. A callee offering a single way gives its gate. A callee offering more gives
     the guards its ways share. The parse asks those before choosing any way. A guard in a way its siblings lack stays.
@@ -5535,7 +5534,10 @@ def _hoist_guards_to_callers(grammar: dict[str, ir.Prod], namer: _Namer) -> dict
 
 
 def _hoisted_once(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Prod]:
-    """A single pass of `hoist-guards-to-callers`. This takes a guard a caller may take from what it enters."""
+    """
+    A single pass of `hoist-guards-to-callers`. This takes a guard out of the production a caller enters. That caller
+    can take the guard itself.
+    """
     minted, named = {}, {}
 
     def without(name: str, taken: frozenset[ir.Node]) -> str:
@@ -5595,8 +5597,8 @@ def _does_ask_after_an_empty_turn(performed: Sequence[ir.Node], way: ir.Alternat
     A turn that must take a character is an open, a guard that reads it, and a close. `StartMustConsumeAction` records
     where it began. `DidConsumeSinceOpenGuard` asks whether the parse has taken anything since. `EndMustConsumeAction`
     takes the open off. Together they stop a run over a body matching empty from spinning. Such an open may sit among
-    the actions a path performed, and no take falls between the pair. The guard then answers no whatever the input
-    holds. The gate refuses any input, and the path is a path no parse takes.
+    the actions a path performed, and no take falls between the open and its close. The guard then answers no under any
+    input. The gate refuses any input, and the path is a path no parse takes.
     """
     for guard in way.gate.guards:
         if not isinstance(guard, ir.DidConsumeSinceOpenGuard):
@@ -5612,7 +5614,8 @@ def _flatten_ungated_call_trees(grammar: dict[str, ir.Prod], namer: _Namer) -> d
     Say a way that nothing has gated as the paths that it is, a gated way per path. `A = |actA ->B contA| |...|` with `B
     = |gB actB fB contB|` becomes `A = |gB actA actB fB M| |...|`. `M` runs `contB` and then `contA`.
 
-    A rewrite rather than a question. It reshapes `ir.ChoiceState` and hands back a body of any other kind.
+    This step rewrites a way rather than answering a question. It reshapes `ir.ChoiceState` and hands back a body of any
+    other kind.
 
     A way with no gate hands control on. That way hands control to a choice whose ways have gates. The walk leaves the
     way, goes through the calls and the continuations, and reaches a gate. The first question past the way is the
@@ -5621,22 +5624,21 @@ def _flatten_ungated_call_trees(grammar: dict[str, ir.Prod], namer: _Namer) -> d
 
     The walk goes through the continuations as well as the calls. A way holding no call is not the end of a path. The
     innermost thing still pending runs next, and the gate is in there. A path ends only where a way has a gate. An
-    ending anywhere else is a tree this cannot flatten, and this step raises rather than passing over it. Such a path
-    ends with nothing pending, on a body that is not a choice, or back at a production already entered.
+    ending anywhere else is a tree this step cannot flatten, and this step raises rather than passing over it. Such a
+    path ends with nothing pending, on a body that is not a choice, or back at a production already entered.
 
     This step writes the paths in order, and the parse falls where it fell. The paths go into the site the way had,
     depth first and left to right. That is the order the machine would have reached those gates in.
 
-    Behind the gate goes what the path performed in front of it. That is a move and not a copy. `GUARD_CROSSES_ACTION`
-    says whether the parse may ask a guard in front of an action rather than behind it. A way holding a path whose gate
-    may not come up does not change. This step puts the whole set of paths into the site the way had. This step
-    otherwise leaves the way untouched.
+    The path's action goes behind the gate. That is a move and not a copy. `GUARD_CROSSES_ACTION` says whether the parse
+    may ask a guard in front of an action rather than behind it. A way holding a path whose gate may not come up does
+    not change. This step places the whole set there as well. This step otherwise leaves the way untouched.
 
     This step drops a path whose gate asks after a turn the path itself opened and took nothing in. The guard asks
     whether the parse took anything since that open. The guard therefore refuses on such a path, and the input does not
-    matter. The way holding the path fails there and falls to the way behind it. With the path gone the way fails a
+    matter. The way holding the path fails there and falls to the way behind it. With the path gone the way reaches its
     refusal sooner. A guard refusing throughout is the turn's whole point. Cancelling the pair would make the path
-    succeed and a run over a body matching empty spin.
+    succeed, and it would make a run over an empty-matching body spin forever.
 
     This step runs the remainder in a state of its own. Past the call the leaf makes comes the continuation the leaf
     holds. Then come the pending continuations innermost first, and the last is the continuation the starting way held.
@@ -5648,7 +5650,7 @@ def _flatten_ungated_call_trees(grammar: dict[str, ir.Prod], namer: _Namer) -> d
     wanted = {id(way) for _name, way in _ungated_ways(grammar)}
 
     def spine(calls: Sequence[ir.RefCall], owner: str) -> ir.RefCall | None:
-        """`calls` run in turn, said as the call a way continues to."""
+        """calls run in turn. A call is the call a way continues to."""
         if len(calls) < 2:
             return calls[0] if calls else None
         body = ir.ChoiceState(
@@ -5750,8 +5752,8 @@ def _flatten_ungated_call_trees(grammar: dict[str, ir.Prod], namer: _Namer) -> d
 
 def _atoms(held: Iterable[spaces.SubSpace]) -> list[spaces.SubSpace]:
     """
-    The pieces `held`'s subspaces cut one another into. The pieces do not overlap. The pieces cover between them what
-    the subspaces cover.
+    `held`'s subspaces cut one another into pieces. The pieces do not overlap. The pieces cover between them what the
+    subspaces cover.
 
     A given space is the union of the pieces inside it. A way on a space therefore becomes a way per piece and gives up
     no state. The cutting builds the pieces rather than an enumeration. A space in turn splits a piece it overlaps into
@@ -5777,8 +5779,8 @@ def _told_apart(spans: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
 
     A subspace holds the byte that begins no character as a unit of its own. The codepoints sit beside that byte. A
     subspace coalesces what runs together, and the byte comes out in a single interval with codepoint `0`. A set the
-    parser asks keeps them apart. A run starting at `0` says the parser accepts a character there, where the byte is not
-    a character.
+    parser asks keeps the byte and the codepoints apart. A run starting at `0` says the parser accepts a character
+    there, where the byte is not a character.
     """
     return [
         held
@@ -5788,7 +5790,10 @@ def _told_apart(spans: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
 
 
 def _pinned(space: spaces.SubSpace) -> dict[str, bool]:
-    """The axes the answers `space` admits agree on, as `{axis: answer}`. A gate for it would have to say this."""
+    """
+    Answer `{axis: answer}` for an axis where the answers `space` admits agree. A gate for `space` would have to pin
+    those axes.
+    """
     live = [guard_answers for guard_answers in spaces.ALL_GUARD_ANSWERS if space.under(guard_answers)]
     return {
         axis: getattr(live[0], axis)
@@ -5802,15 +5807,14 @@ def _gate_for(atom: spaces.SubSpace, wider: spaces.SubSpace, grammar: dict[str, 
     The guards to add to a gate admitting `wider`. The gate with those guards admits exactly `atom`, and `atom` sits
     inside `wider`.
 
-    This synthesises the guards and then holds a guard to what it came out as. `_admits` reads the guards back, and the
-    result intersected with what the way already admits must be the atom itself. An atom this cannot say raises rather
-    than coming back approximated. A gate wider than the atom would leave overlapping the ways it cut. Removing that
-    overlap is why this runs. Reporting that as done would be worse than not doing it.
+    This synthesises the guards and then holds a guard to the form it came out as. `_admits` reads the guards back, and
+    the result intersected with what the way already admits must be the atom itself. An atom this cannot say raises
+    rather than coming back approximated. A gate wider than the atom would leave the ways it cut overlapping.
 
     The guards say a pair of things. The axes come first, a guard per axis the atom pins that the way leaves open. This
     asks for no axis the way already fixes, and leaves an axis nothing can say to the check. The characters come second,
-    said as the lookahead that holds them. That lookahead becomes a refusal where the atom is what a set does not hold,
-    and the end-of-stream question where the atom names only the end.
+    said as the lookahead that holds them. That lookahead becomes a refusal where the atom names a character a set does
+    not hold. It becomes the end-of-stream question where the atom names only the end.
     """
     admitted = next(iter({one for one in atom.admitted if one}), None)
     if admitted is None:
@@ -5848,15 +5852,15 @@ def _taking(
     minted: dict[str, ir.Prod],
 ) -> ir.AlternativeState:
     """
-    `way` with its take narrowed to what `atom` admits, or `way` unchanged where the atom takes nothing away.
+    `way` with its take narrowed to the set `atom` admits, or `way` unchanged where the atom takes nothing away.
 
     A take of a single character names its own set, and the gate found that character. The set is therefore the atom's
     set, and the way does not change. A run is not narrowed. A run takes its own set past the first character, and a set
     cut down would be a different run. This peels the first character off instead. That gives a single character from
-    the atom, then the run again or nothing. Those write the same maximal run in a pair of places, a run that takes at
+    the atom, then the run again or nothing. Those write the same maximal run in a pair of places. That run takes at
     least a character and stops where its set stops.
 
-    Anything else raises. A limited run is the other take a way of a choice holds. Peeling a character from under a
+    The other take a way of a choice holds is a limited run, and this raises on it. Peeling a character from under a
     limit would leave the limit counting what it does not bound.
     """
     admitted = next(iter({one for one in atom.admitted if one}))
@@ -5907,13 +5911,13 @@ def _does_reach_nothing(way: ir.AlternativeState, atom: spaces.SubSpace, grammar
     nothing before the call.
 
     The parse enters such a way and fails on any input. The way was there before the cutting, inside a wider way whose
-    gate said less. A piece's question travels along the path into what the way calls. A piece pinning an axis the wider
-    way left open can therefore rule out the callee's ways where the wider way ruled out none. Dropping the way takes
-    nothing away, and the parse reaches the way behind it a refusal sooner. Leaving the way in would be a call the
-    machine makes knowing the call fails.
+    gate said less. A piece's question travels along the path into what the way calls. A piece can pin an axis the wider
+    way left open. Such a piece can then rule out a callee way the wider way left in place. Dropping the way takes
+    nothing away, and the parse reaches the refusal of the way behind it sooner. Leaving the way in would let the
+    machine make a call it already knows fails.
 
     This holds where the way takes nothing first. Past a take the parse is somewhere else, and the gate tested the
-    earlier position. The callee's entry is then not this to say.
+    earlier position. The gate then has no say over the callee's entry.
     """
     if any(isinstance(action, ir.CONSUMING) for action in way.actions):
         return False
@@ -5997,8 +6001,8 @@ def _unheld(node: ir.Node) -> ir.Node:
     """
     `node` with the scopes written around it stripped. A scope writes nothing that changes what the node does.
 
-    A `(token)` around a character is a character taken and a code given to it. A question after what a way does first
-    has to see the character. A `(commit)` stays. A commit's word about failing is what the question asks about.
+    A `(token)` around a character is a character taken and a code given to it. A question asked after the first item of
+    a way has to see that character. A `(commit)` stays. The question asks about a commit's word on failing.
     """
     while (inner := _HELD_MATCH(node)) is not node:
         node = inner
@@ -6032,23 +6036,25 @@ _HELD_MATCH: ir.Question[ir.Node] = ir.Question(
 
 def _flatten_called_alternations(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Prod]:
     """
-    A way of a choice that calls a choice becomes that choice's ways. Those ways go into the site the call had.
+    A way of an outer choice may call an inner choice. Such a way becomes the inner choice's ways. Those ways go into
+    the site the call had.
 
-    Take `a | P | c` with `P` written `d | e`. That decides between more ways than it shows. A call hides the ways it
-    does not show. Written out it reads `a | d | e | c`. Those are the same ways, tried in the same order. A way then
-    sits where a question can ask the offering choice about it.
+    Take `a | P | c` with `P` written `d | e`. The choice `a | P | c` decides between more ways than it shows. Written
+    out, `a | P | c` reads `a | d | e | c`. Those are the same ways, tried in the same order. A way then sits where a
+    question can ask the offering choice about it.
 
-    `_flattened_calls` of an `AltTree`, whose parts are the ways a choice offers.
+    `_flattened_calls` inlines an inner choice's ways into the outer `AltTree`. An `AltTree`'s parts are the ways a
+    choice offers.
     """
     return _flattened_calls(grammar, ir.AltTree)
 
 
 def _flatten_called_sequences(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Prod]:
     """
-    An item of a way that calls a run of items becomes those items. Those items go into the site the call had.
+    An item of a way that calls a run of items becomes those items, at the site the call had.
 
-    `_flattened_calls` does this of a `SeqTree`, whose parts are the items a way performs. A call last in the way stays.
-    The continuation past a way's call is a production of its own by design.
+    `_flattened_calls` flattens the calls of a `SeqTree`. The parts of that node are the items a way performs. A call
+    last in the way stays. The continuation past a way's call is a production of its own by design.
     """
     return _flattened_calls(grammar, ir.SeqTree, does_flatten_last=False)
 
@@ -6088,7 +6094,7 @@ def _flattened_once(
     """
     `node` with a call that is the entire `kind` node written out as what the call names.
 
-    A rewrite rather than a question. This reshapes `kind` and hands back whatever else arrives. The caller names
+    This is a rewrite rather than a question. This reshapes `kind` and hands the rest of the node back. The caller names
     `kind`, and a fixed table of kinds cannot say what this does.
     """
     node = ir.rebuilt(node, lambda child: _flattened_once(child, owner, grammar, kind, reaches, does_flatten_last))
@@ -6117,9 +6123,9 @@ def _flattened_calls(grammar: dict[str, ir.Prod], kind: type, does_flatten_last:
     A body written out can hold such a call itself. This does not write into a body that can reach back.
 
     This runs where the call is a whole part. A call inside a longer way would leave a choice among the items. That is a
-    distribution rather than a flattening, and it costs a copy of what sits behind the call. This runs where the callee
-    takes no parameter. Writing a parameterised callee out would mean substituting the arguments rather than moving the
-    parts.
+    distribution rather than a flattening, and it costs a copy of the continuation behind the call. This runs where the
+    callee takes no parameter. Writing a parameterised callee out would mean substituting the arguments rather than
+    moving the parts.
     """
     for _round in ir.rounds("the flattening of a call that is the entire kind node"):
         reaches = _reached_within(grammar, kind)
@@ -6144,8 +6150,8 @@ def _with_inner_ways(node: ir.Node, rebuilt: Callable[[ir.Node], ir.Node]) -> ir
 
 
 # `_INNER_WAYS` says which matches a node holds, and this says how to put them back. The pair name the same kinds bar
-# `ChoiceState`. `ChoiceState` belongs to the canonical form. The rewrites asking this run while a body is still a tree.
-# The lifts are those rewrites, and so is the minting of continuations.
+# `ChoiceState`. `ChoiceState` belongs to the canonical form. The rewrites that read this table run while a body is
+# still a tree. The lifts are those rewrites. The minting of continuations is another.
 _WITH_INNER_WAYS: ir.Question[ir.Node] = ir.Question(
     "a node rebuilt from the matches it holds",
     {
@@ -6156,7 +6162,7 @@ _WITH_INNER_WAYS: ir.Question[ir.Node] = ir.Question(
         ir.RecoverWrapper: lambda node, rebuilt: dataclasses.replace(
             node, item=rebuilt(node.item), recovery=rebuilt(node.recovery)
         ),
-        # The condition is the match a binding puts a value in scope for.
+        # A binding puts a value in scope for a match, and the condition is that match.
         ir.BindTree: lambda node, rebuilt: dataclasses.replace(node, cond=rebuilt(node.cond)),
     },
 )
@@ -6164,17 +6170,17 @@ _WITH_INNER_WAYS: ir.Question[ir.Node] = ir.Question(
 
 def _lifting(kind: type) -> Callable[[dict[str, ir.Prod], _Namer], dict[str, ir.Prod]]:
     """
-    The transform giving a `kind` inside a way a production of its own. The call takes its place.
+    Give a `kind` inside a way a production of its own, and put a call to that production in place of the `kind`.
 
     A choice is where the parse decides and a run is where it loops. A machine does either in a state. In the middle of
-    a way, neither has anywhere to be a state. The state is the production, and what a way holds is what runs inside the
+    a way, neither has anywhere to be a state. The state is the production, and the items a way holds run inside that
     production. A minted production is a state a call reaches and comes back from, and the way holds an item like any
-    other. Naming a run settles nothing about the run itself. The run stays the possessive consume the grammar written.
+    other. Naming a run settles nothing about the run itself. The run stays the possessive consume the grammar wrote.
     Whether it takes another turn is a question the gates ask.
 
     This mints rather than distributing. Distributing is the other way to take a choice out of a sequence. `a (x | y) b`
     as `a x b | a y b` runs `a` twice wherever `a` takes a character or pushes anything. A copy of `b` per way is a copy
-    of whatever `b` calls. The call costs a push and duplicates nothing.
+    of the productions `b` calls. The call costs a push and duplicates nothing.
     """
 
     def transform(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Prod]:
@@ -6235,7 +6241,7 @@ def _lower_bind(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Pro
 
 def _is_actions_alone(node: ir.Node, grammar: dict[str, ir.Prod], seen: frozenset[str] = frozenset()) -> bool:
     """
-    Whether `node` is made of actions. Such a way takes no character and matches wherever the parse reaches it.
+    Whether `node` is a way made of actions. Such a way takes no character and matches wherever the parse reaches it.
 
     This is a structural question, and the commit's hoist rests on it. `A (commit m: X)` is `(commit m: A X)` where `A`
     cannot fail. An `A` that could fail would fail under the hoist with the commit's error rather than by not matching.
@@ -6252,7 +6258,7 @@ _IS_ONLY_ACTIONS: ir.Question[bool] = ir.Question(
     {
         (ir.EmptyTree, ir.SetVarAction): True,
         ir.SeqTree: lambda node, grammar, seen: all(_is_actions_alone(item, grammar, seen) for item in node.items),
-        # some way of a choice counting is what makes the choice count.
+        # a choice counts where some way of it counts.
         ir.AltTree: lambda node, grammar, seen: any(_is_actions_alone(item, grammar, seen) for item in node.items),
         ir.TokenWrapper: lambda node, grammar, seen: _is_actions_alone(node.item, grammar, seen),
         # a recursion reached again has no way of its own to answer with.
@@ -6267,9 +6273,9 @@ def _is_nullable(node: ir.Node, grammar: dict[str, ir.Prod], ways: _Ways) -> boo
     """
     Whether `node` has a way that takes no character. `ways` says this of a production, and this says it of any node.
 
-    A question rather than a rewrite. It answers where `_split` refuses to. A commit may hold an empty match and a
-    consuming match together. A split cannot say that as a pair of ways. Asking about it is perfectly ordinary. An empty
-    match answered for by accident is the whole debt this phase removes. That makes this a `Question`. It raises on a
+    This is a question rather than a rewrite, and it answers where `_split` refuses to. A commit may hold an empty match
+    and a consuming match together. A split cannot say that as a pair of ways. Asking about it is perfectly ordinary. An
+    empty match covered by accident is the whole debt this phase removes. That makes this a `Question`. It raises on a
     kind the table does not name, and the corpus proves the parse reaches the answers held there.
     """
     return _IS_NULLABLE(node, grammar, ways)
@@ -6316,9 +6322,9 @@ _IS_NULLABLE: ir.Question[bool] = ir.Question(
 
 def _split(node: ir.Node, grammar: dict[str, ir.Prod], ways: _Ways) -> _Split:
     """
-    `(reads, empty)`, `node`'s ways that take a character and its ways that take none. Either is `None` where `node`
-    offers neither. `ways` says which of the pair a production has. A reference therefore splits by name. Splitting a
-    reference does not walk into what it calls.
+    `reads` holds the ways of `node` that take a character, and `empty` holds the ways that take none. An element of the
+    pair is `None` where `node` offers no way of its kind. `ways` says which of the pair a production has. A reference
+    therefore splits by name. Splitting a reference does not walk into what it calls.
 
     The pair are `node` itself, said as an ordered choice of the consuming ways and then the empty ways. That is the
     order `node` already tries them in. A sequence's ways come out in the order the sequence's parts offer them. `a b`
@@ -6330,8 +6336,8 @@ def _split(node: ir.Node, grammar: dict[str, ir.Prod], ways: _Ways) -> _Split:
 
 def _split_call(node: ir.RefCall, _grammar: dict[str, ir.Prod], ways: _Ways) -> _Split:
     """
-    A call's `(reads, empty)`. That is the pair of names where the callee is split under them, and otherwise what the
-    callee can do.
+    A call's `(reads, empty)`. The pair holds the names of the callee's split where the callee has a split. Otherwise
+    the pair says what the callee can do.
     """
     reads, empty, is_both = ways[node.name]
     if is_both:
@@ -6349,10 +6355,11 @@ def _split_alt(node: ir.AltTree, grammar: dict[str, ir.Prod], ways: _Ways) -> _S
 
 def _split_run(node: ir.StarTree | ir.PlusTree | ir.TrimStarTree, grammar: dict[str, ir.Prod], ways: _Ways) -> _Split:
     """
-    A run's `(reads, empty)` pair, by whether it must take a turn and whether a turn can take nothing.
+    Split a run into a `(reads, empty)` pair. The split asks whether the run must take a turn and whether a turn can
+    take nothing.
 
-    The consuming half is a run that must take a turn. `PlusTree` says that. The pair of forms are what a run is until
-    `lower-runs` says it as ways. This reads a grammar that still holds them.
+    The consuming half is a run that must take a turn. `PlusTree` says that. A run keeps one of the pair of forms until
+    `lower-runs` says the run as ways. This reads a grammar that still holds both forms.
     """
     reads, empty = _split(getattr(node, "item"), grammar, ways)
     taking = ir.PlusTree(item=reads) if reads is not None else None
@@ -6366,7 +6373,7 @@ def _split_run(node: ir.StarTree | ir.PlusTree | ir.TrimStarTree, grammar: dict[
 
 
 def _split_bind(node: ir.BindTree, grammar: dict[str, ir.Prod], ways: _Ways) -> _Split:
-    """A binding's `(reads, empty)`. That is the binding around either half of what the binding binds."""
+    """A binding's `(reads, empty)`. That is the binding around either half of the item it binds."""
     reads, empty = _split(node.cond, grammar, ways)
     return (
         (dataclasses.replace(node, cond=reads) if reads is not None else None),
@@ -6379,14 +6386,14 @@ def _split_holder(
     grammar: dict[str, ir.Prod],
     ways: _Ways,
 ) -> _Split:
-    """A scope's `(reads, empty)`. That is the scope around either half of what the scope holds."""
+    """A scope's `(reads, empty)`. That is the scope around either half of the item it holds."""
     if node.item is None:
         return None, node  # a `(max)` window with nothing in it. a bound, and no match of its own
     reads, empty = _split(node.item, grammar, ways)
     if isinstance(node, (ir.CommitWrapper, ir.RecoverWrapper)) and reads is not None and empty is not None:
         # Both are the error where the item cannot match. A consuming form of either would be the error where the parse
         # should have gone on to the empty form.
-        raise ValueError(f"a {type(node).__name__.lower()} hides both an empty match and a consuming one")
+        raise ValueError(f"a {type(node).__name__.lower()} hides both an empty match and a consuming match")
     return (
         (dataclasses.replace(node, item=reads) if reads is not None else None),
         (dataclasses.replace(node, item=empty) if empty is not None else None),
@@ -6412,9 +6419,9 @@ def _split_way(node: ir.AlternativeState, grammar: dict[str, ir.Prod], ways: _Wa
     """
     A way's `(reads, empty)` pair in the canonical form. A way reads where any of its parts does. The consuming ways are
     therefore a way per part that can read. That part reads, and the parts before it take nothing. The empty way is the
-    parts taking none. A way splits into many ways that way, and what comes back consuming is a choice of them.
+    parts taking none. The consuming half comes back as a choice of those ways.
 
-    This reads the parts in order. A lookahead among the parts admits what says a consume behind it takes a character.
+    This reads the parts in order. A lookahead among the parts lets a later consume take a character.
     """
     parts = list(_items_of_way(node))
     reads: list[ir.AlternativeState] = []
@@ -6435,9 +6442,9 @@ def _split_canonical(node: ir.AlternativeState | ir.ChoiceState, grammar: dict[s
     The canonical form's `(reads, empty)` pair for a choice or for a way. Those are the ways of it that take a character
     and the ways that take none. Either is `None` where the node offers neither.
 
-    A choice's ways sit beside one another. A way therefore splits on its own, and this flattens the halves that come
-    back. A way may split into a choice of several. A test holds in the way that made it and not in the next way. This
-    therefore does not read the ways in order the way it reads a way's parts.
+    A choice's ways sit beside one another. A way therefore splits, and this flattens the halves that come back. A way
+    may split into a choice of several. A test holds in the way that made it and not in the next way. This therefore
+    does not read the ways in order the way it reads a way's parts.
     """
     if not isinstance(node, ir.ChoiceState):
         return _split_way(node, grammar, ways)
@@ -6465,10 +6472,10 @@ def _split_seq(node: ir.SeqTree, grammar: dict[str, ir.Prod], ways: _Ways) -> _S
     A sequence's `(reads, empty)`. A sequence reads where any part reads. The consuming ways are therefore a way per
     part that can read. That part reads, and the parts before it take nothing. The empty way is the parts taking none.
 
-    A consume reached with its own class known to be in front is not among the parts that take nothing. The lookaheads
-    before the consume narrow which characters can be there. The consume takes at least a character where what those
-    lookaheads admit falls in its set. A `PlusTree` over a class comes out that way. Reading the pair as if either half
-    could be empty would report an empty way the parse has no input for.
+    The lookaheads before a consume narrow which characters can come next. The consume takes at least a character where
+    what those lookaheads admit falls in its set. Such a consume is not among the parts that take nothing. A `PlusTree`
+    over a class comes out that way. Reading the pair as if either half could be empty would report an empty way the
+    parse has no input for.
     """
     reads: list[ir.Node] = []
     taken: list[ir.Node] = []
@@ -6538,8 +6545,8 @@ _SPLIT: ir.Question[_Split] = ir.Question(
         ir.BindTree: _split_bind,
         ir.WRAPPERS: _split_holder,
         (ir.AlternativeState, ir.ChoiceState): _split_canonical,
-        # The specialization settles a switch, and this sees a switch before that runs. The caller decides the branch,
-        # and the node covers whichever branch it can.
+        # The specialization settles a switch, and the split sees a switch before the specialization runs. The caller
+        # decides the branch, and the node covers the branches it can.
         ir.CaseTree: _split_switch,
         ir.VALUE_KINDS: lambda node, grammar, ways: (None, node),  # a value matches nothing and takes no character.
         ir.OptTree: lambda node, grammar, ways: (
@@ -6547,8 +6554,7 @@ _SPLIT: ir.Question[_Split] = ir.Question(
             ir.EmptyTree(),
         ),
     },
-    # The provisional actions belong to phases past the empties. Splitting them would rewrite a shape that is not there
-    # yet.
+    # The provisional actions belong to phases past the empties. Splitting them would rewrite a shape the grammar lacks.
     untested=(
         ir.CommitProvisionalAction,
         ir.InjectBeforeAction,
@@ -6562,7 +6568,10 @@ _SPLIT: ir.Question[_Split] = ir.Question(
 def _production_split(
     production: ir.Prod, grammar: dict[str, ir.Prod], ways: _Ways
 ) -> tuple[str | None, ir.Node | None, ir.Node | None]:
-    """`(message, reads, empty)` for a production's body, its own commit lifted off the split and named back."""
+    """
+    `(message, reads, empty)` for a production's body. The production's own commit comes off the split, and `message`
+    names it back.
+    """
     message, body = _lifted_commit(production.body, grammar)
     reads, empty = _split(body, grammar, ways)
     return message, reads, empty
@@ -6575,9 +6584,9 @@ def _split_ways(grammar: dict[str, ir.Prod]) -> dict[str, tuple[bool, bool, bool
     it. That pairing is the defect.
 
     This is a least fixed point. A reference can reach back to its own production. A production takes nothing to match
-    until some way of it says so. A recursion on its own contributes neither half. A production the parse enters by name
-    stays whole. Nobody chooses to enter such a production, and an empty match there decides nothing. The root and the
-    recovery reach one another, and that is a choice on nothing at all once both hold a pair of halves.
+    until some way of it says so. A recursion contributes neither half. A production the parse enters by name stays
+    whole. Nobody chooses to enter such a production, and an empty match there decides nothing. The root and the
+    recovery reach one another. Once both hold a pair of halves, a choice between them decides on nothing at all.
     """
     entered = _entered_by_name(grammar)
     ways = {name: (False, False, False) for name in grammar}
@@ -6601,8 +6610,8 @@ def _does_take_none_only_at_the_end(
 
     `l-unparsed` says this outright. Its turns take any character there is, and a run is possessive. The place a turn
     cannot go is therefore past the last character. The rule writes that as a run of at least a turn, or the end. A walk
-    for what a production reaches with nothing taken stops where it reaches such a rule. Whatever comes behind that rule
-    needs an ended input, and no parse continues from there.
+    for the nodes a production reaches with nothing taken stops where it reaches such a rule. The actions behind that
+    rule need an ended input, and no parse continues from there.
 
     This decides rather than recognises, and a question makes the decision. It therefore raises on a kind the table does
     not name. Falling through to "this does not stop the walk" would make the answer a property of which shapes the
@@ -6624,8 +6633,8 @@ def _does_a_part_end_the_input(
     node: ir.AlternativeState | ir.SeqTree, grammar: dict[str, ir.Prod], ways: _Ways, seen: frozenset[str]
 ) -> bool:
     """
-    A way's answer. Some part of the way says the input has ended, with that part's gate read beside what the part
-    performs.
+    A way's answer. Some part of the way says the input has ended. The answer reads that part's gate beside what the
+    part performs.
     """
     parts = _parts_of_way(node) if isinstance(node, ir.AlternativeState) else node.items
     return any(_does_take_none_only_at_the_end(part, grammar, ways, seen) for part in parts)
@@ -6634,15 +6643,15 @@ def _does_a_part_end_the_input(
 _TAKES_NONE_ONLY_AT_THE_END: ir.Question[bool] = ir.Question(
     "whether a match that takes no character means the input has ended",
     {
-        # The question that says so, wherever a way asks it. The question sits in a gate past `hoist-guards-to-gates`,
-        # and among the actions before that.
+        # The question that says so sits here, for any way that asks it. The question sits in a gate past
+        # `hoist-guards-to-gates`. Before that step, the question sits among the actions.
         ir.EndOfStreamGuard: True,
         ir.RefCall: lambda node, grammar, ways, seen: node.name not in seen
         and _does_take_none_only_at_the_end(grammar[node.name].body, grammar, ways, seen | {node.name}),
         (ir.AltTree, ir.ChoiceState): _has_empty_ways_that_end_the_input,
         (ir.AlternativeState, ir.SeqTree): _does_a_part_end_the_input,
         # Anything else says nothing about where the input ends. A match takes characters and an action leaves something
-        # behind. The other guards ask about something else. A repetition or a consume answers for its turns.
+        # behind. The other guards ask about something else. A repetition or a consume speaks about its turns.
         (
             *ir.ACTIONS,
             *(guard for guard in ir.GUARDS if guard is not ir.EndOfStreamGuard),
@@ -6665,14 +6674,15 @@ def _every_end_of_stream_sits_in_a_gate(grammar: dict[str, ir.Prod]) -> list[str
     Check that an end of stream sits in a gate. A way's gate is where an `EndOfStreamGuard` belongs.
 
     Whether a character is there is a question. A question belongs where a way asks its questions. The grammar says
-    where the input may end, and says it outright. The machine reaches the end as a way the grammar offered, rather than
-    as a match it fell into. A guard among the actions would ask where the parse has already entered the way. A guard in
-    a body offering no ways would ask where nothing chooses on the answer.
+    outright where the input may end. The machine reaches the end as a way the grammar offered, rather than as a match
+    it fell into. A guard among the actions would ask where the parse has already entered the way. A guard in a body
+    offering no ways would ask where nothing chooses on the answer.
 
-    Whatever follows the question is not this invariant's business. A way that reaches the end still has the wrapping up
-    to do, and may hand that on to a continuation the way any other does. A way that takes no character and has no gate
-    on the end is no end of stream at all. Such a way is an empty match. An empty match falls past the last character as
-    anywhere else. The parts following an empty way tell that way from its neighbours, and the end says nothing.
+    The actions following the question are not this invariant's business. A way that reaches the end still has the
+    wrapping up to do, and may hand that on to a continuation the way any other does. A way that takes no character and
+    has no gate on the end is no end of stream at all. Such a way is an empty match. An empty match falls past the last
+    character as anywhere else. The parts following an empty way tell that way from its neighbours, and the end says
+    nothing.
     """
 
     def ends(node: ir.Node) -> int:
@@ -6701,19 +6711,20 @@ def _entered_unconsumed(
     """
     The productions `node` can enter with nothing taken. That is its left corner, as names.
 
-    The walk follows a guard like anything else. A guard tests where the parse is, and what a guard reaches sits at that
-    same position. A recovery is different. The parse enters a recovery where an abandoned parse stopped, rather than
-    where the recovery's rule began. A `(recover)` therefore contributes what its item does and no more.
+    The walk follows a guard like anything else. A guard tests where the parse is, and the node a guard reaches sits at
+    that same position. A recovery is different. The parse enters a recovery where an abandoned parse stopped, rather
+    than where the recovery's rule began. A `(recover)` therefore contributes what its item does and no more.
 
-    The walk takes a way's gate along with its parts, and what the gate asks counts here too. `entering` holds what a
-    way entering this production asked where it entered. A question that moved up to a caller still holds here, and a
-    consume it tested still reads. A gate admitting just the end of the input stops the walk at its `EndOfStreamGuard`.
-    A parse with input left does not enter that way. This walk is for what a parse can arrive at and not go on from.
+    The walk takes a way's gate along with its parts, and the questions the gate asks count here too. `entering` holds
+    the questions a way entering this production asked where it entered. A question that moved up to a caller still
+    holds here, and a consume it tested still reads. A gate admitting just the end of the input stops the walk at its
+    `EndOfStreamGuard`. A parse with input left does not enter that way. This walk covers the nodes a parse arrives at
+    and stops on.
 
     A `DidConsumeSinceOpenGuard` stops the walk on the reverse ground. That guard asks for a character taken since its
     own open. A parse reaching the guard therefore took a character, and what sits behind the guard is past where the
-    parse began. That lets a run said as a recursion read as reaching itself having moved. The guard is the proof, and
-    the turn it guards may be anything at all.
+    parse began. A run said as a recursion then reaches itself only after it has moved. The guard is the proof, and the
+    turn it guards may be anything at all.
     """
     return _ENTERED_UNCONSUMED(node, grammar, ways, entering)
 
@@ -6728,8 +6739,8 @@ def _entered_by_parts(
     reached: set[str] = set()
     for item in parts:
         reached |= _entered_unconsumed(item, grammar, ways)
-        # A turn that must take a character has taken it wherever this is reached, that being the whole of what the
-        # guard asks. Nothing behind it is entered where the parse still stands, whatever the turn itself was.
+        # A turn that must take a character has taken it wherever this is reached, and the guard asks that and no more.
+        # The parse stops there, and the turn itself makes no difference to the run behind the guard.
         if isinstance(item, ir.DidConsumeSinceOpenGuard):
             break
         # This part consumes throughout, or consumes nothing only where the input has ended. Either way nothing behind
@@ -6741,7 +6752,7 @@ def _entered_by_parts(
 
 # The productions a kind enters at its own position. The lookarounds and the exclusion are named by
 # `ir.WALKED_UNCONSUMED` and by the takes-nothing group both. A lookaround takes no character *and* tests a pattern at
-# its own position. The walk into what a lookaround holds is therefore written here, and the group below leaves the
+# its own position. This binding therefore walks into what a lookaround holds, and the group below leaves the
 # lookarounds out. A chain settled that overlap by the order its tests happened to come in. A question refuses to have
 # it settled twice.
 _ENTERED_UNCONSUMED: ir.Question[set[str]] = ir.Question(
@@ -6771,18 +6782,17 @@ def _no_production_reaches_itself_unconsumed(grammar: dict[str, ir.Prod]) -> lis
     """
     Check that no production reaches itself with nothing taken. A parse arriving there cannot go on.
 
-    This builds a pushdown that commits to the first gate that fires and does not backtrack. The pushdown cannot notice
-    a parse arriving at a position it already reached. A production reaching itself at the same position runs for ever.
-    An LR construction would absorb that, and a pushdown goes round. This is therefore a fault rather than a shape to
-    handle.
+    The generator builds a pushdown that commits to the first gate that fires and does not backtrack. The pushdown
+    cannot notice a parse arriving at a position it already reached. A production reaching itself at the same position
+    runs for ever. Such a production is therefore a fault rather than a shape to handle.
 
     The stream and the recovery are mutually recursive by design under a resuming policy. `l-recover` is `l-unparsed`
-    and then the stream again. That is what lets a resumed document fail again without a second mechanism for it.
-    `l-unparsed` keeps that pair from going round for ever. It is a guard and a possessive run whose turns accept any
-    character. It takes nothing where the input has ended, and there `<end-of-stream>` answers rather than the stream
-    continuing. `_does_take_none_only_at_the_end` is that reason said as a clip. The walk therefore reads the pair
-    rather than exempting it. The walk follows that edge, and a start state is a production like any other once a call
-    reaches it.
+    and then the stream again. A resumed document can therefore fail again without a second mechanism for it.
+    `l-unparsed` keeps that pair from going round for ever. `l-unparsed` is a guard and a possessive run. The run's
+    turns accept any character. The run takes nothing where the input has ended, and there `<end-of-stream>` answers
+    rather than the stream continuing. `_does_take_none_only_at_the_end` states that behavior as a name. This function's
+    walk therefore follows the pair's edge rather than exempting it. A start state is a production like any other once a
+    call reaches it.
     """
     ways = _split_ways(grammar)
     entering = _asked_where_entered(grammar)
@@ -6809,11 +6819,9 @@ def _names_that_reach_themselves(edges: Mapping[str, Iterable[str]]) -> set[str]
 def _circles(edges: Mapping[str, Iterable[str]]) -> tuple[tuple[str, ...], ...]:
     """
     The circles of `{name: the names it reaches in a step}`. Those are the graph's strongly connected components, as
-    tuples, ordered so a circle comes after the circles it reaches.
+    tuples. A circle comes after the circles it reaches.
 
-    This is Tarjan's algorithm, a single walk of the edges. It answers who reaches themselves. It also answers what a
-    reader may take before what. Growing a name's whole reach instead would answer the same question by building a
-    relation the square of the grammar in size.
+    Tarjan's algorithm finds the circles and their order in a single walk of the edges.
     """
     circles = []
     index, low, reached = {}, {}, 0
@@ -6865,17 +6873,17 @@ def _hold_established_indents(grammar: dict[str, ir.Prod], namer: _Namer) -> dic
     """
     Make an established indentation a level on the parse's stack rather than something a call hands back.
 
-    A rewrite rather than a question. It reshapes `ir.SeqTree` and hands back a node of any other kind.
+    This is a rewrite rather than a question. It reshapes `ir.SeqTree` and hands back a node of any other kind.
 
     A block scalar cannot measure its content indentation before the parse reads the first content line. That line
     measures the indentation. The value travels back out through the calls that passed the parameter itself. That is a
-    write whose readers sit a production away. A local checker cannot check that write. Taking the parameter out would
-    silently take the write apart. This step therefore inlines the chain until the write and its reader are in the same
-    way. The write is then the push that way ends by taking back.
+    write whose readers sit a production away. A local checker cannot check that write. An edit taking the parameter out
+    would silently take the write apart. This step therefore inlines the chain until the write and its reader are in the
+    same way. The write is the push. The way's pop later takes that push back.
 
     Inlining makes the pair local. The callee runs under the indentation of the caller. The argument is the parameter.
-    The body of the callee says the same thing spliced in as it said called. The value the callee left in `n` stays in
-    that same `n`.
+    The callee's body, spliced in, says what it said when called. The value the callee left in `n` stays in that same
+    `n`.
     """
 
     # Which productions hand an indentation back is a property of the grammar this step was given, and the step does not
@@ -6900,7 +6908,7 @@ def _hold_established_indents(grammar: dict[str, ir.Prod], namer: _Namer) -> dic
         return items
 
     def bounded(items: tuple[ir.Node, ...]) -> tuple[ir.Node, ...]:
-        """`items` with a write of the indentation made the push its way takes back."""
+        """`items` with the indentation's write turned into the push that its way takes back."""
         for position, item in enumerate(items):
             if isinstance(item, ir.SetVarAction) and item.param == "n":
                 rest, pair = bounded(items[position + 1 :]), namer.pair()
@@ -6945,11 +6953,11 @@ def _push_indents(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Pr
     Say where the indentation changes. The parse then holds the indentation on the stack, rather than a call passing the
     value.
 
-    A call measured against an indentation other than the level in force enters under that indentation and gives it back
-    on return. The push therefore goes before the call and the pop behind it. The pair sits inside a single way of a
-    single production. The level is known there. A call handing the parameter itself enters under the level already
-    pushed. Such a call pushes nothing. `hold-established-indents` has already made a push of an indentation that a call
-    would have established.
+    A call may run against an indentation other than the level in force. Such a call enters under that indentation and
+    gives it back on return. The push therefore goes before the call, and the pop goes behind it. The pair sits inside a
+    single way of a single production. The production knows the level there. A call handing the parameter itself enters
+    under the level already pushed. Such a call pushes nothing. `hold-established-indents` has already made a push of an
+    indentation that a call would have established.
 
     The parameter stays beside the stack. The run holds the pair to one another, and a read of `n` compares the stack
     against the parameter. The corpus therefore says the pushes go where they should, and no argument says so.
@@ -6970,20 +6978,20 @@ def _push_indents(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Pr
 
 def _establishing(grammar: dict[str, ir.Prod]) -> set[str]:
     """
-    The productions that hand an indentation back to their caller. Those are the productions writing it, along with the
-    productions calling those with the parameter itself. Passing the parameter itself takes the write out. This is a
-    least fixpoint, and a call chain establishes through it.
+    `_establishing` returns productions handing indentation back to their caller. Those are the productions writing
+    indentation, along with the productions calling those with the parameter itself. A call passing the parameter itself
+    takes the write out. This is a least fixpoint, and a call chain establishes through it.
 
-    A block scalar's first content line is where this begins. The whole scalar measures against that line's indentation,
-    and the scalar cannot know it before reading that line. The value therefore arrives on the call's return rather than
-    on the call. The region the value holds for is what follows the call.
+    The least fixpoint begins at a block scalar's first content line. The whole scalar measures against that line's
+    indentation, and the scalar cannot know it before reading that line. The indentation therefore arrives on the call's
+    return rather than on the call. The value holds for the region that follows the call.
     """
     names = {
         name
         for name, production in grammar.items()
         if any(isinstance(node, ir.SetVarAction) and node.param == "n" for node in _held(production.body))
     }
-    for _round in ir.rounds("the productions that establish n by writing it or by calling one that does"):
+    for _round in ir.rounds("the productions that establish n by writing it or by calling a production that does"):
         reached = {
             name
             for name, production in grammar.items()
@@ -6997,7 +7005,7 @@ def _establishing(grammar: dict[str, ir.Prod]) -> set[str]:
 
 
 def _is_by_reference(grammar: dict[str, ir.Prod], node: ir.RefCall) -> bool:
-    """Whether the call `node` hands the indentation itself. That is what lets a callee's write reach the caller."""
+    """Whether the call `node` hands the indentation itself. A callee's write reaches the caller through such a call."""
     callee = grammar.get(node.name)
     if callee is None or "n" not in callee.params:
         return False
@@ -7039,14 +7047,14 @@ def _is_bounded(production: ir.Prod, param: str) -> bool:
 
 def _clear_reads(param: str) -> Callable[[dict[str, ir.Prod], _Namer], dict[str, ir.Prod]]:
     """
-    A transform giving `param` an end. The consuming production clears the value on return, once its calls have
+    The transform gives `param` an end. The consuming production clears the value on return, once its calls have
     returned.
 
     The reader clears the value, and the writer leaves it in place. The construct that opens a value measures the value,
     such as a block scalar's floor deep inside its leading empties. That construct hands the value up to whoever asked.
     Clearing at the write would take the value from the reader that wanted it. The way holding the read takes the value
     and uses it. Once that way returns, the value has no reader left. That makes the value a single region long, and
-    lets a single slot answer for it.
+    lets a single slot hold it.
     """
 
     def transform(grammar: dict[str, ir.Prod], _namer: _Namer) -> dict[str, ir.Prod]:
@@ -7064,7 +7072,7 @@ def _clear_reads(param: str) -> Callable[[dict[str, ir.Prod], _Namer], dict[str,
 
 def _a_read_is_bounded(param: str) -> _Invariant:
     """
-    The invariant that a production reading `param` says where the value stops.
+    The invariant is that a production reading `param` says where the value stops.
 
     A read past the value's end raises. It does not answer from what the last construct left. That holds a value to a
     single region. A single slot holding the parameter needs that too. A stale answer reads exactly like a live answer.
@@ -7081,14 +7089,12 @@ def _a_read_is_bounded(param: str) -> _Invariant:
 
 
 # `every-called-alternative-is-unconditional` waits for a phase to claim it. Settling that invariant at the door would
-# put the steps from the first under its law. A question the pipeline is not asking costs a lapse on any step that
-# touches a gate. That is noise about the declarations, rather than news about the grammar. The invariant comes back
-# when a phase takes it on.
+# put the steps from the first under a law the pipeline does not yet need. A question the pipeline is not asking costs a
+# lapse on any step that touches a gate. That is noise about the declarations, rather than news about the grammar.
 #
 # The grammar arrives already holding `_EVERY_CONDITIONAL_WAY_IS_GATED`. A step here does not count as having
-# established it. The grammar has ways to decide between once `build-alternatives` says a way by its parts, and the
-# count stays at none until then. Whichever step first raises the count is the step leaving a way the parse cannot
-# enter. That step is `build-alternatives` itself, and the phase's work starts there.
+# established it. The grammar holds no conditional way until `build-alternatives` says a way by its parts. That step
+# leaves a way the parse cannot enter, and the phase's work starts there.
 _AT_THE_DOOR = _Phase("at-the-door", establishes=_EVERY_CONDITIONAL_WAY_IS_GATED)
 
 # The specialization takes `_NO_I_T_PARAMETERS` to none. The grammar then declares, passes and reads neither the
@@ -7114,8 +7120,8 @@ _SPECIALIZE = _Phase(
     ),
 )
 
-# The pruning takes `no-fails` to none. Run past the specialization, a question behind this asks about shapes some input
-# reaches.
+# The pruning takes `no-fails` to none. Once a step runs past the specialization, a question behind that step asks about
+# shapes some input reaches.
 _NO_FAILS = _absent("no-fails", ir.FailTree)
 
 # The phase takes `_NO_FAILS` to none. The grammar then holds no match that no input makes. A `<fail>` is a branch of a
@@ -7129,7 +7135,7 @@ _PRUNE_FAILURES = _Phase(
 
 # The phase takes `_EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET` to none. A question about a character is a `CharSet`. A
 # set the context picks denotes nothing until the specialization has bound the context. The phase therefore follows the
-# specialization. The distribution takes a difference into the ways it subtracts from first. A subtraction says a set
+# specialization. First, the distribution takes a difference into the ways it subtracts from. A subtraction says a set
 # where both its sides say one.
 _CHARACTER_SETS = _Phase(
     "character-sets",
@@ -7145,8 +7151,8 @@ _CHARACTER_SETS = _Phase(
 )
 
 # The phase takes `_NO_F_PARAMETER` to none. The block scalar's leading-empty floor is a single value for the parse,
-# rather than a value a call passes. The clear gives that value an end first. A single slot answers for a parameter
-# where a read past the value's region raises. Answering from what the last construct left would not do.
+# rather than a value a call passes. The clear gives that value an end first. A single slot holds a parameter where a
+# read past the value's region raises. The parse must not answer from what the last construct left.
 _DROP_F = _Phase(
     "drop-f",
     settles=_NO_F_PARAMETER,
@@ -7183,8 +7189,8 @@ _DROP_N = _Phase(
 
 # The phase takes `_NO_OPT_NODES` and `_NO_STAR_OR_PLUS_NODES` to none. A node then hides no match that may take none.
 # An empty match is a way beside the way that reads. A repetition is a consume of a class, or the ways `lower-runs`
-# makes. The phase does not reach `no-conditional-production-matches-empty`. That invariant says a production something
-# decides to enter matches no empty, and the pipeline holds no step settling it.
+# makes. The phase does not reach `no-conditional-production-matches-empty`. That invariant says that a conditionally
+# entered production matches no empty. The pipeline holds no step that settles it.
 _LOWER_REPETITIONS = _Phase(
     "lower-repetitions",
     settles=(_NO_OPT_NODES, _NO_STAR_OR_PLUS_NODES),
@@ -7198,8 +7204,8 @@ _LOWER_REPETITIONS = _Phase(
             _span_consumes,
             settles=(_EVERY_CHARACTER_RUN_IS_A_SPAN, _EVERY_EXCLUSION_IS_BOUNDED),
             reduces=_NO_STAR_OR_PLUS_NODES,
-            # The step makes the run and its question side by side. A later step may put nothing between the pair, and
-            # this is the pair to say that of.
+            # The step makes the run and its question side by side. A later step may put nothing between the pair. This
+            # site states that guarantee.
             establishes=_EVERY_SPAN_QUESTION_FOLLOWS_ITS_RUN,
         ),
         _Step("lower-runs", _lower_runs, settles=_NO_STAR_OR_PLUS_NODES),
@@ -7208,19 +7214,19 @@ _LOWER_REPETITIONS = _Phase(
 
 # The phase takes `_EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS` to none. The parse matches an exclusion's pattern and throws
 # it away. The step gives the exclusion a copy holding what matches and asks. The step runs while a `(token)` is still
-# the node saying what code characters take. That is what such a copy has to drop.
+# the node saying what code characters take. Such a copy has to drop that node.
 _FORBIDDEN_PROBES = _Phase(
     "forbidden-probes",
     settles=_EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS,
     steps=(_Step("mint-forbidden-probes", _mint_forbidden_probes, settles=_EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS),),
 )
 
-# The phase takes the scope nodes to none. `_NO_WRAP_NODES` and `_NO_MAX_NODES` go, and so do `_NO_COMMIT_NODES`,
-# `_NO_TOKEN_NODES` and `_NO_EXCLUDE_AT_NODES`. A scope is then the pair of writes that bound it, and no node holds what
-# a scope covers. A step takes a single kind. The wrap and the window write both halves. So do the commit and the token.
-# Both halves name the pair they belong to. The parse is then held to the guarantee a wrapper gave by construction. The
-# exclusion names no pair. The set is a single value for the parse. The exclusion's closing write names what comes after
-# it. It takes no open back.
+# The phase takes the scope nodes to none. `_NO_WRAP_NODES`, `_NO_MAX_NODES` and `_NO_COMMIT_NODES` go.
+# `_NO_TOKEN_NODES` and `_NO_EXCLUDE_AT_NODES` go with them. A scope is then the pair of writes that bound it, and no
+# node holds what a scope covers. A step takes a single kind. The wrap and the window write both halves. The commit and
+# the token write both halves. Both halves name the pair they belong to. The parse then keeps the guarantee a wrapper
+# gave by construction. The exclusion names no pair. The set is a single value for the parse. The exclusion's closing
+# write names what comes after it. It takes no open back.
 _LOWER_SCOPES = _Phase(
     "lower-scopes",
     settles=(_NO_WRAP_NODES, _NO_MAX_NODES, _NO_COMMIT_NODES, _NO_TOKEN_NODES, _NO_EXCLUDE_AT_NODES),
@@ -7258,8 +7264,8 @@ _ONE_STEP_PER_ITEM = _Phase(
 
 # The phase takes `_NO_CHOICE_OF_CHOICES` to none. A way of a choice is then no call to a choice. A way sits where a
 # gate can go on it, rather than a call below. The phase runs before the split into a call and a continuation. A choice
-# written out here is a choice the phases behind this see whole. The same phase flattens the run of items among the
-# items of a way. That lowers `no-sequence-of-sequences`, and `build-alternatives` takes it to none.
+# written out here is a choice the phases behind this see whole. The same phase flattens a run of items nested inside a
+# way's own items. That lowers `no-sequence-of-sequences`, and `build-alternatives` takes it to none.
 _FLATTEN_CALLS = _Phase(
     "flatten-calls",
     settles=_NO_CHOICE_OF_CHOICES,
@@ -7277,7 +7283,7 @@ _MINT_CONTINUATIONS = _Phase(
     steps=(_Step("mint-continuations", _mint_continuations, settles=_A_WAY_IS_ACTIONS_A_CALL_AND_A_CONTINUATION),),
 )
 
-# The phase takes `_EVERY_BODY_IS_A_CHOICE_OR_A_SET` to none. A body then speaks the machine's words. That is a set of
+# The phase takes `_EVERY_BODY_IS_A_CHOICE_OR_A_SET` to none. A body then speaks the machine's words. A body is a set of
 # characters, or the ordered list of alternatives the parse takes one of. The lowering already said a repetition as the
 # ways it holds. `no-sequence-of-sequences` reaches none with the bodies built here.
 _BUILD_ALTERNATIVES = _Phase(
@@ -7296,11 +7302,11 @@ _BUILD_ALTERNATIVES = _Phase(
             lapses={
                 "every-conditional-way-is-gated": "this step is where ways to gate first exist. a body becomes the "
                 "ordered list of alternatives the parse chooses among, and it is the first thing anything has to "
-                "tell apart. none of the ways asks a question yet. the debt starts here. a step moving a question "
+                "tell apart. none of the ways asks a question. the debt starts here. a step moving a question "
                 "into a gate pays it down."
             },
-            # The step builds a way with a gate, and the gate's shape therefore comes into question here. A pair of
-            # questions about a single character have not come together yet, and a hoist brings them.
+            # The step builds a way with a gate. The gate's shape comes into question here. A pair of questions about a
+            # single character sit apart, and a hoist brings them together.
             establishes=_EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE,
         ),
     ),
@@ -7308,8 +7314,8 @@ _BUILD_ALTERNATIVES = _Phase(
 
 # The phase takes `_EVERY_UNGATED_WAY_HAS_ACTIONS_OR_A_CALL` to none. A way with no gate is a way still awaiting one. A
 # call past the way's actions puts the callee's guards out of reach of where the parse enters the way. A call with a
-# state of its own puts the pair at the same position. A step hoisting a guard out of a callee rests on that, and so
-# does a step writing a callee's ways into its caller.
+# state of its own puts the callee's guards and the call's entry at the same position. A step hoisting a guard out of a
+# callee rests on that shared position. A step writing a callee's ways into its caller does the same.
 _CALL_STATES = _Phase(
     "call-states",
     settles=_EVERY_UNGATED_WAY_HAS_ACTIONS_OR_A_CALL,
@@ -7319,13 +7325,13 @@ _CALL_STATES = _Phase(
 # The phase takes `_NO_GUARD_COMES_PAST_AN_ACTION` and `_EVERY_GUARD_IS_IN_A_GATE` to none. A question a way asks sits
 # in the way's gate, and what the way performs comes behind that gate. The grammar says outright whether a way's part is
 # a question or an action. The parts run in order. The phase cuts a way that would ask a guard past an action. The
-# guards the way holds move into its gate. The questions about the character in front say a single set together.
+# guards the way holds move into its gate. The questions about the character in front combine into a single set.
 #
-# Taking those gates out to the ways that call them is not here. That would put a guard over what the caller performs
-# before the call. On the path the guard refuses, those actions did not happen. That is a `PushCodeAction` that did not
-# cut the run, or a `PopMessageAction` that did not leave the region. A call site performs something, and the gate
-# cannot move until it sits next to the call. `every-called-alternative-is-unconditional` is where that lands, and it
-# belongs with determinization rather than here.
+# The phase does not take those gates out to the ways that call them. The gate stays inside the way and covers what the
+# way performs, not what the caller performs before the call. On a path the gate refuses, the way performs none of its
+# actions. Such an action is a `PushCodeAction` that did not cut the run, or a `PopMessageAction` that did not leave the
+# region. A call site performs something, and the gate cannot move until it sits next to the call. Determinization makes
+# that move under `every-called-alternative-is-unconditional`.
 _GUARDS_INTO_GATES = _Phase(
     "guards-into-gates",
     settles=(_NO_GUARD_COMES_PAST_AN_ACTION, _EVERY_GUARD_IS_IN_A_GATE),
@@ -7337,7 +7343,7 @@ _GUARDS_INTO_GATES = _Phase(
             settles=(_EVERY_GUARD_IS_IN_A_GATE, _EVERY_END_OF_STREAM_SITS_IN_A_GATE),
             reduces=_EVERY_CONDITIONAL_WAY_IS_GATED,
             lapses={
-                "every-gate-looks-ahead-at-most-once": "a guard moved into a gate sits beside whatever that gate "
+                "every-gate-looks-ahead-at-most-once": "a guard moved into a gate sits beside the characters that gate "
                 "already asked. the gate then looks ahead twice at the character in front. merging the pair into a "
                 "single set makes it a single question again."
             },
@@ -7346,11 +7352,12 @@ _GUARDS_INTO_GATES = _Phase(
     ),
 )
 
-# The phase takes `_NO_CHAR_SET_IS_AN_ITEM` and `_EVERY_CONSUME_IS_PROTECTED_BY_A_GATE` to none. The asking and the
-# taking are separate. The question sits in the gate where a caller can see it. The taking goes on the gate's word. This
-# is where the gates come from. A hoist moves a question that already exists, and few exist to move before this runs. A
-# pair of steps does the work. The phase cuts a way that would take a further character on the strength of the first,
-# until a way takes once. A way then holds a single set, with the question where the parse enters the way.
+# The phase takes `_NO_CHAR_SET_IS_AN_ITEM` and `_EVERY_CONSUME_IS_PROTECTED_BY_A_GATE` to none. A gate asks the
+# question where a caller can see it. The consume then takes the character on the gate's word. The phase is where the
+# gates come from. A hoist moves a question that already exists. This phase runs before hoisting could produce such a
+# question. A pair of steps does the work. The phase cuts a way that takes a character on the strength of an earlier
+# one. The phase repeats the cut until a way takes a single character. A way then holds a single set. The question sits
+# where the parse enters the way.
 _CONSUMES_BEHIND_GATES = _Phase(
     "consumes-behind-gates",
     settles=_NO_CHAR_SET_IS_AN_ITEM,
@@ -7365,19 +7372,19 @@ _CONSUMES_BEHIND_GATES = _Phase(
     ),
 )
 
-# The phase is for `_EVERY_CONDITIONAL_WAY_IS_GATED`. The parse enters a way something decides on what the input says.
-# The questions already exist, and this is where they move. The questions move out of a callee offering a single way,
-# and into the choice that has to tell its ways apart. The callee still enters under what it gave up.
-# `_asked_where_entered` says so, and it keeps the take that guard protected protected. The steps here lower the count
-# without settling it, and `unsettled_invariants` reports the remainder at the end. The phase is not finished.
+# The phase is for `_EVERY_CONDITIONAL_WAY_IS_GATED`. A question on the input decides whether the parse enters a way.
+# The phase moves questions that already exist. The questions move out of a callee offering a single way, and into the
+# choice that has to tell its ways apart. The callee still enters under what it gave up. `_asked_where_entered` says so.
+# The move keeps a take protected where the moved guard protected that take. The steps here leave the invariant
+# unsettled, and `unsettled_invariants` reports what remains at the end.
 #
-# The phase opens on a pair of claims rather than transforms. A leaf way answers without a callee and takes its own
-# actions. It follows nothing on. The space a leaf way enters in and the space it accepts therefore agree before any
-# step moves a guard. The grammar arrives holding both, and the steps below have to keep them.
+# The phase opens on a pair of claims rather than transforms. The first claim says a leaf way answers without a callee,
+# takes its own actions and follows nothing on. The second claim says a leaf way accepts in the space it enters in,
+# before any step moves a guard. The grammar arrives holding both claims, and the steps below have to keep them.
 #
 # A pair of steps does the moving, and they move in opposite directions. A guard climbs to the callers that enter it. A
-# way nothing has gated reaches down for the gates of what it can run. The second reaches a whole tree at once, and no
-# step here writes a callee's ways out a level at a time.
+# way nothing has gated reaches down for the gates of the productions it runs. The step reaching down takes a whole tree
+# at once, and no step here writes a callee's ways out a level at a time.
 _GATE_THE_WAYS = _Phase(
     "gate-the-ways",
     establishes=(_ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL, _EVERY_PATH_REACHES_A_LEAF_WAY),
@@ -7388,10 +7395,10 @@ _GATE_THE_WAYS = _Phase(
     ),
 )
 
-# The phase takes `_NO_CHOICE_WAYS_PARTIALLY_OVERLAP` to none. A pair of ways something decides between enters in the
-# same states or in no shared state. The phase follows the gating phase. A way with no gate enters anywhere. The cutting
-# could take nothing apart from such a way. The phase comes before anything determinizing. Determinizing has to answer
-# for the ways left together.
+# The phase takes `_NO_CHOICE_WAYS_PARTIALLY_OVERLAP` to none. The phase decides between a pair of ways. That pair
+# enters in the same states, or in no shared state. The phase follows the gating phase. A way with no gate enters
+# anywhere. The phase could take nothing apart from such a way. The phase comes before anything determinizing.
+# Determinizing has to settle the ways left together.
 _SPLIT_OVERLAPS = _Phase(
     "split-overlaps",
     settles=_NO_CHOICE_WAYS_PARTIALLY_OVERLAP,
@@ -7402,16 +7409,16 @@ _SPLIT_OVERLAPS = _Phase(
             settles=_NO_CHOICE_WAYS_PARTIALLY_OVERLAP,
             lapses={
                 "every-gate-looks-ahead-at-most-once": "a piece's gate gains the characters its atom holds and "
-                "whatever the way already asked. the gate then looks ahead twice at the character in front. merging "
-                "the two into one set makes it one question again."
+                "the characters the way already asked. the gate then looks ahead twice at the character in front. "
+                "merging the pair into a single set makes it a single question again."
             },
         ),
         _Step("merge-gate-peeks-2", _merge_gate_peeks, settles=_EVERY_GATE_LOOKS_AHEAD_AT_MOST_ONCE),
     ),
 )
 
-# The phases in the order the pipeline runs them. A phase holds the steps that serve it. A step below keeps its place,
-# and step rules answered beside the step itself.
+# The phases appear in the order the pipeline runs them. A phase holds the steps that serve it. A step below keeps its
+# place. The step's rules sit beside the step.
 _PHASES = (
     _AT_THE_DOOR,
     _SPECIALIZE,
@@ -7445,11 +7452,15 @@ _PHASES = (
 # reason for naming none. `untested_steps` refuses that. `OWED` holds the count it serves.
 STEPS = [step for phase in _PHASES for step in phase.flattened()]
 
+# The name of a phase of the pipeline, in the order `_PHASES` gives them. Prose cites a phase by its name, and
+# `check_documents` verifies such a citation against this.
+PHASE_NAMES = tuple(phase.name for phase in _PHASES)
+
 # The invariants the pipeline owes and no phase has taken on. The run counts them at the end, beside what the steps
 # name. A phase pursuing an invariant names that invariant on the steps serving it, and the invariant comes out of here
-# then. A claim at the door instead would put the steps from the first under the law of a question the pipeline is not
-# asking yet. That costs a lapse on the steps that touch a gate. It is noise about the declarations, not news about the
-# grammar.
+# then. Claiming the invariants at the start of the pipeline would instead hold the earlier steps to a question the
+# pipeline is not asking. That costs a lapse on the steps that touch a gate. It is noise about the declarations, not
+# news about the grammar.
 OWED = (_EVERY_CHOICE_WAY_IS_DIFFERENT, _EVERY_CONFLICT_IS_A_TAIL_CALL)
 
 

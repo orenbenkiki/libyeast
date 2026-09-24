@@ -1,40 +1,30 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-PreToolUse on Edit and Write. `a-tracked-file-holds-ascii` rather than a character that looks like ASCII.
+PreToolUse on Edit and Write. This hook refuses a character past ASCII. `a-tracked-file-holds-ascii` is the rule.
 
 An em-dash looks like a hyphen. A curly quote looks like an apostrophe. A non-breaking space looks like a space. A
 reader cannot tell them apart. A column count disagrees with the editor. A grep for the ASCII form skips the line.
 
-The hook reads the file the edit would leave. A file outside the tree belongs to somebody else and goes unread.
+The hook reads the file the edit would leave. The hook skips a file outside the tree.
 
-`check_ascii` is the authority and reads the tree. This refuses the character as an edit writes it.
+`check_ascii` refuses the same characters in the tree.
 """
 
-import json
-import os
-import sys
-import unicodedata
-
 import check_ascii
-import collect_fragments
-import gate
-import refusal
-
-
-def _past_ascii(text: str) -> list[str]:
-    """The characters of `text` past ASCII. A codepoint names the character."""
-    found = {character for character in text if ord(character) > 127}
-    return [f"U+{ord(character):04X} {unicodedata.name(character, 'unnamed')}" for character in sorted(found)]
 
 
 def refusal_for(text: str, path: str) -> str | None:
     """
-    The refusal the ASCII rule gives for `text` at `path`, or None where the characters pass.
+    Return the refusal the ASCII rule gives for `text` at `path`. Return None where the characters of `text` pass.
 
-    A caller with prose and no file asks here. `prose_answer` gives the critic's rewrite this same refusal.
+    A caller with prose and no file asks here. `check_ascii` finds the characters, and the gate over the tree finds them
+    the same way. `check_ascii.declaring` names a file holding such a character as content, and `refusal_for` passes
+    that file.
     """
-    found = _past_ascii(text)
+    if check_ascii.declaring(path):
+        return None
+    found = sorted({check_ascii.named_character(one) for _, _, one in check_ascii.past_ascii(text)})
     if not found:
         return None
     return (
@@ -47,20 +37,3 @@ def refusal_for(text: str, path: str) -> str | None:
         "`check_ascii._MAY_HOLD_ANY_BYTE` declares a path that holds such a character as content.\n\n"
         "Rule: a-tracked-file-holds-ascii."
     )
-
-
-def main() -> None:
-    payload = json.load(sys.stdin)
-    edit = collect_fragments.written(payload.get("tool_input", {}))
-    if edit is None or not gate.is_in_the_tree(edit.path):
-        return
-    path = os.path.relpath(os.path.abspath(edit.path), gate.TREE)
-    if check_ascii.declaring(path):
-        return
-    found = refusal_for(edit.now, path)
-    if found:
-        refusal.refuse(found)
-
-
-if __name__ == "__main__":
-    main()

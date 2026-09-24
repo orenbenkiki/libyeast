@@ -1,21 +1,21 @@
 {
   "_": [
-    "A registered hook answers a faulty edit and passes a clean one. This says which edit is which. `check_hooks`",
-    "runs the pair against the command `.claude/settings.json` registers. A hook that answers neither reads as",
-    "silent. A hook that answers both says the same of whatever it reads.",
+    "A registered hook answers a faulty edit and passes a clean one. This says which edit is which. `check_hooks` runs",
+    "the pair against the command `.claude/settings.json` registers. A hook that answers neither reads as silent. A",
+    "hook that answers both cannot tell a faulty edit from a clean one.",
     "",
     "A hook takes a list of pairs. `probes` names what the pair puts the fault in. A hook reading a comment and a",
     "string literal gets a pair apiece. An arm no pair fires against goes untried.",
     "",
-    "This is data rather than Python. The faults below are what the hooks refuse. A hook that reads a module of",
-    "`generator/` would find such a fault in the source of the check that runs it.",
+    "This is data rather than Python. The hooks refuse the faults below. A hook that reads a module of `generator/`",
+    "would find such a fault in the source of the check that runs it.",
     "",
     "`TREE` in a path names the root of the repository. The Edit tool hands an absolute path. A hook matching",
     "`*/x/*.py` answers nothing about a relative one.",
     "",
-    "A pair with a `file` fires as an edit into that text. `check_hooks` writes the text under a scratch directory",
-    "by its basename. The payload is then the Edit the tool would send. Its `old_string` cuts a slice out of a line,",
-    "with no comment marker in the slice. A hook reading that slice sees no prose and passes."
+    "A pair with a `file` fires as an edit into that text. `check_hooks` writes the text under a scratch directory by",
+    "its basename. The payload is then the Edit the tool would send. Its `old_string` cuts a slice out of a line, with",
+    "no comment marker in the slice. A hook reading that slice sees no prose and passes."
   ],
 
   "no-shell-file-writes.sh": [
@@ -112,7 +112,7 @@
         "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The place a run is measured", "new_string": "The one place a run is measured" }
       },
       "passes": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The place a run is measured", "new_string": "The line a run is measured on" }
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The place a run is measured", "new_string": "A run keeps its count here" }
       }
     },
     {
@@ -209,6 +209,38 @@
     { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." }
   ],
 
+  "nested_docstrings.py": [
+    {
+      "probes": "a docstring",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a nested function sits in.\"\"\"\n\n    def inner() -> int:\n        \"\"\"A note.\"\"\"\n        return 1\n\n    return inner()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "        \"\"\"A note.\"\"\"\n", "new_string": "        \"\"\"\n        A note on the inner function.\n        \"\"\"\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "        \"\"\"A note.\"\"\"\n", "new_string": "        \"\"\"A note on the inner function.\"\"\"\n" }
+      }
+    },
+    { "probes": "a comment", "skips": "this counts the lines of a nested docstring. a comment opens on a marker." },
+    { "probes": "a string literal", "skips": "this counts the lines of a nested docstring. a literal is no docstring." },
+    { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." }
+  ],
+
+  "document_rules.py": [
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nThe pass reads the grammar.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "reads the grammar", "new_string": "reads the grammar previously" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "reads the grammar", "new_string": "reads the grammar file" }
+      }
+    },
+    { "probes": "a comment", "skips": "this reads whole documents. a comment sits in a source." },
+    { "probes": "a docstring", "skips": "this reads whole documents. a docstring sits in a source." },
+    { "probes": "a string literal", "skips": "this reads whole documents. a literal sits in a source." }
+  ],
+
   "altitude.py": [
     {
       "probes": "a markdown line",
@@ -271,7 +303,7 @@
   "prose_answer.py": [
     {
       "probes": "a proposal the critic states",
-      "_": "A call naming proposals and no changes asks the word rules of `rule` and of `why`.",
+      "_": "A call names proposals and no changes. The word rules then cover `rule` and `why`. A faulty proposal comes out of the answer.",
       "answers": {
         "agent_id": "probe",
         "tool_input": { "proposals": [{ "rule": "A gate refuses the one word the project turned down.", "why": "The tree holds no such word." }] }
@@ -280,13 +312,49 @@
         "agent_id": "probe",
         "tool_input": { "proposals": [{ "rule": "A gate refuses a word the project turned down.", "why": "The tree holds no such word." }] }
       }
+    },
+    {
+      "probes": "a rewrite the critic hands back",
+      "_": "The critic answers with a verdict per key. A `rewritten` verdict holds its changes under `changes`. The word rules read the prose those changes leave.",
+      "answers": {
+        "agent_id": "probe",
+        "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The codepoint of `character`", "new": "The one codepoint of `character`", "rule": "long-names-over-short-ones" }] } } }
+      },
+      "passes": {
+        "agent_id": "probe",
+        "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The codepoint of `character`", "new": "The codepoint that `character` holds", "rule": "long-names-over-short-ones" }] } } }
+      }
+    },
+    {
+      "probes": "a change citing a rule the conventions do not hold",
+      "_": "A change cites a bullet of `.claude/conventions.md` by name. `gate.conventions` holds the names that file writes.",
+      "answers": {
+        "agent_id": "probe",
+        "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The codepoint of `character`", "new": "The codepoint that `character` holds", "rule": "prose-reads-well" }] } } }
+      },
+      "passes": {
+        "agent_id": "probe",
+        "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The codepoint of `character`", "new": "The codepoint that `character` holds", "rule": "long-names-over-short-ones" }] } } }
+      }
+    },
+    {
+      "probes": "a change quoting text the fragment does not hold",
+      "_": "A change copies `old` out of the batch character for character. A quote the fragment does not hold names no area to rewrite.",
+      "answers": {
+        "agent_id": "probe",
+        "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The byte of `character`", "new": "The codepoint that `character` holds", "rule": "long-names-over-short-ones" }] } } }
+      },
+      "passes": {
+        "agent_id": "probe",
+        "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The codepoint of `character`", "new": "The codepoint that `character` holds", "rule": "long-names-over-short-ones" }] } } }
+      }
     }
   ],
 
   "unread_files.py": [
     {
       "probes": "a file whose language no reader knows",
-      "_": "The rule reads the path. A `.txt` file has no reader here, and a `.md` file has one.",
+      "_": "A file's path decides its reader. A `.md` file has a reader here. A `.txt` file has none.",
       "answers": { "tool_input": { "file_path": "TREE/NOTES.txt", "content": "A probe. The hooks read it.\n" } },
       "passes": { "tool_input": { "file_path": "TREE/NOTES.md", "content": "A probe. The hooks read it.\n" } }
     },
@@ -305,15 +373,42 @@
     }
   ],
 
-  "agent-tools.sh": [
+  "prose_citations.py": [
     {
-      "probes": "a tool an agent may not call",
-      "_": "A payload naming an agent is an agent's call. `Grep` is withheld on purpose, and a refusal there writes no miss.",
-      "answers": { "agent_id": "probe", "tool_name": "Grep", "tool_input": {} },
-      "passes": { "agent_id": "probe", "tool_name": "TodoWrite", "tool_input": {} }
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The set a walk builds.\nHELD = ()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set `speculate_folds_nothing` builds" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set `normalize` builds" }
+      }
+    },
+    {
+      "probes": "a docstring",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\n\nThe set a walk builds.\n\"\"\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set `speculate_folds_nothing` builds" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set `normalize` builds" }
+      }
+    },
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nThe pass reads what the grammar reaches before it starts.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "what the grammar reaches", "new_string": "what `speculate-folds` reaches" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "what the grammar reaches", "new_string": "what the root reaches" }
+      }
+    },
+    {
+      "probes": "a string literal",
+      "skips": "this reads the prose beside the code. a literal is code, and the citation rule leaves it alone."
     }
   ],
-
   "ascii_only.py": [
     {
       "probes": "a comment",

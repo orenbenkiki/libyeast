@@ -2,15 +2,15 @@
 """
 Emit the decoder's tables from the grammar IR. This is the data half of the decoder.
 
-RFC 3629 fixes the UTF-8 mechanics, and `decoder.c` holds them hand-written. The classification is what the grammar
-derives, and it lives here in full.
+RFC 3629 fixes the UTF-8 mechanics, and `decoder.c` holds them hand-written. The grammar derives the classification, and
+this file holds the whole classification.
 
-That is the key of an ASCII character, and the key of a character the grammar names. It is the bit of a character set
-the grammar tests, and the keys a non-ASCII character can take.
+The classification holds the key of an ASCII character and the key of a character the grammar names. The classification
+also holds the bit of a character set the grammar tests, and the keys a non-ASCII character can take.
 
-The key's layout belongs to this file. Anything reading or building a key does so through the macros emitted here.
+The key's layout belongs to this file. Code reading or building a key goes through the macros this file emits.
 
-Usage: `make regen`. Or `python3 generator/grammar2decoder.py`, which writes `src/decoder_tables.h`.
+Run `make regen` or `python3 generator/grammar2decoder.py`. The script writes `src/decoder_tables.h`.
 """
 
 import io
@@ -27,7 +27,7 @@ _ASCII_LIMIT = 0x80  # the codepoint the ASCII table ends at. The probing starts
 _DELETE = 0x7F  # DEL. The key table names it.
 _NEL = 0x85  # NEXT LINE. The key table names it.
 _NONCHARACTERS = (0xFFFE, 0xFFFF)  # probed, and reached by no decode.
-_SURROGATES = (0xD800, 0xDFFF)  # probed, and refused where a decode reaches such a codepoint.
+_SURROGATES = (0xD800, 0xDFFF)  # probed, and refused where a decode reaches a surrogate.
 _C1_LIMIT = 0xA0  # the C1 controls run from the end of ASCII up to here.
 _HEX_LETTERS = "ABCDEFabcdef"  # the letters a hex escape may use, in upper case and in lower case.
 
@@ -44,8 +44,8 @@ def _ascii_group(codepoint: int) -> str:
     """
     The name of the key an unnamed ASCII character takes.
 
-    A key names a group of characters the grammar cannot tell apart. `check_groups` proves the grouping is this. A
-    grammar change cannot quietly redefine a name.
+    A key names a group of characters the grammar cannot tell apart. `check_groups` proves that a key groups such
+    characters. A grammar change cannot quietly redefine a name.
     """
     if codepoint < 0x20:
         return "YS_KEY_CONTROL"
@@ -62,8 +62,8 @@ def _ascii_group(codepoint: int) -> str:
 
 def _non_ascii_group(codepoint: int) -> str:
     """
-    The name of the key an unnamed non-ASCII character takes, with the length bits left out. A character of either kind
-    runs to a length `decoder.c` ORs in.
+    The name of the key an unnamed non-ASCII character takes, with the length bits left out. `decoder.c` ORs the length
+    bits in.
 
     The C1 controls and the noncharacters share a key. To the grammar, both are merely JSON-compatible and not
     printable.
@@ -78,9 +78,10 @@ def check_groups(model: chars.Model, grammar: Mapping[str, ir.Prod]) -> dict[str
     The key of a character the grammar does not name. The group name keys the answer.
 
     A group is a set of characters the grammar cannot tell apart. `decoder.c` classifies non-ASCII characters by UTF-8
-    byte pattern, and the grammar reaches none of that. Both stay correct while the grammar keeps grouping characters
-    exactly this way. A change there would leave the ladder misclassifying in silence. So this fails generation instead.
-    Checking a character per segment is exhaustive. A key cannot vary within a segment.
+    byte pattern, and the grammar reaches none of that. `decoder.c` stays correct while the grammar keeps grouping
+    characters exactly this way. A change to the grouping would leave `decoder.c` misclassifying characters in silence.
+    So this check fails generation instead. Checking a character per segment is exhaustive. A key cannot vary within a
+    segment.
     """
     keys: dict[str, int] = {}
     for codepoint in range(_ASCII_LIMIT):
@@ -144,14 +145,15 @@ def _defined(grammar: Mapping[str, ir.Prod], body: ir.Node) -> int | None:
 
 def _sites(grammar: Mapping[str, ir.Prod]) -> dict[int, tuple[list[str], list[str]]]:
     """
-    The places the grammar names a character. `{codepoint: ([defining], [using])}` production texts.
+    The places the grammar names a character. A codepoint keys a pair of lists of production texts. The first list holds
+    the productions that define the character. The second holds the productions that use it.
 
     A production defines a character where its body takes that character and takes nothing besides. A pair of
     productions may do so, and the plainest of them names the character. `chars.naming_productions` answers that for a
     lone character exactly as it does for a wider set.
 
-    The characters that no production names appear inline. `ns-uri-char` and its like hold them. The citation for those
-    gives where they appear instead.
+    The characters that no production names appear inline. The `ns-uri-char` production and its like hold such a
+    character. A citation of such a character names the productions it appears in.
     """
     cited = {name: f"[{production.number:03d}] {name}" for name, production in grammar.items()}
     naming = chars.naming_productions(grammar)
@@ -201,7 +203,7 @@ def _defines(out: io.StringIO, rows: Sequence[tuple[str, str, str]]) -> None:
 
 
 def _entries(out: io.StringIO, rows: Sequence[tuple[str, str]]) -> None:
-    """Write the entries of an initializer, their comments aligned into a column."""
+    """Write the entries of an initializer, and align their comments into a column."""
     width = max(len(value) for value, _comment in rows)
     for value, comment in rows:
         out.write(f"    {value + ',':<{width + 1}} // {comment}\n")
@@ -217,12 +219,12 @@ def emit(out: io.StringIO, model: chars.Model, grammar: Mapping[str, ir.Prod], k
     Write the header.
 
     This file settles the layout rather than clang-format. The tables read as tables only when their columns line up,
-    and the citations are too long to survive a reflow at the column limit. Hence the `clang-format off`. That obliges
-    us to emit formatting the project would otherwise have imposed.
+    and the citations are too long to survive a reflow at the column limit. The header therefore holds a `clang-format
+    off`, and this function emits the formatting clang-format would otherwise impose.
     """
     where = _sites(grammar)
     out.write("// SPDX-License-Identifier: MIT\n")
-    out.write("// Generated by generator/grammar2decoder.py from grammar/yeast-spec-1.2.yaml. Do not edit.\n")
+    out.write("// Generated by `generator/grammar2decoder.py` from `grammar/yeast-spec-1.2.yaml`. Do not edit.\n")
     out.write("// clang-format off\n")
     out.write("#ifndef YEAST_DECODER_TABLES_H\n")
     out.write("#define YEAST_DECODER_TABLES_H\n\n")
@@ -244,8 +246,8 @@ def emit(out: io.StringIO, model: chars.Model, grammar: Mapping[str, ir.Prod], k
         ],
     )
 
-    out.write("\n// The key of a character the grammar names. A key stays put, and so do the sets and the\n")
-    out.write("// length. Testing for a character is one comparison.\n")
+    out.write("\n// The key of a character the grammar names. A key stays put. The sets and the length stay put\n")
+    out.write("// as well. Testing for a character is one comparison.\n")
     _defines(
         out,
         [
@@ -279,7 +281,7 @@ def emit(out: io.StringIO, model: chars.Model, grammar: Mapping[str, ir.Prod], k
         ],
     )
 
-    out.write("\n// The character sets by id. ys_consume_set() reads them.\n")
+    out.write("\n// The character sets by id. `ys_consume_set` reads them.\n")
     out.write("typedef enum ys_set_id {\n")
     for name, _denotation in model.sets:
         out.write(f"    YS_SET_ID_{_set_name(name)},\n")
@@ -306,7 +308,7 @@ def emit(out: io.StringIO, model: chars.Model, grammar: Mapping[str, ir.Prod], k
     )
 
     out.write("\n// The key of a valid non-ASCII character the grammar does not name, with its length bits left out.\n")
-    out.write("// Such a character runs to two bytes or three or four. decoder.c ORs its length in.\n")
+    out.write("// Such a character is a 2-byte, 3-byte or 4-byte sequence. `decoder.c` ORs its length in.\n")
     _defines(
         out,
         [

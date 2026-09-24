@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-Enforce C comment style in the given .c/.h files.
+Enforce C comment style in the given `.c` and `.h` files.
 
-Rule: a /* ... */ comment goes inline only, with non-whitespace code following the closing */ on the same line, as in
-`foo(/* count */ 5)`. Any other comment must use //.
+A /* ... */ comment goes inline only. Non-whitespace code must follow the closing */ on the same line, as in `foo(/*
+count */ 5)`. Any other comment must use //.
 
-Violations print as `<path>:<line>: message` for an editor to go to.
+Violations print as `<path>:<line>: message`.
 """
 
 import sys

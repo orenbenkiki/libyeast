@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// Allocating an object and growing an array under a cap. This resolves what a NULL `ys_options` means. This
-// builds an object charged to the cap. This doubles an array that outgrows its capacity.
+// Allocating an object and growing an array under a cap. Resolve a NULL `ys_options`. Build an object charged to
+// the cap. Double an array that outgrows its capacity.
 
 #include "memory.h"
 
@@ -9,8 +9,8 @@
 #include <stdint.h>
 #include <string.h>
 
-// Give `bytes` back to the cap. This runs where a growth the allocator refused has to come off the cap again.
-// Deleting the ys_memory frees what the cap still holds.
+// Give `bytes` back to the cap. The release runs after the allocator refuses a growth. The bytes of that growth come
+// off the cap again. Deleting the `ys_memory` frees what the cap still holds.
 static void ys_memory_release(ys_memory *memory, size_t bytes) {
     memory->allocated_bytes -= bytes;
 }
@@ -38,7 +38,7 @@ void *ys_memory_new(ys_memory *memory, const ys_options *options, size_t size) {
     errno = 0;
     void *object = ys_allocate(&memory->allocator, size);
     if (object == NULL) {
-        assert(errno != 0 && "a ys_allocator that returns NULL must set errno");
+        assert(errno != 0 && "a `ys_allocator` that returns NULL must set errno");
         errno = errno != 0 ? errno : ENOMEM; // a broken allocator in a release build still yields something sensible
         return NULL;
     }

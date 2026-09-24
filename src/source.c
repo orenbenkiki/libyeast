@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-// Filling a ys_source from its reader. Tearing down the transport behind that source. The fill compacts the bytes
-// already read, grows the buffer where it has to, and pulls more bytes. The teardown closes the transport and frees
-// the buffers.
+// A fill drops the bytes a `ys_source` has already read. A fill grows the buffer where it has to. A fill then pulls
+// more bytes from the reader. A teardown closes the transport and frees the buffers.
 
 #include "source.h"
 

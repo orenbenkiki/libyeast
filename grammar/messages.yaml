@@ -1,16 +1,14 @@
 # SPDX-License-Identifier: MIT
 # The error messages libyeast emits, keyed by the code a grammar `(cut)` or `(error)` names. A message says what the
-# parse expected. It says nothing about what the parse found, and the byte that failed comes back as the first
+# parse expected. It says nothing of the bytes the parse found, and the byte that failed comes back as the first
 # unparsed token behind the error. The interpreter reads this file. `check_messages` holds the codes here to the
 # codes the grammar names. The C parser emits no message from this file. `src/messages.c` holds the wire reader's own
-# messages and nothing out of here.
+# messages.
 #
-# A `(cut)` or an `(error)` in `yeast-spec-1.2.yaml` names a code here. A fixture whose expected output holds the text
-# shows that code firing. A commit point nothing reaches is a message nothing has checked.
+# A `(cut)` or an `(error)` in `yeast-spec-1.2.yaml` names a code here. A fixture whose expected output holds the code's message shows that code firing. A commit point nothing reaches is a message nothing has checked.
 #
-# A byte that is no codepoint at all belongs elsewhere. Such a byte belongs to the decoder below the grammar. Its
-# message will be hand-written in `src/messages.c` rather than an entry here. The tree holds no such message. The
-# parser core that would emit it does not exist. `PLAN.md` section 4 says what deciding that decides.
+# A byte that is no codepoint at all belongs to the decoder below the grammar. A writer will hand-write that byte's message in `src/messages.c` rather than add an entry here. The tree holds no such message. The
+# parser core that would emit it does not exist. `PLAN.md` section 4 says what follows from where that message lives.
 
 # A required construct is absent.
 MISSING_VALUE: "A mapping value must follow `:`"

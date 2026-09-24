@@ -2,29 +2,27 @@
 """
 Check that nothing in `generator/` or `scripts/` is unreachable.
 
-Dead is a single word said of a module, a definition and a kind. A module that nothing runs and nothing imports. A
-top-level function, a class or a constant nothing references. A kind of `ir` nothing constructs.
+This gate calls a module, a definition or a kind of `ir` dead. A dead module has no runner and no importer. A dead
+top-level function, class or constant has no reference. A dead kind of `ir` has no construction.
 
-Naming a kind is cheap and building a kind is the commitment. A kind nobody ever builds is as dead as a helper nobody
-ever calls. Both read like working code to whoever arrives next, and that is what makes the silence worth refusing.
+Naming a kind costs little. Building a kind is the commitment. A kind nobody builds is as dead as a helper nobody calls.
+Both read like working code to the next reader.
 
-The module walk starts from what runs. That is the `Makefile`'s invocations plus what `_RUN_FROM_ELSEWHERE` declares. It
-follows the imports.
+The module walk starts from the modules the `Makefile` runs and the modules `_RUN_FROM_ELSEWHERE` declares. The walk
+follows imports from there.
 
-The definition walk starts from what a module does at import. The walk starts from `main` too. That start applies in a
-module something runs. A module nothing reaches comes back as a dead module. Reading its definitions besides would say
-the same thing once per definition.
+In a module the module walk reaches, the definition walk starts from the code at import and from `main`. The gate
+reports a module nothing reaches as a dead module. The gate reads no definition of a dead module.
 
-Both reach rather than merely mention. A definition counted live for a mention of its name keeps itself alive. A pair
-calling back and forth and nobody besides would then be live, and so would a whole cluster the step that used it left
-behind.
+Both walks follow a reach rather than a mention. A walk that counted a mention would let a definition keep itself alive.
+A pair of functions calling one another would then stay live. A cluster a removed step left behind would stay live too.
 
-`a-declared-exception-carries-its-reason`. `_KEPT_THOUGH_DEAD` and `_RUN_FROM_ELSEWHERE` are the ways to keep something
-anyway, and a declaration says why. This gate holds a declaration as tightly as the rule it excuses. A name that comes
-back to life comes back as a fault, and an exemption cannot outlive what it was for.
+A declaration in `_KEPT_THOUGH_DEAD` or `_RUN_FROM_ELSEWHERE` keeps a name anyway. The declaration states its reason
+under the rule `a-declared-exception-carries-its-reason`. This gate holds a declaration as tightly as the rule it
+excuses. A declared name that comes back to life comes back as a fault.
 
-A `_KEPT_THOUGH_DEAD` name covers whatever nothing besides it reaches. The helpers under a kept transformation ride that
-reason rather than a reason apiece.
+A `_KEPT_THOUGH_DEAD` name also keeps the helpers a kept transformation calls. A helper under a kept transformation
+takes no reason of its own.
 """
 
 import ast
@@ -41,27 +39,27 @@ _KEPT_THOUGH_DEAD = {
     "_lower_continuations_into_conflicts": "the step is out of `STEPS`, the transformation kept for the item in "
     "`PLAN.md` that wants it",
     "AutoDetectIndentValue": "`annotated2ir.SPECIALS` builds this while a reader takes in the vendored grammar. "
-    "libyeast's own grammar writes no `<auto-detect-indent>`. `interpreter` refuses one deliberately.",
+    "libyeast's own grammar writes no `<auto-detect-indent>`. `interpreter` refuses such a value deliberately.",
     "InvalidSet": "`annotated2ir.SPECIALS` builds this from `<invalid>`. the grammar writes `<invalid>`, and no step "
     "mints one.",
     "PushRecoveryAction": "the IR names this pair. the interpreter matches it. an unwind then reads where to stop and "
-    "where to continue from one place. `normalize`'s answer for where an action leaves a parse covers it. no step "
-    "writes the pair.",
+    "where to continue from the same place. `normalize` decides where an action leaves a parse, and that decision "
+    "covers it. no step writes the pair.",
     "PopRecoveryAction": "the other half of that pair. the same reason keeps it unwritten.",
     "ConsumeTrimmedSpanAction": "the shape a `TrimStarTree` becomes. the trim-reuse pass `PLAN.md` owes builds one. "
-    "the interpreter matches it already, and so does `normalize`'s answer for where an action leaves a parse. the "
-    "pass has something to land on.",
+    "the interpreter matches it already. `normalize` decides what an action leaves, and that decision matches it too. "
+    "the pass has something to land on.",
     "OpenProvisionalAction": "the provisional vocabulary of a speculation. `interpreter`, `normalize` and "
     "`check_grammar_coverage` match it. the speculations `PLAN.md` owes build one.",
-    "MarkProvisionalAction": "the same vocabulary. this names the side of a run a retype or an injection answers for.",
+    "MarkProvisionalAction": "the same vocabulary. this names the side of a run a retype or an injection changes.",
     "RetypeProvisionalAction": "the same vocabulary. this gives a held token the code the resolution decides on.",
     "InjectBeforeAction": "the same vocabulary. this puts a decided marker in front of a held run.",
     "CommitProvisionalAction": "the same vocabulary. this closes a run once the resolution decides its meaning.",
 }
 
 
-# The shape the `Makefile` says it runs a module in. The `Makefile` writes down what `make` runs. This check reads the
-# `Makefile` rather than keeping a list beside it, and so catches the drift both ways.
+# `_RUNS_A_MODULE` matches a `Makefile` recipe that runs a module. The `Makefile` holds the recipes `make` runs. This
+# check reads those recipes rather than keeping a list beside them.
 #
 # A gate added to the `Makefile` becomes reachable the day somebody adds it, and a gate taken out is dead the same day.
 # A list kept by hand catches the first of those and misses the second.
@@ -72,12 +70,8 @@ _RUNS_A_MODULE = re.compile(r"python3 (?:generator|scripts)/(\w+)\.py")
 _RUN_FROM_ELSEWHERE = {
     "regen_fixture": "a developer runs it by hand to record a fixture's expected output",
     "review_input": "the pre-commit review workflow runs it to prepare a change for review",
-    "update_ledger_and_queue": "the critic workflow runs it to reduce the ledger and to queue the dropped keys",
     "batch_pending_fragments": "the critic workflow runs it to write the unexamined fragments into batches",
-    "pass_examined_fragments": "the critic workflow runs it to move what the linguistic pass passed",
-    "converge_fragments": "a developer runs it by hand to write the workflow that settles a batch of prose",
     "apply_prose": "a developer runs it by hand to write a fragment's new prose into the tree",
-    "faulty_fragments": "a developer runs it by hand to report the fragments a write-time hook would refuse",
 }
 
 
@@ -92,7 +86,7 @@ def _imports() -> dict[str, set[str]]:
     `{a module of generator/ or scripts/: the modules of those two it imports}`.
 
     The hooks are out of this. A hook is run by `.claude/settings.json` rather than by the `Makefile`. A walk looking
-    for what nothing runs and nothing imports would call a hook dead.
+    for a module nothing runs and nothing imports would call a hook dead.
     """
     found: dict[str, set[str]] = {}
     for path in gate.modules():
@@ -108,11 +102,11 @@ def _imports() -> dict[str, set[str]]:
 
 def _unrun_module_errors() -> list[str]:
     """
-    A module of `generator/` or `scripts/` that nothing runs and nothing anything runs imports.
+    A module of `generator/` or `scripts/` that nothing runs, directly or through an import.
 
-    Also a `_RUN_FROM_ELSEWHERE` declaration that has stopped being true. Such a declaration names something that is no
-    module of those directories. Or the declaration names a module the `Makefile` has since started running, and then it
-    excuses nothing.
+    This function also returns a `_RUN_FROM_ELSEWHERE` declaration that has stopped being true. Such a declaration names
+    something that is no module of those directories. A declaration also stops being true once the `Makefile` starts
+    running the module it names.
     """
     imports = _imports()
     runs = _run_by_make()
@@ -124,7 +118,7 @@ def _unrun_module_errors() -> list[str]:
             faults.append(f"the Makefile runs `{name}`, and the stale reason for keeping it says {why}")
     reached = _reached_from(runs | set(_RUN_FROM_ELSEWHERE), imports, imports)
     return faults + [
-        f"{name}.py has no runner and no importer that runs. no declaration says why the tree keeps it."
+        f"the module {name} has no runner and no importer that runs. no declaration says why the tree keeps it."
         for name in sorted(set(imports) - reached)
     ]
 
@@ -142,11 +136,10 @@ def _names_in(node: ast.AST) -> set[str]:
 
 def _called_in(node: ast.AST) -> set[str]:
     """
-    The names `node` calls. That shape is how building something looks. Naming something looks different.
+    The names `node` calls.
 
-    Naming a kind is cheap and building a kind is the commitment. A call makes a kind live, and a mention leaves it
-    dead. A kind listed in a family or answered for in a table is a kind somebody talks about. A kind that gets called
-    is a kind somebody makes.
+    A call makes a kind live, and a mention leaves it dead. A kind listed in a family or given a row in a table counts
+    as a mention.
     """
     found = set()
     for one in ast.walk(node):
@@ -158,14 +151,14 @@ def _called_in(node: ast.AST) -> set[str]:
 
 def _reached_from(roots: Iterable[str], reaches: Mapping[str, Collection[str]], held: Collection[str]) -> set[str]:
     """
-    The names `roots` reaches through `reaches`, as a worklist, out of the names `held` knows about.
+    The names a worklist reaches from `roots` through `reaches`, out of the names `held` knows about.
 
-    Both walks are this single walk. The definition walk goes through what a definition reads, over the definitions the
-    tree holds. The module walk goes through what a module imports, over the modules the tree holds.
+    The definition walk and the module walk both run through this function. The definition walk follows the names a
+    definition reads, over the definitions the tree holds. The module walk follows the modules a module imports, over
+    the modules the tree holds.
 
     `held` says which names exist and `reaches` says what a name reaches. The module walk passes a single dictionary for
-    both. The keys are the modules and the values are what a module imports. So the names here say the shape rather than
-    either walk's subject.
+    both. A key is a module, and its value holds the modules that module imports.
     """
     reached, waiting = set(), [name for name in roots if name in held]
     while waiting:
@@ -178,18 +171,18 @@ def _reached_from(roots: Iterable[str], reaches: Mapping[str, Collection[str]], 
 
 def _dead_code_errors() -> list[str]:
     """
-    The parts of `generator/` and `scripts/` that nothing reaches. A name that nothing reaches, and a kind that nothing
-    builds.
+    Report the parts of `generator/` and `scripts/` that nothing reaches. Such a part is a name that nothing reaches, or
+    a kind that nothing builds.
 
-    Reached, and not merely mentioned. A definition is reachable from what a module does at import. The walk starts from
-    `main` too. That start applies in a module something runs. From there the walk goes through what a definition it
-    reaches reads in turn, such as a call or a dispatch table's value.
+    A mention does not make a definition reached. A definition is reachable from what a module does at import. The walk
+    starts from `main` too. That start applies in a module something runs. From there the walk follows what a reached
+    definition reads, such as a call or a dispatch table's value.
 
     Counting mentions instead makes a definition its own witness. A pair that call back and forth would then be live off
     a mention apiece. A whole cluster left behind by the step that used it reads as working code.
 
-    A kind counts as built where something *calls* it. A kind named in a family or a table is a kind somebody answers
-    for, and that differs from a kind somebody makes. That is how `ConsumeTrimmedSpanAction` reads as live to the checks
+    A kind counts as built where something *calls* it. A kind named in a family or a table is a kind somebody covers,
+    and that differs from a kind somebody makes. That is how `ConsumeTrimmedSpanAction` reads as live to the checks
     around it while nothing has ever produced such a node.
 
     This also reports a `_KEPT_THOUGH_DEAD` declaration that has stopped being true. Such a declaration names what the
@@ -270,7 +263,7 @@ def main() -> None:
         "dead code fault(s) - a module, a definition or a kind nothing reaches with no reason given, or a reason that "
         "has gone stale",
         "dead code: something runs or imports a module of generator/ and scripts/. something reaches a definition or "
-        "a kind in them. KEPT_THOUGH_DEAD and RUN_FROM_ELSEWHERE declare an exception with a reason.",
+        "a kind in them. `KEPT_THOUGH_DEAD` and `RUN_FROM_ELSEWHERE` declare an exception with a reason.",
     )
 
 

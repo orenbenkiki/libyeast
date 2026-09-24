@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-PreToolUse on Edit and Write. `a-file-of-the-tree-has-a-reader` rather than a file nothing can read.
+PreToolUse on Edit and Write. The hook holds an edited path to `a-file-of-the-tree-has-a-reader`.
 
-A hook asks `collect_fragments` for the fragments an edit leaves. A file whose language no reader knows yields none, and
-the hook passes in silence. The prose in that file then lands unread.
+A hook asks `collect_fragments` for the fragments an edit leaves. `collect_fragments` yields no fragment for a file in a
+language no reader knows. The hook then passes in silence. The prose in that file then lands unread.
 
-`collect_fragments._unnamed_prose` asks the same of the tracked files. This asks it of the edit itself. The file need
-not exist yet.
+`collect_fragments._unnamed_prose` asks whether a tracked file has a reader. This hook asks that question of the edited
+path. The edited file need not exist.
 
-A file outside the tree belongs to somebody else. So does a path `git` ignores.
+The hook skips a file outside the tree and a path `git` ignores.
 """
 
 import json
@@ -25,7 +25,7 @@ import refusal
 
 def _is_ignored(path: str) -> bool:
     """
-    Whether `git` ignores `path`. Build output lands under an ignored directory, and no rule of this project reaches it.
+    Whether `git` ignores `path`.
     """
     answered = subprocess.run(
         ["git", "-C", gate.TREE, "check-ignore", "-q", path], capture_output=True, text=True, check=False
@@ -35,7 +35,7 @@ def _is_ignored(path: str) -> bool:
 
 def _refusal_for(path: str) -> str | None:
     """
-    The refusal this rule gives for `path`, or None where a reader knows the language.
+    The refusal `a-file-of-the-tree-has-a-reader` gives for `path`, or None where a reader knows the language.
 
     `gate.NOT_OURS` names the data of this tree. `gate.UNREAD` names the file the checkers leave alone.
     """
