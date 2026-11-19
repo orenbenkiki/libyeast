@@ -173,8 +173,9 @@
   `make examine-claims` reads the prose of a fragment against the code that prose documents. The reader rewrites a
   sentence the code contradicts. `make pc` fails while a fragment waits for either pass. A claims reader checks a
   critic's draft before the write. A draft whose rewrite the code contradicts stays out of the tree, and a person
-  reviews it. Both passes log a write into the tree with the prose before and after. A fragment holds its prose without
-  the wrapping of its file, and a rewrap moves no digest and no answer.
+  reviews it. A draft the reader passes whole goes into the tree. Its claims settle where its prose cites the code the
+  reader relied on. Both passes log a write into the tree with the prose before and after. A fragment holds its prose
+  without the wrapping of its file, and a rewrap moves no digest and no answer.
 
 - A claim rests on the code it cites. A claims reader fetches code by name through `.claude/mcp/fetch_fragments.py`. The
   answer cites the lines of code that bear a claim out. `prose_answer` refuses a citation that reaches no code.

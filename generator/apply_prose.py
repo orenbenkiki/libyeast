@@ -313,10 +313,9 @@ def _swapped_in(path: str, text: str) -> None:
 
 def fragment_written(fragment: Any, prose_by_site: list[str]) -> None:
     """
-    Write the new prose of `fragment` into the tree. A site whose prose holds still takes no write.
+    Write the new prose of `fragment` into the tree. A file takes a write only where a site in it has prose that moves.
 
-    Public. `converge_prose` writes a fragment whose changes the comparator accepted, and `converge_claims` writes a
-    claim a reader corrected.
+    Public. `converge_prose._written_into_tree` and `converge_claims._written_into_tree` call it.
     """
     for path, lines in _placed(fragment, prose_by_site).items():
         _swapped_in(os.path.join(gate.TREE, path), "\n".join(lines))

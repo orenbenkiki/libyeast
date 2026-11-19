@@ -37,6 +37,7 @@ import sys
 import time
 import traceback
 
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import agent_answers
@@ -68,7 +69,8 @@ _AT_ONCE = 8
 # The calls a fragment may take. A fragment still stale at this count goes to the unsettled map.
 _MOST_ROUNDS = 3
 
-# `_settled` hands this reason to `_given_up` where `claim_state.unpointed_reads` reports a read.
+# `_settled` hands this reason to `_given_up` where `settlement_of` returns the reads `claim_state.unpointed_reads`
+# reports.
 _UNCITED = "the prose rests on code it does not cite"
 
 # `_one_call` hands this reason to `_given_up` where `did_the_answers_run_out` finds the agent spent its retries on
@@ -200,11 +202,13 @@ def _record_path(state: _Claiming, key: str) -> str:
     return os.path.join(state.into, _FETCHED, collect_fragments.prose_digest([key]))
 
 
-def _fetched_by(path: str) -> dict[str, str]:
+def fetched_by(path: str) -> dict[str, str]:
     """
     `{a key the call fetched: the empty string}`, read off the record at `path`.
 
-    A `path` holding no file answers empty. `_settled` fills in the digests.
+    A `path` holding no file answers empty. `settlement_of` fills in the digests.
+
+    Public. `converge_prose` reads the record of a claims task over a critic's draft this way.
     """
     if not os.path.exists(path):
         return {}
@@ -223,36 +227,57 @@ def verdict_of(said: Any, key: str) -> dict[str, Any]:
     return one if isinstance(one, dict) else {}
 
 
-def _settled(state: _Claiming, key: str, read: dict[str, str], runs: list[dict[str, Any]]) -> None:
+def settlement_of(
+    one: collect_fragments.Fragment,
+    read: Iterable[str],
+    runs: list[dict[str, Any]],
+    by_key: Mapping[str, collect_fragments.Fragment],
+    rounds: int,
+) -> claim_state.Verified | list[str]:
     """
-    Put the settlement of the fragment under the parameter `key` into the store. `read` names the fragments the call
-    fetched. `claim_state.unpointed_reads` checks those reads. `claim_state.refined` narrows a read of a file to the
-    declarations `runs` cite, and the store takes the narrowed reads.
+    The settlement of `one`, or the reads the prose of `one` does not cite. `read` names the fragments a reader fetched.
+    `runs` holds the runs of the reader's answer. `by_key` maps a key of the tree to its fragment. `settlement_of`
+    raises on a read the answer relies on that names a fragment `by_key` lacks. `claim_state.relied_on` keeps the reads
+    the answer relies on. `claim_state.unpointed_reads` checks those reads. `claim_state.refined` narrows a read of a
+    file to the declarations `runs` cite, and the settlement takes the narrowed reads.
 
     A read naming a question rather than a fragment takes the digest of that question's answer. `claim_state.answer_sha`
     writes that digest. `claim_state.stale_claims` restales the fragment once that answer moves.
+
+    Public. `converge_prose` settles a critic's draft this way where a claims reader passes it whole.
     """
-    one = state.by_key[key]
-    around = list(state.by_key.values())
-    for name in sorted(read):
-        if not collect_fragments.is_a_question(name) and name not in state.by_key:
-            _stop(state, f"a call over {key} fetched {name}, and the run holds no such fragment", False)
-            return
-    left = claim_state.unpointed_reads(one, read, around, collect_fragments.keys_by_name(around))
+    around = list(by_key.values())
+    relied = claim_state.relied_on(read, runs, around)
+    unheld = sorted(name for name in relied if not collect_fragments.is_a_question(name) and name not in by_key)
+    if unheld:
+        raise ValueError(f"a reader over {one.key} relied on {unheld}, and `by_key` holds no such fragment")
+    left = claim_state.unpointed_reads(one, relied, around, collect_fragments.keys_by_name(around))
     if left:
-        _given_up(state, key, _uncited(left), _UNCITED)
-        return
+        return left
     held = {
         name: (
             claim_state.answer_sha(around, name)
             if collect_fragments.is_a_question(name)
-            else collect_fragments.code_digest(state.by_key[name])
+            else collect_fragments.code_digest(by_key[name])
         )
-        for name in sorted(claim_state.refined(read, runs, around))
+        for name in sorted(claim_state.refined(relied, runs, around))
     }
-    state.settled[key] = claim_state.Verified(claim_state.digests_of(one), state.rounds.get(key, 1), held)
+    return claim_state.Verified(claim_state.digests_of(one), rounds, held)
+
+
+def _settled(state: _Claiming, key: str, read: dict[str, str], runs: list[dict[str, Any]]) -> None:
+    """
+    Store the settlement of the fragment under `key`. `read` names the fragments the call fetched.
+    `claim_state.unpointed_reads` returns the reads the fragment does not point at. The call sends the fragment to the
+    unsettled map where the answer relies on such a read.
+    """
+    settled = settlement_of(state.by_key[key], read, runs, state.by_key, state.rounds.get(key, 1))
+    if isinstance(settled, list):
+        _given_up(state, key, _uncited(settled), _UNCITED)
+        return
+    state.settled[key] = settled
     state.passed += 1
-    _logged(state, f"settle {key} over {len(held)} fetch(es)")
+    _logged(state, f"settle {key} over {len(settled.read)} fetch(es)")
 
 
 def _uncited(left: list[str]) -> list[dict[str, str]]:
@@ -345,8 +370,7 @@ def _applied(state: _Claiming, key: str, said: Any, read: dict[str, str]) -> Non
         held = key if rewritten is None else rewritten.key
         _given_up(state, held, open_claims, f"{len(open_claims)} claim(s) no fetch settled")
     elif not changes:
-        relied = claim_state.relied_on(read, runs, list(state.by_key.values()))
-        _settled(state, key, {name: read[name] for name in relied}, runs)
+        _settled(state, key, read, runs)
 
 
 def _answered(state: _Claiming, key: str, said: Any, read: dict[str, str]) -> None:
@@ -435,7 +459,7 @@ async def _one_call(state: _Claiming, key: str) -> tuple[str, Any, dict[str, str
         why = str(reply.get("result"))[:160]
         _stop(state, f"the call over {key} died: {why}. {reply.get('transcript')} holds what it streamed", False)
         return key, None, {}
-    read = _fetched_by(path)
+    read = fetched_by(path)
     _answered(state, key, said, read)
     return key, said, read
 
@@ -449,9 +473,10 @@ def _took(state: _Claiming, got: tuple[str, Any, dict[str, str]] | BaseException
     transcript the call left. A call whose agent spent its retries on refused answers does not stop the run. `_one_call`
     files that fragment as unsettled, and the run goes on.
 
-    A run that stopped on a status of `agent_calls._A_WALL` reads the answers that come back after the refused call. The
-    run has already paid for those calls. `agent_calls._spent` records the cost of a call. A run that stopped on a fault
-    reads no further answer. A rewrite from an answer read ahead of the fault has already reached the tree.
+    A run that stopped on a status of `agent_calls._A_WALL` reads the answers that come back after the refused call.
+    `does_the_reply_stop_the_run` spots such a status, and that stop leaves the run resumable. `agent_calls._spent`
+    records the cost of a call. A run that stopped on a fault reads no further answer. A rewrite from an answer read
+    ahead of the fault has already reached the tree.
     """
     if isinstance(got, BaseException):
         _stop(state, "a call raised:\n" + "".join(traceback.format_exception(got)), False)
@@ -498,8 +523,9 @@ def _re_read(state: _Claiming) -> dict[str, str]:
 
     The store takes what the run has settled. The journal of answers then empties.
 
-    `by_key` takes the fragments of `collect_fragments.code_only` as well. A reader fetches such a fragment, and
-    `_settled` looks the fetched key up here. Such a fragment holds no prose, and the stale set leaves it out.
+    `by_key` takes the fragments of `collect_fragments.code_only` as well. A reader fetches such a fragment. `_settled`
+    hands `by_key` to `settlement_of`, and `settlement_of` looks the fetched key up here. Such a fragment holds no
+    prose, and the stale set leaves it out.
 
     A run naming keys drops the rest of the stale set.
     """

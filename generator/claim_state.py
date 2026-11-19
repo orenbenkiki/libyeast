@@ -122,6 +122,18 @@ def claims_written(held: dict[str, Verified], unsettled: Mapping[str, Any], keys
     settling_state.replaced(_STORE, json.dumps(said, indent=2) + "\n")
 
 
+def settlement_written(key: str, settled: Verified) -> None:
+    """
+    Put `settled` into the store under `key`. An unsettled entry under `key` leaves the store. The other entries stay.
+
+    Public. `converge_prose` settles a critic's draft this way.
+    """
+    held, unsettled = read_claims()
+    held[key] = settled
+    unsettled.pop(key, None)
+    claims_written(held, unsettled, [*held, *unsettled])
+
+
 def answer_sha(
     held: list[collect_fragments.Fragment], asked: str, by_name: Mapping[str, set[str]] | None = None
 ) -> str:
@@ -247,8 +259,7 @@ def unpointed_reads(
     A fragment points at the code a pointed C or Python fragment names through fragments that are not public. A public
     fragment reached past such a name wants a citation. `collect_fragments.is_public` decides public.
 
-    A paragraph of a markdown document has no name to cite. A fragment pointing at the document points at its
-    paragraphs.
+    A fragment pointing at a markdown document points at its paragraphs.
     """
     reads = set(read)
     pointed = {one.key, *one.references}
@@ -298,9 +309,10 @@ def refined(read: Iterable[str], runs: list[dict[str, Any]], held: list[collect_
     """
     The reads of `read`, with a read of a file narrowed to the declarations the citations of `runs` reach.
     `collect_fragments.owners_of` names the declarations behind the lines of a citation. A read of a file stays whole
-    where a citation of it names no lines. The read also stays whole where a cited line has no owner.
+    where a citation of it names no lines. The read also stays whole where a cited line that is not blank has no owner.
 
-    Public. `converge_claims` stores these reads after `unpointed_reads` passes the reads the call made.
+    Public. `converge_claims.settlement_of` stores these reads after `unpointed_reads` passes the reads that `relied_on`
+    keeps.
     """
     by_key = {one.key: one for one in held}
     ranges: dict[str, list[tuple[int, int]]] = {}
@@ -330,12 +342,12 @@ def relied_on(read: Iterable[str], runs: list[dict[str, Any]], held: list[collec
     The reads among `read` an answer relies on. `runs` holds the runs of that answer, and `held` holds the fragments of
     the tree.
 
-    Public. `prose_answer` asks `unpointed_reads` about these reads. `converge_claims` stores these reads and drops any
-    other read.
+    Public. `prose_answer` asks `unpointed_reads` about these reads. `refined` narrows a read of a file to the
+    declarations the runs cite. `converge_claims` then stores these reads and drops any other read.
 
     The answer relies on a read a run cites under `shown_by` or `denied_by`. A citation writes a key, or a name that
-    reaches a single fragment through `collect_fragments.reach_by_name`. A question stays a read. `answer_sha` restales
-    the fragment when a fragment a question gave back moves.
+    reaches a single fragment through `collect_fragments.reach_by_name`. A question stays a read. The digest
+    `answer_sha` writes for a question changes when a fragment that question gave back moves.
     """
     cited = {key for key, _citation in _citations(runs, held)}
     return {one for one in read if collect_fragments.is_a_question(one) or one in cited}

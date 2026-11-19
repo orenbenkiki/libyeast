@@ -326,10 +326,11 @@ running in parallel waits on the same lock before it appends a result.
 A critic may pass a fragment unchanged. `converge_prose.py` then takes the fragment out of the prose queue, and adds its
 prose digest to the ledger.
 
-A critic may suggest changes to a fragment. The driver raises an error on a change whose old text the fragment lacks.
-The run then stops. The driver discards a change that overlaps a change it kept. The run stops when the driver discards
-a change. The driver may keep no change of a fragment the critic did not pass. The driver then marks that fragment
-dirty. The driver records the kept changes in the prose queue. A comparator then judges those changes.
+A critic may suggest changes to a fragment. The driver `converge_prose` reads those changes. The driver raises an error
+on a change whose old text the fragment lacks. The run then stops. The driver discards a change that overlaps a change
+it kept. The run stops when the driver discards a change. A fragment the critic did not pass may end with no kept
+change. The driver then marks that fragment dirty. The driver records the kept changes in the prose queue. A comparator
+then judges those changes.
 
 A critic may suggest conventions to `generator/converge_prose.py`. The driver appends the suggested conventions to the
 file `settling_state.SUGGESTED` names.
@@ -351,9 +352,11 @@ the path of the draft file. `prose_answer` reads the reader's answer against tha
 the draft contradicts the code. The fragment then keeps the prose of the tree and goes to the unsettled prose queue.
 `settling_state.review_logged` writes the prose of the tree, the draft and the corrected draft to the file
 `settling_state.REVIEW` names. A `changed` run over text the critic kept leaves that text to the claims pass.
-`claim_state.stale_claims` names the written fragment to that pass. With no `changed` run over the rewrite,
-`apply_prose.fragment_written` writes the draft into the tree. A file holding a changed site takes a single write. The
-prose queue follows the new prose key after the write. The fragment is dirty, and goes to a new critic task.
+`claim_state.stale_claims` names the written fragment to that pass. A reader marking no `changed` run and no
+unverifiable claim settles the written fragment instead. `converge_claims.settlement_of` gives that settlement, and
+`converge_prose` writes it into the claim store. With no `changed` run over the rewrite, `apply_prose.fragment_written`
+writes the draft into the tree. A file holding a changed site takes a single write. The prose queue follows the new
+prose key after the write. The fragment is dirty, and goes to a new critic task.
 
 The driver in `generator/converge_prose.py` ignores a result the prose queue does not wait for. A comparator result for
 a change which has a verdict is stale. A critic result is stale where no fragment of its batch waits for a critic. A
@@ -512,9 +515,9 @@ skips its document. `claims_purged` drops the entry of a fragment that reads aga
 touches. A code edit restales a settled fragment that read that code. An unsettled fragment waits for a person until its
 own prose or code moves.
 
-`generator/collect_fragments.py` leaves the prose out of a file fragment's code. An edit to a comment then restales the
-fragment of that comment. `generator/claim_state.py` compares a reader's reads by `code_digest`, and restales no reader
-of the file around that comment.
+`code_digest` in `generator/collect_fragments.py` leaves the prose comments out of the digest of a file fragment's code.
+An edit to a comment then restales the fragment of that comment. `generator/claim_state.py` compares a reader's reads by
+`code_digest`, and restales no reader of the file around that comment.
 
 A read key may ask a question of the tree rather than name a fragment. `collect_fragments.CALLERS` and
 `collect_fragments.MENTIONS` head such a question. `collect_fragments.is_a_question` tells such a key apart, and

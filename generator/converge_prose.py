@@ -32,6 +32,7 @@ from typing import Any
 import agent_answers
 import agent_calls
 import apply_prose
+import claim_state
 import collect_fragments
 import converge_claims
 import record_run
@@ -534,8 +535,9 @@ def _read_claims(state: _Settling, task: settling_state.Task, said: Any) -> None
     the draft and the reader's corrected draft for a person to read.
 
     A reader marking no such run sends the draft into the tree. The function drops a `changed` run over kept text.
-    `claim_state.stale_claims` names the written fragment to `converge_claims`. The fragment moves to its new digest and
-    waits for a critic.
+    `claim_state.stale_claims` names the written fragment to `converge_claims`. A reader marking no change and no
+    unverifiable claim settles the written fragment through `_claims_settled` instead. The fragment moves to its new
+    digest and waits for a critic.
 
     A fault in the tiling stops the settling run. A write that stops the settling run leaves the fragment in place. The
     function logs and drops a result over a fragment the prose queue holds no draft for.
@@ -561,9 +563,29 @@ def _read_claims(state: _Settling, task: settling_state.Task, said: Any) -> None
     new_digest = _written_into_tree(state, digest, entry, entry.proposed)
     if not new_digest:
         return
+    if not changes and not any(run.get("verdict") == agent_answers.UNVERIFIABLE for run in runs):
+        _claims_settled(state, digest, new_digest, runs)
     entry.draft, entry.proposed, entry.is_dirty = entry.proposed, [], True
     _dropped(state, digest)
     _stored(state, new_digest, entry)
+
+
+def _claims_settled(state: _Settling, digest: str, new_digest: str, runs: list[dict[str, Any]]) -> None:
+    """
+    Put the settlement of the fragment written at `new_digest` into the claim store. A claims task over `digest` read
+    the draft. The runs of its reader hold no change and no claim the reader could not settle.
+    `converge_claims.settlement_of` settles the fragment over the record of that task. A read the prose does not cite
+    leaves the store unchanged, and `claim_state.stale_claims` sends the fragment back to `converge_claims`.
+    """
+    one = state.by_digest[new_digest]
+    record, _draft = _claims_files(state, digest)
+    read = converge_claims.fetched_by(record)
+    settled = converge_claims.settlement_of(one, read, runs, {**state.by_key, one.key: one}, 1)
+    if isinstance(settled, list):
+        _logged(state, f"leave the claims of {one.key} owed: the prose cites none of {settled}")
+        return
+    claim_state.settlement_written(one.key, settled)
+    _logged(state, f"settle the claims of {one.key} over {len(settled.read)} fetch(es)")
 
 
 def _read_compare(state: _Settling, task: settling_state.Task, said: Any) -> None:

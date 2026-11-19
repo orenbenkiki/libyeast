@@ -659,9 +659,9 @@ CLAIM_KEYS ?=
 CLAIM_AGAIN ?=
 
 # The claim pass between the prose and the code it documents. The pass spends agent calls, and no gate depends on it.
-# `converge_claims` keeps its state in the claim store, and a later run of this target picks up that state through
-# `read_claims`. `converge_claims` exits with `RESUMABLE` where a later run can continue, and with `FAILED` where a
-# person investigates.
+# `converge_claims` keeps its state in the claim store through `claims_written`, and a later run of this target picks up
+# that state through `read_claims`. `converge_claims` exits with `RESUMABLE` where a later run can continue, and with
+# `FAILED` where a person investigates.
 examine-claims:
 	python3 generator/converge_claims.py $(PROSE_DIR) $(CLAIM_COUNT) $(if $(PROSE_MODEL),--model $(PROSE_MODEL),) \
 		$(if $(CLAIM_KEYS),--only $(CLAIM_KEYS),) $(if $(CLAIM_AGAIN),--again $(CLAIM_AGAIN),)

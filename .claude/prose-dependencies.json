@@ -3766,16 +3766,16 @@
       "read": {}
     },
     "Make:Makefile:examine-claims": {
-      "own": "7840d48ccfdc9544:648628fecf89f193",
-      "rounds": 1,
+      "own": "7c95d918ab988297:648628fecf89f193",
+      "rounds": 2,
       "read": {
-        "Make:Makefile:pc": "48ab50636fd091c9",
-        "Make:Makefile:verify": "9bcc539e7cc16a4d",
+        "Make:Makefile": "0b41d648944124d5",
         "Python:agent_calls.py:FAILED": "732f88745cf51cee",
         "Python:agent_calls.py:RESUMABLE": "d4a12e149d23dcc9",
+        "Python:claim_state.py:claims_written": "2f4923eae6ffab17",
         "Python:claim_state.py:read_claims": "221637b33bbf7322",
         "Python:converge_claims.py:_ASK": "d409e8c8525d2d8c",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_claims.py:_re_read": "d4ae89a7e5409a2a",
         "Python:converge_claims.py:main": "20a2de6e4b8784d3",
         "mentions:examine-claims": "7a852c5720a57ab0"
@@ -4127,8 +4127,8 @@
       "read": {
         "Python:claim_state.py:refined": "d7a05a39bb1d66a4",
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
-        "callers:claim_state.refined": "8164356b3119f747"
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
+        "callers:claim_state.refined": "dbb7a7b2d3df9bbe"
       }
     },
     "Markdown:DESIGN.md:Checking the claims #cf70b488": {
@@ -4137,10 +4137,9 @@
       "read": {
         "Python:claim_state.py:relied_on": "d27b3ad9eefa678b",
         "Python:collect_fragments.py:is_a_question": "baa56c7e327dc3d8",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "Python:converge_claims.py:_converge": "1f457cdfbefdcaf0",
-        "Python:converge_claims.py:_fetched_by": "6cce583ac30d9eb3",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
         "Python:fetch_fragments.py:_fetched": "5cab617938d2b2fb",
         "Python:fetch_fragments.py:_recorded": "d024e7e3cd568139"
@@ -4220,15 +4219,15 @@
         "Python:agent_calls.py:_replied": "f117c7d97c76f66b",
         "Python:agent_calls.py:did_the_answers_run_out": "dec2aff5b1c6b1e2",
         "Python:agent_calls.py:does_the_reply_stop_the_run": "4e18bf75d1454c78",
+        "Python:agent_calls.py:try_stopping": "efcb977ad27b18f0",
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_prose.py:_calling": "bafc1350cfe63c8e",
         "Python:converge_prose.py:_condensed": "b2e62181c5e47079",
         "Python:converge_prose.py:_died": "ffaa8877ae3a8c6e",
         "Python:converge_prose.py:_is_heard": "8749c63b07f1b2d0",
         "Python:converge_prose.py:_read": "d27a832c0ea36120",
-        "Python:converge_prose.py:_seed": "40a12efd28248c78",
-        "Python:converge_prose.py:_try_planning": "520cf64478d7bce7"
+        "Python:converge_prose.py:_seed": "40a12efd28248c78"
       }
     },
     "Markdown:DESIGN.md:Failures #1361e7af": {
@@ -4357,12 +4356,11 @@
       "rounds": 1,
       "read": {
         "Python:converge_prose.py:_given_up": "794357d29dee9d3f",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
-        "Python:converge_prose.py:_resolved": "e37fdb67d4fba82b",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:converge_prose.py:_try_critic_task": "40b016863dcf0238",
         "Python:converge_prose.py:_written_into_tree": "ef50683419bc509d",
         "Python:settling_state.py:given_up": "1a78b417cae29139",
-        "callers:_written_into_tree": "7a79b987cb6db30d"
+        "callers:Python:converge_prose.py:_written_into_tree": "474c390408bfa30c"
       }
     },
     "Markdown:DESIGN.md:Generating new tasks #320c923f": {
@@ -4481,15 +4479,15 @@
         "Python:claim_state.py:main": "df1c42c105dcb058"
       }
     },
-    "Markdown:DESIGN.md:Staleness #da02bf14": {
-      "own": "da02bf14f768c8f4:e3b0c44298fc1c14",
+    "Markdown:DESIGN.md:Staleness #26a07ec8": {
+      "own": "26a07ec89c998d82:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
         "Python:claim_state.py:digests_of": "b36b77f51b03b16c",
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
-        "Python:collect_fragments.py:_code_of": "bdd708f21616d279",
+        "Python:collect_fragments.py:_code_digest": "29a476c3b84adafe",
         "Python:collect_fragments.py:code_digest": "1d7cc0318d729f6a",
-        "mentions:code_digest": "13e985e05757da86"
+        "mentions:code_digest": "884b5f3617690081"
       }
     },
     "Markdown:DESIGN.md:Staleness #edd3f878": {
@@ -4530,7 +4528,7 @@
       "own": "ee9649e64d609bfe:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_claims.py:_record_path": "ab23ab1621a1ea10",
         "Python:converge_claims.py:claims_message": "0c88b4e06377f1cf",
         "Python:fetch_fragments.py:_recorded": "d024e7e3cd568139"
@@ -4628,7 +4626,9 @@
         "Markdown:prose-claims.md:#4c81aaf6": "e3b0c44298fc1c14",
         "Python:collect_fragments.py:Fragment": "004e248c7500c089",
         "Python:collect_fragments.py:fragments": "c4887f25a72daffc",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:AN_AGENT": "97c5036cd67668fc",
+        "Python:converge_claims.py:_answered": "c7db4af249ce8060",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_claims.py:claims_message": "0c88b4e06377f1cf"
       }
     },
@@ -4643,12 +4643,10 @@
       "rounds": 1,
       "read": {
         "Python:agent_answers.py:CLAIMED": "64ed18ce26a9fa1c",
-        "Python:converge_claims.py:AN_AGENT": "97c5036cd67668fc",
         "Python:converge_claims.py:A_SCHEMA": "82629cb53454012d",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "Python:prose_answer.py": "7d5c79ffb7fe1376",
         "Python:write_agent_prompts.py:_SCHEMAS": "480e660d83d202e0",
-        "Python:write_agent_prompts.py:_rendered": "e0c521da35a813af",
         "Python:write_agent_prompts.py:_said_by": "5035534e44924c9a",
         "Python:write_agent_prompts.py:main": "db6a9d705cc1f2c4"
       }
@@ -4867,13 +4865,12 @@
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
         "Python:collect_fragments.py:key_for": "005e5d89856207d4",
         "Python:converge_claims.py:_MOST_ROUNDS": "7d72d9bab39e6bf8",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "Python:converge_claims.py:_converge": "1f457cdfbefdcaf0",
-        "Python:converge_claims.py:_given_up": "7f06e8675b5413e6",
         "Python:converge_claims.py:_next_keys": "c303487334952528",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_claims.py:_re_read": "d4ae89a7e5409a2a",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
+        "Python:converge_claims.py:_settled": "be421ec352d494ac",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
         "Python:converge_claims.py:main": "20a2de6e4b8784d3",
         "Python:settling_state.py:run_locked": "97dcab8acf6a2a7f"
@@ -4983,11 +4980,9 @@
       "rounds": 1,
       "read": {
         "Python:check_prose.py:_unsettled_faults": "d7be77c6380607b8",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
-        "Python:settling_state.py:REVIEW": "fe62a9c16edd32ee",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:settling_state.py:review_logged": "242f4aee69640435",
-        "callers:review_logged": "0633ed05cde1746b",
-        "mentions:REVIEW": "c6e5240e59e05b2b"
+        "callers:review_logged": "a6279212c30a8884"
       }
     },
     "Markdown:DESIGN.md:The queues #687b5d14": {
@@ -5007,14 +5002,14 @@
       "rounds": 1,
       "read": {
         "Python:converge_prose.py:_given_up": "794357d29dee9d3f",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:converge_prose.py:_try_critic_task": "40b016863dcf0238",
         "Python:settling_state.py:_UNSETTLED": "6f944798f561592d",
         "Python:settling_state.py:given_up": "1a78b417cae29139",
         "Python:settling_state.py:lines_read": "bf52e5eb134c59f7",
-        "Python:update_ledger_and_queue.py:main": "d1f5d92514266fa1",
+        "Python:settling_state.py:unsettled": "c2bac8e61af4b6b8",
         "Python:update_ledger_and_queue.py:updated": "0c8725e8f8438e44",
-        "callers:_given_up": "e85ca08a36ad3461",
+        "callers:_given_up": "1cd71827e87db1f2",
         "callers:given_up": "89c026d346f56d65"
       }
     },
@@ -5034,14 +5029,14 @@
       "read": {
         "Make:Makefile:CLAIM_AGAIN": "60f66324ec663208",
         "Python:claim_state.py:Verified": "028809c6135779ad",
+        "Python:claim_state.py:_NOTE": "3e6f905fb2e1f531",
+        "Python:claim_state.py:_UNSETTLED": "ffdd17c26871ee0f",
+        "Python:claim_state.py:_VERIFIED": "3329164e7fe39a74",
         "Python:claim_state.py:claims_written": "2f4923eae6ffab17",
         "Python:claim_state.py:digests_of": "b36b77f51b03b16c",
         "Python:claim_state.py:main": "df1c42c105dcb058",
-        "Python:claim_state.py:read_claims": "221637b33bbf7322",
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
-        "Python:collect_fragments.py:code_digest": "1d7cc0318d729f6a",
-        "Python:converge_claims.py:main": "20a2de6e4b8784d3",
-        "mentions:claims_written": "676cb9dd3655c899"
+        "Python:collect_fragments.py:code_digest": "1d7cc0318d729f6a"
       }
     },
     "Markdown:DESIGN.md:The store #d0b6cfe4": {
@@ -5074,12 +5069,12 @@
       "own": "0cfd8145fbe1adde:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:fetch_fragments.py:_calling": "ba6fd7a761515e14",
         "Python:fetch_fragments.py:_fetched": "5cab617938d2b2fb",
         "Python:fetch_fragments.py:_mentioning": "cfcb271efd901004",
         "Python:fetch_fragments.py:_recorded": "d024e7e3cd568139",
-        "mentions:CLAIM_RECORD": "26cd40672bc2d6ce"
+        "mentions:CLAIM_RECORD": "ab6f1ae6ef97291e"
       }
     },
     "Markdown:DESIGN.md:The tools #29b54e00": {
@@ -5089,8 +5084,8 @@
         "Python:claim_state.py:refined": "d7a05a39bb1d66a4",
         "Python:claim_state.py:relied_on": "d27b3ad9eefa678b",
         "Python:claim_state.py:unpointed_reads": "5e85dd3b6a4fd40c",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
         "Python:prose_answer.py:_NOT_POINTED": "053ff033227f242b",
         "Python:prose_answer.py:_judged": "7e1d2dc7730c40b4",
         "Python:prose_answer.py:_reads": "2bf3bd2b3694b9b4",
@@ -5131,20 +5126,6 @@
         "Python:fetch_fragments.py:_read": "d75ce07b212c76fd"
       }
     },
-    "Markdown:DESIGN.md:Updating the prose queue #07b65963": {
-      "own": "07b65963de9049f6:e3b0c44298fc1c14",
-      "rounds": 1,
-      "read": {
-        "Python:apply_prose.py:fragment_written": "b1460e4b83f7ee4d",
-        "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
-        "Python:converge_prose.py:_given_up": "794357d29dee9d3f",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
-        "Python:converge_prose.py:_try_critic_task": "40b016863dcf0238",
-        "Python:converge_prose.py:_written_into_tree": "ef50683419bc509d",
-        "Python:settling_state.py:REVIEW": "fe62a9c16edd32ee",
-        "Python:settling_state.py:review_logged": "242f4aee69640435"
-      }
-    },
     "Markdown:DESIGN.md:Updating the prose queue #19c34484": {
       "own": "19c344849e44db90:e3b0c44298fc1c14",
       "rounds": 1,
@@ -5176,18 +5157,6 @@
         "Python:converge_prose.py:_read_critic": "db5057e28252e195"
       }
     },
-    "Markdown:DESIGN.md:Updating the prose queue #831ff774": {
-      "own": "831ff77473283de8:e3b0c44298fc1c14",
-      "rounds": 1,
-      "read": {
-        "Python:converge_prose.py:_is_refused": "a87d3fc142814b6e",
-        "Python:converge_prose.py:_placed": "0974f33611d82e8c",
-        "Python:converge_prose.py:_read_critic": "db5057e28252e195",
-        "Python:converge_prose.py:_resolved": "e37fdb67d4fba82b",
-        "callers:applied": "0e7bfc5ebae72f1a",
-        "callers:converge_prose._placed": "865c90ac876f6d0a"
-      }
-    },
     "Markdown:DESIGN.md:Updating the prose queue #88d792ac": {
       "own": "88d792ac922049dc:e3b0c44298fc1c14",
       "rounds": 1,
@@ -5215,6 +5184,22 @@
         "Python:record_run.py:rule_use_counted": "ff6be797b15f9a65"
       }
     },
+    "Markdown:DESIGN.md:Updating the prose queue #c5d57d88": {
+      "own": "c5d57d88f3e6d79d:e3b0c44298fc1c14",
+      "rounds": 1,
+      "read": {
+        "Python:apply_prose.py:_placed": "155952ac9329ac30",
+        "Python:apply_prose.py:fragment_written": "b1460e4b83f7ee4d",
+        "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
+        "Python:converge_prose.py:_claims_settled": "0c3fd1d4d13cf26f",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
+        "Python:converge_prose.py:_try_critic_task": "40b016863dcf0238",
+        "Python:converge_prose.py:_written_into_tree": "ef50683419bc509d",
+        "Python:settling_state.py:REVIEW": "fe62a9c16edd32ee",
+        "Python:settling_state.py:review_logged": "242f4aee69640435"
+      }
+    },
     "Markdown:DESIGN.md:Updating the prose queue #da7a19fe": {
       "own": "da7a19fe088d5ce9:e3b0c44298fc1c14",
       "rounds": 1,
@@ -5225,6 +5210,19 @@
         "Python:converge_prose.py:_read": "d27a832c0ea36120",
         "Python:converge_prose.py:_read_compare": "46b7acc272447046",
         "Python:converge_prose.py:_undecided": "ebda87c5f79fea5e"
+      }
+    },
+    "Markdown:DESIGN.md:Updating the prose queue #f6b7d09d": {
+      "own": "f6b7d09d20a04b45:e3b0c44298fc1c14",
+      "rounds": 1,
+      "read": {
+        "Python:converge_prose.py:_placed": "0974f33611d82e8c",
+        "Python:converge_prose.py:_read": "d27a832c0ea36120",
+        "Python:converge_prose.py:_read_critic": "db5057e28252e195",
+        "Python:converge_prose.py:_stop": "07034d779edff2d3",
+        "Python:converge_prose.py:_stored": "b8ceb4944954a16c",
+        "Python:converge_prose.py:_try_compare_task": "10b5d236a7b51495",
+        "Python:converge_prose.py:_try_pass": "328ef72b9f976ab8"
       }
     },
     "Markdown:DESIGN.md:Vetting the project #007e4514": {
@@ -5391,10 +5389,10 @@
     },
     "Python:agent_answers.py:UNVERIFIABLE": {
       "own": "39d38add8f0251d7:eb778c41a38b738e",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
         "Python:claim_state.py:_NOTE": "3e6f905fb2e1f531",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "Python:converge_claims.py:_given_up": "7f06e8675b5413e6"
       }
     },
@@ -5419,8 +5417,7 @@
       "rounds": 1,
       "read": {
         "Python:agent_answers.py:_A_CHUNK": "1868c2baf4fcf45a",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
-        "Python:converge_claims.py:verdict_of": "91c2c0fe9620fd0c"
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2"
       }
     },
     "Python:agent_answers.py:_A_CLAIM_RULE": {
@@ -5461,7 +5458,7 @@
       "rounds": 1,
       "read": {
         "Python:agent_answers.py:claim_changes": "24bea3a4da6eba8f",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
         "mentions:_CHANGED": "05e1d8f4fa1b112a"
       }
@@ -5479,9 +5476,8 @@
       "rounds": 1,
       "read": {
         "Python:agent_answers.py:_CONTEXT_DOCUMENTS": "c3df1fae6f96077d",
-        "Python:agent_answers.py:_unbacked_faults": "f0b1f21437166b7b",
         "Python:agent_answers.py:tiled_faults": "ef4a281725aef633",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "mentions:_EXTERNAL": "d59102e5383c4442"
       }
     },
@@ -5558,11 +5554,11 @@
         "Python:collect_fragments.py:_a_prose": "c8880bb5450c81a6",
         "Python:collect_fragments.py:_joined": "3ec2a20ae19c2a9c",
         "Python:collect_fragments.py:flattened": "d3e34c116c893ea6",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:prose_answer.py:_findings": "bcd54fcf194760bf",
-        "callers:claim_changes": "3c603cf9c660a102"
+        "callers:claim_changes": "0c72b97c487e6bfd"
       }
     },
     "Python:agent_answers.py:does_correct_a_rewrite": {
@@ -5572,8 +5568,8 @@
         "Python:agent_answers.py:_CHANGED": "2e5626eef6241afe",
         "Python:agent_answers.py:claim_changes": "24bea3a4da6eba8f",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
-        "callers:does_correct_a_rewrite": "488101e9ccabab5a"
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
+        "callers:does_correct_a_rewrite": "f0689a7f35965378"
       }
     },
     "Python:agent_answers.py:record_of": {
@@ -5591,8 +5587,8 @@
       "read": {
         "Python:agent_answers.py:does_correct_a_rewrite": "344a2affb2529e18",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
-        "callers:rewritten_spans": "488101e9ccabab5a"
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
+        "callers:rewritten_spans": "f0689a7f35965378"
       }
     },
     "Python:agent_answers.py:rules_by_use": {
@@ -5631,15 +5627,16 @@
       "own": "b80574f216dc5a7e:ef4a281725aef633",
       "rounds": 1,
       "read": {
+        "Python:agent_answers.py:_CHANGED": "2e5626eef6241afe",
         "Python:agent_answers.py:_CONTEXT_DOCUMENTS": "c3df1fae6f96077d",
         "Python:agent_answers.py:_unbacked_faults": "f0b1f21437166b7b",
         "Python:agent_answers.py:tiling": "b35a6877aef86ff1",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:prose_answer.py": "7d5c79ffb7fe1376",
         "Python:prose_answer.py:_findings": "bcd54fcf194760bf",
         "callers:tiled_faults": "1a490450a6cf3d6f",
-        "callers:tiling": "ec2ce99947424d66"
+        "callers:tiling": "3ac84c9fed5918d8"
       }
     },
     "Python:agent_answers.py:tiling": {
@@ -5648,10 +5645,10 @@
       "read": {
         "Python:agent_answers.py:runs_of": "7fe4193e6d0eddfe",
         "Python:agent_answers.py:tiled_faults": "ef4a281725aef633",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:prose_answer.py:_findings": "bcd54fcf194760bf",
-        "callers:tiling": "ec2ce99947424d66"
+        "callers:tiling": "3ac84c9fed5918d8"
       }
     },
     "Python:agent_calls.py": {
@@ -5662,7 +5659,7 @@
         "Python:converge_prose.py:_calling": "bafc1350cfe63c8e",
         "Python:converge_prose.py:_seed": "40a12efd28248c78",
         "Python:write_agent_prompts.py:TOOLS": "a856b39b370c5ced",
-        "callers:spoken": "71a622263c713afa"
+        "callers:spoken": "0282f69f24902374"
       }
     },
     "Python:agent_calls.py:Caller": {
@@ -5738,12 +5735,10 @@
       "rounds": 1,
       "read": {
         "Python:agent_calls.py:does_the_reply_stop_the_run": "4e18bf75d1454c78",
-        "Python:converge_claims.py:_answered": "c7db4af249ce8060",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
-        "Python:converge_claims.py:_taken_over": "340dcf025d4c36c7",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_prose.py:_calling": "bafc1350cfe63c8e",
         "Python:converge_prose.py:_seed": "40a12efd28248c78",
-        "callers:does_the_reply_stop_the_run": "e114d78b2ebb82d4",
+        "callers:does_the_reply_stop_the_run": "41a5c4e0aaec4a97",
         "mentions:_A_WALL": "96a569d063985a1f"
       }
     },
@@ -5865,8 +5860,8 @@
       "read": {
         "Python:agent_calls.py:_RETRIES_SPENT": "1a0b3414f610411d",
         "Python:converge_claims.py:_given_up": "7f06e8675b5413e6",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
-        "callers:did_the_answers_run_out": "ffda054eba92971d"
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
+        "callers:did_the_answers_run_out": "85e9ddffd92d8b91"
       }
     },
     "Python:agent_calls.py:does_the_reply_stop_the_run": {
@@ -5874,10 +5869,10 @@
       "rounds": 1,
       "read": {
         "Python:agent_calls.py:_A_WALL": "97189c569ff4cd6f",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_prose.py:_calling": "bafc1350cfe63c8e",
         "Python:converge_prose.py:_seed": "40a12efd28248c78",
-        "callers:does_the_reply_stop_the_run": "e114d78b2ebb82d4"
+        "callers:does_the_reply_stop_the_run": "41a5c4e0aaec4a97"
       }
     },
     "Python:agent_calls.py:killed": {
@@ -5894,8 +5889,8 @@
       "rounds": 1,
       "read": {
         "Python:agent_calls.py:_kept": "bc6cf7bb8a88ecb2",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
-        "callers:last_refusal": "ffda054eba92971d"
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
+        "callers:last_refusal": "85e9ddffd92d8b91"
       }
     },
     "Python:agent_calls.py:spoken": {
@@ -5908,7 +5903,7 @@
         "Python:agent_calls.py:_replied": "f117c7d97c76f66b",
         "Python:agent_calls.py:_spent": "302856541d262d86",
         "Python:converge_prose.py:_seed": "40a12efd28248c78",
-        "callers:spoken": "71a622263c713afa"
+        "callers:spoken": "0282f69f24902374"
       }
     },
     "Python:agent_calls.py:stops_on_signals": {
@@ -6269,11 +6264,10 @@
       "own": "5623f8270796bfea:946d21c92d69e763",
       "rounds": 1,
       "read": {
-        "Python:apply_prose.py:draft_refusals": "4ad5e3fae3458a9f",
         "Python:apply_prose.py:is_held": "96c571559fdf64c4",
         "Python:prose_answer.py:_judged": "7e1d2dc7730c40b4",
         "Python:update_ledger_and_queue.py:_is_sound": "8b9f554c63bf27ac",
-        "callers:applied": "0e7bfc5ebae72f1a"
+        "callers:applied": "c4f242b8a2be7c6a"
       }
     },
     "Python:apply_prose.py:does_hold": {
@@ -6306,15 +6300,13 @@
       }
     },
     "Python:apply_prose.py:fragment_written": {
-      "own": "e398fff98b647bbd:b1460e4b83f7ee4d",
-      "rounds": 1,
+      "own": "d5d97f2f6db2eb15:b1460e4b83f7ee4d",
+      "rounds": 2,
       "read": {
         "Python:apply_prose.py:_placed": "155952ac9329ac30",
         "Python:apply_prose.py:_swapped_in": "37041ffa9602d3c4",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
-        "Python:converge_prose.py:_written_into_tree": "ef50683419bc509d",
-        "callers:Python:converge_prose.py:_written_into_tree": "c016445e97543841",
-        "callers:fragment_written": "821e9475d882cf68"
+        "Python:converge_prose.py:_written_into_tree": "ef50683419bc509d"
       }
     },
     "Python:apply_prose.py:is_held": {
@@ -9859,7 +9851,7 @@
       }
     },
     "Python:claim_state.py": {
-      "own": "e31957dfd85b34ad:c9ecd4d4eaa53a31",
+      "own": "e31957dfd85b34ad:e8c6b0441367b612",
       "rounds": 1,
       "read": {
         "Conf:.gitignore": "4ad2e88a4e4349e7",
@@ -9959,8 +9951,8 @@
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
         "Python:collect_fragments.py:answered_by": "a38b295ef573f0b3",
         "Python:collect_fragments.py:code_digest": "1d7cc0318d729f6a",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
-        "callers:answer_sha": "85c7b023bab27d49"
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
+        "callers:answer_sha": "4f53e6a0e6593f46"
       }
     },
     "Python:claim_state.py:claims_purged": {
@@ -10007,28 +9999,37 @@
       "read": {
         "Python:claim_state.py:claims_purged": "ede85fc91e79888f",
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
-        "callers:read_claims": "2f1d2665c17d2cab"
+        "callers:read_claims": "8ad96b5798d989cf"
       }
     },
     "Python:claim_state.py:refined": {
-      "own": "3fbce2b3a7b345fc:d7a05a39bb1d66a4",
-      "rounds": 1,
+      "own": "52ff96caa5589cfa:d7a05a39bb1d66a4",
+      "rounds": 3,
       "read": {
         "Python:collect_fragments.py:owners_of": "905bd1addf1902f9",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
-        "callers:claim_state.refined": "8164356b3119f747"
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b"
       }
     },
     "Python:claim_state.py:relied_on": {
-      "own": "48d199ad9f24e751:d27b3ad9eefa678b",
+      "own": "002109de0aad64c2:d27b3ad9eefa678b",
       "rounds": 1,
       "read": {
         "Python:claim_state.py:_citations": "c84a8bd3861489d2",
         "Python:claim_state.py:answer_sha": "0141a6baf41495c9",
+        "Python:claim_state.py:refined": "d7a05a39bb1d66a4",
         "Python:collect_fragments.py:reach_by_name": "aa8fe7ace85ddcd5",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
         "Python:prose_answer.py:_unpointed": "a82bcadc06b2b2f4",
-        "callers:relied_on": "df234877715bf5b2"
+        "callers:relied_on": "7f62cfcfaf32750e"
+      }
+    },
+    "Python:claim_state.py:settlement_written": {
+      "own": "dc0973547d319fb2:bfbfbffec025ef23",
+      "rounds": 1,
+      "read": {
+        "Python:claim_state.py:claims_written": "2f4923eae6ffab17",
+        "Python:converge_prose.py:_claims_settled": "0c3fd1d4d13cf26f",
+        "callers:settlement_written": "c2fd2666d99e5c97"
       }
     },
     "Python:claim_state.py:stale_claims": {
@@ -10044,22 +10045,22 @@
       }
     },
     "Python:claim_state.py:unpointed_reads": {
-      "own": "b894d3e8b69b6617:5e85dd3b6a4fd40c",
+      "own": "0cd6bae694c2b83b:5e85dd3b6a4fd40c",
       "rounds": 1,
       "read": {
         "Python:claim_state.py:_NAMING": "04441befc9035345",
         "Python:claim_state.py:_path_of": "4f1fcfbef0fbe10d",
         "Python:claim_state.py:_reached_privately": "49f22e0a54776feb",
         "Python:claim_state.py:unpointed_settlements": "180cde7dd7711ac1",
-        "Python:collect_fragments.py:callers_of": "283db01f3a27745a",
+        "Python:collect_fragments.py:Fragment": "004e248c7500c089",
         "Python:collect_fragments.py:is_a_document": "4e5cff7fb8303a03",
         "Python:collect_fragments.py:is_public": "f536b551780d7fb9",
         "Python:collect_fragments.py:keys_by_name": "528d2ec2995fe7d2",
-        "Python:collect_fragments.py:mentions_of": "342d8b46fcfdab9b",
-        "Python:converge_claims.py:_given_up": "7f06e8675b5413e6",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
+        "Python:converge_claims.py:_settled": "be421ec352d494ac",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
         "Python:prose_answer.py:_unpointed": "a82bcadc06b2b2f4",
-        "callers:unpointed_reads": "76863ae20046701e"
+        "callers:claim_state.unpointed_reads": "40895847e70076fb",
+        "callers:converge_claims.settlement_of": "9f18b7e8b5ee7468"
       }
     },
     "Python:claim_state.py:unpointed_settlements": {
@@ -10068,8 +10069,9 @@
       "read": {
         "Python:claim_state.py:Verified": "028809c6135779ad",
         "Python:claim_state.py:refined": "d7a05a39bb1d66a4",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
-        "Python:converge_claims.py:main": "20a2de6e4b8784d3"
+        "Python:converge_claims.py:main": "20a2de6e4b8784d3",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
+        "callers:unpointed_settlements": "0d9c44dedab4d610"
       }
     },
     "Python:collect_fragments.py": {
@@ -10113,11 +10115,9 @@
       "rounds": 1,
       "read": {
         "Python:converge_prose.py:_calling": "bafc1350cfe63c8e",
-        "Python:converge_prose.py:_claims_files": "665d177b812fea5f",
         "Python:prose_answer.py:_drafts": "083b0a90aa7158ff",
         "Python:prose_answer.py:_judged": "7e1d2dc7730c40b4",
         "callers:_drafts": "8bb4d024aca16b0f",
-        "callers:drafted": "4016139dafe848f1",
         "mentions:CLAIM_DRAFT": "7185cf7a32218e8d"
       }
     },
@@ -10125,13 +10125,13 @@
       "own": "30a3cc9f160d13f9:7af06fdecfeae977",
       "rounds": 1,
       "read": {
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
+        "Python:converge_claims.py:_record_path": "ab23ab1621a1ea10",
         "Python:fetch_fragments.py:_recorded": "d024e7e3cd568139",
         "Python:prose_answer.py:_reads": "2bf3bd2b3694b9b4",
         "Python:prose_answer.py:_unpointed": "a82bcadc06b2b2f4",
         "Python:prose_answer.py:_unread_names": "d3e42987a0405844",
-        "callers:_reads": "a59a3b599e041854",
-        "mentions:CLAIM_RECORD": "26cd40672bc2d6ce"
+        "mentions:CLAIM_RECORD": "ab6f1ae6ef97291e"
       }
     },
     "Python:collect_fragments.py:COPIED_BELOW": {
@@ -11500,9 +11500,9 @@
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
         "Python:collect_fragments.py:_code_digest": "29a476c3b84adafe",
         "Python:collect_fragments.py:fragments": "c4887f25a72daffc",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
         "Python:prose_answer.py:_unpointed": "a82bcadc06b2b2f4",
-        "callers:code_digest": "13e985e05757da86"
+        "callers:code_digest": "884b5f3617690081"
       }
     },
     "Python:collect_fragments.py:code_only": {
@@ -11537,12 +11537,11 @@
       "own": "844563d3418a9180:f823bc3eb68e8457",
       "rounds": 1,
       "read": {
-        "Python:collect_fragments.py:_a_prose": "c8880bb5450c81a6",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
         "Python:converge_prose.py:_claims_asked": "a1c9a4ddd30a8ff8",
         "Python:converge_prose.py:_written_into_tree": "ef50683419bc509d",
         "Python:prose_answer.py:_judged": "7e1d2dc7730c40b4",
-        "callers:drafted": "4016139dafe848f1"
+        "callers:drafted": "012b3c6df64d734b"
       }
     },
     "Python:collect_fragments.py:flattened": {
@@ -11673,8 +11672,7 @@
         "Python:collect_fragments.py:_c_members": "7de7e28f82e8caae",
         "Python:fetch_fragments.py:_fetched": "5cab617938d2b2fb",
         "Python:fetch_fragments.py:_read": "d75ce07b212c76fd",
-        "callers:keys_by_name": "ec67092f372b89aa",
-        "mentions:_KEYS": "e1205256948621b2"
+        "callers:keys_by_name": "a5cc41db204a9d75"
       }
     },
     "Python:collect_fragments.py:language_of": {
@@ -11720,12 +11718,9 @@
       "read": {
         "Python:claim_state.py:_reached_privately": "49f22e0a54776feb",
         "Python:claim_state.py:unpointed_reads": "5e85dd3b6a4fd40c",
-        "Python:claim_state.py:unpointed_settlements": "180cde7dd7711ac1",
-        "Python:collect_fragments.py:AN_IDENTIFIER": "49b4f8bf49b644a8",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
-        "Python:prose_answer.py:_unpointed": "a82bcadc06b2b2f4",
-        "callers:named_by": "6ce41a0ad0e13f03",
-        "callers:unpointed_reads": "76863ae20046701e"
+        "Python:collect_fragments.py:_bare_code": "f139167e0bb557df",
+        "Python:collect_fragments.py:keys_by_name": "528d2ec2995fe7d2",
+        "callers:named_by": "6ce41a0ad0e13f03"
       }
     },
     "Python:collect_fragments.py:not_prose_lines": {
@@ -11900,12 +11895,15 @@
       "read": {}
     },
     "Python:converge_claims.py": {
-      "own": "ae36899aa79d576f:e4524708cb0db0d8",
+      "own": "ae36899aa79d576f:2652d434c10f8706",
       "rounds": 1,
       "read": {
         "Python:agent_answers.py:UNVERIFIABLE": "eb778c41a38b738e",
         "Python:claim_state.py:_NOTE": "3e6f905fb2e1f531",
+        "Python:claim_state.py:claims_purged": "ede85fc91e79888f",
         "Python:claim_state.py:relied_on": "d27b3ad9eefa678b",
+        "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
+        "Python:claim_state.py:unpointed_reads": "5e85dd3b6a4fd40c",
         "Python:collect_fragments.py:CLAIM_RECORD": "7af06fdecfeae977",
         "Python:converge_claims.py:_AT_ONCE": "e2bad41a9736eaaa",
         "Python:fetch_fragments.py:_fetched": "5cab617938d2b2fb",
@@ -11973,7 +11971,6 @@
       "own": "9010afb1e03ea2c2:501475139f7ac754",
       "rounds": 1,
       "read": {
-        "Python:converge_claims.py:_answered": "c7db4af249ce8060",
         "Python:converge_claims.py:_converge": "1f457cdfbefdcaf0",
         "Python:converge_claims.py:_given_up": "7f06e8675b5413e6",
         "Python:converge_claims.py:_next_keys": "c303487334952528",
@@ -11982,7 +11979,7 @@
         "Python:converge_claims.py:_taken_over": "340dcf025d4c36c7",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
         "Python:converge_claims.py:main": "20a2de6e4b8784d3",
-        "mentions:_Claiming": "de4017765d01d6e3"
+        "mentions:_Claiming": "1e6c837d60bed604"
       }
     },
     "Python:converge_claims.py:_Claiming.is_resumable": {
@@ -12024,9 +12021,8 @@
       "own": "6b1de90ff5fbc5a1:a4d84c65f677f37b",
       "rounds": 1,
       "read": {
-        "Python:agent_calls.py:_RETRIES_SPENT": "1a0b3414f610411d",
         "Python:agent_calls.py:did_the_answers_run_out": "dec2aff5b1c6b1e2",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c"
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51"
       }
     },
     "Python:converge_claims.py:_SAID": {
@@ -12036,20 +12032,20 @@
       "is_attested": true
     },
     "Python:converge_claims.py:_UNCITED": {
-      "own": "58f84d7bc2e6c4ee:65fc3d07d3ab4d71",
-      "rounds": 1,
+      "own": "cb689746bd23ab23:65fc3d07d3ab4d71",
+      "rounds": 2,
       "read": {
-        "Python:claim_state.py:unpointed_reads": "5e85dd3b6a4fd40c",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632"
+        "Python:converge_claims.py:_settled": "be421ec352d494ac",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b"
       }
     },
     "Python:converge_claims.py:_UNTILED": {
       "own": "e83b9cfa8fe1e4f0:bc52e53792cc89ee",
       "rounds": 1,
       "read": {
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "Python:settling_state.py:rewritten": "6f9c0b77ee6a8819",
-        "mentions:_UNTILED": "21338b9091cc2585"
+        "mentions:_UNTILED": "0b42ebd6a3e85837"
       }
     },
     "Python:converge_claims.py:_USAGE": {
@@ -12071,7 +12067,7 @@
       }
     },
     "Python:converge_claims.py:_applied": {
-      "own": "d65fb091cf54993c:6f6f88a567730d94",
+      "own": "d65fb091cf54993c:27bafb581d9f38e2",
       "rounds": 1,
       "read": {
         "Python:agent_answers.py:UNVERIFIABLE": "eb778c41a38b738e",
@@ -12079,10 +12075,11 @@
         "Python:converge_claims.py:_converge": "1f457cdfbefdcaf0",
         "Python:converge_claims.py:_given_up": "7f06e8675b5413e6",
         "Python:converge_claims.py:_re_read": "d4ae89a7e5409a2a",
+        "Python:converge_claims.py:_settled": "be421ec352d494ac",
+        "Python:converge_claims.py:_stop": "9167c2cb6666d90b",
         "Python:converge_claims.py:_taken_over": "340dcf025d4c36c7",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
-        "Python:prose_answer.py:_findings": "bcd54fcf194760bf",
-        "callers:_re_read": "6efff99da2b794a4"
+        "Python:prose_answer.py": "7d5c79ffb7fe1376"
       }
     },
     "Python:converge_claims.py:_converge": {
@@ -12094,26 +12091,19 @@
         "Python:converge_claims.py:_re_read": "d4ae89a7e5409a2a"
       }
     },
-    "Python:converge_claims.py:_fetched_by": {
-      "own": "d0f43e6bf671d345:6cce583ac30d9eb3",
-      "rounds": 1,
-      "read": {
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
-        "callers:_fetched_by": "ffda054eba92971d"
-      }
-    },
     "Python:converge_claims.py:_given_up": {
       "own": "f3da3c13df9939ee:7f06e8675b5413e6",
       "rounds": 1,
       "read": {
         "Python:claim_state.py:claims_purged": "ede85fc91e79888f",
+        "Python:claim_state.py:digests_of": "b36b77f51b03b16c",
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
         "Python:converge_claims.py:_next_keys": "c303487334952528",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
+        "Python:converge_claims.py:_settled": "be421ec352d494ac",
         "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b",
-        "mentions:_Claiming": "de4017765d01d6e3"
+        "callers:_given_up": "1cd71827e87db1f2"
       }
     },
     "Python:converge_claims.py:_halted": {
@@ -12148,20 +12138,22 @@
       }
     },
     "Python:converge_claims.py:_one_call": {
-      "own": "93ab02ba3905a806:06fe53587b9b113c",
+      "own": "93ab02ba3905a806:3d6f35c72b919d51",
       "rounds": 1,
       "read": {
-        "Python:converge_claims.py:_fetched_by": "6cce583ac30d9eb3",
-        "Python:converge_claims.py:claims_message": "0c88b4e06377f1cf"
+        "Python:converge_claims.py:claims_message": "0c88b4e06377f1cf",
+        "Python:converge_claims.py:fetched_by": "1701aed411b5cc61"
       }
     },
     "Python:converge_claims.py:_re_read": {
-      "own": "86654fc5d60b9571:d4ae89a7e5409a2a",
-      "rounds": 1,
+      "own": "0fc637f26eccc29e:d4ae89a7e5409a2a",
+      "rounds": 2,
       "read": {
         "Python:claim_state.py:claims_purged": "ede85fc91e79888f",
         "Python:collect_fragments.py:code_only": "b9650328d5f467aa",
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632"
+        "Python:converge_claims.py:_settled": "be421ec352d494ac",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
+        "Python:settling_state.py:rewritten": "6f9c0b77ee6a8819"
       }
     },
     "Python:converge_claims.py:_record_path": {
@@ -12169,20 +12161,17 @@
       "rounds": 1,
       "read": {
         "Python:collect_fragments.py:prose_digest": "214bb6ca59426777",
-        "Python:converge_claims.py:_fetched_by": "6cce583ac30d9eb3",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
-        "callers:_record_path": "ffda054eba92971d"
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
+        "callers:_record_path": "85e9ddffd92d8b91"
       }
     },
     "Python:converge_claims.py:_settled": {
-      "own": "a41023325d68c01c:3eca6fa365cb0632",
+      "own": "1b068e8519a25931:be421ec352d494ac",
       "rounds": 1,
       "read": {
-        "Python:claim_state.py:answer_sha": "0141a6baf41495c9",
-        "Python:claim_state.py:refined": "d7a05a39bb1d66a4",
-        "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
         "Python:claim_state.py:unpointed_reads": "5e85dd3b6a4fd40c",
-        "Python:converge_claims.py:_Claiming": "501475139f7ac754"
+        "Python:converge_claims.py:_given_up": "7f06e8675b5413e6",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b"
       }
     },
     "Python:converge_claims.py:_stop": {
@@ -12203,24 +12192,27 @@
       }
     },
     "Python:converge_claims.py:_took": {
-      "own": "c3ca8185fa9d2ef1:1de053e64e12815f",
-      "rounds": 1,
+      "own": "2d304ff71c18856d:1de053e64e12815f",
+      "rounds": 2,
       "read": {
         "Python:agent_calls.py:_A_WALL": "97189c569ff4cd6f",
         "Python:agent_calls.py:_spent": "302856541d262d86",
+        "Python:agent_calls.py:does_the_reply_stop_the_run": "4e18bf75d1454c78",
         "Python:agent_calls.py:try_stopping": "efcb977ad27b18f0",
-        "Python:converge_claims.py:_applied": "6f6f88a567730d94",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
-        "Python:converge_claims.py:_stop": "9167c2cb6666d90b"
+        "Python:converge_claims.py:_applied": "27bafb581d9f38e2",
+        "Python:converge_claims.py:_given_up": "7f06e8675b5413e6",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
+        "Python:converge_claims.py:_stop": "9167c2cb6666d90b",
+        "Python:converge_claims.py:_written_into_tree": "11fcf10e5a50dd1b"
       }
     },
     "Python:converge_claims.py:_uncited": {
       "own": "1e72587fd37a662b:489d9472743e1f20",
       "rounds": 1,
       "read": {
-        "Python:converge_claims.py:_settled": "3eca6fa365cb0632",
+        "Python:converge_claims.py:_settled": "be421ec352d494ac",
         "Python:converge_claims.py:main": "20a2de6e4b8784d3",
-        "callers:_uncited": "f7f03726b2ef58a2"
+        "callers:_uncited": "dbe0c585a61ce74d"
       }
     },
     "Python:converge_claims.py:_written_into_tree": {
@@ -12243,16 +12235,26 @@
       "own": "62ea2c56573316dd:0c88b4e06377f1cf",
       "rounds": 1,
       "read": {
+        "Markdown:prose-claims.md:#4c81aaf6": "e3b0c44298fc1c14",
         "Python:collect_fragments.py:Fragment": "004e248c7500c089",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_claims.py:_re_read": "d4ae89a7e5409a2a",
         "Python:converge_claims.py:main": "20a2de6e4b8784d3",
         "Python:converge_prose.py:_claims_asked": "a1c9a4ddd30a8ff8",
         "Python:converge_prose.py:main": "175675dd51ea0bc4",
         "Python:fetch_fragments.py:_recorded": "d024e7e3cd568139",
-        "callers:claims_message": "61f05077f7a89f1a",
+        "callers:claims_message": "7f291e9156c87d25",
         "callers:code_only": "908c3523e5a97770",
-        "mentions:CLAIM_RECORD": "26cd40672bc2d6ce"
+        "mentions:CLAIM_RECORD": "ab6f1ae6ef97291e"
+      }
+    },
+    "Python:converge_claims.py:fetched_by": {
+      "own": "834dcd7a7387c4fe:1701aed411b5cc61",
+      "rounds": 1,
+      "read": {
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
+        "Python:converge_prose.py:_claims_settled": "0c3fd1d4d13cf26f",
+        "callers:fetched_by": "e69d9069d4d3e87b"
       }
     },
     "Python:converge_claims.py:main": {
@@ -12264,22 +12266,48 @@
         "Python:settling_state.py:run_locked": "97dcab8acf6a2a7f"
       }
     },
+    "Python:converge_claims.py:settlement_of": {
+      "own": "e1d860d6648227ab:54b8b7fd7eade38b",
+      "rounds": 1,
+      "read": {
+        "Python:claim_state.py:answer_sha": "0141a6baf41495c9",
+        "Python:claim_state.py:refined": "d7a05a39bb1d66a4",
+        "Python:claim_state.py:relied_on": "d27b3ad9eefa678b",
+        "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
+        "Python:claim_state.py:unpointed_reads": "5e85dd3b6a4fd40c",
+        "Python:converge_claims.py:_settled": "be421ec352d494ac",
+        "Python:converge_prose.py:_claims_settled": "0c3fd1d4d13cf26f",
+        "callers:settlement_of": "9f18b7e8b5ee7468"
+      }
+    },
     "Python:converge_claims.py:verdict_of": {
       "own": "119b5f3642ab1903:91c2c0fe9620fd0c",
       "rounds": 1,
       "read": {
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
-        "callers:verdict_of": "7a79b987cb6db30d"
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
+        "callers:verdict_of": "3789e9a35bda636f"
       }
     },
     "Python:converge_prose.py": {
-      "own": "57fc758f3bb14e94:5a717107d25332c7",
+      "own": "57fc758f3bb14e94:0e8aeef6b1df14b1",
       "rounds": 1,
       "read": {
         "Markdown:DESIGN.md:The process #d6438c35": "e3b0c44298fc1c14",
         "Python:agent_calls.py:_called": "29d3ed86368baa0c",
         "Python:converge_prose.py:_A_WAIT": "99faf9109ef687b4",
+        "Python:settling_state.py:LEDGER": "046cf030b585ddd4",
+        "Python:settling_state.py:PENDING": "8c91601a27c1f08e",
+        "Python:settling_state.py:REVIEW": "fe62a9c16edd32ee",
+        "Python:settling_state.py:SUGGESTED": "3a8e2cc3e80934a4",
+        "Python:settling_state.py:WHY": "9506d9fae37b8fde",
+        "Python:settling_state.py:_COMPLETED_LOCK": "c25aa9f84500e564",
+        "Python:settling_state.py:_COMPLETED_TASKS": "877c424d7fdf4fb4",
+        "Python:settling_state.py:_PROSE_QUEUE": "528249ad1da85eda",
+        "Python:settling_state.py:_RUN_LOCK": "20a4c06cd96ff1a9",
+        "Python:settling_state.py:_UNSETTLED": "6f944798f561592d",
+        "Python:settling_state.py:_WRITES": "0a027fe126d57c19",
         "Python:settling_state.py:completed": "64e7b4bf4989d42d",
+        "Python:settling_state.py:completed_taken": "44dc5cc81173e7df",
         "Python:update_ledger_and_queue.py:updated": "0c8725e8f8438e44"
       }
     },
@@ -12458,11 +12486,11 @@
         "Python:converge_prose.py:_progress": "e96c28d29613ecc9",
         "Python:converge_prose.py:_queued": "baa7037da52ab87f",
         "Python:converge_prose.py:_state_of": "021d55f4ab8cb083",
-        "Python:converge_prose.py:_try_compare_task": "10b5d236a7b51495",
         "Python:converge_prose.py:_try_critic_task": "40b016863dcf0238",
+        "Python:converge_prose.py:_try_launching": "e985c392d0d0f4db",
         "Python:converge_prose.py:_try_pass": "328ef72b9f976ab8",
         "Python:converge_prose.py:main": "175675dd51ea0bc4",
-        "mentions:_Settling": "b924e31e2cfb4577"
+        "mentions:_Settling": "d20c67070918b6c0"
       }
     },
     "Python:converge_prose.py:_Settling.is_resumable": {
@@ -12583,7 +12611,20 @@
         "Python:collect_fragments.py:CLAIM_DRAFT": "641445c7a2315cce",
         "Python:collect_fragments.py:CLAIM_RECORD": "7af06fdecfeae977",
         "Python:converge_prose.py:_calling": "bafc1350cfe63c8e",
-        "callers:_claims_files": "5cfce6d84c76b2fb"
+        "callers:_claims_files": "1d858e02e014e4da"
+      }
+    },
+    "Python:converge_prose.py:_claims_settled": {
+      "own": "206cee94fa119e9c:0c3fd1d4d13cf26f",
+      "rounds": 2,
+      "read": {
+        "Python:claim_state.py:settlement_written": "bfbfbffec025ef23",
+        "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
+        "Python:converge_claims.py:fetched_by": "1701aed411b5cc61",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
+        "Python:converge_prose.py:_claims_files": "665d177b812fea5f",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
+        "callers:_claims_settled": "a6279212c30a8884"
       }
     },
     "Python:converge_prose.py:_condensed": {
@@ -12757,11 +12798,12 @@
       }
     },
     "Python:converge_prose.py:_read_claims": {
-      "own": "fbadb9667f6ae837:9343fca82e8f652a",
+      "own": "492f8ea30553a16c:5e26b255d13d3a00",
       "rounds": 1,
       "read": {
         "Python:agent_answers.py:does_correct_a_rewrite": "344a2affb2529e18",
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
+        "Python:converge_prose.py:_claims_settled": "0c3fd1d4d13cf26f",
         "Python:converge_prose.py:_given_up": "794357d29dee9d3f",
         "Python:converge_prose.py:_stop": "07034d779edff2d3",
         "Python:converge_prose.py:_written_into_tree": "ef50683419bc509d",
@@ -12795,8 +12837,8 @@
       "rounds": 1,
       "read": {
         "Python:converge_prose.py:_approved": "928586d1e4b0c9e4",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
-        "Python:converge_prose.py:_stored": "b8ceb4944954a16c",
+        "Python:converge_prose.py:_is_waiting_for_critic": "c3f7e380caf20252",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:converge_prose.py:_try_writing": "93379148e4a78854",
         "callers:_resolved": "18d57808c1f9d05a"
       }
@@ -12920,7 +12962,6 @@
       "own": "6152e04603d35a9a:93379148e4a78854",
       "rounds": 1,
       "read": {
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
         "Python:converge_prose.py:_resolved": "e37fdb67d4fba82b",
         "Python:converge_prose.py:_undecided": "ebda87c5f79fea5e"
       }
@@ -13118,7 +13159,7 @@
         "Python:agent_calls.py:_called": "29d3ed86368baa0c",
         "Python:collect_fragments.py:CLAIM_RECORD": "7af06fdecfeae977",
         "Python:converge_claims.py:_converge": "1f457cdfbefdcaf0",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c"
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51"
       }
     },
     "Python:fetch_fragments.py:#455b54fa": {
@@ -13265,8 +13306,8 @@
       "read": {
         "Markdown:prose-claims.md": "ff1429ca4abccde6",
         "Python:collect_fragments.py:CLAIM_RECORD": "7af06fdecfeae977",
-        "Python:converge_claims.py:_fetched_by": "6cce583ac30d9eb3",
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
+        "Python:converge_claims.py:fetched_by": "1701aed411b5cc61",
         "Python:fetch_fragments.py:_calling": "ba6fd7a761515e14",
         "Python:fetch_fragments.py:_fetched": "5cab617938d2b2fb",
         "Python:fetch_fragments.py:_mentioning": "cfcb271efd901004",
@@ -21351,7 +21392,7 @@
         "Python:prose_answer.py:_logged": "01fdee410c681d27",
         "Python:refusal.py:amend": "7ca139b9374fa36e",
         "Python:refusal.py:refuse": "eaf024607a33bb11",
-        "callers:_logged": "d0511ca3192fe9d5",
+        "callers:_logged": "946e7b07ef5c20d0",
         "mentions:_DECISIONS": "68b07adc9661581a"
       }
     },
@@ -21398,7 +21439,7 @@
       "read": {
         "Python:prose_answer.py:_findings": "bcd54fcf194760bf",
         "Python:prose_answer.py:_uncited": "9202e897df7ba2e7",
-        "callers:_uncited": "f7f03726b2ef58a2",
+        "callers:_uncited": "dbe0c585a61ce74d",
         "mentions:_NOT_A_RULE": "548d3c34b0cc167e"
       }
     },
@@ -23255,10 +23296,9 @@
       "own": "1ae7e2f65a28098d:32ea1ed8b86c6767",
       "rounds": 1,
       "read": {
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:converge_prose.py:_read_critic": "db5057e28252e195",
-        "Python:converge_prose.py:_resolved": "e37fdb67d4fba82b",
-        "Python:converge_prose.py:_state_of": "021d55f4ab8cb083"
+        "Python:converge_prose.py:_resolved": "e37fdb67d4fba82b"
       }
     },
     "Python:settling_state.py:REVIEW": {
@@ -23266,9 +23306,9 @@
       "rounds": 1,
       "read": {
         "Python:check_prose.py:_unsettled_faults": "d7be77c6380607b8",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:settling_state.py:review_logged": "242f4aee69640435",
-        "callers:review_logged": "0633ed05cde1746b",
+        "callers:review_logged": "a6279212c30a8884",
         "mentions:REVIEW": "c6e5240e59e05b2b"
       }
     },
@@ -23287,7 +23327,7 @@
       "read": {
         "Python:converge_prose.py:_keyed_batch": "2bd1407e64dfc4b6",
         "Python:converge_prose.py:_read": "d27a832c0ea36120",
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
         "Python:converge_prose.py:_read_compare": "46b7acc272447046"
       }
     },
@@ -23496,11 +23536,10 @@
     },
     "Python:settling_state.py:review_logged": {
       "own": "136e0830aa812c6a:242f4aee69640435",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
-        "Python:converge_prose.py:_read_claims": "9343fca82e8f652a",
-        "Python:settling_state.py:ProseState": "32ea1ed8b86c6767",
-        "Python:settling_state.py:appended": "f339c0965ef13ba5"
+        "Python:converge_prose.py:_read_claims": "5e26b255d13d3a00",
+        "Python:settling_state.py:ProseState": "32ea1ed8b86c6767"
       }
     },
     "Python:settling_state.py:rewritten": {
@@ -25466,10 +25505,12 @@
       "own": "e29df28a150273ee:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "Python:converge_claims.py:_one_call": "06fe53587b9b113c",
+        "Python:converge_claims.py:_one_call": "3d6f35c72b919d51",
         "Python:converge_claims.py:_record_path": "ab23ab1621a1ea10",
+        "Python:fetch_fragments.py:_fetched": "5cab617938d2b2fb",
         "Python:fetch_fragments.py:_recorded": "d024e7e3cd568139",
-        "mentions:CLAIM_RECORD": "26cd40672bc2d6ce"
+        "Shell:no-shell-file-writes.sh": "0635ac05662e2147",
+        "mentions:CLAIM_RECORD": "ab6f1ae6ef97291e"
       }
     },
     "Shell:no-shell-file-writes.sh:#eabeb446": {
