@@ -124,8 +124,8 @@ _NOT_A_FRAGMENT = (
 # The lists a call names beside the prose it holds. A later call adds to these.
 _BESIDES = ("passed", "out_of_budget")
 
-# The key that names the proposals in a call and in the store. The store keys a proposal by its rule. A later call
-# replaces the entry.
+# The key that names the proposals in a call and in the store. The store keys a proposal by its rule. A later proposal
+# under the same rule replaces the entry once it passes `record_run.proposal_refusals`.
 _PROPOSALS = "proposals"
 
 # The name of the map the checkers read. A fragment key names an entry.
@@ -273,7 +273,9 @@ def _unpointed(fragment: collect_fragments.Fragment, draft: list[str], runs: lis
     by_key = {one.key: one for one in held}
     resolves = collect_fragments.resolved(held)
     cited = collect_fragments.cited_keys(fragment, "\n".join(draft), resolves, by_key)
-    drafted = dataclasses.replace(fragment, references={key: by_key[key].code.sha for key in cited})
+    drafted = dataclasses.replace(
+        fragment, references={key: collect_fragments.code_digest(by_key[key]) for key in cited}
+    )
     relied = claim_state.relied_on(_reads(), runs, held)
     left = claim_state.unpointed_reads(drafted, relied, held, collect_fragments.keys_by_name(held))
     if not left:

@@ -45,8 +45,9 @@ import wire
 import yaml
 
 # The continuation-passing matcher recurses once per grammar step and once per turn of a counted run. `check_normalize`
-# runs the recursive helpers a transformed grammar holds. `check_normalize` runs its check under `run_deep`. `run_deep`
-# raises the limit to `_RECURSION_LIMIT`. `run_deep` gives the check a stack sized for that limit.
+# runs the recursive helpers a transformed grammar holds, such as the loops `lower-runs` mints. `check_normalize` runs
+# its check under `run_deep`. `run_deep` raises the limit to `_RECURSION_LIMIT`. `run_deep` gives the check a stack
+# sized for that limit.
 sys.setrecursionlimit(20000)
 
 # A production may nest this deep before the parse gives up. The limit guards against runaway recursion. A recursive
@@ -85,7 +86,7 @@ _Value = int | str | None
 
 # The callback a caller sets on the emitter to check ways and performed steps. `_try_way` calls it on a way.
 # `_checked_against_what_was_predicted` calls it on a performed step. A call hands it the node, the `GuardAnswers` the
-# parse can be in before and after the node, and the parse itself.
+# parse can be in before and after the node, and the emitter.
 _Checking = Callable[[ir.Node, Iterable[spaces.GuardAnswers], Iterable[spaces.GuardAnswers], "Emitter"], None]
 
 
@@ -442,9 +443,9 @@ class Emitter:
 
         An ordinary failure gives back the state entire. So does a settled region the parse hands back.
 
-        A failure on its way to a recovery gives back the scopes and no more. The input position and the emission both
-        stay. The recovery continues from where the input got to, over the tokens already there. The position, the marks
-        and the tokens stay as the failure left them.
+        A failure on its way to a recovery gives back the scopes and no more. The input position, the marks and the
+        tokens stay as the failure left them. The recovery continues from where the input got to, over the tokens
+        already there. The `failing` field of `Emitter` says so.
         """
         if self.failing is None:
             self.rewind(held)
@@ -720,16 +721,16 @@ def _ns_char_spans(grammar: Mapping[str, ir.Prod]) -> tuple[tuple[int, int], ...
 
 def _answers_now(emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> dict[str, object]:
     """
-    The parse's reading of the bookkeeping bits of a `GuardAnswers`, and of the quantities its comparisons are over. An
-    answer is `None` where the parse has none to give. The quantities are not axes. `GuardAnswers` compares the
-    quantities and holds none of them. A comparison works out from the quantities, and the quantities come back beside
-    the bits.
+    Read off the parse the bookkeeping bits of a `GuardAnswers` and the quantities its comparisons are over. An answer
+    is `None` where the parse has none to give. The quantities are not axes. `GuardAnswers` compares the quantities and
+    holds none of them. A comparison works out from the quantities, and the quantities come back beside the bits.
 
     An answer can be missing. The action in front of a guard says whether the run just performed filled its span, and
-    any other action takes that answer away. A turn says whether the parse took a character since the turn opened, and
-    outside a turn there is no answer. The indentation is a null where the grammar applies none. The character behind
-    the parse is unanswerable where the grammar names no `ns-char`. A consumed length past the column falls outside what
-    `spaces.ALL_GUARD_ANSWERS` enumerates.
+    any other action takes that answer away. The innermost `consume` entry of `emitter.stack` says whether the parse
+    took a character since that entry opened. Without such an entry there is no answer. The indentation is a null where
+    the grammar applies none. The character behind the parse is unanswerable where the grammar names no `ns-char`. A
+    consumed length past the column falls outside what `spaces.ALL_GUARD_ANSWERS` enumerates. The floor is a null where
+    no `(set)` has put one.
 
     A `GuardAnswers` holds no unanswered axis. A missing answer leaves open the `GuardAnswers` the remaining answers
     allow.
@@ -903,11 +904,11 @@ def _popped(
     A pop takes what its own push put there. A top that is something else means the pop and the push are not the pair
     they read as. A push whose pop did not run leaves such a top.
 
-    The kind of a top cannot say which pair opened it. A pair of `(token)`s share a kind and belong to different pairs.
-    A half therefore names the pairs it belongs to, and a close answers an open where the halves share a pair.
+    The kind of a top cannot say which pair opened it. A `(token)` of a pair shares its kind with a `(token)` of another
+    pair. A half therefore names the pairs it belongs to, and a close answers an open where the halves share a pair.
 
-    A top opened for no pair is the entry the run itself put there. Neither half of the grammar wrote that entry. This
-    holds that entry to no pair.
+    A top opened for no pair is the indentation entry `run` itself put there. Neither half of the grammar wrote that
+    entry. `_popped` holds that entry to no pair.
     """
     if not emitter.stack:
         raise AssertionError(f"a pop of {what} finds an empty stack")
@@ -1090,8 +1091,8 @@ def _is_forbidden_here(emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> bool
     Whether an in-scope `(exclude)` guard matches at a start of line here, where content must not begin.
 
     This is `forbidding` in https://github.com/orenbenkiki/yamlreference/blob/master/Text/Yaml/Reference.hs#L1001.
-    `l-bare-document` forbids `c-forbidden` throughout. That is a `---` line or a `...` line. This asks at a start of
-    line, where such a marker appears.
+    `l-bare-document` forbids `c-forbidden` throughout. That is a `---` line (`c-directives-end`) or a `...` line
+    (`c-document-end`). This asks at a start of line, where such a marker appears.
     """
     if not emitter.is_sol or not emitter.forbidden:
         return False

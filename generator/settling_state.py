@@ -10,7 +10,7 @@ The completed tasks queue holds a `TaskResult` per finished task.
 A kill can tear the last line of a file. A reader drops that line. A rewrite goes in under a second name, and a rename
 puts it in place. An append to the completed tasks queue and a take off it both hold a file lock.
 
-`update_ledger_and_queue` and `converge_prose` read and write these files.
+`update_ledger_and_queue`, `converge_prose` and `converge_claims` read and write these files.
 """
 
 import contextlib
@@ -170,8 +170,12 @@ def lines_read(path: str) -> list[Any]:
     return held
 
 
-def _replaced(path: str, text: str) -> None:
-    """Write `text` to `path`. The text lands under a second name, and a rename moves it to `path`."""
+def replaced(path: str, text: str) -> None:
+    """
+    Write `text` to `path`. The text lands under a second name, and a rename moves it to `path`.
+
+    Public. `claim_state.claims_written` writes the claim store this way.
+    """
     writing = f"{path}.writing"
     with open(writing, "w", encoding="utf-8") as handle:
         handle.write(text)
@@ -180,7 +184,7 @@ def _replaced(path: str, text: str) -> None:
 
 def rewritten(path: str, held: Iterable[Any]) -> None:
     """Write `held` to `path`, a JSON value per line."""
-    _replaced(path, "".join(json.dumps(_json_of(one)) + "\n" for one in held))
+    replaced(path, "".join(json.dumps(_json_of(one)) + "\n" for one in held))
 
 
 def appended(path: str, held: Iterable[Any]) -> None:
@@ -299,8 +303,7 @@ def completed_taken(into: str) -> TaskResult | None:
     """
     Take the first result off the completed tasks queue under `into`. The answer is `None` where the queue is empty.
 
-    The take holds the lock. The take writes the rest of the queue under a second name and then renames that file into
-    place.
+    The take holds the lock. The take writes the rest of the queue with `rewritten`.
     """
     path = os.path.join(into, _COMPLETED_TASKS)
     with _completed_locked(into):

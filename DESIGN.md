@@ -69,9 +69,8 @@ message strings that `ys_message` reads.
 ## Grammar Transformations Overview
 
 The [YAML specification](https://yaml.org/spec/1.2.2/) grammar is a backtracking PEG (Parsing Expression Grammar). A
-backtracking PEG lets the grammar state complex notions directly. A parser can run such a grammar as written (e.g.
-[Haskell YamlReference](https://github.com/orenbenkiki/yamlreference) and the
-[YAML Reference Parser](https://github.com/yaml/yaml-reference-parser)). This project holds such a
+parser can run such a grammar as written (e.g. [Haskell YamlReference](https://github.com/orenbenkiki/yamlreference) and
+the [YAML Reference Parser](https://github.com/yaml/yaml-reference-parser)). This project holds such a
 [parser](generator/interpreter.py). The parser's `run` runs the grammar as written. `check_normalize` runs the grammar
 through its transformations with that parser. A backtracking parse can take
 [exponential time](https://en.wikipedia.org/wiki/Recursive_descent_parser).
@@ -110,10 +109,10 @@ semantics. The C parser has no automaton for the suite to run against. `ys_parse
 1. The fixtures in [`tests/spec/`](tests/spec) come from
    [Haskell YamlReference](https://github.com/orenbenkiki/yamlreference). The fixtures are low level tests.
    `check_interpreter` checks that the grammar produces the token stream a fixture's `.output` file holds. The tokens
-   keep the presentation details, under codes such as `YS_CODE_WHITE` and `YS_CODE_INDICATOR`. A fixture is a pair of
-   files named `<production>[.n=N][.p=N][.c=C][.t=T][.r=R][.i=I].<case>`, and `spec_tests` reads that name. The first
-   holds an `.input` YAML fragment. The second holds the `.output` token stream the named production must emit for that
-   input. The name says which rule to run and with which parameters. A fixture therefore tests a rule rather than a
+   keep the presentation details, under `ys_code` values such as `YS_CODE_WHITE` and `YS_CODE_INDICATOR`. A fixture is a
+   pair of files named `<production>[.n=N][.p=N][.c=C][.t=T][.r=R][.i=I].<case>`, and `spec_tests` reads that name. The
+   first holds an `.input` YAML fragment. The second holds the `.output` token stream the named production must emit for
+   that input. The name says which rule to run and with which parameters. A fixture therefore tests a rule rather than a
    document.
 
    An input the grammar must reject is a fixture like any other. Its name states the `invalid` case `spec_tests` reads.
@@ -305,8 +304,8 @@ date.
 
 `update_ledger_and_queue` copies the tree's prose into the draft of a kept entry. The digests of the tree and the draft
 match. The update drops a queued change that rewrites nothing in that draft. The update drops a queued change the
-checkers refuse. The update drops a suggested proposal the checkers refuse. `rewritten` writes a file under a second
-name. `rewritten` then renames that file into place.
+checkers refuse. The update drops a suggested proposal the checkers refuse. `rewritten` hands its text to `replaced`.
+`replaced` writes a file under a second name, then renames that file into place.
 
 `converge_prose.main` is the driver. It takes the run lock with `settling_state.run_locked`, and calls
 `update_ledger_and_queue.updated`. A pass first closes a round that has a verdict per change. The driver runs passes in
@@ -348,13 +347,13 @@ draft then waits in the `proposed` member of `ProseState` for a claims task. `co
 task with `converge_claims.claims_message`. `collect_fragments.CLAIM_DRAFT` names the environment variable that holds
 the path of the draft file. `prose_answer` reads the reader's answer against that draft.
 
-`converge_prose` reads the answer of that claims task. A `changed` run over text the critic rewrote says the draft
-contradicts the code. The fragment then keeps the prose of the tree and goes to the unsettled prose queue.
-`settling_state.review_logged` writes the prose of the tree, the draft and the corrected draft to `review.jsonl`. A
-`changed` run over text the critic kept leaves that text to the claims pass. `claim_state.stale_claims` names the
-written fragment to that pass. With no `changed` run over the rewrite, `apply_prose.fragment_written` writes the draft
-into the tree. A file holding a changed site takes a single write. The prose queue follows the new prose key after the
-write. The fragment is dirty, and goes to a new critic task.
+`converge_prose` reads the answer of the claims task for the fragment. A `changed` run over text the critic rewrote says
+the draft contradicts the code. The fragment then keeps the prose of the tree and goes to the unsettled prose queue.
+`settling_state.review_logged` writes the prose of the tree, the draft and the corrected draft to the file
+`settling_state.REVIEW` names. A `changed` run over text the critic kept leaves that text to the claims pass.
+`claim_state.stale_claims` names the written fragment to that pass. With no `changed` run over the rewrite,
+`apply_prose.fragment_written` writes the draft into the tree. A file holding a changed site takes a single write. The
+prose queue follows the new prose key after the write. The fragment is dirty, and goes to a new critic task.
 
 The driver in `generator/converge_prose.py` ignores a result the prose queue does not wait for. A comparator result for
 a change which has a verdict is stale. A critic result is stale where no fragment of its batch waits for a critic. A
@@ -495,8 +494,9 @@ the file down. `refusals_for_edit` then passes it to no prose checker.
 
 `generator/claim_state.py` writes a `verified` section, and that section maps a fragment key to a
 `claim_state.Verified`. That record holds the digests of the fragment, the count of calls, and the reads. A flag marks a
-claim a person attested. An `unsettled` section maps a fragment key to the claims no fetch settled. An author then edits
-that fragment or lists its key in the file `CLAIM_AGAIN` names.
+claim a person attested. `collect_fragments.code_digest` gives the code digests the store compares.
+`generator/claim_state.py` also writes an `unsettled` section. An entry there holds a fragment's digests, a reason, and
+the open claims. An author then edits that fragment or lists its key in the file `CLAIM_AGAIN` names.
 
 `claim_state.claims_written` writes the store. The call takes the keys whose entries the store keeps. The call drops an
 entry under another key.
@@ -513,7 +513,8 @@ touches. A code edit restales a settled fragment that read that code. An unsettl
 own prose or code moves.
 
 `generator/collect_fragments.py` leaves the prose out of a file fragment's code. An edit to a comment then restales the
-fragment of that comment. `generator/claim_state.py` restales no reader of the file around that comment.
+fragment of that comment. `generator/claim_state.py` compares a reader's reads by `code_digest`, and restales no reader
+of the file around that comment.
 
 A read key may ask a question of the tree rather than name a fragment. `collect_fragments.CALLERS` and
 `collect_fragments.MENTIONS` head such a question. `collect_fragments.is_a_question` tells such a key apart, and
@@ -549,8 +550,8 @@ file the driver names.
 `prose_answer` reads a claim record as an answer arrives. `claim_state.relied_on` keeps the reads an answer cites.
 `relied_on` also keeps a question the answer read and did not cite. `claim_state.unpointed_reads` decides what a
 fragment points at. `prose_answer` turns an answer back where the fragment of that answer leaves a kept read unpointed.
-`prose_answer` reads that fragment with the rewrite of the answer applied. A reader then names that fragment in a
-rewrite, or drops a citation the claim does not rest on. An answer may change nothing and leave no run unverifiable.
+`prose_answer` reads that fragment with the rewrite of the answer applied. A reader then names the unpointed fragment in
+a rewrite, or drops a citation the claim does not rest on. An answer may change nothing and leave no run unverifiable.
 `converge_claims` stores the kept reads of such an answer. `claim_state.refined` narrows a kept read of a file to the
 declarations its citations reach.
 

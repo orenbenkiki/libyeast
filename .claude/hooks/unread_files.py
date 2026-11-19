@@ -58,4 +58,5 @@ def refusal_for(_text: str, path: str) -> str | None:
 
     Public. `checkers` runs this over a file an edit writes.
     """
-    return None if _is_ignored(path) else _refusal_for(path)
+    said = _refusal_for(path)
+    return None if said is None or _is_ignored(path) else said

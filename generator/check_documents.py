@@ -555,13 +555,13 @@ def copied_prose_errors(text: str, cited_prose: Mapping[str, Sequence[tuple[str,
 _A_PLAN_NAME = re.compile(r"\bPLAN(?:\.md)?\b")
 
 # The paths that may name the plan document. `README.md` links the plan in its opening note. `CHANGELOG.md` is history.
-# `PLAN.md` is the plan. The claim store `.claude/prose-dependencies.json` quotes the claims it holds.
-# `tests/hooks.json` holds the edits a probe of the plan checker writes. `generator/claim_state.py` keeps the plan out
-# of the claim pass. `generator/review_input.py` hands a reviewer the diff of the plan. `.claude/conventions.md` and
-# `.claude/workflows/pre-commit-review.js` state the rules the plan keeps to. So do the agent definitions, where
-# `write_agent_prompts` copies the conventions. `no-prose-points-at-the-plan` is such a rule. `document_rules`, this
-# module and `prose_rules` check the plan. The `Makefile` names the plan among its `DOCUMENTS`. A path ending in `/`
-# names the files under it.
+# `PLAN.md` is the plan. `converge_claims._given_up` quotes claims into the claim store
+# `.claude/prose-dependencies.json`. `tests/hooks.json` holds the edits a probe of the plan checker writes.
+# `generator/claim_state.py` keeps the plan out of the claim pass. `generator/review_input.py` hands a reviewer the diff
+# of the plan. `.claude/conventions.md` and `.claude/workflows/pre-commit-review.js` state the rules the plan keeps to.
+# So do the agent definitions, where `write_agent_prompts` copies the conventions. `no-prose-points-at-the-plan` is such
+# a rule. `document_rules`, this module and `prose_rules` check the plan. The `Makefile` names the plan among its
+# `DOCUMENTS`. A path ending in `/` names the files under it.
 _MAY_NAME_THE_PLAN = (
     "README.md",
     "CHANGELOG.md",

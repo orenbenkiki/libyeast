@@ -14,8 +14,8 @@ nothing checks. The pipeline's claims are then answerable rather than described.
 default. A `return None` catches a kind nobody thought about. So do `return True`, `continue` and `break`. A default
 answer covering a form the question does not recognise is not caution. It reports the blindness of the question as a
 fact about the grammar. A count taken from it then reads plausible and wrong. `_is_nullable` and `_split` ask an
-`ir.Question` for that reason. So do `_shortest_match` and `_entered_unconsumed`. A question written beside them follows
-the same rule.
+`ir.Question` for that reason. So do `_shortest_match` and `_entered_unconsumed`. `_CHOICE_WAYS` and `_ALTERNATIVES`
+answer the kinds they leave out alike through `ir.kinds_other_than`.
 
 **And a caller asks a question in a single place.** `_gated_by` states where a parse may enter a way, and
 `_accepted_way` says what a way consumes. `_is_nullable` says whether a match can consume nothing. `_split` names a
@@ -4903,17 +4903,17 @@ _AFTER_ACTION: ir.Question[_Moved] = ir.Question(
 )
 
 
-# The answers an action leaves a parse with, kept per grammar and per action. Working an answer out, `spaces.reached_by`
-# walks `spaces.ALL_GUARD_ANSWERS` and the tuples an entry holds. The action and the place the parse reached decide the
-# answer. So does the grammar that resolves the sets the action names. The space the action runs in does not come into
-# it. This therefore works an answer out once and reads it per space after. In `spaces.after` the space only says which
-# answers are live and what characters ride along. This keeps its answers against the grammar the way `_TABLES` keeps
-# `_leaf_tables`. An action is a value, and `ir.kept_for` compares it by value.
+# The answers an action leaves a parse with, kept per grammar and per action. Working an answer out walks
+# `spaces.ALL_GUARD_ANSWERS`. A consume walks it through `spaces.reached_by`, along with the tuples an entry holds. The
+# action and the place the parse reached decide the answer. So does the grammar that resolves the sets the action names.
+# The space the action runs in does not come into it. This therefore works an answer out once and reads it per space
+# after. In `spaces.after` the space only says which answers are live and what characters ride along. This keeps its
+# answers against the grammar the way `_TABLES` keeps `_leaf_tables`. An action is a value, and `ir.kept_for` compares
+# it by value.
 _WHERE_AN_ACTION_LEAVES_A_PARSE: ir.Kept = {}
 
-# The answer in a space. The key is the grammar, the action and the space. Reading it off the table above is a union
-# over the answers the space holds. That is cheap beside working the action out. The fixpoint asks it over and over
-# while settling. A space that has stopped growing keeps reaching the same actions.
+# A cache of the space an action leaves behind. `kept_for` keys it on the grammar's identity, the action and the space.
+# `after_action` keeps the result of `spaces.after` here.
 _WHERE_AN_ACTION_LEAVES_A_SPACE: ir.Kept = {}
 
 
@@ -5071,6 +5071,36 @@ def _entry_and_exit_spaces(
     return entry, left
 
 
+def _moved_by(grammar: dict[str, ir.Prod], action: ir.Node) -> _Moved:
+    """
+    The answer `_AFTER_ACTION` gives `action` in `grammar`. `_actions_worked_out` runs this in a worker that `spread`
+    forks.
+    """
+    return _AFTER_ACTION(action, grammar)
+
+
+def _actions_worked_out(grammar: dict[str, ir.Prod]) -> None:
+    """
+    Work out `_AFTER_ACTION` for the actions the offered ways of `grammar` hold, and keep the answers in
+    `_WHERE_AN_ACTION_LEAVES_A_PARSE`. `gate.spread` shares the actions out over the cores. `after_action` then reads an
+    answer from that store rather than working it out.
+    """
+    actions = list(
+        dict.fromkeys(
+            action
+            for production in grammar.values()
+            for way in _offered_ways(production.body)
+            for action in way.actions
+        )
+    )
+    for action, moved in zip(actions, gate.spread(_moved_by, grammar, actions)):
+
+        def answered(held: _Moved = moved) -> _Moved:
+            return held
+
+        ir.kept_for(_WHERE_AN_ACTION_LEAVES_A_PARSE, grammar, answered, under=action)
+
+
 def spaces_of_ways(
     grammar: dict[str, ir.Prod],
 ) -> dict[int, tuple[str, int, spaces.SubSpace, spaces.SubSpace]]:
@@ -5083,6 +5113,7 @@ def spaces_of_ways(
     of a production back for the way of another. A way's entry is its production's entry crossed with the way's gate. A
     way's exit is its entry taken along the way's parts. A call in the way resumes from the exit of its callee.
     """
+    _actions_worked_out(grammar)
     entry, left = _entry_and_exit_spaces(grammar)
     held = {}
     for name, production in grammar.items():

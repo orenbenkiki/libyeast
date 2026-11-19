@@ -56,14 +56,16 @@ _PARAMETER = re.compile(r"\.([nctrip])=([^.]+)")
 @dataclass(frozen=True)
 class Fixture:
     """
-    A reference test. A fixture names the production to run and its parameters. A fixture also names the files holding
-    the input and the expected output.
+    A fixture is a reference test. A fixture names the production to run and its parameters. A fixture also names the
+    files holding the input and the expected output.
+
+    `check_spec_tests` refuses a fixture under `is_invalid` whose expected output matches the whole input cleanly.
     """
 
     production: str
     parameters: dict[str, str]  # `{"n": "2", "c": "flow-in", ...}`, values verbatim from the filename.
     case: str  # the arbitrary testcase name, such as `a` or `empty.invalid`.
-    is_invalid: bool  # whether the name claims the production does not cleanly match the whole input.
+    is_invalid: bool  # whether the name says the production fails to match the whole input cleanly.
     input_path: str
     output_path: str
 
@@ -75,7 +77,10 @@ class Fixture:
 
     @property
     def expected(self) -> str:
-        """The YEAST token stream the production must emit for this fixture. The wire form holds it."""
+        """
+        The YEAST token stream the production must emit for this fixture. `check_interpreter` compares it with the text
+        `wire.serialize` writes.
+        """
         with open(self.output_path, encoding="utf-8") as handle:
             return handle.read()
 

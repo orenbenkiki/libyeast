@@ -199,6 +199,15 @@ READ_ONLY = (
     "third_party/utf8-stress-test/UTF-8-test.txt",
 )
 
+# The stores the tools write. `claim_state` writes the claim store. `settling_state` names the ledger and the suggested
+# proposals. `record_run` writes the rule counts. `review_input` leaves these files out of a review.
+TOOL_STORES = (
+    ".claude/prose-dependencies.json",
+    ".claude/prose-ledger.jsonl",
+    ".claude/suggested-proposals.jsonl",
+    ".claude/rule-use.json",
+)
+
 
 def tracked_files() -> list[str]:
     """

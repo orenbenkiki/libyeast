@@ -69,7 +69,7 @@ def updated(into: str, fragments: Iterable[collect_fragments.Fragment]) -> str:
     A kept prose queue entry comes ahead of a new one. `_purged` cleans a kept `settling_state.ProseState` entry. A
     suggested proposal the checkers refuse leaves the suggested proposals queue.
 
-    `claim_state.claims_purged` drops the claim store's entries the tree has moved past.
+    `claim_state.claims_purged` drops the claim store's entries the tree has moved past, as `stale_claims` reports them.
 
     Public. `converge_prose.main` and `converge_claims.main` call this as a run starts. `update_ledger_and_queue.main`
     calls this under the run lock as well.

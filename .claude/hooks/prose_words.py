@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-PreToolUse on Edit and Write. This hook checks a claim before the claim goes into prose.
+`prose_gate` runs this hook through `checkers._CHECKERS` on PreToolUse for Edit and Write. This hook checks a claim
+before the claim goes into prose.
 
-Code gets a feedback loop as the author types. Prose gets none until somebody reads it. This hook is that loop. This
-hook cannot tell whether a claim is true.
+This hook cannot tell whether a claim is true.
 
-This hook names the word it refuses. `prose_rewrite` names no word. `prose_rewrite` quotes the refused sentence. A word
-fault is a claim that may be false, and a grep settles it. A writer clears a shape fault by rewriting the sentence.
+This hook names the word it refuses. `prose_rewrite` names no word. `prose_rewrite` quotes the refused sentence. A
+writer clears a shape fault by rewriting the whole prose of the fragment.
 
 `a-count-is-answered-for` refuses a vague quantifier. `a-claim-writes-no-universal` refuses a universal and a
 superlative. `use-the-words-this-project-uses` refuses a word the project turned down. `a-named-hedge-is-refused`

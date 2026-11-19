@@ -387,9 +387,9 @@ vet-pylint: .stamps/vet-pylint
 vet-mypy: .stamps/vet-mypy
 
 # The C lint runs a pair of analyzers over the library and the tests. clang-tidy reads the compile database in
-# `build-debug`. The `build-debug/.cfg` rule configures that directory. `CMakeLists.txt` tells cmake to write that
-# database at configure.
-.stamps/vet-lint: $(ALL_SRC) .clang-tidy build-debug/.cfg | .stamps
+# `build-debug`. `CMakeLists.txt` tells cmake to write that database at configure. The lint runs after
+# `build-debug/.build`.
+.stamps/vet-lint: $(ALL_SRC) .clang-tidy build-debug/.build | .stamps
 	$(CLANG_TIDY) --quiet --extra-arg=-Wno-unknown-warning-option $(TIDY_EXTRA) -p build-debug $(LINT_FILES)
 	$(CPPCHECK) --enable=warning,portability --error-exitcode=1 --std=c99 \
 	    --suppress=missingIncludeSystem --suppress='*:*third_party*' \
@@ -613,7 +613,7 @@ CLAIM_STORE := .claude/prose-dependencies.json
 # `generator/converge_claims.py`, and that run reads a stale fragment. It reads a fragment the pass gave up on where
 # that fragment's own prose or code moved. It also reads such a fragment where the file `CLAIM_KEYS` names holds that
 # fragment's key.
-.stamps/verify-claims: $(SCAN_FILES) $(wildcard $(CLAIM_STORE)) | .stamps
+.stamps/verify-claims: $(SCAN_FILES) $(wildcard $(CLAIM_STORE)) .stamps/verify-fragments | .stamps
 	python3 generator/claim_state.py
 	@touch $@
 

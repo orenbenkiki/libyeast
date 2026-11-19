@@ -246,7 +246,7 @@ def _settled(state: _Claiming, key: str, read: dict[str, str], runs: list[dict[s
         name: (
             claim_state.answer_sha(around, name)
             if collect_fragments.is_a_question(name)
-            else state.by_key[name].code.sha
+            else collect_fragments.code_digest(state.by_key[name])
         )
         for name in sorted(claim_state.refined(read, runs, around))
     }

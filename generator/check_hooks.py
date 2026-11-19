@@ -35,6 +35,7 @@ Usage: `python3 generator/check_hooks.py`.
 """
 
 import ast
+import concurrent.futures
 import importlib
 import json
 import os
@@ -495,6 +496,40 @@ def _answered(command: str, payload: Mapping[str, Any]) -> str:
     return (run.stdout + run.stderr).strip()
 
 
+def _own_agent(pair: Mapping[str, Any], index: int) -> dict[str, Any]:
+    """
+    A copy of `pair` whose sides name an agent of their own. `index` tells the pairs apart.
+    """
+    held: dict[str, Any] = json.loads(json.dumps(pair))
+    for side in ("answers", "passes"):
+        for field in ("agent_id", "session_id"):
+            if field in held[side]:
+                held[side][field] = f"{held[side][field]}-{index}"
+    return held
+
+
+def _pair_faults(name: str, command: str, index: int, pair: Mapping[str, Any]) -> list[str]:
+    """
+    The faults `pair` finds in the hook `name`. `command` runs the hook. `_landed` writes the file of `pair` into a
+    fresh scratch directory. `_own_agent` renames the agent of both sides. The edit the hook must refuse goes first.
+    """
+    probes = pair["probes"]
+    faults = []
+    with tempfile.TemporaryDirectory(dir=gate.TREE, prefix=_SCRATCH) as scratch:
+        held = _own_agent(_landed(pair, scratch), index)
+        if not _answered(command, held["answers"]):
+            faults.append(
+                f"`{name}` says nothing about the edit it must refuse at {probes}. that hook is silent under any text "
+                f"it reads there."
+            )
+        if _answered(command, held["passes"]):
+            faults.append(
+                f"`{name}` answers the edit it must pass for {probes}. that hook says the same of the text it reads "
+                f"there."
+            )
+    return faults
+
+
 def _silent_hook_faults() -> list[str]:
     """
     List the faults of the hooks. A fault names a hook that passes an edit its pair says to answer. A fault names a hook
@@ -518,37 +553,26 @@ def _silent_hook_faults() -> list[str]:
         + _unchecked_writer_faults()
     )
     registered = _runners()
-    with tempfile.TemporaryDirectory(dir=gate.TREE, prefix=_SCRATCH) as scratch:
-        for name in sorted(set(registered) | set(tried)):
-            if name not in registered:
-                faults.append(
-                    f"`tests/hooks.json` holds `{name}` to a pair, and `.claude/settings.json` names no such hook"
-                )
-                continue
-            if name not in tried:
-                faults.append(
-                    f"`.claude/settings.json` registers `{name}` and `tests/hooks.json` holds it to nothing. A silent "
-                    f"hook reads as clean."
-                )
-                continue
-            command, matcher = registered[name]
-            if any(tool in matcher for tool in _WRITES_A_FILE):
-                faults += _kind_faults(name, tried[name])
-            for one in tried[name]:
-                probes = one["probes"]
-                if "skips" in one:
-                    continue
-                pair = _landed(one, scratch)
-                if not _answered(command, pair["answers"]):
-                    faults.append(
-                        f"`{name}` says nothing about the edit it must refuse at {probes}. that hook is silent "
-                        f"under any text it reads there."
-                    )
-                if _answered(command, pair["passes"]):
-                    faults.append(
-                        f"`{name}` answers the edit it must pass for {probes}. that hook says the same of the text it "
-                        f"reads there."
-                    )
+    run: list[tuple[str, str, int, Mapping[str, Any]]] = []
+    for name in sorted(set(registered) | set(tried)):
+        if name not in registered:
+            faults.append(
+                f"`tests/hooks.json` holds `{name}` to a pair, and `.claude/settings.json` names no such hook"
+            )
+            continue
+        if name not in tried:
+            faults.append(
+                f"`.claude/settings.json` registers `{name}` and `tests/hooks.json` holds it to nothing. A silent "
+                f"hook reads as clean."
+            )
+            continue
+        command, matcher = registered[name]
+        if any(tool in matcher for tool in _WRITES_A_FILE):
+            faults += _kind_faults(name, tried[name])
+        run += [(name, command, len(run), one) for one in tried[name] if "skips" not in one]
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        for found in pool.map(lambda job: _pair_faults(*job), run):
+            faults += found
     return faults
 
 

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-A checker of `checkers`. This checker refuses a copy in `DESIGN.md` of the prose beside a cited name.
-`a-design-paragraph-copies-no-cited-prose` is the rule.
+`checkers` lists this module as a checker. The module refuses a `DESIGN.md` paragraph that copies the prose beside a
+cited name. The module enforces `a-design-paragraph-copies-no-cited-prose`.
 
 `.claude/conventions.md` gives `DESIGN.md` context, perspective and architecture. The prose beside a name holds the
-detail of that name. A copy of that prose goes quietly false once the code moves.
+detail of that name.
 
 `check_documents.copied_prose_errors` compares the words. `copies_of` hands that function the prose of the fragments
-outside `DESIGN.md`. `_cited_prose` reads that prose off the tree on a call. A long-running caller that writes a file
-then reads the new prose of that file.
+outside `DESIGN.md`. `_cited_prose` reads that prose off the tree on a call. A long-running caller reads the new prose
+of a file it has written.
 
 `.claude/settings.json` sets the `PYTHONPATH` that puts `generator` on the path.
 """

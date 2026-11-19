@@ -3,19 +3,20 @@
 Check that the interpreter's emitter can be undone.
 
 The backtracking rests on a promise `Emitter` makes in its own docstring. A checkpoint captures the state whole. The
-interpreter can rewind a failed alternative to the checkpoint before it. An `(any)`, a `(---)` and a repetition take
-that on trust. `interpreter._try_alternation`, `interpreter._try_difference` and `interpreter._try_repeat` go back to a
-checkpoint.
+interpreter can rewind a failed alternative to the checkpoint before it. The IR holds an `(any)` as an `AltTree`. An
+`(any)`, a `(---)` and a repetition trust that rewind. `interpreter._try_alternation`, `interpreter._try_difference` and
+`interpreter._try_repeat` go back to a checkpoint.
 
 So this checks the promise rather than an incident. The promise breaks in a pair of ways. A checkpoint may miss a field.
 A checkpoint may also hand a field out rather than copy it.
 
-This file names the field list. A field added to `Emitter` and left off that list fails this gate.
+This file sorts the fields of `Emitter` into `_RESTORED`, `_READ_ONLY` and `_TRANSIENT`. This gate fails on a field of
+`Emitter` that none of these lists names.
 
-This checks the provisional run too. An `Emitter` holds that run in `provisional`. `check_dead_code._KEPT_THOUGH_DEAD`
-keeps the provisional actions, and no step builds one. A retype rewrites held tokens by kind. A retype's region names
-the side of the mark that the retype rewrites, or `all` for the whole run. An injection puts a marker where the
-injection says, ahead of the run or between its sides.
+This checks the provisional run too. An `Emitter` keeps where that run begins in `provisional`.
+`check_dead_code._KEPT_THOUGH_DEAD` keeps the provisional action kinds alive, and no step builds them. A retype rewrites
+held tokens by kind. A retype's region names the side of the mark that the retype rewrites, or `all` for the whole run.
+An injection puts a marker where the injection says, ahead of the run or between its sides.
 """
 
 import gate

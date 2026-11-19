@@ -24,6 +24,7 @@ from typing import Any
 
 import collect_fragments
 import gate
+import settling_state
 
 # The store.
 _STORE = os.path.join(gate.TREE, ".claude", "prose-dependencies.json")
@@ -74,7 +75,7 @@ def digests_of(one: collect_fragments.Fragment) -> str:
     The digests of a fragment, as the field `own` of `Verified` holds them. The prose digest comes first and the code
     digest follows.
     """
-    return f"{one.prose.sha}:{one.code.sha}"
+    return f"{one.prose.sha}:{collect_fragments.code_digest(one)}"
 
 
 def read_claims() -> tuple[dict[str, Verified], dict[str, Any]]:
@@ -118,8 +119,7 @@ def claims_written(held: dict[str, Verified], unsettled: Mapping[str, Any], keys
         _VERIFIED: {key: _stored(one) for key, one in sorted(held.items()) if key in live},
         _UNSETTLED: {key: unsettled[key] for key in sorted(unsettled) if key in live},
     }
-    with open(_STORE, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(said, indent=2) + "\n")
+    settling_state.replaced(_STORE, json.dumps(said, indent=2) + "\n")
 
 
 def answer_sha(
@@ -133,7 +133,10 @@ def answer_sha(
     arrives in the answer, leaves it or moves. The fragment that asked then falls stale.
     """
     by_key = {one.key: one for one in held}
-    said = "\n".join(f"{key}:{by_key[key].code.sha}" for key in collect_fragments.answered_by(held, asked, by_name))
+    said = "\n".join(
+        f"{key}:{collect_fragments.code_digest(by_key[key])}"
+        for key in collect_fragments.answered_by(held, asked, by_name)
+    )
     return hashlib.sha256(said.encode()).hexdigest()[:16]
 
 
@@ -216,7 +219,7 @@ def stale_claims(fragments: Iterable[collect_fragments.Fragment]) -> dict[str, s
             if read is None:
                 found[one.key] = f"it read `{key}`, and the tree dropped that fragment"
                 break
-            if read.code.sha != sha:
+            if collect_fragments.code_digest(read) != sha:
                 found[one.key] = f"it read `{key}`, and the code of that fragment moved"
                 break
     return found
@@ -253,14 +256,15 @@ def unpointed_reads(
         key for name in set(collect_fragments.AN_IDENTIFIER.findall(one.code.content)) for key in by_name.get(name, ())
     }
     paths = {one.path} | {site.path for site in one.sites}
-    pointed |= {other.key for other in held if collect_fragments.is_a_file(other.key) and other.path in paths}
+    pointed |= {other.key for other in held if other.path in paths and collect_fragments.is_a_file(other.key)}
     for asked in sorted(reads):
         if collect_fragments.is_a_question(asked):
             pointed.add(asked)
-            pointed |= set(collect_fragments.answered_by(held, asked))
+            pointed |= set(collect_fragments.answered_by(held, asked, by_name))
     left = reads - pointed
     if left and not collect_fragments.is_a_file(one.key):
-        around = set(collect_fragments.callers_of(held, one.key)) | set(collect_fragments.mentions_of(held, one.key))
+        around = set(collect_fragments.callers_of(held, one.key, by_name))
+        around |= set(collect_fragments.mentions_of(held, one.key, by_name))
         pointed |= around
         left -= around
     if left:

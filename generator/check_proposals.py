@@ -3,9 +3,8 @@
 Check that no proposal waits for a ruling.
 
 A review proposes a convention. The author rules on the proposal. An accepted proposal goes into
-`.claude/conventions.md`. A rejected proposal goes into `.claude/rejected.md`. A proposal ruled on in conversation and
-written down in no file comes back the next round. `.claude/workflows/pre-commit-review.js` tells a reviewer to propose
-nothing `.claude/conventions.md` holds and to raise nothing `.claude/rejected.md` holds.
+`.claude/conventions.md`. A rejected proposal goes into `.claude/rejected.md`. `.claude/workflows/pre-commit-review.js`
+tells a reviewer to propose nothing `.claude/conventions.md` holds and to raise nothing `.claude/rejected.md` holds.
 
 `record_run` appends the proposals the workflow returns to `.claude/proposals-pending.md`. `converge_prose` appends the
 proposals a condense returns. `record_run.proposals_appended` does the append. This check refuses while

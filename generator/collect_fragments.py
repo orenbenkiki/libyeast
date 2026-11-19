@@ -251,7 +251,8 @@ def _read_only() -> list[Fragment]:
     """
     The fragments of `gate.READ_ONLY`. Such a fragment holds code and no prose of ours.
 
-    Prose of ours rests on a generated table, on the specification's BNF, and on the files under `third_party/`.
+    Prose of ours rests on the generated table `src/decoder_tables.h`, on the specification's BNF, and on the files
+    under `third_party/`.
 
     The specification's BNF comes apart into a fragment per production, keyed by the production's name. Prose of ours
     names a production that way. This fragment names `nb-single-text` by its bare name. A C file comes apart the way
@@ -362,7 +363,7 @@ CLAIM_DRAFT = "YEAST_CLAIM_DRAFT"
 CRITIC_BATCH = "YEAST_CRITIC_BATCH"
 
 
-# The languages whose fragments hold no code that calls or mentions a name. `_bare_code` blanks such a fragment whole.
+# The languages whose fragments `_bare_code` blanks whole. `callers_of` then finds no call in such a fragment.
 _UNCALLED = ("Markdown", "Conf", None)
 
 # The languages of `_QUOTES` whose strings hold text. `_bare_code` keeps a string of the other languages. Such a string
@@ -372,6 +373,17 @@ _TEXT_STRINGS = ("C", "JS")
 # The languages of `_QUOTES` whose comments hold code. A comment of `grammar/yeast-spec-1.2.yaml` holds a production of
 # the YAML spec. `s-double-escaped` there calls `s-flow-line-prefix(n)` in its comment.
 _CODE_COMMENTS = ("YAML",)
+
+# The languages whose text `_code_digest` reads whole.
+_READ_WHOLE = ("Markdown", "Conf", None)
+
+
+def _prose_comments(comments: list[tuple[int, int]], language: str) -> list[tuple[int, int]]:
+    """
+    The spans of `comments` that hold prose. `comments` comes from `_scanned` over code in `language`. A comment of a
+    `_CODE_COMMENTS` language holds code.
+    """
+    return [] if language in _CODE_COMMENTS else comments
 
 
 @functools.cache
@@ -396,7 +408,7 @@ def _bare_code(code: str, language: str | None) -> str:
     elif language in _QUOTES:
         strings, comments = _scanned(code, _QUOTES[language], _A_LINE_COMMENT[language])
         spans = [(opens, ends) for _line, opens, ends, _said in strings if language in _TEXT_STRINGS]
-        spans += [] if language in _CODE_COMMENTS else comments
+        spans += _prose_comments(comments, language)
     else:
         raise ValueError(f"`_bare_code` knows no literals of the language {language}")
     blanked = list(code)
@@ -422,9 +434,9 @@ def _naming(
     word: str = "",
 ) -> list[str]:
     """
-    The sorted keys of the fragments whose code the pattern `says` matches. Under `is_blanking_text`, `_bare_code`
-    blanks the literals and the comments of that code first. The fragment `name` declares stays out. `declaring` names
-    the keys of that fragment. A caller that gives none has `name` match the last part of a key.
+    The sorted keys of the fragments whose code the pattern `says` matches. Under `is_blanking_text`, `says` matches the
+    code `_bare_code` gives. The fragment `name` declares stays out. `declaring` names the keys of that fragment. A
+    caller that gives none has `name` match the last part of a key.
 
     A match of `says` holds the identifier `word`. `_naming` skips the regex search on a fragment lacking `word`. A
     `word` outside `AN_IDENTIFIER` skips no fragment.
@@ -476,8 +488,8 @@ def callers_of(held: list[Fragment], name: str, by_name: Mapping[str, set[str]] 
     The fragment `name` declares stays out of the answer. A fragment of `gate.test_sources` stays out too.
 
     A call names a method through its object, as `emitter.give_back(` does. So a key or a dotted name matches by its
-    last part. A method name shared by a pair of classes reaches the callers of both. Before the match, `_bare_code`
-    blanks the strings and the comments of the code's language.
+    last part. A method name shared by a pair of classes reaches the callers of both. The pattern matches the code
+    `_bare_code` gives.
     """
     tests = {os.path.relpath(path, gate.TREE) for path in gate.test_sources()}
     called = name.rpartition(":")[2].rpartition(".")[2]
@@ -493,8 +505,8 @@ AN_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 def named_by(one: Fragment, by_name: Mapping[str, set[str]]) -> set[str]:
     """
-    The keys of the fragments the code of `one` names, in the language of `one`. `by_name` comes from `keys_by_name`.
-    `_bare_code` blanks the literals and the comments of that code first. A call names its callee. A callback handed
+    The keys of the fragments the code of `one` names, in the language of `one`, less the key of `one`. `by_name` comes
+    from `keys_by_name`. The names come from the code `_bare_code` gives. A call names its callee. A callback handed
     over as a value names its function too.
 
     Public. `claim_state.unpointed_reads` follows these names.
@@ -721,6 +733,58 @@ def site_lines(fragment: Fragment, site: _Site) -> tuple[int, ...]:
 def _digest(content: str) -> str:
     """The digest a half of a fragment is compared by."""
     return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+def _python_code(code: str) -> str:
+    """
+    The tokens of `code` with the comments, the docstrings and the non-logical line breaks left out. `code` holds
+    Python. A docstring is a string token that makes up a whole statement. An indent counts as a token. The width of an
+    indent does not count.
+    """
+    skipped = (tokenize.COMMENT, tokenize.NL, tokenize.ENCODING)
+    tokens = [token for token in tokenize.generate_tokens(io.StringIO(code).readline) if token.type not in skipped]
+    opens = (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT)
+    closes = (tokenize.NEWLINE, tokenize.ENDMARKER)
+    kept = []
+    for at, token in enumerate(tokens):
+        before = tokens[at - 1].type if at else tokenize.NEWLINE
+        after = tokens[at + 1].type if at + 1 < len(tokens) else tokenize.ENDMARKER
+        if token.type == tokenize.STRING and before in opens and after in closes:
+            continue
+        kept.append(f"{token.type}:{'' if token.type == tokenize.INDENT else token.string}")
+    return "\n".join(kept)
+
+
+@functools.cache
+def _code_digest(code: str, language: str | None) -> str:
+    """
+    The digest of `code` in `language`. `_python_code` reads Python. `_scanned` finds the comments of a `_QUOTES`
+    language. `_prose_comments` names those that hold prose, and the digest leaves them out. For a `_QUOTES` language,
+    the digest hashes the words without their layout. A language outside `_READ_WHOLE`, `_QUOTES` and Python raises.
+    """
+    if language in _READ_WHOLE:
+        return _digest(code)
+    if language == "Python":
+        return _digest(_python_code(code))
+    if language not in _QUOTES:
+        raise ValueError(f"`_code_digest` knows no comments of the language {language}")
+    _strings, comments = _scanned(code, _QUOTES[language], _A_LINE_COMMENT[language])
+    kept, at = [], 0
+    for opens, ends in _prose_comments(comments, language):
+        kept.append(code[at:opens])
+        at = ends
+    kept.append(code[at:])
+    return _digest(" ".join(" ".join(kept).split()))
+
+
+def code_digest(one: Fragment) -> str:
+    """
+    The digest a claim reading compares the code of `one` by. `_code_digest` says what the digest leaves out.
+
+    Public. `claim_state`, `converge_claims` and `prose_answer` compare code this way. `fragments` gives `references`
+    these digests.
+    """
+    return _code_digest(one.code.content, language_of(one.path))
 
 
 def _named_by(prose: _Text) -> str:
@@ -2066,8 +2130,8 @@ def fragments() -> list[Fragment]:
     The fragments the project holds. A citation in a fragment's prose resolves to the fragment it names.
 
     A citation naming a field, a parameter or a local names no fragment, and this drops it. A citation reaches a
-    declaration of a test only from prose in that test. `every-cited-name-exists` holds a citation to the names the tree
-    writes.
+    declaration of a test only from prose in that test. Any prose may cite a case `_registered_cases` finds. Any prose
+    may also cite the file of a test. `every-cited-name-exists` holds a citation to the names the tree writes.
 
     This applies no `is_about_the_tree` skip. `prose_rewrite.refusal_for` applies that skip for the shape rules. The
     word rules reach the file the skip leaves out. `prose_rules.word_refusal` applies no such skip.
@@ -2082,7 +2146,7 @@ def fragments() -> list[Fragment]:
     resolves = resolved(reachable)
     by_key = {one.key: one for one in reachable}
     for one in held:
-        one.references = {key: by_key[key].code.sha for key in cited_keys(one, one.prose.content, resolves, by_key)}
+        one.references = {key: code_digest(by_key[key]) for key in cited_keys(one, one.prose.content, resolves, by_key)}
     return sorted(held, key=lambda one: (one.path, one.start_line))
 
 

@@ -84,7 +84,21 @@ def _spaces_held(grammar: dict[str, ir.Prod], fixtures: Sequence[spec_tests.Fixt
     """
     # Read for a parse from the root alone, which is the machine that ships. A fixture starting outside the states the
     # root brings it to simulates a parse no input makes.
-    held = normalize.spaces_of_ways(grammar)
+    spaces_by_way = normalize.spaces_of_ways(grammar)
+    found = gate.spread(_fixture_spaces_held, (grammar, spaces_by_way), list(fixtures))
+    return sorted({fault for faults in found for fault in faults})
+
+
+def _fixture_spaces_held(
+    grammar_and_spaces: tuple[dict[str, ir.Prod], dict[int, tuple[str, int, spaces.SubSpace, spaces.SubSpace]]],
+    fixture: spec_tests.Fixture,
+) -> list[str]:
+    """
+    The places the parse of `fixture` reaches that the spaces say it cannot, as error strings. `grammar_and_spaces`
+    pairs the grammar with the spaces `normalize.spaces_of_ways` gives for it. `_spaces_held` shares the fixtures out
+    through `gate.spread`.
+    """
+    grammar, spaces_by_way = grammar_and_spaces
     faults: list[str] = []
 
     def checking(
@@ -98,7 +112,7 @@ def _spaces_held(grammar: dict[str, ir.Prod], fixtures: Sequence[spec_tests.Fixt
                 faults.append(
                     f"the parse at position {emitter.position} sits {what} a step in a state `spaces.HELD` lacks"
                 )
-        found = held.get(id(node))
+        found = spaces_by_way.get(id(node))
         if found is None:  # an action, compared with where performing it says the parse is left
             said = normalize.after_action(node, spaces.guard_answers_in(before), grammar)
             if after and not any(said.under(one) for one in after):
@@ -115,18 +129,17 @@ def _spaces_held(grammar: dict[str, ir.Prod], fixtures: Sequence[spec_tests.Fixt
                     f"cannot"
                 )
 
-    for fixture in fixtures:
-        try:
-            interpreter.run(
-                grammar,
-                fixture.production,
-                fixture.input,
-                spec_tests.arguments(fixture, grammar),
-                checking=checking,
-            )
-        except Exception:  # noqa: BLE001  failure-is-reported: by `_corpus_errors`  # pylint: disable=W0718
-            continue
-    return sorted(set(faults))
+    try:
+        interpreter.run(
+            grammar,
+            fixture.production,
+            fixture.input,
+            spec_tests.arguments(fixture, grammar),
+            checking=checking,
+        )
+    except Exception:  # noqa: BLE001  failure-is-reported: by `_corpus_errors`  # pylint: disable=W0718
+        return faults
+    return faults
 
 
 def _pinned(

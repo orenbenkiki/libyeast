@@ -129,11 +129,12 @@ def _at_base(path: str) -> str | None:
 def _unstaged() -> list[str]:
     """
     The paths of the files whose changes the working tree holds and the index lacks. Such a path names a tracked file
-    with edits nobody staged, or a file nobody added.
+    with edits nobody staged, or a file nobody added and no ignore rule covers. https://git-scm.com/docs/git-diff and
+    https://git-scm.com/docs/git-ls-files describe the commands that list them.
 
     `_hunks` quotes line numbers taken from `git diff --cached` beside the file on disk. The staged numbers agree with
     the on-disk file where the tree is clean. A file with unstaged lines added above a change quotes the wrong lines. A
-    file cut short of a changed line sends the read off its end.
+    file cut short of a changed line sends the read past the end of the file.
     """
     changed = _ran("git", "diff", "--name-only").splitlines()
     untracked = _ran("git", "ls-files", "--others", "--exclude-standard").splitlines()
@@ -184,8 +185,8 @@ def _hunks() -> str:
     r"""
     The staged changes in the Python files.
 
-    A record gives the changed lines. It gives the function or class those lines fall in. The record holds that
-    function's docstring from the working file. It holds the docstring at `_base` beside that. The record holds the
+    A record gives the changed lines. It gives the innermost function or class those lines fall in. The record holds
+    that function's docstring from the working file. It holds the docstring at `_base` beside that. The record holds the
     lines either side of the change too. The changes outside any function or class in a file share a single record of
     their changed lines. That record holds no docstring. `_hunks` leaves deleted files out.
 
@@ -200,8 +201,16 @@ def _hunks() -> str:
         lines = source.split("\n")
         held, was = _holders(source), _holders(_at_base(path) or "")
         changed = _changed_lines(path)
+        width = {name: last - first for name, (first, last, _docstring) in held.items()}
+        owner = {
+            at: min(
+                (name for name, (first, last, _docstring) in held.items() if first <= at <= last), key=width.__getitem__
+            )
+            for at in changed
+            if any(first <= at <= last for first, last, _docstring in held.values())
+        }
         for name, (first, last, docstring) in sorted(held.items(), key=lambda one: one[1]):
-            mine = sorted(at for at in changed if first <= at <= last)
+            mine = sorted(at for at in changed if owner.get(at) == name)
             if not mine:
                 continue
             wanted = sorted(
@@ -220,9 +229,7 @@ def _hunks() -> str:
                 f"--- the docstring AT THE BASE ---\n{older or '(none)'}\n"
                 f"--- the change. `>` marks a changed line ---\n" + "\n".join(body) + "\n"
             )
-        loose = sorted(
-            at for at in changed if not any(first <= at <= last for first, last, _docstring in held.values())
-        )
+        loose = sorted(at for at in changed if at not in owner)
         if loose:
             shown = "\n".join(f">{at:>5} {lines[at - 1]}" for at in loose)
             written.append(f"### {path} (outside any function)\n--- the changed lines ---\n{shown}\n")
@@ -262,7 +269,7 @@ def _references() -> str:
     # same word taken from several is a sweep.
     left: collections.Counter[str] = collections.Counter()
     for path in _staged_paths():
-        if not path.startswith(gate.NOT_OURS):
+        if not path.startswith((*gate.NOT_OURS, *gate.TOOL_STORES)):
             left.update(_took_out(path))
     # A name the tree still binds went nowhere. It moved between files, or a line holding it was rewritten.
     bound = gate.names_defined_in_modules()
@@ -300,9 +307,9 @@ def _references() -> str:
     return head + "\n" + ("\n".join(written) or "(the change removed nothing that anything else mentions)")
 
 
-# A pair of headings begins a prepared file's records. This module writes the `### ` heading, and `git diff` writes the
-# `diff --git ` header, as https://git-scm.com/docs/git-diff#generate_patch_text_with_p says. This module splits such
-# text at a heading. A record then comes out whole.
+# A record in a prepared file opens with a `### ` heading or a `diff --git ` header. This module writes the `### `
+# heading, and `git diff` writes the `diff --git ` header, as
+# https://git-scm.com/docs/git-diff#generate_patch_text_with_p says.
 _STARTS_A_RECORD = ("### ", "diff --git ")
 
 
@@ -343,8 +350,8 @@ def _written(into: str, name: str, prepared: str) -> list[str]:
 # `_THE_CODE` cuts the diff by the question a reviewer asks. A reviewer asking about naming needs no changelog. A
 # reviewer asking about a document's claims needs no decoder.
 #
-# `_THE_FIXTURES` names the fixtures. `_uncovered` lists the staged paths no slice and no vendored prefix holds.
-# `review_input.main` hands such a path to `report`. `report` exits with a failure.
+# `_THE_FIXTURES` names the fixtures. `_uncovered` lists the staged paths that no slice, no vendored prefix and no path
+# of `gate.TOOL_STORES` holds. `review_input.main` hands such a path to `report`. `report` exits with a failure.
 _THE_CODE = (
     "generator",
     "scripts",
@@ -389,8 +396,10 @@ _VENDORED = ("third_party/",)
 
 
 def _code() -> str:
-    """The diff of the index against `_base`, cut to the paths `_THE_CODE` names."""
-    return _ran("git", "diff", "--cached", _base(), "--", *_THE_CODE)
+    """The diff of the index against `_base`, cut to the paths `_THE_CODE` names. `gate.TOOL_STORES` stays out."""
+    return _ran(
+        "git", "diff", "--cached", _base(), "--", *_THE_CODE, *(f":(exclude){path}" for path in gate.TOOL_STORES)
+    )
 
 
 def _docs() -> str:
@@ -413,10 +422,11 @@ def _uncovered() -> list[str]:
     The staged paths that no prepared file shows. That set should come back empty.
 
     A slice takes the paths it names. A path the slices leave out reaches no reviewer, and `main` refuses the tree
-    holding it. A vendored path reaches nobody on purpose.
+    holding it. A vendored path and a path of `gate.TOOL_STORES` reach nobody on purpose.
     """
     covered = (*_THE_CODE, *_THE_DOCUMENTS, *_THE_FIXTURES)
-    return [path for path in _staged_paths() if not path.startswith(covered) and not path.startswith(_VENDORED)]
+    unread = (*_VENDORED, *gate.TOOL_STORES)
+    return [path for path in _staged_paths() if not path.startswith(covered) and not path.startswith(unread)]
 
 
 def main() -> None:

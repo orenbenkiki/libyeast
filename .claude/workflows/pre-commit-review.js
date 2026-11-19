@@ -198,7 +198,11 @@ const CLAIMS = {
 const GIVEN = SAID.manifest || null
 
 // `review_input.py` exits through `report` on a path it will not show, and writes no manifest. The review throws where
-// `args.manifest` names no path, and asks no reviewer anything.
+// `args.manifest` names no path, and asks no reviewer anything. The review also throws where `args.manifest` is not an
+// object, or is an array.
+if (GIVEN !== null && (typeof GIVEN !== 'object' || Array.isArray(GIVEN))) {
+  throw new Error('`args.manifest` is not an object, or is an array. The review takes the manifest object.')
+}
 const prepared = GIVEN ? Object.values(GIVEN).flat().filter(Boolean) : []
 if (!prepared.length) {
   throw new Error('the review takes the manifest `review_input.py` wrote, as `args.manifest`.')
@@ -338,8 +342,9 @@ const answered = await parallel(
 const findings = QUESTIONS.flatMap((question, at) =>
   ((answered[at] && answered[at].findings) || []).map((one) => ({ question: question.key, ...one })),
 )
-// The workflow keeps a proposal apart from a finding the whole way out. `generator/record_run.py` hands the findings to
-// the next review. A proposal that arrives mixed in with the findings reads there as a finding.
+// The workflow keeps a proposal apart from a finding the whole way out. `generator/record_run.py` writes the findings
+// to `review_input.REVIEWED`, and `_reviewed` reads them for the next review. A proposal that arrives mixed in with the
+// findings reads there as a finding.
 const proposals = QUESTIONS.flatMap((question, at) =>
   ((answered[at] && answered[at].proposals) || []).map((one) => ({ question: question.key, ...one })),
 )

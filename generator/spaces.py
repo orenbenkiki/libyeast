@@ -43,14 +43,14 @@ ALL_CHARACTERS = ((-1, chars.MAX_CODEPOINT),)  # The invalid byte and the codepo
 @dataclasses.dataclass(frozen=True, order=True)
 class GuardAnswers:
     """
-    The answers a guard gets at a point of the parse, as booleans beside the characters.
+    A guard gets these booleans as answers at a point of the parse.
 
-    `BOOKKEEPING_AXES` say where the parse is and what it has just done. `COMPARISON_AXES` say how the parse's
-    quantities compare.
+    `BOOKKEEPING_AXES` say where the parse is and what it just did. `COMPARISON_AXES` say how the parse's quantities
+    compare.
 
-    `COMPARISON_READS` names the quantities. They are the indentation `n` and the column. They are also the length of
-    the last consume, and the floor `f`. A guard asks how a pair of them compare, or how the indentation compares
-    against `0`. `comparisons` settles the comparisons below.
+    The parse tracks the indentation `n` and the column. It also tracks `consumed_length` and the floor `floor`.
+    `COMPARISON_READS` names those quantities. A guard compares a pair of quantities, or compares `n` against `0`.
+    `comparisons` settles the comparisons below.
     """
 
     is_at_line_start: bool
@@ -59,10 +59,10 @@ class GuardAnswers:
     did_consume_since_open: bool
     is_indented: bool  # `0 < n`.
     is_not_too_indented: bool  # `column <= n`.
-    is_consumed_length_past_the_indent: bool  # `n < len(match)`.
-    is_consumed_length_under_the_indent: bool  # `len(match) < n`.
-    is_column_at_least_the_floor: bool  # `f <= column`.
-    is_indent_at_least_the_floor: bool  # `f <= n`.
+    is_consumed_length_past_the_indent: bool  # `n < consumed_length`.
+    is_consumed_length_under_the_indent: bool  # `consumed_length < n`.
+    is_column_at_least_the_floor: bool  # `floor <= column`.
+    is_indent_at_least_the_floor: bool  # `floor <= n`.
 
 
 class _Quantities(NamedTuple):
@@ -480,11 +480,11 @@ def after(space: SubSpace, reached: Mapping[GuardAnswers, Iterable[GuardAnswers]
 
 def guard_answers_in(wanted_answers: Iterable[GuardAnswers]) -> SubSpace:
     """
-    The subspace admitting the characters under `wanted_answers`, and no character anywhere else.
+    The subspace holds `_ANYTHING` under `wanted_answers` and `_NONE` under the other assignments.
 
     A caller holding answers rather than axes asks for this. A parse that really reached somewhere becomes a space.
-    `check_normalize._spaces_held` starts `normalize.after_action` from that space. It then asks whether the result
-    admits where the action left the parse.
+    `check_normalize._fixture_spaces_held` starts `normalize.after_action` from that space. It then asks whether the
+    result admits where the action left the parse.
 
     This module builds the subspace rather than the caller that asks for it. `_NONE` and `_ANYTHING` belong here with
     the subspace.

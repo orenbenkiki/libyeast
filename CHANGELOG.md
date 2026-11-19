@@ -1996,9 +1996,10 @@
   stopped reading the files the workflow prepared.
 
   `review_input` refuses a tree holding a loose path, and names that path. It refuses a staged path no prepared file
-  would show. A vendored path is the exception. `review_input` reports line numbers from `git diff --cached`, and reads
-  the file beside them. The line numbers and the file agree where the tree holds no unstaged change. Over a dirty tree,
-  a reviewer would approve the bytes on disk rather than the staged change.
+  would show. A vendored path is an exception. So is a store `gate.TOOL_STORES` names, and the review leaves such a
+  store out. `review_input` reports line numbers from `git diff --cached`, and reads the file beside them. The line
+  numbers and the file agree where the tree holds no unstaged change. Over a dirty tree, a reviewer would approve the
+  bytes on disk rather than the staged change.
 
   An agent that refuses hands a workflow an answer naming no file. An agent may answer a workflow under a schema.
   `check_failures` requires such a workflow to ask whether the answer holds anything. A workflow that asks only whether
@@ -2027,6 +2028,21 @@
   where a pair of ways perform the same actions in a different order. The pair is not alike.
 
 ### Changed
+
+- The gates `verify-prose`, `verify-claims`, `verify-hooks` and `verify-normalize` run faster, and `make -j pc` runs the
+  gates safely.
+
+  - `unread_files` asks `git check-ignore` only about a path it would refuse.
+  - `claim_state.unpointed_reads` builds the name index once and hands it to the questions it asks.
+  - A claim reading compares code through `collect_fragments.code_digest`. A rewrite of a docstring, or of a comment in
+    Python, C, JS, Shell, Make or CMake, then leaves the readers of the code it sits in settled.
+  - `check_hooks` runs the pairs in parallel. A pair writes into a scratch directory of its own and names an agent of
+    its own.
+  - `normalize.spaces_of_ways` works out the actions of the final grammar over the cores. `check_normalize` checks the
+    fixtures against those spaces over the cores as well.
+  - `verify-claims` waits for `verify-fragments`, which rewrites the claim store. `vet-lint` waits for the debug build,
+    which can rewrite the compile database. `claim_state.claims_written` writes the store under a second name and
+    renames it into place.
 
 - `ys_options.max_token_bytes` becomes `max_bytes`, and caps the memory the parser allocates rather than the bytes it
   buffers for a token. The buffered input grows, and the tokens the parser holds back grow with it. So does the parser's
