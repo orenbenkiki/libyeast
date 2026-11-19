@@ -3,21 +3,23 @@
 Check that libyeast's conformance fixtures are intact and well-formed.
 
 An `.input` in `tests/spec/` pairs with an `.output`, and an `.output` with an `.input`. A filename decodes to a
-production the grammar still has, with the parameters it declares and well-formed values. An output parses as the wire
-format, with marks that chain and markers that balance.
+production the grammar still has. The filename supplies the parameters that production declares, bar the exemptions of
+`spec_tests.runnable_fault`. The filename gives well-formed values. The check reads an output as the wire format. The
+marks of an output chain. The markers of an output balance.
 
-A fixture whose name calls its input invalid holds an invalid input. The production refuses that input, or stops short
-of the end. Either way the match fails.
+A fixture whose name says invalid holds an invalid input. The production refuses that input or stops short of the end.
+Either way the match fails.
 
-This guards the migrated suite against a fixture orphaned by a grammar change. The same guard covers a hand-edit that
-broke a name. It covers an output that is not a token stream. It covers a name that claims what the fixture does not
-show. The guard runs before anybody asks the interpreter to reproduce a fixture.
+The check guards the fixtures against a grammar change that orphans a fixture. The check catches a hand-edit that broke
+a name. The check catches an output whose marks do not chain or whose markers do not balance. The check catches a name
+that claims what the fixture does not show. The `verify` goal lists `verify-fixtures` before `verify-grammar`. The
+`verify-grammar` gate runs `verify-grammar-base`. `verify-grammar-base` runs the interpreter over the fixtures.
 
-`check_markers` cannot reach the marker rule. That gate settles the grammar's clean paths. That gate says nothing of the
-tokens an error leaves behind.
+`check_markers` reads the grammar. `check_markers` cannot reach the markers of a fixture. `check_markers` checks a
+recovery too. That gate says nothing of the tokens an error leaves behind.
 
-A fixture of the root is a whole parse and balances exactly. A fixture of a rule run outside the root may close what its
-caller would have opened. Neither may leave a marker open.
+A fixture of the root is a whole parse. Its markers balance exactly. A fixture of a rule run outside the root may close
+a marker the caller opened. Neither may leave a marker open.
 """
 
 import os

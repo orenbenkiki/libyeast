@@ -11,32 +11,35 @@ lines are code.
 
 A key names the language, the file and the fragment. `Python:ir.py:Question` is a key. A fragment a declaration names
 keeps its key across an edit. A fragment with no such declaration takes the digest of its prose. A rewrite of that prose
-gives a new key. A fragment holds a prose digest and a code digest. `update_ledger_and_queue` compares them and names
-the digest that changed.
+gives a new key. A fragment holds a prose digest and a code digest. `update_ledger_and_queue` keys the ledger on the
+prose digest.
 
-The prose of a fragment cites other fragments by name. `_resolved` turns a citation into a key.
+The prose of a fragment cites other fragments by name. `resolved` turns a citation into a key.
 
-This module decides `a-file-says-what-it-is` and `a-file-description-comes-first`. It decides
-`a-file-of-the-tree-has-a-reader` too. A file fragment with no prose is a fault. The block at the top of a file
-describes that file, and a lower block describes nothing. `language_of` names the reader a file has, and
-`_unnamed_prose` reports a tracked file with none.
+This module decides `a-file-says-what-it-is` and `a-file-description-comes-first`. `a-file-of-the-tree-has-a-reader`
+rests on it too. A file fragment with no prose is a fault. The block at the top of a file describes that file. A lower
+block over a declaration describes that declaration. Any other lower block outside a function body is a fragment of its
+own. A lower block over no declaration belongs to no fragment where `prose_rules.is_a_heading` reads it as a heading.
+`language_of` names the reader a file has, and the `unread_files` checker refuses a file with none.
 
 `prose_literals` reads a string literal that says something. `a-refusal-may-write-the-words-it-bans` keeps a hook
 refusal out of that reading. `not_prose_lines` reads the `not-prose:` marker a writer puts on a literal holding a
 layout.
 
-`CHANGELOG.md` yields no fragments.
+`prose_rewrite.refusal_for` skips `CHANGELOG.md` for the shape rules. `is_about_the_tree` answers no for that file.
 
 The write-time hooks call this module. `a-write-time-hook-reads-the-edit-in-place` is the rule. `written` builds the
-file an edit would leave, and `edited` takes that file where it holds prose of this project. A hook then asks of that
-file what the gate asks of the tree. `edited` places a comment slice where the file would hold it. The comment marker
-need not appear in the slice.
+file an edit would leave. A hook hands that file to `refusals_for_edit`. `refusals_for_edit` reads that file through
+`fragments_touched` and `literals_touched`, and the `_PROSE` checkers read what those give. The `_ANY` checkers read the
+whole file.
 
 **Usage:** `python3 generator/collect_fragments.py`. The `--json` flag writes the fragments. The `--jsonl` flag writes a
-fragment per line, and `converge_prose` reads that form.
+fragment per line, and `converge_prose` calls `fragments` itself.
 """
 
 import ast
+import collections
+import functools
 import hashlib
 import io
 import json
@@ -45,8 +48,8 @@ import re
 import sys
 import tokenize
 
-from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass, field
+from collections.abc import Iterable, Iterator, Mapping
+from dataclasses import asdict, dataclass, field, replace
 
 import check_documents
 import gate
@@ -56,35 +59,47 @@ import prose_rules
 # on.
 _NOT_ABOUT_THE_TREE = ("CHANGELOG.md",)
 
-# A markdown heading, and a markdown list item opening at column zero.
+# A markdown heading.
 _A_HEADING = re.compile(r"^(#+)\s+(.*)$", re.M)
+
+# A rule of `_THE_RULES`. The list item opens on the rule's name in bold, and the fragment takes that name.
+_A_RULE = re.compile(r"^- \*\*([a-z0-9]+(?:-[a-z0-9]+)+)\*\* - ")
+
+# The conventions. A list item there is a named rule.
+_THE_RULES = os.path.join(".claude", "conventions.md")
 _A_TOP_ITEM = re.compile(
     r"^([-*+]|\d+\.)\s+"
-)  # A bulleted or numbered markdown list item. Its indent decides the nesting depth.
+)  # A bulleted or numbered markdown list item. The pattern matches only an item with no indent.
 
 # The fence that makes a markdown block code rather than prose.
 _A_FENCE = re.compile(r"^\s*```")
 
-# The fence around the YAML a document may open with. An agent definition names itself and its tools there. The YAML
-# holds data rather than prose. This module reads no fragment out of the YAML.
+# The fence around the YAML a document may open with. An agent definition such as `.claude/agents/prose-claims.md` names
+# itself and its tools there. The YAML holds data rather than prose. `code_only` serves the YAML as the code of a file
+# fragment.
 _A_FRONT_MATTER = re.compile(r"^---\s*$")
 
 # The lines a file opens with rather than prose. The binding holds the interpreter line and the licence tag once their
 # marker is off.
 _NOT_PROSE = re.compile(r"^(!|SPDX-[A-Za-z-]+:)")
 
-# The interpreter line and the licence tag, with their marker still on. Those may come above a file's description.
+# The interpreter line and any SPDX tag line, with their marker still on. Those may come above a file's description.
 _SITS_ABOVE_IT = re.compile(r"^\s*(#!|(//+|#)\s*SPDX-[A-Za-z-]+:)")
 
-# The quotes a docstring opens with. A prefix letter may come in front of them.
+# The quotes a docstring opens with. Prefix letters may come in front of them.
 _OPENS_A_STRING = re.compile("^[rbfuRBFU]*('''|\"\"\"|'|\")")
 _CLOSES_A_STRING = re.compile(
     "('''|\"\"\"|'|\")$"
-)  # A string closes on the quotes that opened it, with no prefix in front.
+)  # A string closes on a run of quotes at the end of its last line, with no prefix in front.
 
-# The shape a name takes where prose cites it. C prose cites a public name by its bare form.
-_A_CITED_NAME = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
-# the prefix a public name takes where the prose writes it bare.
+# The shape a name takes where prose cites it. The name sits in backticks. A path may open on a dot, as
+# `.claude/settings.json` does. A production of the grammar may hold a `+`, as `c-l+literal` does. `_A_CITED_C_NAME`
+# matches the bare public name that C prose also cites.
+_A_CITED_NAME = re.compile(r"`(\.?[A-Za-z_][A-Za-z0-9_./+-]*)`")
+# A `Makefile` target as prose runs it, as in `make examine-claims` or `make examine-claims CLAIM_COUNT=400`. Such a
+# citation names the target.
+_A_CITED_TARGET = re.compile(r"`make ([A-Za-z0-9_.-]+)[^`]*`")
+# a public name that C prose writes bare. The name opens with ys_ in either case.
 _A_CITED_C_NAME = re.compile(r"\b((?:ys|YS)_[A-Za-z0-9_]+)\b")
 
 # The language a file is written in, by the suffix or the name it has.
@@ -116,7 +131,7 @@ _LANGUAGES = (
 # copies prose the tree holds somewhere else. The collector reads no prose below such a line.
 COPIED_BELOW = "<!-- `generator/write_agent_prompts.py` writes the text below this line. -->"
 
-# The line a `_` key opens on, matched against the whole line.
+# The line a `_` key opens on, matched at the start of the line.
 _A_JSON_NOTE = re.compile(r'^\s*"_"\s*:')
 
 # A key a digest ends. The report below reads such a key against the prose of its fragment.
@@ -132,28 +147,38 @@ _MARKERS = {"C": "//", "Shell": "#", "YAML": "#", "JS": "//", "Make": "#", "CMak
 
 @dataclass(frozen=True)
 class _Text:
-    """A half of a fragment, with the digest that says whether it moved."""
+    """
+    A half of a fragment, with the digest that says whether it moved. `lines` holds the file line of a line of `content`
+    where `_code_text` built the half. The digest reads `content` and leaves `lines` out. A move of the code changes no
+    digest.
+    """
 
     content: str
     sha: str
+    lines: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
 class _Site:
     """
-    A site of a fragment. A site is a run of comment lines in a file, with the prose those lines hold.
+    A site of a fragment. A site is a run of prose lines in a file, with the prose those lines hold. A markdown
+    paragraph makes a site too.
 
     `lines` holds offsets from the start of the fragment in the file of the site. `site_lines` turns those offsets into
     line numbers.
 
     A struct's own comment and the comment on a field count as sites apart. A C function declared in a header and
-    defined in a source has a site per file. A rewrite comes back as a prose per site. An applier writes the prose of a
-    site back through the lines of that site.
+    defined in a source has sites in both files. `_joined` puts the sites of both files on a fragment. A rewrite comes
+    back as a prose per site. `generator/apply_prose.py` writes the prose of a site back through the lines of that site.
+
+    `prose` holds the text `flattened` gives. `as_wrapped` holds the prose as the file wraps it. `apply_prose.does_hold`
+    reads `as_wrapped`.
     """
 
     path: str
     lines: tuple[int, ...]
     prose: str
+    as_wrapped: str
 
 
 @dataclass
@@ -161,8 +186,13 @@ class Fragment:
     """
     A prose and the code it documents, keyed by place and name.
 
-    `starts` maps a file to the line the fragment starts on there. A fragment with sites in more than a single file
-    holds a start per file.
+    `prose` holds the prose of the sites as `flattened` gives it. A site is a paragraph of its own.
+
+    `starts` maps a file to the line the fragment starts on there, as the files read at collection. A fragment with
+    sites in more than a single file holds a start per file. A caller outside this module reads a position through
+    `site_lines`. A write moves the lines below it.
+
+    `references` maps a key `cited_keys` finds in the prose to the code digest of that key.
     """
 
     key: str
@@ -175,19 +205,517 @@ class Fragment:
     references: dict[str, str] = field(default_factory=dict)
 
     @property
-    def first(self) -> int:
-        """The line the fragment starts on in its own file."""
+    def start_line(self) -> int:
+        """The line the fragment starts on in its own file, as that file read at collection."""
         return self.starts[self.path]
+
+
+# The marker a production of the specification's BNF opens on. The marker writes the production's number and its name.
+# The lines below a marker state that production, down to the next marker or the end of the text. Trailing comment lines
+# go to the production below.
+_A_SPEC_MARKER = re.compile(r"^:(\d+): ([a-zA-Z0-9][a-zA-Z0-9+-]*)$")
+
+
+def _spec_productions(text: str) -> list[tuple[str, int, str]]:
+    """
+    `(the production's name, the line it opens on, the lines stating it)` for the specification's BNF `text`.
+
+    The text of a production comes back rather than the IR that `annotated2ir` builds from it. A comment in the lines
+    holds the specification's own `::=` statement of the production, as `s-double-escaped` shows. `annotated2ir.load`
+    reads the file through `yaml.safe_load`, and the IR holds no comment.
+
+    A production may end on comment lines holding the banner of the section below. Those comment lines open the
+    production that follows them. A line opening on a spec number that `_A_SPEC_MARKER` does not match raises.
+    """
+    lines = text.split("\n")
+    for at, one in enumerate(lines, start=1):
+        if re.match(r":\d+: ", one) and not _A_SPEC_MARKER.match(one):
+            raise ValueError(f"the spec marker on line {at} holds no production name: {one}")
+    found = ((at, _A_SPEC_MARKER.match(one)) for at, one in enumerate(lines))
+    opens = [(at, one.group(2)) for at, one in found if one]
+    held = []
+    banner: list[str] = []
+    for (at, name), (next_at, _named) in zip(opens, opens[1:] + [(len(lines), "")]):
+        said = lines[at:next_at]
+        trailing: list[str] = []
+        while said and (not said[-1].strip() or said[-1].startswith("#")):
+            trailing.insert(0, said.pop())
+        held.append((name, at + 1 - len(banner), "\n".join(banner + said)))
+        while trailing and not trailing[0].strip():
+            trailing.pop(0)
+        banner = trailing
+    return held
+
+
+def _read_only() -> list[Fragment]:
+    """
+    The fragments of `gate.READ_ONLY`. Such a fragment holds code and no prose of ours.
+
+    Prose of ours rests on a generated table, on the specification's BNF, and on the files under `third_party/`.
+
+    The specification's BNF comes apart into a fragment per production, keyed by the production's name. Prose of ours
+    names a production that way. This fragment names `nb-single-text` by its bare name. A C file comes apart the way
+    `_c_fragments` takes one. A reader then fetches a declaration rather than the file around it. A declaration's own
+    comment joins its code. The file fragment of a read-only C file holds the whole file. The comments of the file stay
+    in it.
+
+    `fragments` leaves such a fragment out.
+    """
+    held = []
+    for path in gate.READ_ONLY:
+        with open(os.path.join(gate.TREE, path), "rb") as handle:
+            code = handle.read().decode("utf-8", "backslashreplace")
+        if path.endswith(".txt"):
+            key = _keyed("Text", path, "")
+            held.append(Fragment(key, path, "read-only", {path: 1}, _text([]), _Text(code, _digest(code))))
+            continue
+        if path.endswith(".yaml"):
+            file_key = _keyed("Grammar", path, "")
+            held.append(Fragment(file_key, path, "read-only", {path: 1}, _text([]), _Text(code, _digest(code))))
+            for name, first, said in _spec_productions(code):
+                key = _keyed("Grammar", path, name)
+                held.append(Fragment(key, path, "read-only", {path: first}, _text([]), _Text(said, _digest(said))))
+            continue
+        for one in _c_fragments(path, _line_commented(code)):
+            said = (
+                code
+                if is_a_file(one.key)
+                else "\n".join(part for part in (one.prose.content, one.code.content) if part)
+            )
+            held.append(Fragment(one.key, path, "read-only", one.starts, _text([]), _Text(said, _digest(said))))
+    return held
+
+
+def code_only() -> list[Fragment]:
+    """
+    The fragments holding code and no prose of ours. These are the fragments of `_read_only`, the front matter of a
+    markdown document, and a JSON file as a file fragment. A file `gate.UNREAD` names is a file fragment too.
+
+    A markdown file under `third_party/` is a file fragment as well. The key of such a fragment holds the file's path. A
+    settings file whose comments hold no prose for the file is a file fragment too.
+
+    Public. A reader of the fragments by key reads these beside `fragments`. `fragments` leaves them out.
+    `_undescribed_fragments` refuses a fragment holding no prose.
+    """
+    held = _read_only()
+    for path in gate.prose_files():
+        named = str(path.relative_to(gate.TREE))
+        language = language_of(named)
+        if language == "Conf" and not any(is_a_file(one.key) for one in _fragments_of(named)):
+            source = path.read_text(encoding="utf-8")
+            held.append(
+                Fragment(
+                    _keyed(language, named, ""), named, "file", {named: 1}, _text([]), _Text(source, _digest(source))
+                )
+            )
+            continue
+        if language not in ("Markdown", "JSON"):
+            continue
+        source = path.read_text(encoding="utf-8")
+        code = _front_matter(source) if language == "Markdown" else source
+        if code or language == "Markdown":
+            key = _keyed(language, named, "")
+            held.append(Fragment(key, named, "file", {named: 1}, _text([]), _Text(code, _digest(code))))
+    for named in gate.tracked_files():
+        is_vendored_note = named.startswith("third_party/") and named.endswith(".md")
+        if os.path.basename(named) not in gate.UNREAD and not is_vendored_note:
+            continue
+        with open(os.path.join(gate.TREE, named), encoding="utf-8") as handle:
+            code = handle.read()
+        key = f"Text:{named}" if is_vendored_note else _keyed("Text", named, "")
+        held.append(Fragment(key, named, "file", {named: 1}, _text([]), _Text(code, _digest(code))))
+    return held
+
+
+def _front_matter(source: str) -> str:
+    """
+    The lines of `source` from its opening fence to the next fence. A source opening on no fence gives an empty string.
+    """
+    lines = source.split("\n")
+    if not _A_FRONT_MATTER.match(lines[0]):
+        return ""
+    for at, line in enumerate(lines[1:], start=1):
+        if _A_FRONT_MATTER.match(line):
+            return "\n".join(lines[: at + 1])
+    raise ValueError("front matter opens with no closing fence")
+
+
+# The head of a read key asking what calls a name. Such a key names no fragment, as `is_a_question` tells. `claim_state`
+# answers it by asking the question again through `answered_by`.
+CALLERS = "callers:"
+
+# The head of a read key asking what mentions a name.
+MENTIONS = "mentions:"
+
+
+# The environment name of the file taking a line per read of a claims reader. The fetch server appends to that file.
+# `converge_claims` names the file per call. `prose_answer` reads the file and checks the citations of an answer.
+CLAIM_RECORD = "YEAST_CLAIM_RECORD"
+
+# The environment name of the file holding a draft a claims reader reads instead of the tree. The file maps a key to the
+# prose per site. `converge_prose` names the file. `prose_answer` reads a claims answer against the draft.
+CLAIM_DRAFT = "YEAST_CLAIM_DRAFT"
+
+# The environment name holding the keys of a critic's batch. A line holds a key. `converge_prose` sets the variable for
+# a critic call. `prose_answer` refuses a verdict outside the batch. It refuses an answer that leaves a key of the batch
+# unanswered.
+CRITIC_BATCH = "YEAST_CRITIC_BATCH"
+
+
+# The languages whose fragments hold no code that calls or mentions a name. `_bare_code` blanks such a fragment whole.
+_UNCALLED = ("Markdown", "Conf", None)
+
+# The languages of `_QUOTES` whose strings hold text. `_bare_code` keeps a string of the other languages. Such a string
+# may hold an expansion. `CLANG_FORMAT_FOUND` in the `Makefile` expands `$(CLANG_FORMAT)` inside quotes.
+_TEXT_STRINGS = ("C", "JS")
+
+# The languages of `_QUOTES` whose comments hold code. A comment of `grammar/yeast-spec-1.2.yaml` holds a production of
+# the YAML spec. `s-double-escaped` there calls `s-flow-line-prefix(n)` in its comment.
+_CODE_COMMENTS = ("YAML",)
+
+
+@functools.cache
+def _bare_code(code: str, language: str | None) -> str:
+    """
+    Blank the string literals and the comments of `code`. A language of `_UNCALLED` goes blank whole. A blanked
+    character turns into a space. A line break stays.
+
+    An f-string keeps its interpolations. A JS template literal goes blank along with its interpolations. A string of a
+    `_QUOTES` language outside `_TEXT_STRINGS` stays. A comment of `_CODE_COMMENTS` stays. A language outside
+    `_UNCALLED`, `_QUOTES` and Python raises.
+    """
+    if language in _UNCALLED:
+        spans = [(0, len(code))]
+    elif language == "Python":
+        starts = [0] + [at + 1 for at, char in enumerate(code) if char == "\n"]
+        spans = [
+            (starts[token.start[0] - 1] + token.start[1], starts[token.end[0] - 1] + token.end[1])
+            for token in tokenize.generate_tokens(io.StringIO(code).readline)
+            if token.type in (tokenize.STRING, tokenize.COMMENT, tokenize.FSTRING_MIDDLE)
+        ]
+    elif language in _QUOTES:
+        strings, comments = _scanned(code, _QUOTES[language], _A_LINE_COMMENT[language])
+        spans = [(opens, ends) for _line, opens, ends, _said in strings if language in _TEXT_STRINGS]
+        spans += [] if language in _CODE_COMMENTS else comments
+    else:
+        raise ValueError(f"`_bare_code` knows no literals of the language {language}")
+    blanked = list(code)
+    for opens, ends in spans:
+        for at in range(opens, ends):
+            if blanked[at] != "\n":
+                blanked[at] = " "
+    return "".join(blanked)
+
+
+@functools.cache
+def _identifiers(code: str) -> frozenset[str]:
+    """The names `AN_IDENTIFIER` finds in `code`."""
+    return frozenset(AN_IDENTIFIER.findall(code))
+
+
+def _naming(
+    held: list[Fragment],
+    name: str,
+    says: re.Pattern[str],
+    declaring: frozenset[str] | None = None,
+    is_blanking_text: bool = False,
+    word: str = "",
+) -> list[str]:
+    """
+    The sorted keys of the fragments whose code the pattern `says` matches. Under `is_blanking_text`, `_bare_code`
+    blanks the literals and the comments of that code first. The fragment `name` declares stays out. `declaring` names
+    the keys of that fragment. A caller that gives none has `name` match the last part of a key.
+
+    A match of `says` holds the identifier `word`. `_naming` skips the regex search on a fragment lacking `word`. A
+    `word` outside `AN_IDENTIFIER` skips no fragment.
+
+    A file fragment holds the code of the other fragments in its file. `_gathered` gives it that code. A class holds the
+    code of its methods. A match inside such an inner fragment belongs to the inner fragment. A file fragment or a class
+    with no match outside those fragments stays out. A line of the fragment `name` declares counts as no match. A header
+    holds such a line as a prototype. `_joined` adds the code of that prototype to the fragment.
+    """
+    if declaring is None:
+        declaring = frozenset(one.key for one in held if one.key.rpartition(":")[2] == name)
+    if AN_IDENTIFIER.fullmatch(word):
+        held = [one for one in held if word in _identifiers(one.code.content)]
+    lines = {
+        one.key: collections.Counter(
+            line.strip()
+            for line in (
+                _bare_code(one.code.content, language_of(one.path)) if is_blanking_text else one.code.content
+            ).split("\n")
+            if says.search(line)
+        )
+        for one in held
+    }
+    declared = collections.Counter[str]()
+    for one in held:
+        if one.key in declaring:
+            declared += lines[one.key]
+    kept = []
+    for one in held:
+        if not lines[one.key] or one.key in declaring:
+            continue
+        outside = lines[one.key] - declared
+        for other in held:
+            if other.key.rpartition(":")[0] == one.key or other.key.startswith(one.key + "."):
+                outside -= lines[other.key]
+        if outside:
+            kept.append(one.key)
+    return sorted(kept)
+
+
+def callers_of(held: list[Fragment], name: str, by_name: Mapping[str, set[str]] | None = None) -> list[str]:
+    """
+    The sorted keys of the fragments that call `name`. `by_name` comes from `keys_by_name` over `held`, and `callers_of`
+    computes it for a caller that gives none.
+
+    Public. `.claude/mcp/fetch_fragments.py` answers a question about the callers of a name this way. `claim_state` asks
+    the same question again through `answered_by`, and a caller list that moved restales the fragment that read it.
+
+    The fragment `name` declares stays out of the answer. A fragment of `gate.test_sources` stays out too.
+
+    A call names a method through its object, as `emitter.give_back(` does. So a key or a dotted name matches by its
+    last part. A method name shared by a pair of classes reaches the callers of both. Before the match, `_bare_code`
+    blanks the strings and the comments of the code's language.
+    """
+    tests = {os.path.relpath(path, gate.TREE) for path in gate.test_sources()}
+    called = name.rpartition(":")[2].rpartition(".")[2]
+    named = keys_by_name(held) if by_name is None else by_name
+    declaring = frozenset(named.get(name, set()) | ({name} if name in {one.key for one in held} else set()))
+    pattern = re.compile(rf"\b{re.escape(called)}\s*\(")
+    return _naming([one for one in held if one.path not in tests], name, pattern, declaring, True, called)
+
+
+# A name as code writes it. `named_by` and `claim_state.unpointed_reads` match a name against `AN_IDENTIFIER`.
+AN_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def named_by(one: Fragment, by_name: Mapping[str, set[str]]) -> set[str]:
+    """
+    The keys of the fragments the code of `one` names, in the language of `one`. `by_name` comes from `keys_by_name`.
+    `_bare_code` blanks the literals and the comments of that code first. A call names its callee. A callback handed
+    over as a value names its function too.
+
+    Public. `claim_state.unpointed_reads` follows these names.
+    """
+    language = one.key.partition(":")[0]
+    names = set(AN_IDENTIFIER.findall(_bare_code(one.code.content, language)))
+    return {
+        key for name in names for key in by_name.get(name, ()) if key.partition(":")[0] == language and key != one.key
+    }
+
+
+def is_public(one: Fragment) -> bool:
+    """
+    Whether `one` declares a name code of another module may call. A C fragment is public where its own path or the path
+    of a site starts with `include/`. A Python fragment is public where no part of its name opens with an underscore.
+    Another language raises.
+
+    Public. `claim_state.unpointed_reads` follows a name `named_by` gives into a fragment that is not public.
+    """
+    language = one.key.partition(":")[0]
+    if language == "C":
+        return any(path.startswith("include/") for path in [one.path, *(site.path for site in one.sites)])
+    if language == "Python":
+        return not any(part.startswith("_") for part in one.key.rpartition(":")[2].split("."))
+    raise ValueError(f"no rule says whether a {language} fragment is public: {one.key}")
+
+
+def mentions_of(held: list[Fragment], name: str, by_name: Mapping[str, set[str]] | None = None) -> list[str]:
+    """
+    The sorted keys of the fragments that mention `name`. `by_name` comes from `keys_by_name` over `held`, as for
+    `callers_of`.
+
+    Public. A struct has no callers. A reader asks this question about a struct instead.
+
+    The match rests on the bare name. `.claude/mcp/fetch_fragments.py` refuses the name of a struct member. Structs may
+    share a member name. A key or a dotted name matches by its last part, the way `callers_of` matches one. A method
+    matches only where code reaches it as an attribute.
+    """
+    named = keys_by_name(held) if by_name is None else by_name
+    declaring = frozenset(named.get(name, set()) | ({name} if name in {one.key for one in held} else set()))
+    is_a_method = any("." in key.rpartition(":")[2] for key in declaring)
+    word = name.rpartition(":")[2].rpartition(".")[2]
+    mentioned = re.escape(word)
+    pattern = re.compile(rf"\.{mentioned}\b" if is_a_method else rf"\b{mentioned}\b")
+    return _naming(held, name, pattern, declaring, word=word)
+
+
+# The call that answers a question, by the head of the key asking it.
+_ASKED = {CALLERS: callers_of, MENTIONS: mentions_of}
+
+
+def is_a_file(key: str) -> bool:
+    """
+    Whether `key` names a whole file. A file's key holds the language and the file's base name. A markdown file under
+    `third_party/` keeps its path there. A declaration's key adds its name.
+
+    Public. `converge_claims` hands a reader the declarations the prose names, and `is_a_file` keeps a file out of those
+    declarations.
+    """
+    return not key.partition(":")[2].partition(":")[2]
+
+
+def is_markdown(key: str) -> bool:
+    """
+    Whether `key` names a fragment of a markdown file. `is_a_document` tells the file from a paragraph.
+
+    Public. `claim_state` and `prose_answer` ask this of a key.
+    """
+    return key.startswith("Markdown:")
+
+
+def is_a_document(key: str) -> bool:
+    """
+    Whether `key` names the file fragment of a markdown document. A markdown key that is no document names a paragraph.
+
+    Public. `claim_state`, `prose_answer` and `.claude/mcp/fetch_fragments.py` ask this of a key.
+    """
+    return is_markdown(key) and is_a_file(key)
+
+
+def is_a_question(key: str) -> bool:
+    """Whether the read key `key` asks a question of the tree rather than naming a fragment."""
+    return key.partition(":")[0] + ":" in _ASKED
+
+
+def _asks(asked: str) -> tuple[str, str]:
+    """The head and the name of the question `asked`. A key that asks no question raises."""
+    head, _, name = asked.partition(":")
+    if head + ":" not in _ASKED:
+        raise KeyError(f"`{asked}` asks no question of the tree")
+    return head, name
+
+
+def answered_by(held: list[Fragment], asked: str, by_name: Mapping[str, set[str]] | None = None) -> list[str]:
+    """
+    The keys of the fragments that answer the question `asked`. A key that asks no question raises. `by_name` goes to
+    `callers_of` or `mentions_of`.
+    """
+    head, name = _asks(asked)
+    return _ASKED[head + ":"](held, name, by_name)
+
+
+def asked_in(asked: str) -> str:
+    """The words a report says the question `asked` in. A key that asks no question raises."""
+    head, name = _asks(asked)
+    return f"the {head} of `{name}`"
+
+
+def said_by(one: Fragment) -> str:
+    """
+    A fragment as a claims reader reads it. The prose comes first and the code it documents follows.
+
+    Public. `converge_claims` writes a fragment into the reader's message this way. `.claude/mcp/fetch_fragments.py`
+    answers a fetch this way unless it serves an outline.
+    """
+    said = f"### {one.key}\n\nin {one.path} at line {one.start_line}\n"
+    if one.prose.content.rstrip():
+        said += f"\n#### prose\n\n{one.prose.content.rstrip()}\n"
+    if one.code.content.rstrip():
+        said += f"\n#### code\n\n{_numbered_code(one)}\n"
+    return said
+
+
+def outline_of(held: list[Fragment], one: Fragment) -> str:
+    """
+    A long file fragment as a claims reader reads it. The answer holds the lines of code no declaration of the file
+    holds. A line keeps the number `collect_fragments.said_by` gives it. The keys of the declarations follow, and a
+    reader fetches a declaration under its key. A markdown document lists its headings among those keys, in the order of
+    the file.
+
+    Public. `.claude/mcp/fetch_fragments.py` answers a fetch of a long file this way.
+    """
+    inner = sorted(
+        (other for other in held if other.key.startswith(one.key + ":")),
+        key=lambda other: (other.start_line, other.key),
+    )
+    covered = collections.Counter(
+        line.strip() for other in inner for line in other.code.content.split("\n") if line.strip()
+    )
+    kept = []
+    for at, line in enumerate(one.code.content.rstrip().split("\n"), start=1):
+        if not line.strip():
+            continue
+        if covered[line.strip()] > 0:
+            covered[line.strip()] -= 1
+            continue
+        kept.append(f"{at:4d}  {line}")
+    said = f"### {one.key}\n\nin {one.path} at line {one.start_line}\n"
+    if one.prose.content.rstrip():
+        said += f"\n#### prose\n\n{one.prose.content.rstrip()}\n"
+    said += "\n#### code outside the declarations\n\n" + "\n".join(kept) + "\n"
+    listed = [(other.start_line, f"- `{other.key}`") for other in inner]
+    if language_of(one.path) == "Markdown":
+        with open(os.path.join(gate.TREE, one.path), encoding="utf-8") as handle:
+            source = handle.read()
+        listed += [(at, line) for at, line in _document_lines(source) if _A_HEADING.match(line)]
+    return said + "\n#### declarations\n\n" + "\n".join(line for _at, line in sorted(listed)) + "\n"
+
+
+def owners_of(held: list[Fragment], one: Fragment, first: int, last: int) -> set[str]:
+    """
+    The keys of the declarations that hold the lines `first` to `last` of the code of the file fragment `one`. The count
+    starts at 1, as `said_by` numbers the lines. The innermost declaration holding a line of the file owns it. A blank
+    line needs no owner. The answer is empty where `one` holds no positions or the range falls outside the code. A line
+    that is not blank and has no owner empties the answer as well.
+
+    Public. `claim_state.refined` narrows a read of a file to the declarations a citation reaches.
+    """
+    said = one.code.content.split("\n")
+    if not one.code.lines or not 1 <= first <= last <= len(one.code.lines):
+        return set()
+    inner = [(set(other.code.lines), other) for other in held if other.key.startswith(one.key + ":")]
+    owners = set()
+    for at in range(first - 1, last):
+        if not said[at].strip():
+            continue
+        holding = [other for lines, other in inner if one.code.lines[at] in lines]
+        if not holding:
+            return set()
+        owners.add(min(holding, key=lambda other: len(other.code.lines)).key)
+    return owners
+
+
+def _numbered_code(one: Fragment) -> str:
+    """
+    Write the number of a line of a fragment's code in front of that line.
+
+    A claims reader cites a range of these numbers, and `prose_answer` reads the citation against the same numbering.
+    The count starts at the fragment's own first line of code rather than at the line of the file.
+    """
+    lines = one.code.content.rstrip().split("\n")
+    return "\n".join(f"{at:4d}  {line}" for at, line in enumerate(lines, start=1))
+
+
+def located(fragment: Fragment) -> Fragment:
+    """
+    Read the files of `fragment` again, and answer with the fragment that holds its key. A write moves the lines below
+    it. A line number read before that write points elsewhere. A key names a fragment durably.
+
+    Public. `apply_prose` reads a fragment's sites through here. `converge_prose` reads a fragment's prose digest
+    through here.
+
+    The files are the fragment's own file and the files of its sites.
+    """
+    paths = sorted({fragment.path} | {site.path for site in fragment.sites})
+    held = _joined([one for path in paths for one in _fragments_of(path)])
+    found = [one for one in held if one.key == fragment.key]
+    if len(found) != 1:
+        raise ValueError(f"the tree holds {len(found)} fragment(s) under {fragment.key}")
+    return found[0]
 
 
 def site_lines(fragment: Fragment, site: _Site) -> tuple[int, ...]:
     """
-    The line numbers `site` covers in its file.
+    The line numbers `site` covers in its file. `located` reads the files again under the key of the fragment.
 
     Public. `apply_prose` reads those lines out of the file.
     """
-    start = fragment.starts[site.path]
-    return tuple(start + offset for offset in site.lines)
+    now = located(fragment)
+    held = now.sites[fragment.sites.index(site)]
+    return tuple(now.starts[held.path] + offset for offset in held.lines)
 
 
 def _digest(content: str) -> str:
@@ -202,12 +730,23 @@ def _named_by(prose: _Text) -> str:
     return f"#{prose.sha[:8]}"
 
 
+def drafted(one: Fragment, prose_by_site: list[str]) -> Fragment:
+    """
+    `one` with `prose_by_site` as the prose of its sites. The key stays.
+
+    Public. `converge_prose` and `converge_claims` build a rewritten fragment this way. `prose_answer` reads a claims
+    answer against a draft this way.
+    """
+    sites = tuple(replace(site, prose=flattened(said), as_wrapped=said) for site, said in zip(one.sites, prose_by_site))
+    return replace(one, prose=_a_prose(prose_by_site), sites=sites)
+
+
 def key_for(key: str, digest: str) -> str:
     """
     The key a fragment takes once its prose digest is `digest`. A fragment named by its digest takes the new name. A
     fragment with a declared name keeps its key.
 
-    Public. `converge_prose` names a fragment it rewrote.
+    Public. `converge_prose` and `converge_claims` name a fragment they rewrote.
     """
     return _A_DIGEST_NAME.sub(f"#{digest[:8]}", key)
 
@@ -222,21 +761,46 @@ def key_named(key: str) -> str:
 
 
 def _text(lines: Iterable[str]) -> _Text:
-    """The text `lines` write, with the blank lines around it trimmed."""
+    """The text `lines` write, with the empty lines around it trimmed."""
     content = "\n".join(lines).strip("\n")
     return _Text(content, _digest(content))
 
 
-# A run of blanks inside a line. `flattened` reads such a run as a single space.
+def _code_text(held: Iterable[tuple[int, str]]) -> _Text:
+    """
+    The text the pairs `(a file line, its text)` write, with the empty lines around it trimmed. `_text` trims the same
+    lines, and the digest comes out the same. `lines` holds the file line of a kept pair, in the order of the pairs.
+    """
+    pairs = list(held)
+    while pairs and not pairs[0][1]:
+        pairs.pop(0)
+    while pairs and not pairs[-1][1]:
+        pairs.pop()
+    content = "\n".join(said for _at, said in pairs)
+    return _Text(content, _digest(content), tuple(at for at, _said in pairs))
+
+
+# A run of blanks inside a line. Outside a fenced block, `flattened` reads such a run as a single space.
 _A_RUN_OF_SPACE = re.compile(r"[ \t]+")
 
 
 # A heading and a quote open a block from any position. `flattened` keeps the break of such a line.
 _ALWAYS_OPENS = re.compile(r"^\s*(?:#{1,6}\s|>)")
 
-# A bullet, a numbered item and a table row open a block below a blank line. A code span can put such a character at a
-# line start in the middle of a sentence. Such a line continues the sentence.
+# A bullet, a numbered item and a table row open a block. A line inside an open code span continues that span, and a
+# wrapped `n - 1` then opens no block. `prose_rules` refuses a spaced hyphen, star or plus outside a code span.
 _OPENS_A_BLOCK = re.compile(r"^\s*(?:[-*+]\s|\d+[.)]\s|\|)")
+
+
+def does_open_a_block(line: str) -> bool:
+    """
+    Whether `line` opens on a bullet, a numbered item or a table row.
+
+    Public. `check_hooks` indents the wrapped lines of a bullet or a numbered item two spaces past the indent of the
+    first line.
+    """
+    return bool(_OPENS_A_BLOCK.match(line))
+
 
 # The marker around a block a writer laid out by hand. `flattened` joins no line inside such a block.
 _FENCE = "```"
@@ -246,23 +810,24 @@ def flattened(content: str) -> str:
     """
     `content` with the line wrapping taken out. A line continuing the line above joins it.
 
-    `make reformat` rewraps a comment to the column limit. A digest of the flattened text holds still across that
-    rewrap. A checker reads this text rather than the text as the file holds it.
+    `make reformat` rewraps a comment to the column limit. `make reformat-py` and `make reformat-md` do the rewrap. A
+    digest of the flattened text holds still across that rewrap. A checker reads this text rather than the text as the
+    file holds it.
 
-    A blank line keeps its break. So does a line `_ALWAYS_OPENS` matches. So does a line `_OPENS_A_BLOCK` matches with a
-    block beginning above it. A line inside a fenced block keeps the layout the writer gave it. The indentation comes
-    off. Prose moved to another nesting level then keeps its digest.
+    A blank line keeps its break. So does a line `_ALWAYS_OPENS` matches. So does a line `_OPENS_A_BLOCK` matches
+    outside an open code span. A line inside a fenced block keeps the layout the writer gave it. The indentation comes
+    off. Prose moved to another nesting level then keeps its digest. A bullet at depth `d` opens on `2 * d` spaces. A
+    nested bullet keeps that depth across a rewrap that changes its indent.
 
-    Public. `checkers` reads prose through this. `prose_digest` takes the digest of it.
+    Public. `checkers` reads prose through this. `prose_digest` takes the digest of the flattened text.
     """
     held: list[str] = []
     is_fenced = False
-    is_at_a_block = True
+    bullets: list[int] = []  # the indents of the bullets open above the line, the outermost first
     for line in content.split("\n"):
         if line.lstrip().startswith(_FENCE):
             is_fenced = not is_fenced
             held.append(line.rstrip())
-            is_at_a_block = True
             continue
         if is_fenced:
             held.append(line.rstrip())
@@ -271,12 +836,21 @@ def flattened(content: str) -> str:
         if not said:
             if held and held[-1]:
                 held.append("")
-            is_at_a_block = True
             continue
-        opens = _ALWAYS_OPENS.match(line) or (is_at_a_block and _OPENS_A_BLOCK.match(line))
+        is_in_a_code_span = bool(held) and held[-1].count("`") % 2 == 1
+        opens = _ALWAYS_OPENS.match(line) or (_OPENS_A_BLOCK.match(line) and not is_in_a_code_span)
         if opens or not held or not held[-1]:
-            held.append(said)
-            is_at_a_block = bool(opens)
+            depth = 0
+            if opens and _OPENS_A_BLOCK.match(line):
+                indent = len(line) - len(line.lstrip())
+                while bullets and bullets[-1] > indent:
+                    bullets.pop()
+                if not bullets or bullets[-1] < indent:
+                    bullets.append(indent)
+                depth = len(bullets) - 1
+            else:
+                bullets = []
+            held.append("  " * depth + said)
             continue
         held[-1] = f"{held[-1]} {said}"
     return "\n".join(held).strip("\n")
@@ -286,20 +860,23 @@ def prose_digest(prose_by_site: Iterable[str]) -> str:
     """
     The digest of a fragment's prose, given its prose per site. `flattened` takes the wrapping out first.
 
-    Public. The ledger and the settling queues key prose by this digest. `converge_prose` computes the digest of the
-    prose it writes here.
+    Public. The ledger and the settling queues in `generator/settling_state.py` key prose by this digest.
+    `settling_state._A_DIGEST` matches it. `converge_prose` computes the digest of the prose it writes here.
     """
-    return _digest(flattened("\n".join(prose_by_site)))
+    return _digest(flattened("\n\n".join(prose_by_site)))
 
 
-def _a_prose(lines: Iterable[str]) -> _Text:
-    """The prose `lines` write. `prose_digest` decides the digest, and the content keeps the wrapping the file holds."""
-    content = "\n".join(lines).strip("\n")
-    return _Text(content, prose_digest([content]))
+def _a_prose(prose_by_site: Iterable[str]) -> _Text:
+    """The prose of the sites `prose_by_site`, as `flattened` gives it. A site is a paragraph of its own."""
+    content = flattened("\n\n".join(prose_by_site))
+    return _Text(content, _digest(content))
 
 
 def language_of(path: str) -> str | None:
-    """The language of `path`, or None where no checker here covers it."""
+    """
+    The language of `path`, or None where `_LANGUAGES` names no language for it. `_fragments_of_source` takes no
+    fragment from a file of no language.
+    """
     named = os.path.basename(path)
     for forms, language in _LANGUAGES:
         if path.endswith(forms) or named in forms:
@@ -313,11 +890,15 @@ def _keyed(language: str, path: str, name: str) -> str:
     return f"{language}:{named}" if not name else f"{language}:{named}:{name}"
 
 
-def _cited_by(prose: str, language: str) -> set[str]:
+def cited_by(prose: str, language: str) -> set[str]:
     """
-    The names `prose` cites. Prose in any language cites a name in backticks. C prose also cites a public name bare.
+    The names `prose` cites. Prose in any language cites a name in backticks. A `make` command in backticks cites its
+    target. C prose also cites a public name bare.
+
+    Public. `prose_answer` reads the names a claims reader cites under `looked_for`. `public_citations` reads the names
+    the prose of a public header cites.
     """
-    cited = set(_A_CITED_NAME.findall(prose))
+    cited = set(_A_CITED_NAME.findall(prose)) | set(_A_CITED_TARGET.findall(prose))
     if language == "C":
         cited.update(_A_CITED_C_NAME.findall(prose))
     return cited
@@ -332,7 +913,8 @@ def _undented(said: str) -> str:
     """
     The text a comment says with the space after its marker off.
 
-    A deeper indent stays. A bullet indents the lines under it. Flattening those lines would lose the bullet.
+    A deeper indent stays. A bullet indents the lines under it. The `(wrap)` bullet of `grammar/yeast-spec-1.2.yaml`
+    does that. Flattening those lines would lose the bullet.
     """
     return said.removeprefix(" ").rstrip()
 
@@ -346,6 +928,23 @@ def _unmarked(said: str, marker: str) -> str:
     """
     body = said[len(marker) :]
     return _undented(body.lstrip("/!<") if marker == "//" else body)
+
+
+def _as_line_comments(found: re.Match[str]) -> str:
+    """
+    The answer holds the prose between the markers of the block comment `found` matched. A line of that prose loses its
+    indent and a leading `*`. The line then opens with `//`.
+    """
+    return "\n".join("//" + line.lstrip().removeprefix("*") for line in found.group(1).split("\n"))
+
+
+def _line_commented(source: str) -> str:
+    """
+    `source` with its block comments written as line comments.
+
+    The answer holds the lines `source` holds. A fragment's line numbers stay put. `_read_only` reads a C file this way.
+    """
+    return _A_BLOCK_COMMENT.sub(_as_line_comments, source)
 
 
 def _comments(source: str, marker: str) -> dict[int, str]:
@@ -389,9 +988,9 @@ def _wrapped_trailing(source: str, marker: str) -> set[int]:
     """
     The lines that continue a comment sharing a line with code.
 
-    `make reformat` wraps a long trailing comment onto the line below, and it indents that line to the marker above. The
-    line holds no code of its own. Reading it apart cuts a sentence in half, and the halves come back as prose ending on
-    no full stop.
+    `make reformat` wraps a long trailing comment onto the line below, and it indents that line to the marker above.
+    `ys_error` in `src/parser.h` shows that wrap. The line holds no code of its own. Reading it apart cuts a sentence in
+    half, and the halves come back as prose ending on no full stop.
 
     The marker's column tells a wrap from a comment block. A block above a declaration opens at the code's indent.
     """
@@ -414,8 +1013,9 @@ def _marked_trailing(source: str, marker: str) -> dict[int, tuple[str, str, int]
     """
     `{line: (its code, what the comment sharing it says, the line the comment ends on)}`, by the marker.
 
-    A wrapped line joins the comment above it. A caller drops what sits on a branch line. A comment on an `#endif` names
-    the branch that directive closes rather than saying anything about the branch.
+    A wrapped line joins the comment above it. The C and make callers drop what sits on a branch line. A comment on an
+    `#endif` names the branch that directive closes rather than saying anything about the branch. The `#endif` of
+    `src/wire.h` names `YEAST_WIRE_H`.
     """
     wrapped = _wrapped_trailing(source, marker)
     held: dict[int, tuple[str, str, int]] = {}
@@ -437,8 +1037,8 @@ def _blocks(alone: dict[int, str]) -> list[tuple[int, int, str]]:
     """
     The runs of consecutive comment lines, as `(the line it opens on, the line it ends on, its text)`.
 
-    A comment line saying nothing stays inside the run rather than ending it. A run ends at the interpreter line or at
-    the licence tag.
+    A comment line saying nothing adds no text. The next comment line joins the last run. A gap between a pair of
+    comment lines starts a new run. A run ends at the interpreter line or at the licence tag.
     """
     held: list[tuple[int, int, str]] = []
     opens = -2
@@ -507,8 +1107,8 @@ class _Split:
         """
         Record that line `at` holds `code` and a comment saying `said`.
 
-        A comment wrapping onto the lines below runs to `last`. Those lines say the same comment, and an applier writes
-        the whole comment back through the run.
+        A comment wrapping onto the lines below runs to `last`. `apply_prose._wrapped` writes the whole comment back
+        through the run.
         """
         self.shared[at] = (code, said)
         for line in range(at + 1, (last or at) + 1):
@@ -518,8 +1118,8 @@ class _Split:
         """
         The sites the lines `owned` hold. A site reads as `(the lines, what they say)`.
 
-        A gap in the line numbers ends a site. A comment sharing a line with code becomes a site of its own. Such a
-        comment documents the field on that line. A struct's own comment and the comments on its fields come back apart.
+        A gap in the line numbers ends a site. A comment sharing a line with code becomes a site of its own. A struct's
+        own comment and the comments on its fields come back apart.
         """
         held: list[tuple[list[int], list[str]]] = []
         opens = -2
@@ -543,20 +1143,14 @@ class _Split:
             opens = at
         return [(tuple(lines), "\n".join(said)) for lines, said in held]
 
-    def halves(self, owned: Iterable[int]) -> tuple[_Text, _Text]:
-        """The prose and the code of the lines `owned`, in the order the file writes them."""
-        prose, code = [], []
+    def code(self, owned: Iterable[int]) -> _Text:
+        """The code of the lines `owned`, in the order the file writes them."""
+        held = []
         for at in sorted(owned):
-            if at in self.wrapped:
+            if at in self.wrapped or (at in self.is_prose and at not in self.shared):
                 continue
-            if at in self.shared:
-                code.append(self.shared[at][0])
-                prose.append(self.shared[at][1])
-            elif at in self.is_prose:
-                prose.append(self.said.get(at, self.lines[at - 1].strip()))
-            else:
-                code.append(self.lines[at - 1])
-        return _a_prose(prose), _text(code)
+            held.append(self.shared[at][0] if at in self.shared else self.lines[at - 1])
+        return _text(held)
 
 
 # The kinds a registration links, as `(what is registered, what registers it)`.
@@ -568,7 +1162,7 @@ _ONLY_A_BRANCH = re.compile(r"^(#\s*(if|ifdef|ifndef|else|elif|endif)\b|(ifeq|if
 
 
 def _has_prose(split: "_Split", first: int, last: int) -> bool:
-    """Whether any line between `first` and `last` is prose."""
+    """Whether any line from `first` through `last` is prose or holds a comment beside code."""
     return any(at in split.is_prose or at in split.shared for at in range(first, last + 1))
 
 
@@ -578,11 +1172,9 @@ def _grouped(
     """
     A binding that registers the function above it joins that function in a single extent. Both names name that extent.
 
-    A declaration holds prose of its own. A comment above a run of them documents the first of the run, and a later
-    declaration reports as holding nothing.
+    The grouping leaves a declaration with prose out of the extent above it.
 
-    The grouping takes in a registration. A line choosing between branches sits between a registration and its function
-    without parting the pair.
+    A line choosing between branches sits between a registration and its function without parting the pair.
     """
     held: list[tuple[str, str, int, int]] = []
     for one in sorted(extents, key=lambda held_one: held_one[2]):
@@ -599,8 +1191,8 @@ def _closes_above(held: list[tuple[str, str, int, int]], first: int) -> int | No
     """
     The place in `held` of the extent closing last before `first`.
 
-    `held` orders extents by the line they open on. A function holding a nested extent is followed by that nested
-    extent, and the last extent appended is then the inner rather than the outer.
+    `_grouped` builds this list sorted by the line an extent opens on. A function holding a nested extent is followed by
+    that nested extent, and the last extent appended is then the inner rather than the outer.
     """
     ended = [at for at, one in enumerate(held) if one[3] < first]
     return max(ended, key=lambda at: held[at][3]) if ended else None
@@ -608,7 +1200,8 @@ def _closes_above(held: list[tuple[str, str, int, int]], first: int) -> int | No
 
 def _does_sit_under(last: int, first: int, split: "_Split", branches: set[int]) -> bool:
     """
-    Whether the declaration opening on `first` sits under the declaration closing on `last`, over blank lines as well.
+    Whether the declaration opening on `first` sits under the declaration closing on `last`, over blank lines and lines
+    in `branches` as well.
     """
     return first > last and all(at in branches or not split.lines[at - 1].strip() for at in range(last + 1, first))
 
@@ -661,10 +1254,40 @@ def _a_fragment(
     its prose.
     """
     owned = sorted(owned)
-    prose, code = split.halves(owned)
-    sites = tuple(_Site(path, tuple(at - first for at in lines), said) for lines, said in split.sites(owned))
+    sites = tuple(
+        _Site(path, tuple(at - first for at in lines), flattened(said), said) for lines, said in split.sites(owned)
+    )
+    prose, code = _a_prose([site.as_wrapped for site in sites]), split.code(owned)
     named = _named_by(prose) if name is None else name
     return Fragment(_keyed(language, path, named), path, kind, {path: first}, prose, code, sites)
+
+
+def _documented(split: "_Split", owned: Iterable[int], extent: Iterable[int]) -> _Text:
+    """
+    The code a fragment's prose documents. The extent of the declaration comes back, less that fragment's own prose.
+
+    A class holds the methods under it. Such an inner declaration comes back whole, prose and code alike. A line the
+    fragment's prose shares with code keeps that code.
+    """
+    mine = set(owned)
+    described = {at for at in mine if at in split.is_prose or at in split.wrapped}
+    return _code_text(
+        (at, split.shared[at][0] if at in mine and at in split.shared else split.lines[at - 1])
+        for at in sorted(extent)
+        if at not in described
+    )
+
+
+def _code_of(split: "_Split", extent: Iterable[int]) -> _Text:
+    """
+    The code of a file fragment. The lines of `extent` come back, less the prose in them. A line that prose shares with
+    code keeps that code. An edit to the prose then moves no code digest of the file.
+    """
+    return _code_text(
+        (at, split.shared[at][0] if at in split.shared else split.lines[at - 1])
+        for at in sorted(extent)
+        if at not in split.is_prose and at not in split.wrapped
+    )
 
 
 def _gathered(
@@ -677,47 +1300,59 @@ def _gathered(
     bodies: set[int],
 ) -> list[Fragment]:
     """
-    The fragments of a file that declares things. A fragment per name, a fragment per unattached comment, and the file
-    itself.
+    Gather a fragment per name and a fragment per unattached comment of a file that declares things. The file itself
+    makes a fragment too.
 
-    An `#if` may declare a name under a branch and declare it again under the other. Those extents are a single
-    fragment. Python has no such branch. A module binding a name twice reports as a colliding key.
+    An `#if` may declare a name under a branch and declare it again under the other. A single fragment holds both
+    declarations. Python has no such branch. `_colliding_keys` reports a module binding a name twice.
 
-    The comment block at the top of the file describes the file. `a-file-description-comes-first` says so. A comment
-    block that no extent holds lower down documents no declaration. Such a block attaches to nothing, and it is a
-    fragment with no code. An unattached comment is named by the digest of its prose. A rewrite of that prose gives a
-    new name, and the old name leaves the tree.
+    The comment block at the top of the file describes the file. `a-file-description-comes-first` says so. The rest of
+    the file is the code that block documents. Lower down, a comment block that no extent holds documents no
+    declaration. Such a block attaches to nothing, and it is a fragment with no code. An unattached comment is named by
+    the digest of its prose. A rewrite of that prose gives a new name, and the old name leaves the tree.
 
-    A block opening inside a function body is code. `a-comment-inside-a-body-is-a-note` says so. Such a block is no
-    unattached comment whether or not an extent encloses it.
+    A block holding a section heading makes no fragment. `prose_rules.is_a_heading` decides that. The file fragment
+    holds a heading in neither half.
+
+    A block opening inside a function body makes no unattached comment, whether or not an extent encloses it.
     """
     extents = _grouped(extents, split, branches)
     taken = {at for _kind, _name, first, last in extents for at in range(first, last + 1)}
     loose = [one for one in blocks if one[0] not in taken and one[0] not in bodies]
     describes_the_file = [one for one in loose[:1] if one[0] == _first_line_of(split)]
-    unattached = loose[len(describes_the_file) :]
+    below = loose[len(describes_the_file) :]
+    unattached = [one for one in below if not prose_rules.is_a_heading(one[2])]
+    headings = [one for one in below if prose_rules.is_a_heading(one[2])]
     owned_by: dict[tuple[str, str, int], set[int]] = {}
+    spanned: dict[tuple[str, str, int], set[int]] = {}
     for kind, name, first, last in extents:
         under = 0 if language in ("C", "Make") else first
         owned_by.setdefault((kind, name, under), set()).update(_own(first, last, extents))
-    held = [
-        _a_fragment(language, path, kind, name, min(owned), split, owned)
-        for (kind, name, _under), owned in owned_by.items()
-    ]
+        spanned.setdefault((kind, name, under), set()).update(range(first, last + 1))
+    held = []
+    for at, owned in owned_by.items():
+        one = _a_fragment(language, path, at[0], at[1], min(owned), split, owned)
+        one.code = _documented(split, owned, spanned[at])
+        held.append(one)
     for first, last, _said in unattached:
         held.append(_a_fragment(language, path, "unattached", None, first, split, range(first, last + 1)))
-    left = set(range(1, len(split.lines) + 1)) - taken - {at for one in unattached for at in range(one[0], one[1] + 1)}
+    aside = {at for one in unattached + headings for at in range(one[0], one[1] + 1)}
+    left = set(range(1, len(split.lines) + 1)) - taken - aside
     kind = "module" if language == "Python" else "file"
-    held.append(_a_fragment(language, path, kind, "", 1, split, left))
+    describes = _a_fragment(language, path, kind, "", 1, split, left)
+    describes.code = _code_of(split, range(1, len(split.lines) + 1))
+    held.append(describes)
     return held
 
 
 def _overridden(tree: ast.Module) -> set[str]:
     """
-    Name the methods that a class of this module declares with a docstring.
+    Name the methods and nested classes that a class of this module declares with a docstring.
 
     A method of that name with no docstring is an override. The docstring on the overridden method is the override's
     contract. `pylint` reads an override the same way and asks the override for no docstring.
+    https://github.com/pylint-dev/pylint/blob/main/pylint/checkers/base/docstring_checker.py passes `report_missing=not
+    overridden` for such an override.
     """
     held: set[str] = set()
     for node in ast.walk(tree):
@@ -737,7 +1372,7 @@ def _python_extents(tree: ast.Module, blocks: list[tuple[int, int, str]]) -> lis
     with the class. A field's declaration and its comments then reach the class rather than the method.
 
     An override with no docstring is not a fragment either. The docstring on the overridden method is its contract. A
-    bare `main` is not a fragment, and the module's docstring describes it. `.pylintrc` writes both in its docstring
+    bare `main` is not a fragment, and the module's docstring describes it. `.pylintrc` writes `main` into its docstring
     pattern.
 
     A definition inside a function body is not a fragment. Its lines stay with the function.
@@ -770,7 +1405,10 @@ def _python_extents(tree: ast.Module, blocks: list[tuple[int, int, str]]) -> lis
 
 
 def _python_bodies(tree: ast.Module) -> set[int]:
-    """The lines inside a function body, where a comment is code rather than prose."""
+    """
+    `_python_bodies` returns the numbers of the lines that the functions and methods of a module span. A comment on such
+    a line is code.
+    """
     held: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -792,10 +1430,12 @@ def _docstring_extents(tree: ast.Module) -> list[tuple[int, int]]:
 
 def _python_fragments(path: str, source: str) -> list[Fragment]:
     """
-    The fragments of a Python file. A module makes a fragment. So does a class, a function and a module-level binding.
+    The fragments of a Python file. A module makes a fragment. A class, a function and a module-level binding make a
+    fragment too.
 
-    A comment block that documents no declaration is a fragment too. A block inside a function body is code rather than
-    a fragment. `a-comment-inside-a-body-is-a-note` holds such a block to a pair of lines.
+    A comment block that documents no declaration is a fragment too, unless it holds a section heading. A block inside a
+    function body is code rather than a fragment. `a-comment-inside-a-body-is-a-note` holds such a block to the length
+    `MOST_COMMENT_LINES` gives.
     """
     tree = ast.parse(source)
     lines = source.split("\n")
@@ -820,25 +1460,31 @@ def _python_fragments(path: str, source: str) -> list[Fragment]:
     return _gathered("Python", path, split, _python_extents(tree, blocks), blocks, set(), bodies)
 
 
-# The brace opening a type's body rather than a function body, and the shape of a C declaration.
+# The `struct`, `enum` or `union` keyword before a declaration's first brace. That keyword marks the brace as opening a
+# type's body rather than a function body.
 _A_TYPE_BODY = re.compile(r"\b(struct|enum|union)\b")
-# the first name before the arguments, the body or the value.
+# A word followed by an opening bracket, a semicolon or an equals sign.
 _A_DECLARED_NAME = re.compile(r"(\w+)\s*[({;=\[]")
 
 # The name a member of a C type has, in the body that declares it.
 _A_MEMBER_NAME = re.compile(r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*[;,=]")
 
-# The close of a brace block, and the name a typedef writes after that close. A line at file scope declaring nothing
-# matches too.
+# The close of a brace block, and the name a typedef writes after that close. A close that writes no name matches too,
+# and its group then holds nothing.
 _A_CLOSING_NAME = re.compile(r"^\}\s*(\w+)?")
-_A_DIRECTIVE = re.compile(r"^#\s*(?!define\b)")  # an include or a branch. Such a line declares nothing.
+# A preprocessor line other than a `#define` written with no space after its `#`. Includes, branches and `# define`
+# match it. Such a line declares nothing.
+_A_DIRECTIVE = re.compile(r"^#\s*(?!define\b)")
 
 # The line opening an include guard. The `#define` under it repeats the name and declares nothing.
 _AN_INCLUDE_GUARD = re.compile(r"^#\s*ifndef\s+(\w+)\s*$")
 
 
 def _c_declared(said: str, closing: str) -> tuple[str, str]:
-    """The kind and the name a C declaration writes. A typedef names its type after the closing brace."""
+    """
+    The kind and the name a C declaration writes. A word written after a closing brace names a type. Without that word,
+    the function searches the declaration for a name.
+    """
     if said.strip().startswith("#define"):
         return "define", said.split()[1].partition("(")[0]
     named = _A_CLOSING_NAME.match(closing)
@@ -858,14 +1504,20 @@ def _c_extents(source: str, marker: str) -> list[tuple[str, str, int, int]]:
     """
     The declarations a C file makes at file scope, as `(kind, name, first line, last line)`.
 
-    A brace block runs to the brace that closes it. Anything else runs to the semicolon that ends it.
+    A brace block runs to the line where its braces balance, once that line opens with `}` or ends with `;`. A `#define`
+    holding no brace runs to its last continued line. Anything else runs to the semicolon that ends it.
     """
     lines = _at_file_scope([line.partition(marker)[0] for line in source.split("\n")])
     held: list[tuple[str, str, int, int]] = []
     opens, said, depth = 0, "", 0
+    is_continuing_a_directive = False
     for at, line in enumerate(lines, start=1):
         stripped = line.strip()
+        if is_continuing_a_directive:
+            is_continuing_a_directive = stripped.endswith("\\")
+            continue
         if depth == 0 and not said and (not stripped or _A_DIRECTIVE.match(stripped)):
+            is_continuing_a_directive = stripped.endswith("\\")
             continue
         if depth == 0 and not said:
             opens = at
@@ -894,7 +1546,8 @@ def _is_an_include_guard(lines: list[str], at: int) -> bool:
 
 def _at_file_scope(lines: list[str]) -> list[str]:
     """
-    The lines with the braces of an `extern "C"` dropped. A declaration inside the `extern "C"` block is at file scope.
+    The lines with the opening line of an `extern "C"` blanked and its closing brace removed. A declaration inside the
+    `extern "C"` block is at file scope.
     """
     held, depth = list(lines), 0
     for at, line in enumerate(lines):
@@ -924,7 +1577,8 @@ def _c_bodies(source: str, marker: str, extents: list[tuple[str, str, int, int]]
 
 def _c_fragments(path: str, source: str) -> list[Fragment]:
     """
-    The fragments of a C file. The file makes a fragment. A type, a function and a `#define` make a fragment apiece.
+    The fragments of a C file. The file makes a fragment. A type, a function and a `#define` make a fragment apiece. So
+    does a variable at file scope.
 
     A member of a type is part of that type rather than a fragment of its own. A comment block inside a function body is
     code.
@@ -981,7 +1635,10 @@ def _make_extents(source: str) -> list[tuple[str, str, int, int]]:
 
 
 def _make_fragments(path: str, source: str) -> list[Fragment]:
-    """The fragments of a Makefile. The file, the targets and the variables."""
+    """
+    The fragments of a Makefile. A Makefile gives a fragment per target, per variable and per unattached comment. The
+    file makes a fragment of its own.
+    """
     blocks = _blocks(_comments(source, "#"))
     branches = _branch_lines(source, "#")
     extents = [
@@ -1017,8 +1674,9 @@ def _json_fragments(path: str, source: str) -> list[Fragment]:
     """
     The fragments of a JSON file. A `_` value is the prose, and any other value is data.
 
-    JSON writes no comment. A file of this tree says its own prose under `_`, at the top and inside an entry. A payload
-    beside that prose is a fixture. A fixture may hold the very fault a hook must refuse.
+    JSON writes no comment. The grammar at https://www.json.org/json-en.html holds none. A file of this tree says its
+    own prose under `_`, at the top and inside an entry. A payload beside that prose is a fixture. A fixture may hold
+    the very fault a hook must refuse. `tests/hooks.json` holds such fixtures.
     """
     held: list[Fragment] = []
     lines = source.split("\n")
@@ -1038,7 +1696,7 @@ def _json_fragments(path: str, source: str) -> list[Fragment]:
         said = _said_by_note([json.loads(f'"{one}"') for one in quoted])
         if not said:
             continue
-        sites = (_Site(path, tuple(range(len(run))), said),)
+        sites = (_Site(path, tuple(range(len(run))), flattened(said), said),)
         prose = _a_prose([said])
         key = _keyed("JSON", path, _named_by(prose))
         held.append(Fragment(key, path, "note", {path: first + 1}, prose, _text([]), sites))
@@ -1047,7 +1705,8 @@ def _json_fragments(path: str, source: str) -> list[Fragment]:
 
 def _flat_fragments(language: str, path: str, source: str) -> list[Fragment]:
     """
-    The fragments of a straight-line file. The fragments are the file itself and the comment blocks lower down.
+    The fragments of a straight-line file. The fragments are the file itself and the comment blocks lower down that hold
+    no section heading.
 
     The block at the top is the file's prose and the rest of the file is its code. Such a file declares nothing, and a
     block lower down documents no declaration.
@@ -1066,43 +1725,56 @@ def _flat_fragments(language: str, path: str, source: str) -> list[Fragment]:
     return [one for one in held if one.prose.content] if language == "Conf" else held
 
 
-def _document_fragments(path: str, source: str) -> list[Fragment]:
+def _document_lines(source: str) -> Iterator[tuple[int, str]]:
     """
-    The fragments of a markdown document. A paragraph, or a top-level list item taken with the items under it.
-
-    A nested bullet read without its parent means nothing. A fenced block is code and makes no fragment. The heading
-    above a paragraph names that paragraph, together with its place under the heading.
-
-    A `COPIED_BELOW` line ends the document. The prose under it lives elsewhere in the tree, and a copy makes no
-    fragment.
+    A markdown document's lines with their numbers. The front matter and a fenced block stay out. A `COPIED_BELOW` line
+    ends the document.
     """
-    held: list[Fragment] = []
-    heading = ""
-    block: list[str] = []
-    first = 1
-    is_fenced = False
-
-    def close(opens: int) -> None:
-        content = "\n".join(block).strip("\n")
-        if not content:
-            return
-        prose = _a_prose([content])
-        name = f"{heading} {_named_by(prose)}" if heading else _named_by(prose)
-        sites = (_Site(path, tuple(range(len(block))), content),)
-        held.append(Fragment(_keyed("Markdown", path, name), path, "paragraph", {path: opens}, prose, _text([]), sites))
-
     is_front = source.startswith("---")
+    is_fenced = False
     for at, line in enumerate(source.split("\n"), start=1):
         if line.strip() == COPIED_BELOW:
-            break
+            return
         if is_front:
             is_front = at == 1 or not _A_FRONT_MATTER.match(line)
             continue
         if _A_FENCE.match(line):
             is_fenced = not is_fenced
             continue
-        if is_fenced:
-            continue
+        if not is_fenced:
+            yield at, line
+
+
+def _document_fragments(path: str, source: str) -> list[Fragment]:
+    """
+    The fragments of a markdown document. A paragraph makes a fragment. A top-level list item makes a fragment together
+    with the items under it.
+
+    A fenced block is code and makes no fragment. The heading above a paragraph and a digest of the paragraph's prose
+    name that paragraph. A rule of `_THE_RULES` takes the rule's name instead.
+
+    A `COPIED_BELOW` line ends the document. The prose under that line lives elsewhere in the tree, and a copy makes no
+    fragment.
+    """
+    held: list[Fragment] = []
+    heading = ""
+    block: list[str] = []
+    first = 1
+
+    def close(opens: int) -> None:
+        content = "\n".join(block).strip("\n")
+        if not content:
+            return
+        prose = _a_prose([content])
+        ruled = _A_RULE.match(content) if path == _THE_RULES else None
+        if ruled:
+            name = ruled.group(1)
+        else:
+            name = f"{heading} {_named_by(prose)}" if heading else _named_by(prose)
+        sites = (_Site(path, tuple(range(len(block))), flattened(content), content),)
+        held.append(Fragment(_keyed("Markdown", path, name), path, "paragraph", {path: opens}, prose, _text([]), sites))
+
+    for at, line in _document_lines(source):
         found = _A_HEADING.match(line)
         # A top-level item closes the item before it. A nested item continues with the item it stands under.
         opens = bool(_A_TOP_ITEM.match(line)) and bool(block)
@@ -1130,7 +1802,8 @@ def _fragments_of(path: str) -> list[Fragment]:
 
 def _fragments_of_source(path: str, source: str) -> list[Fragment]:
     """
-    The fragments of `path` as `source` writes it. The language of `path` decides the checker.
+    The fragments of `path` as `source` writes it. The language of `path` decides which function splits `source` into
+    fragments.
 
     A caller hands the text over, and this function reads no file.
     """
@@ -1163,9 +1836,8 @@ def _joined(held: list[Fragment]) -> list[Fragment]:
         named = one.key.rpartition(":")[2]
         if one.kind in is_split and one.path.endswith(".h") and named in bodies:
             body = bodies[named]
-            said = "\n".join(part for part in (one.prose.content, body.prose.content) if part)
             code = "\n".join(part for part in (one.code.content, body.code.content) if part)
-            body.prose = _Text(said, prose_digest([said]))
+            body.prose = _a_prose([site.prose for site in one.sites + body.sites])
             body.code = _Text(code, _digest(code))
             body.sites = one.sites + body.sites
             body.starts = {**body.starts, **one.starts}
@@ -1179,41 +1851,226 @@ def _c_members(code: str) -> set[str]:
     return set(_A_MEMBER_NAME.findall(code.partition("{")[2]))
 
 
-def _resolved(held: list[Fragment]) -> dict[str, str]:
+# A struct or a union, as a header declares one. The declaration opens a line.
+_A_STRUCT = re.compile(r"^\s*(?:typedef\s+)?(?:struct|union)\b[^;{]*\{", re.MULTILINE)
+
+# An enum, as a header declares one. The declaration opens a line.
+_AN_ENUM = re.compile(r"^\s*(?:typedef\s+)?enum\b[^;{]*\{", re.MULTILINE)
+
+
+def _named_in_bodies(held: list[Fragment], opens: re.Pattern[str]) -> set[str]:
     """
-    `{a name prose may cite: the key it names}`, over the names that resolve to a single fragment.
+    The names a C type declares inside it, over the C fragments of `held` that `opens` matches.
+
+    The body runs from the open brace to a close brace at the head of a line. The name a typedef writes after that close
+    stays out.
+    """
+    found: set[str] = set()
+    for one in held:
+        if not one.key.startswith("C:"):
+            continue
+        opened = opens.search(one.code.content)
+        if opened is None:
+            continue
+        found |= set(_A_MEMBER_NAME.findall(one.code.content[opened.end() :].partition("\n}")[0]))
+    return found
+
+
+def c_members(held: list[Fragment]) -> set[str]:
+    """
+    The field names the struct and union bodies of `held` declare.
+
+    Public. `.claude/mcp/fetch_fragments.py` refuses such a name in a question about mentions. Structs may share a field
+    name, and a search for that name crosses the types declaring it.
+    """
+    return _named_in_bodies(held, _A_STRUCT)
+
+
+def c_constants(held: list[Fragment]) -> set[str]:
+    """
+    Answer the names of the enum constants that the C fragments in the list `held` declare.
+
+    Public. `.claude/mcp/fetch_fragments.py` takes such a name. An enum constant sits in the namespace of its file
+    rather than the namespace of a type, and the name reaches a single declaration.
+    https://en.cppreference.com/w/c/language/name_space puts an enum constant among the ordinary identifiers.
+    """
+    return _named_in_bodies(held, _AN_ENUM)
+
+
+# A step of the pipeline, as `normalize` writes one. The call names the step and then names the function that does the
+# work. Prose cites the step under the name in that call.
+_A_STEP = re.compile(r'_Step\(\s*"([a-z0-9][a-z0-9-]*)"\s*,\s*(_[A-Za-z0-9_]+)')
+
+# An invariant of the pipeline, as `normalize` writes one. The call names the invariant. A constant holds that call, and
+# a reader wants the fragment of that constant. `_absent` writes the invariant that a kind of node is gone.
+_AN_INVARIANT = re.compile(r'_(?:Invariant|absent)\(\s*"([a-z0-9][a-z0-9-]*)"')
+
+# A phase of the pipeline, as `normalize` writes one. The call names the phase, and a constant holds that call.
+_A_PHASE = re.compile(r'_Phase\(\s*"([a-z0-9][a-z0-9-]*)"')
+
+
+def _named_by_the_pipeline(held: list[Fragment], by_name: dict[str, set[str]]) -> None:
+    """
+    Put the names of the pipeline's steps, phases and invariants into `by_name`.
+
+    A step names itself in its own call. A phase and an invariant do the same. Prose cites those names, and
+    `named_by_the_pipeline` of `check_documents` accepts a citation to them. A step's name reaches the fragment of the
+    function the step names. The name of an invariant reaches the fragment holding the call. So does the name of a
+    phase, unless a step bears that name too. Such a name reaches the fragment of the step's function.
+
+    A module's own fragment holds the code of the whole file, and that code holds these calls as well. Such a fragment
+    takes none of these names.
+    """
+    steps = set()
+    for one in held:
+        for name, doing in _A_STEP.findall(one.code.content):
+            steps.add(name)
+            if by_name.get(doing):
+                by_name.setdefault(name, set()).update(by_name[doing])
+    for one in held:
+        if one.key.count(":") < 2:
+            continue
+        for name in _AN_INVARIANT.findall(one.code.content):
+            by_name.setdefault(name, set()).add(one.key)
+        # A phase holding a single step may take that step's name, and the name then reaches the step.
+        for name in _A_PHASE.findall(one.code.content):
+            if name not in steps:
+                by_name.setdefault(name, set()).add(one.key)
+
+
+def keys_by_name(held: list[Fragment], is_taking_members: bool = True) -> dict[str, set[str]]:
+    """
+    `{a name prose may cite: the keys it names}`, over the fragments of `held`.
 
     A fragment takes its bare name, and the file and the name together. A fragment named by a run of declarations takes
-    any of them. A file fragment takes its file. A C type also takes any member it declares. A member is part of a type
-    rather than a fragment of its own.
+    any of them. A file fragment takes its file. A Python module takes its file less the suffix. Prose cites a module
+    under that form. A C type also takes any member it declares where `is_taking_members` holds. A member is part of a
+    type rather than a fragment of its own.
 
-    A name a pair of fragments both take resolves to neither. Prose citing it has to name the file.
+    Public. The claim pass reads this map to tell an ambiguous name from a name the tree lacks.
+    `.claude/mcp/fetch_fragments.py` reads this map for the claim pass.
     """
     by_name: dict[str, set[str]] = {}
     for one in held:
         language, _, rest = one.key.partition(":")
         named, _, name = rest.partition(":")
-        forms = {named} if not name else {name}
+        forms = {named, one.path} if not name else {name}
+        if not name and language == "Python":
+            forms.add(os.path.splitext(named)[0])
         for part in name.split(", ") if name else []:
             forms |= {part, f"{named}.{part}"}
             if language == "Python":
                 forms |= {part.rpartition(".")[2], f"{os.path.splitext(named)[0]}.{part}"}
-        if one.kind == "type":
+        if one.kind == "type" and is_taking_members:
             forms |= _c_members(one.code.content)
         for form in forms:
             by_name.setdefault(form, set()).add(one.key)
-    return {form: keys.pop() for form, keys in by_name.items() if len(keys) == 1}
+    _named_by_the_pipeline(held, by_name)
+    return by_name
+
+
+def reach_by_name(held: list[Fragment]) -> dict[str, set[str]]:
+    """
+    `{a name a citation may write: the keys of `held` it reaches}`. A key reaches the fragment it names. Another name
+    reaches the keys `keys_by_name` gives it.
+
+    Public. `prose_answer` refuses a citation through this map, and `claim_state` reads a citation through it.
+    """
+    reached = keys_by_name(held)
+    reached.update({one.key: {one.key} for one in held})
+    return reached
+
+
+def resolved(held: list[Fragment]) -> dict[str, tuple[str, ...]]:
+    """
+    `{a name prose may cite: the sorted keys it names}`.
+
+    Public. `prose_answer` resolves the citations of a draft with this.
+
+    A name reaching a single fragment names that fragment. A C header may declare a typedef, and another C header may
+    declare the struct under the same name. Such a name names the whole group, as `ys_token_source` does. Any other name
+    a pair of fragments both take resolves to nothing. Prose citing such a name has to name the file. A bare member of a
+    C type resolves to nothing as well.
+    """
+    found = {}
+    for form, keys in keys_by_name(held, False).items():
+        if len(keys) == 1 or _is_one_c_name(form, keys):
+            found[form] = tuple(sorted(keys))
+    return found
+
+
+def _is_one_c_name(form: str, keys: set[str]) -> bool:
+    """Whether `keys` are C header declarations of `form`."""
+    return all(key.startswith("C:") and key.endswith(f".h:{form}") for key in keys)
+
+
+def cited_keys(
+    one: Fragment, prose: str, resolves: Mapping[str, tuple[str, ...]], by_key: Mapping[str, Fragment]
+) -> list[str]:
+    """
+    The sorted keys `prose` cites, read as the prose of `one`. `resolves` comes from `resolved`. `by_key` maps a key of
+    the tree to its fragment.
+
+    Public. `fragments` takes the references of a fragment from this. `prose_answer` takes those of a draft.
+
+    A citation reaches a declaration of a test only from prose in that test. A case `_registered_cases` finds is citable
+    from any prose. So is the file of a test. The key of `one` stays out.
+    """
+    tests = {os.path.relpath(path, gate.TREE) for path in gate.test_sources()}
+    cited = {key for name in cited_by(prose, one.key.partition(":")[0]) for key in resolves.get(name, ())}
+    return sorted(
+        key
+        for key in cited - {one.key}
+        if by_key[key].path not in tests
+        or is_a_file(key)
+        or by_key[key].path == one.path
+        or key.rpartition(":")[2] in _registered_cases(by_key[key].path)
+    )
+
+
+# The acutest test list of a test file, up to the brace closing it.
+_A_TEST_LIST = re.compile(r"TEST_LIST\s*=\s*\{(.*?)\n\};", re.DOTALL)
+
+# A case the acutest test list registers, as `{"end_of_input", test_end_of_input},` writes it.
+_A_REGISTERED_CASE = re.compile(r'\{\s*"[^"]*"\s*,\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}')
+
+
+def _registered_cases(path: str) -> frozenset[str]:
+    """The names of the functions the acutest test list of the test file `path` registers."""
+    full = os.path.join(gate.TREE, path)
+    return _cases_in(full, os.stat(full).st_mtime_ns)
+
+
+@functools.cache
+def _cases_in(full: str, _mtime: int) -> frozenset[str]:
+    """
+    Give back the names `_registered_cases` reads out of the file `full`. The cache takes the modification time of the
+    file as a key. A write to the file changes that time, as
+    https://docs.python.org/3/library/os.html#os.stat_result.st_mtime_ns says.
+
+    A file naming no test list registers no case. `tests/pkg_consumer.c` is such a file. A file whose test list
+    `_A_TEST_LIST` cannot read raises.
+    """
+    with open(full, encoding="utf-8") as handle:
+        source = handle.read()
+    listed = _A_TEST_LIST.search(source)
+    if listed is None:
+        if "TEST_LIST" in source:
+            raise ValueError(f"{full} names a test list that `_A_TEST_LIST` cannot read")
+        return frozenset()
+    return frozenset(_A_REGISTERED_CASE.findall(listed.group(1)))
 
 
 def fragments() -> list[Fragment]:
     """
     The fragments the project holds. A citation in a fragment's prose resolves to the fragment it names.
 
-    A citation naming a field, a parameter or a local names no fragment, and this drops it. `every-cited-name-exists`
-    holds a citation to the names the tree writes.
+    A citation naming a field, a parameter or a local names no fragment, and this drops it. A citation reaches a
+    declaration of a test only from prose in that test. `every-cited-name-exists` holds a citation to the names the tree
+    writes.
 
-    A caller wanting the `is_about_the_tree` skip asks for it. The shape rules want that skip. The word rules reach the
-    file the skip leaves out.
+    This applies no `is_about_the_tree` skip. `prose_rewrite.refusal_for` applies that skip for the shape rules. The
+    word rules reach the file the skip leaves out. `prose_rules.word_refusal` applies no such skip.
     """
     held: list[Fragment] = []
     for path in gate.prose_files():
@@ -1221,19 +2078,19 @@ def fragments() -> list[Fragment]:
         if check_documents.is_prose_of_the_project(named):
             held.extend(_fragments_of(named))
     held = _joined(held)
-    resolves = _resolved(held)
-    by_key = {one.key: one for one in held}
+    reachable = held + code_only()
+    resolves = resolved(reachable)
+    by_key = {one.key: one for one in reachable}
     for one in held:
-        cited = {resolves[name] for name in _cited_by(one.prose.content, one.key.partition(":")[0]) if name in resolves}
-        one.references = {key: by_key[key].code.sha for key in sorted(cited - {one.key})}
-    return sorted(held, key=lambda one: (one.path, one.first))
+        one.references = {key: by_key[key].code.sha for key in cited_keys(one, one.prose.content, resolves, by_key)}
+    return sorted(held, key=lambda one: (one.path, one.start_line))
 
 
 @dataclass(frozen=True)
 class _Edit:
     """
-    A single edit a write-time hook is deciding. The class holds the file the edit names, as the file is and as the edit
-    would leave it.
+    A single edit a checker is deciding. The class holds the file the edit names, as the file is and as the edit would
+    leave it.
     """
 
     path: str
@@ -1241,27 +2098,27 @@ class _Edit:
     now: str
 
 
-# The words a literal says before it reads as prose. A shorter literal names something rather than saying it. The gate
-# prints a short report line, and the rules hold that line too.
+# The words a literal says before it reads as prose. A shorter literal names something rather than saying it.
 _FEWEST_WORDS_SAID = 2
 
-# A literal the tree writes source into. `batch_pending_fragments` holds a workflow script that way. The `Makefile` and
-# a dependency script hand a Python program to `python3 -c`.
-_HOLDS_SOURCE = re.compile(r"(?:\b(?:const |function |phase\(|export |import |print\()|=>|#!/)")
+# A literal the tree writes source into. `grammar2decoder` writes C declarations that way. `pre-commit-review.js` builds
+# its prompts with arrow functions inside template literals. The `Makefile` and `scripts/check-deps.sh` hand a Python
+# program to `python3 -c`.
+_HOLDS_SOURCE = re.compile(r"(?:\b(?:const |import |print\()|=>|#!/)")
 
-# A pattern a shell hands to `grep`. A character class and a class shorthand belong to a regular expression rather than
-# to a sentence.
+# A pattern a shell hands to `grep`. `.claude/hooks/no-shell-file-writes.sh` hands such a pattern to `grep -Eq`. A
+# character class and a class shorthand belong to a regular expression rather than to a sentence.
 _HOLDS_A_PATTERN = re.compile(r"\[[0-9a-zA-Z]-[0-9a-zA-Z]\]|\\[bwsdWSD]")
 
-# A shell command line, and a template literal holding an interpolation. `$NAME` and `${NAME}` mark both. A command
-# names a path rather than citing the tree.
+# A shell command line, and a template literal holding an interpolation. `$NAME` and `${NAME}` mark both.
 _HOLDS_AN_EXPANSION = re.compile(r"\$\{?[A-Za-z_]")
 
-# A literal holding C source. A preprocessor directive opens one. So does a typedef, a declaration's closing brace, or a
-# cast to a fixed-width type.
+# A literal holding C source. An include guard or an `#include` opens such a literal. So does a `typedef`. A closing
+# brace before a name and a semicolon opens such a literal as well. A cast to any `_t` type marks C source anywhere in
+# the literal.
 _HOLDS_C_SOURCE = re.compile(r"^\s*(?:#(?:ifndef|define|endif|include)\b|typedef\b|\}\s*\w+;)|\(\w+_t\)")
 
-# The marker a writer puts on a literal that holds a layout rather than a sentence. The reason follows the colon.
+# The marker `not_prose_lines` reads, in a `#` or `//` comment. The reason follows the colon.
 _A_NOT_PROSE_MARKER = re.compile(r"(?:#|//).*\bnot-prose:\s*(\S.*)$")
 
 # A block comment, with the prose between the markers. C and JS write one.
@@ -1270,19 +2127,21 @@ _A_BLOCK_COMMENT = re.compile(r"/\*(.*?)\*/", re.S)
 # A heredoc, with the prose between the opener and the word that closes it.
 _A_HEREDOC = re.compile(r"<<-?'?(\w+)'?\n(.*?)\n\1", re.S)
 
-# An `echo` or a `printf` whose argument no quote holds. A shell and a Makefile write one.
+# An `echo` or a `printf` whose argument opens with no quote. A shell and a Makefile write one.
 _AN_ECHOED_WORD = re.compile(r"^[ \t]*@?(?:echo|printf)[ \t]+(?![\"'])(\S.*)$", re.M)
 
 # A setting, with the prose after the key. A comment line opens on its marker and matches nothing here.
 _A_SETTING = re.compile(r"^[ \t]*[\w.\-]+[ \t]*[:=][ \t]*(\S.*)$", re.M)
 
-# The file whose strings are hook payloads rather than prose. `tests/hooks.json` holds the edits a hook must refuse. A
-# payload there writes the very fault a checker names. The file's own prose sits under `_`, and `_json_fragments` reads
-# that.
+# The file whose strings are hook payloads rather than prose. `tests/hooks.json` holds pairs of payloads. A hook must
+# refuse the edit under `answers` and pass the edit under `passes`. A payload under `answers` writes the very fault a
+# checker names, or edits a `file` that already holds that fault. The file's own prose sits under `_`, and
+# `_json_fragments` reads that.
 _HOOK_PAYLOADS = "tests/hooks.json"
 
 # The quotes a language opens a string with. C writes a double quote. JS writes a double quote, a single quote and a
 # backtick, and the backtick form interpolates.
+# https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals describes that interpolation.
 _QUOTES = {"C": '"', "JS": "\"'`", "Shell": "\"'", "Make": "\"'", "CMake": '"', "YAML": "\"'", "JSON": '"'}
 
 # The marker a language opens a line comment with. C and JS write a block comment too, and `_quoted_runs` skips a block
@@ -1295,23 +2154,26 @@ _A_CONVERSION = re.compile(r"%[-+ #0]*[0-9*]*(?:\.[0-9*]+)?(?:hh|h|ll|l|z|j|t|L)
 # An interpolation a JS template literal writes. Its braces hold an expression rather than a sentence.
 _AN_INTERPOLATION = re.compile(r"\$\{[^{}]*\}")
 
-# The value a shell, a Makefile or a workflow expands. That is a parameter, a command substitution or a bare name behind
-# a dollar.
+# A parameter, a command substitution or a bare name behind a dollar. A workflow's `${{ }}` holds a brace inside its
+# braces, and this matches none.
 _AN_EXPANSION = re.compile(r"\$\$?\{[^{}]*\}|\$\$?\([^()]*\)|\$[A-Za-z_@*#?!$0-9][A-Za-z_0-9]*")
 
-# An escape a C or JS string writes. A break and a tab read as a space, and any other escape reads as its character.
+# An escape a quoted run writes. A break, a carriage return and a tab read as a space, and any other escape reads as its
+# character.
 _AN_ESCAPE = re.compile(r"\\(.)")
 
 # A line break a C string writes before its last character. C has no multi-line string. A writer who wants such a string
-# escapes the break. Such a string is a record. A writer of prose in C gives a line to a literal, and the compiler joins
-# the lines.
+# escapes the break. C keeps a bare newline out of a literal, and
+# https://en.cppreference.com/w/c/language/string_literal says so. Such a string is a record. A writer of prose in C
+# gives a line to a literal, and the compiler joins the lines.
+# https://en.cppreference.com/w/c/language/translation_phases lists that join among the translation phases.
 _A_BROKEN_LINE = re.compile(r"\\n(?!$)")
 
 
 def _said_by_literal(node: ast.expr) -> str | None:
     """
-    The text a literal says. This answers None where the node holds no string. An interpolation reads as a name in
-    backticks.
+    The text a literal says. This answers None where the node holds no string. An interpolation reads as the fixed word
+    `name` in backticks.
     """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
@@ -1327,8 +2189,8 @@ def _past_interpolation(source: str, at: int) -> int:
     """
     `_past_interpolation` answers the offset just past the interpolation that opens at `at`.
 
-    An expression can hold braces. An expression can hold a template literal. The scan counts braces through a nested
-    brace and through a template literal.
+    An expression can hold braces. An expression can hold a template literal. The scan counts a brace inside a template
+    literal. The scan ignores backticks.
     """
     depth, walk, length = 0, at + 1, len(source)
     while walk < length:
@@ -1343,27 +2205,35 @@ def _past_interpolation(source: str, at: int) -> int:
 
 
 def _quoted_runs(source: str, quotes: str, marker: str) -> list[tuple[int, int, int, str]]:
+    """`(the line a string opens on, where it opens, where it ends, the text between its quotes)` over `source`."""
+    return _scanned(source, quotes, marker)[0]
+
+
+def _scanned(source: str, quotes: str, marker: str) -> tuple[list[tuple[int, int, int, str]], list[tuple[int, int]]]:
     """
-    `(the line a string opens on, where it opens, where it ends, the text between its quotes)` over `source`.
+    A pair of lists over `source`. The first holds a tuple per string, as `_quoted_runs` writes it. The second holds
+    `(where it opens, where it ends)` per comment.
 
     A comment holds no literal. A `#` marker opens a comment at a word start, and `$#` inside a word opens none. An
     empty marker says the language writes no comment.
 
-    A backslash takes the character after it. A shell single quote takes none, and the run there ends at the next quote
-    regardless of the text in front of it. A backtick run skips its interpolations. A backtick inside an interpolation
-    belongs to the expression.
+    A backslash takes the character after it. A single quote takes no escape outside a `//` language. Such a run ends at
+    the next quote. A backtick run skips its interpolations. A backtick inside an interpolation belongs to the
+    expression.
     """
-    held, at, line, length = [], 0, 1, len(source)
+    held, comments, at, line, length = [], [], 0, 1, len(source)
     while at < length:
         char = source[at]
         if char == "\n":
             line, at = line + 1, at + 1
         elif marker and source.startswith(marker, at) and (marker != "#" or at == 0 or source[at - 1] in " \t\n"):
             found = source.find("\n", at)
+            comments.append((at, length if found < 0 else found))
             at = length if found < 0 else found
         elif marker == "//" and source.startswith("/*", at):
             found = source.find("*/", at + 2)
             shut = length if found < 0 else found + 2
+            comments.append((at, shut))
             line, at = line + source.count("\n", at, shut), shut
         elif char in quotes:
             escapes = char != "'" or marker == "//"
@@ -1378,7 +2248,7 @@ def _quoted_runs(source: str, quotes: str, marker: str) -> list[tuple[int, int, 
             at = min(walk + 1, length)
         else:
             at += 1
-    return held
+    return held, comments
 
 
 def _unwrapped_runs(runs: list[tuple[int, int, int, str]]) -> list[tuple[int, int, int, str]]:
@@ -1403,10 +2273,13 @@ def _unwrapped_runs(runs: list[tuple[int, int, int, str]]) -> list[tuple[int, in
 
 def _joined_runs(source: str, runs: list[tuple[int, int, int, str]]) -> list[tuple[int, str]]:
     """
-    `(the line it opens on, what it says)` per string, with the strings a writer wraps over lines taken as a single one.
+    Give back `(the line it opens on, what it says)` for a string. A string a writer wraps over lines counts as a single
+    string.
 
-    C joins a pair of strings that only whitespace separates. JS joins a pair with a `+` between them. A message wrapped
-    over a pair of lines reads as a single message, and a sentence may cross the wrap.
+    C joins a pair of strings that only whitespace separates, as https://en.cppreference.com/w/c/language/string_literal
+    says. JS joins a pair with a `+` between them, as
+    https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Addition says. A message wrapped over a
+    pair of lines reads as a single message, and a sentence may cross the wrap.
     """
     held: list[tuple[int, str]] = []
     ends: list[int] = []
@@ -1434,10 +2307,10 @@ def _named_out(said: str, pattern: re.Pattern[str]) -> str:
 
 def _said_by_run(said: str, language: str) -> str:
     """
-    The text a quoted run says, with what it interpolates reading as a name in backticks.
+    The text a quoted run says. An interpolation in the run reads as a name in backticks.
 
-    A C conversion, a JS interpolation and a shell expansion take a value's place. An expansion nested in another
-    expansion goes with it. An escaped break or tab reads as a space.
+    A C conversion, a JS interpolation and a dollar expansion take a value's place. An expansion nested in another
+    expansion goes with the outer expansion. An escaped break, carriage return or tab reads as a space.
     """
     marked = _A_CONVERSION.sub("`name`", said) if language == "C" else said
     marked = _named_out(marked, _AN_INTERPOLATION) if language == "JS" else marked
@@ -1449,10 +2322,10 @@ def _does_read_as_prose(said: str) -> bool:
     """
     Whether `said` reads as prose rather than as data.
 
-    A string of fewer than `_FEWEST_WORDS_SAID` words names something rather than saying it. A string holding source
-    counts as data. A string holding a pattern counts as data as well. A command line, a C declaration and a line
-    opening on `usage:` are source. A hook refusal ends on the name of the rule it enforces, and this leaves that
-    refusal out too.
+    A string whose `prose_rules.said_by` holds fewer than `_FEWEST_WORDS_SAID` words names something rather than saying
+    it. Source counts as data. A pattern counts as data. A shell variable such as `$NAME` marks a command line, and C
+    source is data. A string opening on `usage:` is data. A hook refusal ends on the name of the rule it enforces. This
+    function rejects such a refusal.
     """
     if _HOLDS_SOURCE.search(said) or _HOLDS_A_PATTERN.search(said):
         return False
@@ -1485,7 +2358,7 @@ def _unquoted_prose(source: str, language: str) -> list[tuple[int, str]]:
     The prose of `source` that no quote holds, as `(the line it opens on, what it says)`.
 
     Prose sits outside a quote as well. A block comment holds prose between `/*` and `*/`. A heredoc holds prose between
-    the opener and the word that closes it. An `echo` takes prose with no quote around it. A settings file writes prose
+    the opener and the word that closes it. An `echo` takes prose with no quote around it. A settings file holds prose
     after the key. A markdown heading names the section under it.
 
     `_quoted_runs` reaches none of those.
@@ -1520,9 +2393,9 @@ def prose_literals(source: str, language: str = "Python") -> list[tuple[int, str
     `_does_read_as_prose` holds the tests a reader shares.
 
     A docstring is a fragment's prose and belongs elsewhere. An f-string reads whole, and an interpolation inside it
-    comes back as a name in backticks. A literal of fewer than `_FEWEST_WORDS_SAID` words is data. That leaves out a
-    rule name, a grammar operator and a format string. A literal holding source counts as data. A pattern handed to `re`
-    and a line opening on `usage:` count as data as well. A literal a caller splits into words is a word list. A hook
+    comes back as the fixed word `name` in backticks. A literal of fewer than `_FEWEST_WORDS_SAID` words is data. That
+    leaves out a rule name and a grammar operator. A literal holding source counts as data. A pattern handed to `re` and
+    a line opening on `usage:` count as data as well. A literal a caller splits into words is a word list. A hook
     refusal ends on the name of the rule it enforces. `prose_literals` leaves such a refusal out too.
     """
     bare = [(at, said) for at, said in _unquoted_prose(source, language) if _does_read_as_prose(said)]
@@ -1595,7 +2468,11 @@ def written(tool_input: Mapping[str, object]) -> _Edit | None:
     The edit `tool_input` describes, read against the file on disk.
 
     The old text of an Edit decides nothing where the file lacks it. The tool refuses such an edit before anything
-    lands.
+    lands. https://code.claude.com/docs/en/tools-reference says `old_string` must appear in the file exactly as written.
+
+    An Edit with an empty `new_string` deletes the line break right after `old_string` as well. The tool takes that line
+    break only where `old_string` does not end on a line break. `edit_landed` refuses an edit whose landed file differs
+    from this reading.
     """
     path = tool_input.get("file_path")
     if not isinstance(path, str):
@@ -1610,17 +2487,19 @@ def written(tool_input: Mapping[str, object]) -> _Edit | None:
     old, new = tool_input.get("old_string"), tool_input.get("new_string")
     if not isinstance(old, str) or not isinstance(new, str) or old not in was:
         return None
-    return _Edit(path, was, was.replace(old, new, -1 if tool_input.get("replace_all") else 1))
+    taken = re.escape(old) + ("\n?" if not new and not old.endswith("\n") else "")
+    now = re.sub(taken, lambda _found: new, was, count=0 if tool_input.get("replace_all") else 1)
+    return _Edit(path, was, now)
 
 
 def whole(path: str) -> _Edit:
     """
     The edit that writes the file `path` names from nothing. The checkers read the whole prose of the file in such an
-    edit.
+    edit. A byte outside UTF-8 reads as a replacement character, and `ascii_only` refuses that character.
 
     Public. `check_prose` reads the tree this way.
     """
-    with open(path, encoding="utf-8") as handle:
+    with open(path, encoding="utf-8", errors="replace") as handle:
         return _Edit(path, "", handle.read())
 
 
@@ -1629,32 +2508,35 @@ def is_about_the_tree(path: str) -> bool:
     Whether the prose of `path` describes the tree. `CHANGELOG.md` records what a change did, and the shape rules skip
     that file.
 
-    A hook hands over an absolute path. `is_about_the_tree` reads the base name. `is_prose_of_the_project` reads it the
-    same way.
+    A hook may hand over a path relative to the tree. `is_about_the_tree` reads the base name. `is_prose_of_the_project`
+    reads it the same way.
     """
     return os.path.basename(path) not in _NOT_ABOUT_THE_TREE
 
 
 def _fragments_left(one: _Edit) -> list[Fragment]:
     """
-    The fragments the file would hold once `one` lands. A fragment rule asks about these.
+    The fragments the file would hold once `one` lands. `fragments_touched` asks about these, and it keeps those whose
+    prose the edit changes.
 
-    A caller wanting the `is_about_the_tree` skip asks for it here. The word rules and the number rule reach a file that
-    skip leaves out.
+    This function applies no `is_about_the_tree` skip. A caller wanting that skip calls `is_about_the_tree` itself, as
+    `prose_rewrite.refusal_for` does. `prose_rules.word_refusal` and `no_tree_numbers.refusal_for` apply no such skip
+    either.
     """
     return _fragments_of_source(one.path, one.now)
 
 
 def fragments_touched(one: _Edit) -> list[Fragment]:
     """
-    The fragments `one` writes prose into. A write-time hook judges these, and passes over the rest of the file.
+    The fragments whose prose the edit `one` changes. A write-time hook runs its `_PROSE` checkers on the prose of
+    these. Its `_ANY` checkers read the whole file.
 
     A fragment comes back where the edit mints its key. A fragment comes back where its prose digest moves. A fragment
     whose code moved and whose prose held still has no prose to judge.
 
     A hook reading the whole file refuses an edit for a fault the edit did not write. A file holding many faults then
-    takes no edit at all. `check_prose` reads the whole tree, and it refuses the commit over a fault the hook here
-    passes over.
+    takes no edit at all. `check_prose` reads a file git tracks as a `whole` edit. `make verify-prose` runs it under
+    `verify`, and `make pc` runs `verify`. `check_prose` fails `make pc` over a fault the hook here passes over.
     """
     before = {said.key: said.prose.sha for said in _fragments_of_source(one.path, one.was)}
     return [said for said in _fragments_left(one) if before.get(said.key) != said.prose.sha]
@@ -1687,27 +2569,13 @@ def literals_touched(one: _Edit) -> list[tuple[int, str]]:
     ]
 
 
-def _unnamed_prose() -> list[str]:
-    """
-    The tracked files this project writes prose in that no reader here covers.
-
-    `language_of` names the reader. A file with no reader goes unread in silence. Either a reader learns the language,
-    or `gate.UNREAD` names the file and the comment there says why.
-    """
-    return sorted(
-        path
-        for path in gate.tracked_files()
-        if check_documents.is_prose_of_the_project(path) and language_of(path) is None
-    )
-
-
 def _undescribed_fragments(held: list[Fragment]) -> list[str]:
-    """The fragments holding no prose."""
-    return [f"{one.path}:{one.first}: {one.key} holds no prose" for one in held if not one.prose.content]
+    """The messages naming the fragments that hold no prose."""
+    return [f"{one.path}:{one.start_line}: {one.key} holds no prose" for one in held if not one.prose.content]
 
 
 def _colliding_keys(held: list[Fragment]) -> list[str]:
-    """The keys that a pair of fragments share. A key names a single fragment."""
+    """The keys that a fragment shares with some other fragment. A key names a single fragment."""
     seen: dict[str, int] = {}
     for one in held:
         seen[one.key] = seen.get(one.key, 0) + 1
@@ -1716,28 +2584,18 @@ def _colliding_keys(held: list[Fragment]) -> list[str]:
 
 def _keys_not_naming_their_prose(held: list[Fragment]) -> list[str]:
     """
-    The keys ending on something other than the digest of the fragment's prose.
+    Messages naming the keys that end on a digest other than the digest of the fragment's prose.
 
-    A fragment with no declaration to name it takes `_named_by`. A key ending on a place in the file moves the day a
-    writer inserts a neighbour. The ledger then pairs a stamp with the prose of another fragment.
+    A fragment with no declaration to name it takes `_named_by`.
     """
     return [
-        f"{one.path}:{one.first}: {one.key} ends on a name the prose does not give it"
+        f"{one.path}:{one.start_line}: {one.key} ends on a name the prose does not give it"
         for one in held
         if _A_DIGEST_NAME.search(one.key) and not one.key.endswith(_named_by(one.prose))
     ]
 
 
 def main() -> None:
-    gate.report(
-        [
-            f"{path}: nothing here can read this file. Teach `language_of` its language, or name the file in "
-            f"`gate.UNREAD`."
-            for path in _unnamed_prose()
-        ],
-        "file(s) of prose no reader covers",
-        "",
-    )
     held = fragments()
     gate.report([f"{key}: fragments share this key" for key in _colliding_keys(held)], "colliding fragment key(s)", "")
     gate.report(_undescribed_fragments(held), "fragment(s) holding no prose", "")

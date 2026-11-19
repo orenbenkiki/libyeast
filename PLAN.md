@@ -8,8 +8,8 @@ correctness. Hand-testing does not. A proof shows that the parser accepts the ri
 - The API is **pull**. A caller pulls a token with `ys_read_token()`
 - Stream is **yeast**, and its codes are reference-identical
 
-The pipeline treats a grammar parameter in either of a pair of ways. **`c`** is the context, **`t`** is the chomping,
-and **`r`** is the resume policy. Those are finite, and the generator resolves them at generation time. **`n`** is the
+The pipeline treats a grammar parameter in one of a pair of ways. **`c`** is the context, **`t`** is the chomping, and
+**`r`** is the resume policy. Those are finite, and the generator resolves them at generation time. **`n`** is the
 indentation and **`m`** is the auto-detected indent. Those have no bound, and the runtime automaton threads them
 through.
 
@@ -140,7 +140,7 @@ between a pair of phases arrives with the phase that needs it.
 
 **The questions come in order.** A machine that does not backtrack needs a gate on a way of a choice. That machine asks
 the gate before entering the way. That machine also needs the gates to be exclusive. The gate and the exclusion are
-separate problems. The first has landed, and `every-conditional-way-is-gated` finds no ungated way at the end of the
+separate problems. The tree solves the first. `every-conditional-way-is-gated` finds no ungated way at the end of the
 pipeline. The second is *Settle `every-choice-way-is-different`* above. The paragraphs below design that item.
 
 **Where the gate lift belongs.** `every-called-alternative-is-unconditional` is about a way that calls a production
@@ -425,8 +425,8 @@ assertion holds a terminal to a pure char-set.
        nothing beyond it, and refused a `ChoiceState`. The check could not run past `build-alternatives`. Reading an
        alternative means reading its parts. The gate and its guards take nothing, and a recovery is no way an
        alternative offers. That leaves the actions and the pair of calls. The repetition half read `node.item` on a
-       `TrimStar`, and a `TrimStar` names that field `full`. That stayed latent for as long as the check ran at a single
-       stage.
+       `TrimStar`, and a `TrimStar` names that field `full`. The misread field stayed latent for as long as the check
+       ran at a single stage.
    - *Lowering a run of none or more breaks the invariant by construction.* `_N ::= x _N | <empty>` is a production that
      decides between consuming and consuming nothing. The lowering wants a run that must take a turn instead. Such a run
      reads `_N ::= x _N | x`. The site the old run had keeps `_N | <empty>`. The elimination then distributes that
@@ -737,15 +737,15 @@ machine in Milestone 04 is then mechanical rather than clever.
 
 ### Milestone 04 - C codegen
 
-*Risk: Low - ~1-2 mo.* This milestone is the easy end of a compiler. Turn the lowered IR into a switch-on-state
-character loop with arena allocation.
+*Risk: Low, ~1-2 mo.* This milestone is the easy end of a compiler. Turn the lowered IR into a switch-on-state character
+loop with arena allocation.
 
 1. Emit the state dispatcher and the transition tables into `src/parser_tables.h` as portable C99 with no external deps.
    The emitted code runs over the runtime `src/parser.c` already provides.
 1. Emit, per state, the production it belongs to. Emit what its outgoing edges expect. That is a table of static strings
    shaped like the table in `src/messages.c`. The text of a format error goes with that table. The parser's finding sits
    outside the table and the error text, and stays outside. The first `unparsed` token behind an error begins at exactly
-   the byte that failed.
+   the byte that failed. A translation replaces the production name and the expectation.
 1. Arena-allocate what the parse holds. Lifetimes are input-bounded. Free the arena on parser teardown, and no GC runs.
 1. Allocate the scratch state of a backtracking region within the arena. The parse reclaims that state when it discards
    a provisional branch.
@@ -757,13 +757,50 @@ character loop with arena allocation.
    dependency. Validate byte-for-byte against the Haskell YamlReference renderer.
 1. Build as `cdylib`-style `.so` across Linux and macOS, and Windows once the toolchain is clean.
 
+The emitted parser holds the assumptions `src/decoder.h` already makes. The parser assembles no Unicode codepoint. The
+parser compares no numeric value of a character. The parser advances the byte offset by a consume's bytes. The parser
+advances the character offset by that consume's characters. The column follows the character offset. A consume crosses
+no line, and the line number holds over it. The parser calls `ys_parser_fill` with a `wanted` covering a whole
+character. `ys_next_char_slow` then sees no character the window's edge cut in half.
+
+The emitted parser puts a byte of its input under a single code. An ill-formed byte falls under a token as well. The
+parser emits `YS_CODE_UNPARSED_INVALID` for a run of bytes that encodes no character. The input's encoding makes no
+difference.
+
+A token lies within a single line. A leaf token keeps `start.line` and `end.line` equal. The input skipped after an
+error keeps that rule. A skipped line yields a `YS_CODE_UNPARSED_TEXT` token for the line's content and a
+`YS_CODE_UNPARSED_BREAK` token for the line's break.
+
+`ys_options::resume` decides what follows an error. A policy gives up less of the input than the policy before it, and
+loses no byte. A policy with no place to resume at behaves as the policy before it. `YS_RESUME_NONE` ends the parse, and
+the rest of the input comes back as `YS_CODE_UNPARSED_TEXT`. `YS_RESUME_DOCUMENT` skips to the next document. The
+skipped lines come back as `YS_CODE_UNPARSED_TEXT`. `YS_RESUME_INDENT` skips to the next line no more indented than the
+entry that failed, and continues inside the document. The recovered entry is a sibling of the entry that failed. The
+parser closes the markers of the abandoned entry in front of the recovered entry. A failure nothing encloses falls back
+to `YS_RESUME_DOCUMENT`.
+
+`ys_options::max_bytes` caps what the parser allocates. The cap counts the input a stream parser buffers, the tokens the
+parser holds back, and the stack. A single enormous token fills the buffer. A run of tokens whose codes the parser has
+still to decide fills the buffer too. The empty lines opening a block scalar make such a run until a later line decides
+them. Deep nesting grows the stack, and YAML bounds no nesting depth. YAML bounds lookahead for an implicit key at
+`1024` characters. A parse reaching the cap fails with `YS_FAILED_MEMORY`. The source offers no way to raise the cap and
+go on. A caller builds a new source with a larger cap, or with an allocator that can satisfy the cap. The caller then
+reads the input again from its start. The parser rewrites the codes of a queued run once the run settles.
+
+The parser consumes the input in stretches. A stretch is a plain scalar. Comment text is a stretch. Indentation and
+quoted content are stretches as well. A plain scalar keeps the `span` of a trimmed consume. That scalar hands the `trim`
+back as its own `s-white*`.
+
+Comment text and the lines of a literal or folded scalar take `nb-char`. Directive names and parameters take `ns-char`.
+Anchor names take `ns-anchor-char`. The text of a document that failed to parse takes `nb-unparsed`.
+
 **Exit** is a self-contained C `.so` plus the bundled `yaml2html` tool. The `.so` passes the suite, the differential
 harness and the fuzzer.
 
 ### Milestone 05 - ABI layer
 
-*Risk: Low - ~3-5 wks.* YAMLStar built the existing ABI as a swappable seam. It is thin, and JSON strings go in and out.
-It exposes no structs. So this is nearly free. The existing bindings work unchanged.
+*Risk: Low, ~3-5 wks.* YAMLStar built the existing ABI as a swappable seam. It is thin, and JSON strings go in and out.
+It exposes no structs. So the ABI layer costs almost nothing. The existing bindings work unchanged.
 
 1. Reimplement the entry points over the new core. Those are create, destroy and `version`. `load` and `load_all` come
    with them.
@@ -781,7 +818,7 @@ It exposes no structs. So this is nearly free. The existing bindings work unchan
 
 ### Milestone 06 - Harden. Fuzz, tune, and reach libyaml-class speed
 
-*Risk: Medium - ~2-4 mo.* Correct-but-slow is not the goal. Close the algorithmic gaps naive codegen leaves and prove
+*Risk: Medium, ~2-4 mo.* Correct-but-slow is not the goal. Close the algorithmic gaps naive codegen leaves and prove
 robustness under hostile input.
 
 1. Fuzz the parser continuously under ASan and UBSan, at the byte level and with structure-aware inputs. Aim the fuzzers
@@ -810,6 +847,10 @@ ships as a package.
 ## section 6 - Future work
 
 The project wants the items below. Nobody has planned them, and no work waits on the plan.
+
+- **A vector kernel for the consume loop.** `ys_consume_set` classifies a byte at a time. A kernel would classify `16`
+  bytes at a time with a nibble-table lookup under SSSE3 or NEON. The signature stays, and the generated parser changes
+  no line.
 
 - **Lenient wire positions.** Treat a `#` line in the wire as a comment rather than a required field. Take the token
   position from a line of the form `# B: ..., C: ..., L: ..., c: ...`. Estimate a missing position from the tokens. Give

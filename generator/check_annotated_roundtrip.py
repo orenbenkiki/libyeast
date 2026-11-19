@@ -2,9 +2,9 @@
 """
 Check that `annotated2ir` then `ir2annotated` reproduce libyeast's grammar exactly.
 
-Loads `grammar/yeast-spec-1.2.yaml` and translates it to the IR and back. The regenerated data equals the source,
-compared as parsed data rather than text. A translation that loses a production fails here. So does a translation that
-quietly rewrites a production. Neither waits for the C the IR generates afterwards.
+Loads `grammar/yeast-spec-1.2.yaml` and translates it to the IR and back. The regenerated data equals the source as
+parsed data rather than as text. A translation that loses a production fails here. So does a translation that quietly
+rewrites a production.
 """
 
 import annotated2ir

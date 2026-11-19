@@ -8,11 +8,12 @@ A token stream has a position comment and a code line per token. The comment is 
 This is the same format `src/wire.c` reads and writes, and the format the conformance fixtures are in. The interpreter
 serializes its tokens into this format for a diff against the fixtures.
 
-The escaping follows `src/wire.c` exactly. A printable ASCII byte other than a backslash comes out as itself. Anything
-else becomes `\xXX` or `\uXXXX` or `\UXXXXXXXX`. The hex comes out lower-case.
+The escaping follows `src/wire.c` exactly. An unparsed-invalid token writes its bytes as `\xXX`. Elsewhere a printable
+ASCII character other than a backslash comes out as itself. Anything else becomes `\xXX` or `\uXXXX` or `\UXXXXXXXX`.
+The hex comes out lower-case.
 
 Marks advance a byte by its UTF-8 length, a character by a single step, and a line at a break. A break is CR, LF, or CR
-LF together. A line resets the column. `src/wire.c` counts lines the same way.
+LF together. A line resets the column. `src/wire.c` starts a line at LF and not at CR. It counts a CR as a column.
 """
 
 import re
@@ -21,9 +22,8 @@ from dataclasses import dataclass
 
 ERROR = "!"  # the wire's error code. A malformed document takes it.
 
-# The wire character that writes a token code. The grammar names the code, and the `YS_WIRE` table in `src/wire.c` gives
-# the character. `check_wire.py` gates this copy against that table, and the pair cannot drift. `_CHAR_CODE` reads a
-# wire back.
+# The wire character that writes a token code. The `YS_WIRE` table in `src/wire.c` gives the character. `check_wire.py`
+# gates this copy against that table, and the pair cannot drift. `_CHAR_CODE` reads a wire back.
 CODE_CHAR = {
     "bom": "U",
     "text": "T",
@@ -78,7 +78,8 @@ _CHAR_CODE = {character: code for code, character in CODE_CHAR.items()}
 # A codepoint that writes a line break. A carriage return followed by a line feed is a single break.
 CARRIAGE_RETURN = 0x0D
 LINE_FEED = 0x0A  # A codepoint that ends a line. A line feed makes a break, or it closes a carriage return.
-# A mark the stream may open with. A consume naming that mark takes no column for it.
+# A mark the stream may open with. `try_consume` takes no column for that mark where the consume's set is the span from
+# that mark to that mark.
 BYTE_ORDER_MARK = 0xFEFF
 
 # The first line of a wire token. It writes the offsets of the token's position.
@@ -125,7 +126,8 @@ def parse(text: str) -> list[Token]:
 
 def serialize(tokens: Iterable[Token]) -> str:
     """
-    Serialize tokens back into a wire token stream. A trailing newline follows a token, as the reference writes them.
+    Serialize tokens back into a wire token stream. A trailing newline follows a token. `ys_wire_write` in `src/wire.c`
+    writes the same newline.
     """
     out = []
     for token in tokens:
@@ -174,12 +176,11 @@ def marker_fault(tokens: Iterable[Token], is_whole: bool) -> str | None:
     """
     Return a single-line reason the tokens' markers do not balance, or None.
 
-    A `begin-` marker must get its `end-`, on the paths where the parse went wrong as much as on the clean ones. The
-    fold that rebuilds the production tree cannot pair the markers otherwise. A resumed parse would nest what follows
-    inside what failed rather than beside it.
+    A `begin-` marker must get its `end-`, on the paths where the parse went wrong as much as on the clean ones.
 
-    Markers pair by their code. That is how the marker gate of the grammar reads them, and that is how a block scalar
-    pairs at all. A block scalar opens with a marker of its own. The chomping decides where the close falls.
+    Markers pair by their code. That is how the marker gate of the grammar in `generator/check_markers.py` reads them,
+    and that is how a block scalar pairs at all. `c-l+literal` and `c-l+folded` open a block scalar with a marker of its
+    own. The chomping decides where the close falls.
 
     `is_whole` says these tokens are a whole parse. The markers must balance exactly. A rule run outside the root is not
     a whole parse. Such a rule may close what its caller opened, and `b-chomped-last` does exactly that. So it may close
@@ -228,8 +229,9 @@ def escape(raw: bytes, code: str | None = None) -> str:
 
 def _advance(mark: Mark, text: str, code: str | None = None) -> Mark:
     """
-    The mark reached after consuming escaped `text` from `mark`. The mark advances a byte per UTF-8 length, and a line
-    at a break. Under unparsed-invalid an escape is a raw byte and a column, and an escape counts as no break.
+    The mark reached after consuming escaped `text` from `mark`. The mark advances by the byte length `units` gives a
+    unit. The mark advances a line at a break. Under unparsed-invalid an escape takes a single byte. An escape whose
+    value is a carriage return or a line feed counts as a break.
     """
     index = 0
     pieces = units(text, code)

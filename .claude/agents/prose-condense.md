@@ -37,7 +37,7 @@ The text below comes from the files this heading names. `generator/write_agent_p
 
 ## The answer
 
-Answer by calling the StructuredOutput tool. The schema below decides the shape of the input to that call. Write no sentence beside the call. A hook may turn the call back with a refusal. Say the refused prose again, and call the tool again.
+Answer by calling the StructuredOutput tool. The schema below decides the shape of the input to that call. Write no sentence beside the call. A hook may turn the call back with a refusal. Rewrite the refused prose, and call the tool again.
 
 ```json
 {
@@ -77,7 +77,7 @@ Answer by calling the StructuredOutput tool. The schema below decides the shape 
           },
           "after": {
             "type": "string",
-            "description": "the same prose said again, in the form the proposed checker passes"
+            "description": "the same prose rewritten into the form the proposed checker passes"
           }
         }
       }
@@ -113,9 +113,7 @@ whether a gate decides it. The author asks that of an accepted rule before the n
 
 - **a-boolean-is-a-pure-question** - a `bool` answers a question and computes no more. A command reporting whether it
   worked hands back a `ys_status`. A parse hands back the position reached. `ys_next_line` answers NULL where the bytes
-  fell short. A command, a parse and a question return distinct types. The type decides the name. *Mechanised in part by
-  `check_conventions`. A `bool` under a name that is not a question is a fault, in C and in Python alike. Whether a
-  question is pure stays with the reader.*
+  fell short. A command, a parse and a question return distinct types. The type decides the name. *Not mechanised.*
 - **a-name-keeps-its-meaning** - new semantics take a new name, and nobody redefines an existing one. `pair` means a
   frame-scoped `Push`/`Pop` pair and no more. *Not mechanised.*
 - **long-names-over-short-ones** - a writer invents no shorthand where the project has a word for the thing. Grep for
@@ -142,10 +140,11 @@ The prose checkers read a comment beside code and a document alike.
 - **each-document-keeps-to-its-domain** - `DESIGN.md` is context, perspective and architecture, and it repeats no code
   comment. `CHANGELOG.md` records the work a change did. `PLAN.md` names the work the project still owes. *Not
   mechanised. Whether a passage keeps to its document's domain stays with the reader.*
-- **a-step-carries-its-argument** - a new step of the normalization pipeline comes with the argument that answers the
-  rules above `_Step` in `generator/normalize.py`. The argument says which invariant the step establishes, or why the
-  step establishes none. It says that the transform is local and mechanical. It says that a value the step produces is a
-  global or a stack entry. *Not mechanised. Whether the argument is true stays with the review.*
+- **a-step-carries-its-argument** - a new step of the normalization pipeline comes with an argument. The argument
+  answers the rules a pipeline step must satisfy. `generator/normalize.py` holds those rules. The argument says which
+  invariant the step establishes, or why the step establishes none. It says that the transform is local and mechanical.
+  It says that a value the step produces is a global or a stack entry. *Not mechanised. Whether the argument is true
+  stays with the review.*
 - **an-oracle-answers-and-a-checker-decides** - an oracle produces the answer. Haskell YamlReference produces a parse.
   The fixtures under `tests/spec/` hold the token stream a production must emit. `check_spaces._check_standings` writes
   out the comparison values. A checker produces pass or fail, and the hooks under `.claude/hooks/` call themselves
@@ -315,7 +314,7 @@ ______________________________________________________________________
    the word run. Permuting is not writing. The proposal aimed to stop that move. A later form asks whether a sentence of
    the old prose survived the edit. That form fails the same way over a single sentence. It refuses a rewrite that keeps
    a sentence the old prose already wrote well. A writer routes around a rule comparing new prose to old prose.
-   `faulty-prose-is-re-said-not-patched` replaced the proposal. That rule judges the new prose without the old, and
+   `faulty-prose-is-rewritten-not-patched` replaced the proposal. That rule judges the new prose without the old, and
    refuses opaquely.
 
 1. **"A part-of-speech tagger. The shape rules could then ask about a verb rather than about a word."** The reviewer
@@ -435,9 +434,7 @@ ______________________________________________________________________
    writes `Some of the character sets the grammar consumes admit non-ASCII characters.` *Rejected.* A sweep found the
    run in prose that can name no members. `include/yeast.h` writes
    `Setting some of the callbacks mixes custom and standard behavior.` That claim covers any strict subset of the
-   callbacks, and a list would narrow a true claim into a false one. `.claude/hooks/tense-check.sh` writes
-   `Some of these words are legitimate in prose about the parse itself.` The words sit in a list in that same file. A
-   sentence naming them goes stale the day somebody edits that list. The word rules reach `CHANGELOG.md`, where the run
+   callbacks, and a list would narrow a true claim into a false one. The word rules reach `CHANGELOG.md`, where the run
    appears in entries nobody should rewrite. The sentence after the cited line names the sets anyway. A list in the
    cited line would name the sets a second time. `a-piece-of-prose-is-written-once` covers that fault.
 

@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# PreToolUse on any tool, and PermissionDenied. This hook holds a turn to the requests the user has made.
+# `.claude/settings.json` runs this hook on PreToolUse for any tool, and on PermissionDenied. This hook holds a turn to
+# the requests the user has made.
 #
 # A session is serial. The user answers, and the answer shapes what comes next. Stacking a second question behind the
 # first buries the first. Launching work while a question waits spends tokens on an answer the user is about to change.
 # A `STOP` in that window lands after the damage.
 #
-# A refused tool call is the user saying no, and the turn stops there. Approving a prompt is the user saying yes, and
-# the turn goes on. This hook marks no approved prompt.
+# A refused tool call is the user saying no, and the turn stops there. The payload then names the user as the denial
+# source, as https://code.claude.com/docs/en/hooks says. A denial by the classifier marks nothing. A classifier giving
+# no verdict marks nothing either. Approving a prompt is the user saying yes, and the turn goes on. This hook marks no
+# approved prompt.
 #
-# `.git/one-at-a-time` marks a launch, and a launch is a question or a fleet of agents. `.git/floor-is-yours` marks a
-# refusal. The user speaking fires `UserPromptSubmit`. `clear-one-at-a-time.sh` deletes both marks on that event.
+# `.git/one-at-a-time` marks a launch. A launch is a call to `AskUserQuestion`, `Workflow` or `Agent`.
+# `.git/floor-is-yours` marks a refusal. The user speaking fires `UserPromptSubmit`. `clear-one-at-a-time.sh` deletes
+# both marks on that event.
 set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/refusal.sh"
 
@@ -20,12 +24,15 @@ denied="$root/.git/floor-is-yours"
 payload=$(cat)
 event=$(printf '%s' "$payload" | jq -r '.hook_event_name // ""')
 tool=$(printf '%s' "$payload" | jq -r '.tool_name // "a tool call"')
+denied_by=$(printf '%s' "$payload" | jq -r '.denial_source // ""')
 
-# The tools that put something in front of the user and wait. A turn runs a single one of these.
+# A launch tool asks the user a question or starts agents. A turn runs a single one of these.
 _A_LAUNCH='^(AskUserQuestion|Workflow|Agent)$'
 
 if [ "$event" = "PermissionDenied" ]; then
-    printf '%s' "$tool" >"$denied"
+    if [ "$denied_by" = "user" ]; then
+        printf '%s' "$tool" >"$denied"
+    fi
     exit 0
 fi
 

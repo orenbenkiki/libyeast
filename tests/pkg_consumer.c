@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-// Package-consumption smoke test. The Makefile's pkg-test target builds this test against the installed libyeast
-// through pkg-config. The CMake build leaves this test out. Prints the version. The harness checks that the version is
-// non-empty.
+// A smoke test of consuming the installed package. The vet-packaging target of `Makefile` builds this test against the
+// installed libyeast through pkg-config. The build in `CMakeLists.txt` leaves this test out. Prints the version. The
+// harness checks that the version is non-empty.
 #include <stdio.h>
 #include <yeast.h>
 

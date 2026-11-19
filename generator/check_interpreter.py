@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MIT
 """
-Check that the interpreter reproduces the conformance fixtures it covers.
+Check that the interpreter reproduces the conformance fixtures `spec_tests.load` finds.
 
-Take a fixture whose production rests on the nodes the interpreter supports, and run that production. Compare the token
-stream the run emits against the stream the fixture froze. The comparison goes byte by byte.
+Take such a fixture, and run its production. Compare the token stream the run emits against the stream the fixture
+froze. The comparison is exact equality of the serialized text.
 
-This is where libyeast's grammar proves it emits the reference's tokens, a production at a time. The fixtures include
+A pass shows that libyeast's grammar emits the reference's tokens production by production. The fixtures include
 malformed inputs. A failed cut writes an error token and hands the remainder to the unparsed recovery. A fixture can
 hold that stream like any other.
 """
@@ -25,9 +25,8 @@ def reproduced(grammar: dict[str, ir.Prod], fixtures: list[spec_tests.Fixture] |
     The fixtures `grammar` does not reproduce token for token, as error strings. Empty where the grammar reproduces the
     whole set.
 
-    Takes the grammar as an argument the way the interpreter does. A structurally-transformed grammar emits the same
-    token streams as the base grammar. The fixtures are the base's frozen output. A transformed grammar that reproduces
-    the fixtures changed no token.
+    Takes the grammar as an argument the way the interpreter does. `regen_fixture` freezes the fixtures.
+    `check_normalize` holds a transformed grammar to them.
     """
     if fixtures is None:
         fixtures = spec_tests.load()
@@ -37,7 +36,11 @@ def reproduced(grammar: dict[str, ir.Prod], fixtures: list[spec_tests.Fixture] |
 
 
 def _run_one(held: tuple[dict[str, ir.Prod]], fixture: spec_tests.Fixture) -> str | None:
-    """The way `fixture` differs from the stream it froze. `None` comes back where the pair agree."""
+    """
+    A line naming the input file of `fixture`, where the interpreter's stream differs from the stream `fixture` expects.
+    The line holds the crash where the try block raised. The line holds `output differs from the fixture` otherwise.
+    `None` comes back where the pair agree.
+    """
     (grammar,) = held
     try:
         arguments = spec_tests.arguments(fixture, grammar)

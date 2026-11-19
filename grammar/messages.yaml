@@ -1,16 +1,13 @@
 # SPDX-License-Identifier: MIT
-# The error messages libyeast emits, keyed by the code a grammar `(cut)` or `(error)` names. A message says what the
-# parse expected. It says nothing of the bytes the parse found, and the byte that failed comes back as the first
-# unparsed token behind the error. The interpreter reads this file. `check_messages` holds the codes here to the
-# codes the grammar names. The C parser emits no message from this file. `src/messages.c` holds the wire reader's own
-# messages.
+# An entry pairs a message code with an error message. A `(cut)` in the grammar names such a code. So do an `(error)`, a `(max)` and a `(commit)`. A message says what the
+# parse expected. It says nothing of the bytes the parse found. The interpreter reads this file. `check_messages` holds the codes here to the
+# codes the grammar names. The C parser emits no message from this file. `src/messages.c` holds the wire reader's messages. `src/messages.c` holds a "not implemented" message as well.
 #
-# A `(cut)` or an `(error)` in `yeast-spec-1.2.yaml` names a code here. A fixture whose expected output holds the code's message shows that code firing. A commit point nothing reaches is a message nothing has checked.
+# A `(cut)` or an `(error)` in `yeast-spec-1.2.yaml` names a code here.
 #
-# A byte that is no codepoint at all belongs to the decoder below the grammar. A writer will hand-write that byte's message in `src/messages.c` rather than add an entry here. The tree holds no such message. The
-# parser core that would emit it does not exist. `PLAN.md` section 4 says what follows from where that message lives.
+# `ys_next_char` gives the key `YS_LIT_KEY_INVALID` to a byte that is no codepoint. The table holds no message for such a
+# byte.
 
-# A required construct is absent.
 MISSING_VALUE: "A mapping value must follow `:`"
 MISSING_KEY: "A mapping key must follow `?`"
 MISSING_ENTRY: "A sequence entry must follow `-`"
@@ -18,32 +15,25 @@ MISSING_ANCHOR_NAME: "An anchor name must follow `&`"
 MISSING_ALIAS_NAME: "An anchor name must follow `*`"
 MISSING_DIRECTIVE: "A directive name must follow `%`"
 
-# A construct opened and stayed open.
 UNTERMINATED_DOUBLE_QUOTE: "Unterminated double-quoted scalar"
 UNTERMINATED_SINGLE_QUOTE: "Unterminated single-quoted scalar"
 UNTERMINATED_FLOW_SEQ: "Unterminated flow sequence"
 UNTERMINATED_FLOW_MAP: "Unterminated flow mapping"
 
-# An escape or its digits come out malformed.
 ESC_X2: "A '\\x' escape requires two hexadecimal digits"
 ESC_U4: "A '\\u' escape requires four hexadecimal digits"
 ESC_U8: "A '\\U' escape requires eight hexadecimal digits"
 ESC_URI: "A '%' escape in a tag requires two hexadecimal digits"
 INVALID_ESCAPE: "Invalid escape sequence"
 
-# A directive is malformed.
 YAML_DIRECTIVE: "The %YAML directive requires a version such as %YAML 1.2"
 TAG_DIRECTIVE: "The %TAG directive requires a handle and a prefix"
 
-# A marker or a header has trailing junk, where only a comment or the end of the line may follow.
 BLOCK_HEADER: "A block scalar header requires a comment or line break"
 DOCUMENT_END: "A '...' document-end marker requires a comment or line break"
 
-# A block scalar's leading empty lines set a floor its first content line may not fall below.
 BLOCK_SCALAR_UNDER_INDENT: "A block scalar's content must reach at least as far in as its leading empty lines"
 
-# An implicit mapping key ran past the bounded lookahead a parser resolves it within.
 IMPLICIT_KEY_TOO_LONG: "An implicit mapping key must be at most 1024 characters"
 
-# The input holds something a stream cannot.
 TRAILING_CONTENT: "A stream holds documents, directives and comments and nothing besides"

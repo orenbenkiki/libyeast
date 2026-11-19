@@ -10,7 +10,7 @@
 #include <string.h>
 
 // Give `bytes` back to the cap. The release runs after the allocator refuses a growth. The bytes of that growth come
-// off the cap again. Deleting the `ys_memory` frees what the cap still holds.
+// off the cap again. The release frees nothing, and `ys_deallocate` frees a buffer through the allocator.
 static void ys_memory_release(ys_memory *memory, size_t bytes) {
     memory->allocated_bytes -= bytes;
 }

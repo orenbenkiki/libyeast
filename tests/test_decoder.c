@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
-// The decoder's tests, over what a character classifies as and what a consume takes. These reach the private header
-// that the library's public tests cannot.
+// The decoder's tests cover what a character classifies as and what a consume takes.
 
 #include "acutest.h"
 #include "decoder.h"
+#include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 // An empty window is the end of the input. The key has no set bits, and a membership test fails there.
-// A test site in the parser needs no end-of-input case of its own.
 static void test_end_of_input(void) {
     ys_char character = ys_next_char((const uint8_t *)"", 0);
     TEST_CHECK(character == YS_LIT_KEY_EOF);
@@ -17,7 +18,8 @@ static void test_end_of_input(void) {
     TEST_CHECK((character & YS_SET_BIT_C_PRINTABLE) == 0);
 }
 
-// An ASCII character is a single table lookup. The character the grammar names, the sets it is in, and a length of `1`.
+// The decoder reads an ASCII character with a single table lookup. The lookup yields a key, the sets of the character,
+// and a length of `1`. The digit `7` yields `YS_KEY_DIGIT`.
 static void test_ascii_character(void) {
     ys_char dash = ys_next_char((const uint8_t *)"-x", 2);
     TEST_CHECK(dash == YS_LIT_KEY_HYPHEN_MINUS);
@@ -73,8 +75,7 @@ static void test_content_non_ascii(void) {
     }
 }
 
-// A C1 control is JSON-compatible. A C1 control is neither printable nor content. This test checks a pair of
-// noncharacters as well.
+// A C1 control is JSON-compatible. A C1 control is not printable. This test checks a noncharacter as well.
 static void test_not_printable_non_ascii(void) {
     ys_char control = ys_next_char((const uint8_t *)"\xC2\x80", 2);          // U+0080
     ys_char noncharacter = ys_next_char((const uint8_t *)"\xEF\xBF\xBE", 3); // U+FFFE
@@ -87,30 +88,15 @@ static void test_not_printable_non_ascii(void) {
     TEST_CHECK((noncharacter & YS_SET_BIT_C_PRINTABLE) == 0);
 }
 
-// Malformed UTF-8. The cases come from Markus Kuhn's decoder stress test. The decoder rejects a case, and consumes a
-// single byte. A caller can then step over it and continue reporting rather than stopping at the first bad byte.
+// The decoder rejects a truncated four-byte sequence and a bad second or third continuation byte, and
+// consumes a single byte.
 static void test_malformed_utf8(void) {
     static const struct {
         const char *name;
         const char *bytes;
         size_t size;
     } cases[] = {
-        {"a lone continuation byte", "\x80", 1},
-        {"a lone continuation byte, high", "\xBF", 1},
-        {"an overlong two-byte solidus", "\xC0\xAF", 2},
-        {"an overlong two-byte nul", "\xC1\x80", 2},
-        {"an overlong three-byte sequence", "\xE0\x80\xAF", 3},
-        {"an overlong four-byte sequence", "\xF0\x80\x80\xAF", 4},
-        {"the surrogate U+D800", "\xED\xA0\x80", 3},
-        {"the surrogate U+DFFF", "\xED\xBF\xBF", 3},
-        {"a codepoint beyond U+10FFFF", "\xF4\x90\x80\x80", 4},
-        {"the lead byte 0xF5", "\xF5\x80\x80\x80", 4},
-        {"the lead byte 0xFE", "\xFE", 1},
-        {"the lead byte 0xFF", "\xFF", 1},
-        {"a truncated two-byte sequence", "\xC3", 1},
-        {"a truncated three-byte sequence", "\xE4\xB8", 2},
         {"a truncated four-byte sequence", "\xF0\x9F\x98", 3},
-        {"a bad first continuation byte", "\xE4\x20\x80", 3},
         {"a bad second continuation byte", "\xE4\xB8\x20", 3},
         {"a bad third continuation byte", "\xF0\x9F\x98\x20", 4},
     };
@@ -128,9 +114,95 @@ static void test_malformed_utf8(void) {
     }
 }
 
-// `ys_utf8_length` measures the bytes the wire format takes in. Those bytes reach it unclassified. `ys_utf8_length`
-// agrees with `ys_next_char` on the ill-formed shapes above. This test runs the call on a well-formed shape, and on the
-// empty window that `ys_next_char` rejects. `ys_next_char` reads the end of the input as a character. A length of no
+// Whether the decoder refuses the case `name` of `third_party/utf8-stress-test/UTF-8-test.txt`. The file titles its
+// sections. The decoder refuses the malformed sequences and the
+// overlong sequences. It refuses the UTF-16 surrogates, lone and paired. Among the boundary cases, the decoder refuses
+// a form longer than UTF-8 allows. It refuses a code point past U+10FFFF.
+static bool is_refused(const char *name) {
+    static const char *const refused_in_section_2[] = {"2.1.5", "2.1.6", "2.2.4", "2.2.5", "2.2.6", "2.3.5"};
+    if (name[0] == '3' || name[0] == '4' || strncmp(name, "5.1.", 4) == 0 || strncmp(name, "5.2.", 4) == 0) {
+        return true;
+    }
+    for (size_t index = 0; index < sizeof(refused_in_section_2) / sizeof(refused_in_section_2[0]); index++) {
+        if (strcmp(name, refused_in_section_2[index]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The test reads the cases of Markus Kuhn's UTF-8 decoder stress test from
+// `third_party/utf8-stress-test/UTF-8-test.txt`. `CMakeLists.txt` names that file in `YS_UTF8_STRESS_TEST`. The file
+// comes from https://www.cl.cam.ac.uk/~mgk25/ucs/examples/UTF-8-test.txt. The number of a case opens a
+// line. The bytes of the case sit between the next pair of quotes. The test walks a case with `ys_utf8_length`. At a
+// position `ys_utf8_length` refuses, `ys_next_char` gives a one-byte `YS_LIT_KEY_INVALID`. At any other position,
+// `ys_next_char` gives a character of the length `ys_utf8_length` gives. A refused case holds a position both refuse,
+// and `is_refused` names such a case. The count of cases guards the parse.
+static void test_stress_test(void) {
+    static uint8_t text[32768];
+    FILE *file = fopen(YS_UTF8_STRESS_TEST, "rb");
+    TEST_ASSERT_(file != NULL, "cannot open %s", YS_UTF8_STRESS_TEST);
+    // A static analyzer reads no abort in the assert above.
+    if (file == NULL) {
+        return; // UNTESTED
+    }
+    size_t size = fread(text, 1, sizeof(text), file);
+    TEST_CHECK(fclose(file) == 0);
+    TEST_ASSERT(size > 0 && size < sizeof(text));
+
+    const uint8_t *end = text + size;
+    size_t cases = 0;
+    for (const uint8_t *line = text; line < end;) {
+        char name[16];
+        size_t named = 0;
+        int dots = 0;
+        while (line + named < end && named + 1 < sizeof(name) && (isdigit(line[named]) || line[named] == '.')) {
+            dots += line[named] == '.';
+            name[named] = (char)line[named];
+            named++;
+        }
+        name[named] = '\0';
+        const uint8_t *next = memchr(line, '\n', (size_t)(end - line));
+        if (dots != 2) {
+            line = next != NULL ? next + 1 : end;
+            continue;
+        }
+        const uint8_t *open = memchr(line, '"', (size_t)(end - line));
+        TEST_ASSERT_(open != NULL, "case %s opens no quote", name);
+        const uint8_t *close = memchr(open + 1, '"', (size_t)(end - open - 1));
+        TEST_ASSERT_(close != NULL, "case %s closes no quote", name);
+
+        bool is_refused_here = false;
+        const uint8_t *bytes = open + 1;
+        size_t length = (size_t)(close - bytes);
+        for (size_t at = 0; at < length;) {
+            size_t measured = ys_utf8_length(bytes + at, length - at);
+            ys_char character = ys_next_char(bytes + at, length - at);
+            if (measured == 0) {
+                TEST_CHECK(character == YS_LIT_KEY_INVALID && YS_LEN(character) == 1);
+                TEST_MSG("case %s at byte %zu: key 0x%08X", name, at, (unsigned)character);
+                is_refused_here = true;
+                at += 1;
+            } else {
+                TEST_CHECK(character != YS_LIT_KEY_INVALID && YS_LEN(character) == measured);
+                TEST_MSG("case %s at byte %zu: key 0x%08X, length %zu", name, at, (unsigned)character, measured);
+                at += measured;
+            }
+        }
+        TEST_CHECK(is_refused_here == is_refused(name));
+        TEST_MSG("case %s: the decoder %s it", name, is_refused_here ? "refused" : "accepted");
+        cases++;
+
+        const uint8_t *after = memchr(close, '\n', (size_t)(end - close));
+        line = after != NULL ? after + 1 : end;
+    }
+    TEST_CHECK(cases == 78);
+    TEST_MSG("the stress test held %zu case(s)", cases);
+}
+
+// `ys_codepoint` hands `ys_utf8_length` the bytes the wire format takes in. Those bytes reach `ys_utf8_length`
+// unclassified. `ys_utf8_length` agrees with `ys_next_char` on the ill-formed shapes above. This test measures
+// well-formed sequences and an empty window. `ys_next_char` reads the end of the input as a character. A length of no
 // bytes is no sequence.
 static void test_utf8_length(void) {
     static const struct {
@@ -195,7 +267,7 @@ static void test_every_codepoint(void) {
     TEST_MSG("U+%04X: key 0x%08X, length %u", first_wrong, (unsigned)wrong_key, (unsigned)YS_LEN(wrong_key));
 }
 
-// Consume a set for a (***) or a (+++) over a character set.
+// Consume a run of characters in a character set.
 static void test_consume_set(void) {
     ys_consumed spaces = ys_consume_set((const uint8_t *)"    x", 5, YS_SET_ID_S_WHITE);
     TEST_CHECK(spaces.bytes == 4 && spaces.characters == 4);
@@ -224,7 +296,7 @@ static void test_consume_set(void) {
     TEST_CHECK(taken.bytes == 2 && taken.characters == 2);
 }
 
-// A trimmed consume splits the take in half. The span it keeps comes first. The trailing run given back comes after.
+// A trimmed consume splits the take in two. The span it keeps comes first. The trailing run given back comes after.
 static void test_consume_trim_sets(void) {
     // A consume keeps its inner spaces and gives back the trailing ones. The span is "a b", the trim the two spaces
     // after.
@@ -260,6 +332,7 @@ TEST_LIST = {
     {"content_non_ascii", test_content_non_ascii},
     {"not_printable_non_ascii", test_not_printable_non_ascii},
     {"malformed_utf8", test_malformed_utf8},
+    {"stress_test", test_stress_test},
     {"utf8_length", test_utf8_length},
     {"every_codepoint", test_every_codepoint},
     {"consume_set", test_consume_set},

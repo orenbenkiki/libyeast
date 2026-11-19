@@ -1,5 +1,4 @@
-# The "test" sub-gate. The C parser tests pass across compilers and OSes. Pure C. The coverage gate rides with
-# gh-pages.
+# The "test" sub-gate runs the C parser tests across compilers and OSes. The tests are pure C. `CMakeLists.txt` builds the tests from `tests/test_*.c`. `.github/workflows/gh-pages.yml` runs the coverage gate `gh-pages-coverage` through the `gh-pages` target of `Makefile`.
 
 name: test
 
@@ -29,16 +28,16 @@ jobs:
       - name: C tests
         run: make test CC=${{ matrix.cc }}
 
-  # Windows and MSVC. The Makefile needs a Unix shell. The workflow drives CMake directly to run the tests.
+  # A Windows job runs the tests under MSVC. The `Makefile` needs a Unix shell. The Windows job drives CMake directly.
   windows:
     name: windows-latest / msvc
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      # Set up the MSVC toolchain. The AddressSanitizer runtime DLL is then on PATH for the Debug tests.
+      # Set up the MSVC toolchain, as https://github.com/ilammy/msvc-dev-cmd describes.
       - uses: ilammy/msvc-dev-cmd@v1
       - run: cmake -S . -B build
-      # The Debug build runs under AddressSanitizer. AddressSanitizer catches a heap overflow, a stack overflow and a use-after-free. The Release build is a plain smoke build.
+      # `CMakeLists.txt` builds the MSVC Debug config under AddressSanitizer. The Release build is a plain smoke build.
       - run: cmake --build build --config Debug
       - run: ctest --test-dir build -C Debug --output-on-failure
       - run: cmake --build build --config Release

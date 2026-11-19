@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
-// The operations over a `ys_parser`'s state. Advancing the window. Filling and draining the token queue. Popping the
-// production stack. Building a token from a pending token. Planting an error token where the parser has reached.
+// Operate over a `ys_parser`'s state. Advance the window, fill and drain the token queue, and push and pop the
+// production stack. Build a token from a pending token, and plant an error token where the parser has reached.
 
 #include "parser.h"
 #include "memory.h"
@@ -10,8 +10,7 @@
 #include <string.h>
 
 // A window with no buffer of its own still points at readable bytes. The count of those bytes comes to `0`. Such a
-// window still holds an address. NULL holds no address. The C standard leaves NULL plus `0` undefined, and a sanitizer
-// flags it.
+// window still holds an address.
 static const uint8_t YS_NO_BYTES[1] = {0};
 
 // --- Moving the window.
@@ -67,7 +66,7 @@ int ys_parser_fill(ys_parser *parser, size_t wanted) {
 
 // --- Filling and draining the queue.
 
-// Make room for a further token. Drop the space the queue's handed-back tokens left behind. Grow the queue where
+// Make room for a further token. A full tail drops the slots of handed-back tokens. Grow the queue where
 // that leaves no room.
 static int ys_queue_make_room(ys_memory *memory, ys_queue *queue) {
     if (queue->head + queue->count < queue->capacity) {

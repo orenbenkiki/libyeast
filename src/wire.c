@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // The yeast wire format. A token is a pair of lines. The first line is the position. The second is the code character
-// followed by the escaped text. The wire lets a tool pipe a token stream onward or store it. A caller can also
-// compare a stream against the tokens another parser produced. The comparison goes byte by byte.
+// followed by the escaped text. The wire lets a tool pipe a token stream onward or store it. `check_interpreter`
+// serializes the interpreter's tokens with `wire.serialize` and compares the result against the `.output` file that
+// `spec_tests.load` pairs with a `Fixture`. The comparison goes byte by byte.
 
 #include "wire.h"
 #include "decoder.h"
@@ -20,8 +21,8 @@
 // no token, and no wire character writes a host failure.
 //
 // A character in the table is printable. '\0' means "the wire writes nothing for this", and no printable code takes
-// that value. A line is NUL-terminated, and a code written as `\0` would read back as an empty line rather than as that
-// code. `check_wire.py` holds the table to that rule.
+// that value. `ys_code_of_char` refuses `'\0'`. A reader handed a code written as `\0` reports a malformed wire.
+// `check_wire.py` holds the table to that rule.
 static const char YS_WIRE[] = {
     [YS_CODE_BOM] = 'U',
     [YS_CODE_TEXT] = 'T',
@@ -91,7 +92,7 @@ int ys_code_of_char(char character, ys_code *code) {
 
 // --- Writing a token.
 
-// `wire.h` documents this function.
+// `wire.h` declares this function.
 int ys_put(ys_bytes_writer *writer, const char *bytes, size_t size) {
     while (size > 0) {
         ptrdiff_t written = writer->write(writer->context, bytes, size);
@@ -104,11 +105,10 @@ int ys_put(ys_bytes_writer *writer, const char *bytes, size_t size) {
     return YS_OK;
 }
 
-// The codepoint the UTF-8 sequence at `bytes` encodes, and how many bytes it took. A length of `0` where the text is
-// not UTF-8 there.
+// `ys_codepoint` decodes a codepoint from the UTF-8 sequence at `bytes`. It also answers the length of that sequence in
+// bytes. A length of `0` says the text at `bytes` is not UTF-8.
 //
-// Writing is where libyeast needs a codepoint at all. The wire escapes by codepoint rather than by byte, and this is
-// also where the incoming bytes have to encode a codepoint.
+// `ys_wire_write` calls `ys_codepoint` to escape a token's text by codepoint rather than by byte.
 static unsigned long ys_codepoint(const unsigned char *bytes, size_t size, size_t *length) {
     static const unsigned char YS_LEAD_MASK[5] = {0, 0x7Fu, 0x1Fu, 0x0Fu, 0x07u}; // the lead byte's payload bits
     *length = ys_utf8_length(bytes, size);
@@ -202,25 +202,28 @@ int ys_wire_write(ys_bytes_writer *writer, ys_token token) {
 
 // --- Reading a token back.
 
-// The wire arm accumulates whole lines and unescapes a token's text into storage of its own. Replaying a wire holds
-// state. Parsing YAML into the same tokens holds no further state. Both buffers grow through the arm's `ys_memory`
-// handle. `ys_options::max_bytes` bounds them as that option bounds the parser. `wire.h` declares the struct.
+// The wire arm accumulates whole lines and unescapes a token's text into storage of its own. The wire arm holds its
+// replay state in `ys_wire`. The parser arm `ys_parser` holds no text buffer. Its `ys_window` holds a `ys_source`, the
+// same kind of byte buffer the wire reads lines into. The union in `ys_token_source` holds both arms. Both buffers grow
+// through the arm's `ys_memory` handle. `ys_new_source` fills a `ys_memory` from the options, and
+// `ys_new_yeast_stream_reader` hands it to the arm. `ys_options::max_bytes` bounds both buffers the way it bounds the
+// parser. `wire.h` declares the struct.
 
 void ys_wire_init(ys_wire *wire, ys_memory memory) {
     // The rest is the zeroed state ys_memory_new left. The caller sets the reader of `ys_wire::source`.
     wire->memory = memory;
 }
 
-// The next line of the wire. The newline drops off. NULL at the end of the stream. NULL too where the source failed
-// to read, and that sets `ys_wire::fault`.
+// The next line of the wire. The newline drops off. NULL at the end of the stream. NULL too where the reader or the
+// allocator fails, and that sets `ys_wire::fault`.
 //
 // The line stays valid until the next call. A NUL takes the newline's place. A
 // last line without a newline gets a NUL past its end. The wire writes that NUL into the byte the source keeps spare.
-// Callers scan the line with the string functions, and those read until a NUL rather than until a length.
+// `ys_wire_read` scans the position line with `strncmp` and `strtoul`, and those read until a NUL rather than until a
+// length.
 //
-// The search resumes where the last search gave up rather than starting over. A line arriving in pieces gets a fill
-// per piece. Rescanning those pieces would cost a long line its length squared. A wire read from
-// a pipe consists of such pieces, and the format is for such a wire.
+// The search for the newline resumes where the last search gave up rather than starting over. A line arriving in pieces
+// gets a fill per piece. Rescanning those pieces would cost a long line its length squared.
 static char *ys_next_line(ys_wire *reader, size_t *size) {
     for (;;) {
         char *bytes = (char *)reader->source.bytes;
@@ -267,10 +270,11 @@ static char *ys_next_line(ys_wire *reader, size_t *size) {
 
 // Read `count` hexadecimal digits into `value`, and hand back the byte past the last of them. NULL where a character
 // there falls outside the hexadecimal digits, and `value` stays unchanged. A parse of the wire says where it
-// reached, the way `ys_next_line` does.
+// reached.
 //
-// The value is unsigned. `8` digits reach 0xFFFFFFFF. That overflows a signed long wherever a long is 32 bits, and
-// MSVC is such a place.
+// The value is unsigned. `8` digits reach 0xFFFFFFFF. That overflows a signed long wherever a long is 32 bits. MSVC's
+// `long` is 32 bits. [Data Type Ranges](https://learn.microsoft.com/en-us/cpp/cpp/data-type-ranges?view=msvc-170)
+// lists the sizes MSVC uses.
 static const char *ys_hex(const char *digits, size_t count, unsigned long *value) {
     unsigned long read = 0;
     for (size_t index = 0; index < count; index++) {
@@ -344,8 +348,8 @@ static int ys_append_byte(ys_wire *reader, unsigned char byte) {
 // from its
 // \xXX escape. That byte must begin no character, and the writer follows the same rule.
 //
-// Hands back the byte past the text it read, as `ys_next_line` does. NULL on a fault. The `fault_at` field gives the
-// fault's offset in the `escaped` text. The `why` field names the fault. A host failure sets the `ys_wire::fault`
+// Hands back the byte past the text it read. NULL on a fault. The `fault_at` parameter gives the
+// fault's offset in the `escaped` text. The `why` parameter names the fault. A host failure sets the `ys_wire::fault`
 // field instead. The caller tells the faults apart by `ys_wire::fault`.
 static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size, bool wants_characters, ys_mark *end,
                                size_t *fault_at, ys_message_id *why) {
@@ -432,8 +436,9 @@ static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size
     return escaped + size;
 }
 
-// A labelled number, as the wire writes it. The label, then the digits. Hands back the byte past both, and NULL where
-// the wire says something else there. A parse of the wire says where it reached, the way `ys_next_line` does.
+// The wire writes a labelled number as a label followed by decimal digits. `ys_scan` returns the byte past the digits.
+// `ys_scan` returns NULL where the label is missing, where no digit follows, or where the number overflows.
+// `ys_next_line` also signals failure with NULL.
 static const char *ys_scan(const char *at, const char *label, size_t *value) {
     size_t size = strlen(label);
     if (strncmp(at, label, size) != 0) {
@@ -475,9 +480,9 @@ static int ys_wire_error(ys_wire *reader, ys_token *token, size_t line, size_t c
     return YS_OK; // a malformed wire is a token like any other. Reading it succeeded
 }
 
-// A resource failure that `ys_next_line` or `ys_append` hit. The value is a `ys_read_token` return value rather than a
-// token. The allocator's failure is ENOMEM. The reader's failure is the value the reader left, and that value passes
-// through.
+// `ys_wire_read` calls this on a resource failure. The value is a `ys_read_token` return value rather than a
+// token. The allocator's failure sets `errno` to ENOMEM. The reader's failure is the value the reader left, and that
+// value passes through.
 static int ys_wire_resource(ys_wire *reader) {
     reader->is_done = true;
     if (reader->fault == YS_FAILED_MEMORY) {

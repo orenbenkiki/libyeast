@@ -3,6 +3,10 @@
     "inert": {
       "command": "python3",
       "args": [".claude/mcp/inert.py"]
+    },
+    "fetch_fragments": {
+      "command": "python3",
+      "args": [".claude/mcp/fetch_fragments.py"]
     }
   }
 }

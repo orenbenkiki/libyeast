@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
-// A wrapper around `malloc` and `free` that counts the allocations still live. A test or a consumer can confirm that
-// the code freed what it allocated. The wrapper adds a single counter to the cost of plain `malloc` and `free`.
+// The counting allocator wraps `malloc`, `realloc` and `free`. It counts the allocations still live. A test or a
+// consumer reads that count to confirm the code freed what it allocated. The wrapper adds a single counter to the cost
+// of `malloc` and `free`.
 
 #include <errno.h>
 #include <stdlib.h>
@@ -10,7 +11,7 @@ struct ys_counting_allocator {
     size_t live_buffers;
 };
 
-// Allocate `size` bytes and count the buffer as live. NULL where malloc refused. The count does not move.
+// Allocate `size` bytes and count the buffer as live. NULL where malloc refused. The count then does not move.
 static void *ys_counting_allocate(void *context, size_t size) {
     void *pointer = malloc(size);
     if (pointer != NULL) {

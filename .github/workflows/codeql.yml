@@ -1,5 +1,4 @@
-# CodeQL analyzes the C code for security faults. Clang-tidy and cppcheck analyze the same code. Results appear
-# under the repository's Security tab.
+# CodeQL analyzes the C code of the library for security faults. The `vet-lint` target of the `Makefile` runs clang-tidy and cppcheck over the library and the tests.
 
 name: codeql
 

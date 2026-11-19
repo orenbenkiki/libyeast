@@ -15,8 +15,9 @@ typedef enum ys_source_kind {
 } ys_source_kind;
 
 // A `ys_token_source` hands out yeast tokens from a producer of either kind. The source holds an arm per kind. The
-// parser holds a window and a queue. The parser also holds a stack and an automaton. The wire holds a line buffer. The
-// arms are a union. The kind sits above that union. An arm keeps a `ys_memory` of its own. Teardown reads the live arm.
+// parser holds a window and a queue. The parser also holds a stack and the state of its automaton. The wire holds a
+// line buffer. The arms are a union. The kind sits above that union. An arm keeps a `ys_memory` of its own. Teardown
+// reads the live arm.
 struct ys_token_source {
     ys_source_kind kind;
     union {

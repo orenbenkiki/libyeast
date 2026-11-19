@@ -6,11 +6,11 @@ Erases libyeast's token annotations from `grammar/yeast-spec-1.2.yaml`. Writes a
 back as the character it names. Leaves out the rules libyeast adds of its own. Compares what remains against the
 vendored `yaml-spec-1.2.yaml`, a production at a time.
 
-A production that differs is either a mistake or a departure we chose. A departure we chose goes into DEVIATIONS with
-its reason, and the check fails on a differing production DEVIATIONS leaves out. An edit meant to add a rule therefore
-cannot quietly change an official production.
+A production that differs is either a mistake or a departure we chose. A departure we chose goes into `_DEVIATIONS` with
+its reason, and the check fails on a differing production `_DEVIATIONS` leaves out. An edit meant to add a rule
+therefore cannot quietly change an official production.
 
-The check holds DEVIATIONS to `a-declared-exception-carries-its-reason` in both directions. The check also reports a
+The check holds `_DEVIATIONS` to `a-declared-exception-carries-its-reason` in both directions. The check also reports a
 production that has stopped differing. A stale declaration would otherwise hide the next drift in that production.
 """
 
@@ -25,10 +25,9 @@ import validate_grammar
 
 _VENDORED = os.path.join(gate.TREE, "third_party", "yaml-grammar", "yaml-spec-1.2.yaml")  # the official grammar.
 
-# A deviation names a place libyeast departs from the official grammar, and says why. A deviation is a decision rather
-# than an escape. A departure that correcting the grammar would fix belongs elsewhere. The cases libyeast completes
-# share a reason. The official grammar leaves a context out and libyeast writes the decline. This binding writes that
-# reason once. The cases read as the same departure made again.
+# A deviation names a place libyeast departs from the official grammar, and says why. The cases libyeast completes share
+# a reason. The official grammar leaves a context out and libyeast writes the decline. This binding writes that reason
+# once. The cases read as the same departure made again.
 _TOTAL_CASE = (
     "the official grammar's case names values of its parameter and stays silent about any other value. the official "
     "spec reads that silence as declining those values. libyeast names the values and writes the decline as <fail>. a "
@@ -145,15 +144,16 @@ _DEVIATIONS = {
 
 def _match_drift(vendored: dict[str, ir.Prod], ours: dict[str, ir.Prod]) -> list[str]:
     """
-    The productions whose `(match)` the grammars disagree about.
+    The productions where the official grammar holds a `(match)` and libyeast holds none.
 
-    libyeast reads a `(match)` as the open run, the token a rule is building. The official grammar means the text a rule
-    matched. The meanings coincide where both grammars give a production a `(match)`. This function reports a production
-    holding a `(match)` in a single grammar. This module records no deviation for a `(match)` that libyeast drops.
+    libyeast reads a `(match)` as the open run, the token a rule is building. `interpreter._evaluated_match` reads it
+    that way. The official grammar means the last rule match, as
+    https://github.com/yaml/yaml-grammar/blob/master/yaml-spec-1.2.yaml says. This function reports a production where
+    only the official grammar holds a `(match)`. This module records no deviation for a `(match)` that libyeast drops.
     """
     holders = {
         label: {
-            name for name, production in grammar.items() if any(isinstance(n, ir.MatchValue) for n in _walk(production))
+            name for name, production in grammar.items() if any(ir.AS_A_MATCH(n) is not None for n in _walk(production))
         }
         for label, grammar in (("official", vendored), ("libyeast", ours))
     }

@@ -15,24 +15,27 @@ This gate holds `a-boolean-name-is-a-question` as well. It reads the answer off 
 
 `a-name-uses-the-words-this-project-uses` holds a bound name to the word list the prose obeys.
 
-`a-comment-inside-a-body-is-a-note` and `a-nested-docstring-is-a-note` come off the syntax tree. The `short_comments`
-hook refuses the shape as the writer writes it, and this gate holds the tree.
+`a-comment-inside-a-body-is-a-note` and `a-nested-docstring-is-a-note` come off the syntax tree. `long_comment_runs` and
+`long_nested_docstrings` read it, and the `short_comments` and `nested_docstrings` checkers refuse the shape.
 
-`a-make-assignment-carries-no-trailing-comment`. `make` keeps the whitespace before a `#` inside the value. The comment
-then lands in the path.
+`a-make-assignment-carries-no-trailing-comment`. `make` keeps the whitespace before a `#` inside the value, as
+https://www.gnu.org/software/make/manual/html_node/Simple-Assignment.html says. The comment then lands in the path.
 
 `a-mechanised-rule-names-its-convention`. A convention `.claude/conventions.md` marks mechanised names the module that
-decides it, and that module's docstring names the convention back. A hook refusal ends on the rule it enforces, and this
-gate reads that name back the other way. The rule's note then credits the hook.
+decides it, and that module's docstring names the convention back. `convention_note_faults` reads the notes, and the
+`document_rules` checker refuses a broken note. A hook refusal ends on the rule it enforces, and this gate reads that
+name back the other way. The rule's note then credits the hook.
 
 `a-hook-refuses-through-one-helper`. A hook answers the tool through `refusal.py` or through `.claude/hooks/refusal.sh`.
-This gate reads the payload keys off a hook. A helper names those keys by design and falls outside.
+This gate reads the payload keys off a hook. This gate passes `refusal.py` and `.claude/hooks/refusal.sh`.
 
 `a-gate-walks-the-hooks-or-says-why-not`. This gate reads the calls a module makes on `gate`. A gate may skip the hooks.
 Its docstring then names them.
 
 `a-matched-name-is-spelled-somewhere-else`. This gate reads a module-level list of identifier names and looks for the
-names across the tree. A single-letter name is a grammar parameter and falls outside.
+names across the tree. This gate skips a list holding a name too short for `_A_MATCHED_NAME`.
+
+`a-fragment-is-found-by-its-key`. This gate refuses a read of `starts` or `start_line` outside `collect_fragments`.
 
 **Usage:** `python3 generator/check_conventions.py`.
 """
@@ -40,6 +43,7 @@ names across the tree. A single-letter name is a grammar parameter and falls out
 import ast
 import io
 import re
+import textwrap
 import tokenize
 
 from collections.abc import Iterable
@@ -50,7 +54,8 @@ import prose_rules
 # The containers a module-level cache opens as.
 _A_CACHE = (ast.Dict, ast.Set, ast.List)
 
-# The keys the tool reads a hook's answer under. A hook writing one of these builds the payload itself.
+# The keys the tool reads a hook's answer under, as https://code.claude.com/docs/en/hooks says. A hook writing one of
+# these builds the payload itself.
 _A_PAYLOAD_KEY = ('"decision"', "decision:", "permissionDecision", "hookSpecificOutput")
 
 # The files here hold the payload for the hooks beside them. A helper writes the keys `_A_PAYLOAD_KEY` holds.
@@ -59,18 +64,19 @@ _THE_REFUSAL_HELPERS = ("refusal",)
 # The word a gate's docstring writes where that gate walks a roster without the hooks.
 _A_HOOK = re.compile(r"\bhooks?\b", re.IGNORECASE)
 
-# The text of the files the project writes prose in. `_tree_text` fills this once.
+# The text of the files that hold the project's prose. `_tree_text` fills this once.
 _TREE_TEXT: dict[str, str] = {}
 
-# A name long enough to look for across the tree. A grammar parameter is a single letter. Looking for such a letter
-# finds any word holding it.
+# A name long enough to look for across the tree. A grammar parameter is a single letter, as `annotated2ir.PARAMS`
+# shows. The search matches a name as a whole word. A single letter occurs as a whole word in text unrelated to the
+# parameter.
 _A_MATCHED_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{2,}$")
 
 # The fewest names a literal list holds before a check matches source against that list.
 _FEWEST_LISTED = 2
 
-# The rule a hook refusal ends on. A hook names the convention it enforces there, and `check_conventions` reads the name
-# back.
+# The line a hook refusal names its rule on. A hook names the convention it enforces there, and `check_conventions`
+# reads the name back.
 _A_SIGNED_RULE = re.compile(r"Rule: ([a-z][a-z0-9-]*)")
 
 
@@ -103,13 +109,16 @@ def _cached_names(tree: ast.Module) -> set[str]:
 
 
 def _does_take_nothing(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Whether `node` is a function called with no argument at all."""
+    """Whether the function `node` defines declares no parameter at all."""
     held = node.args
     return not (held.args or held.posonlyargs or held.kwonlyargs or held.vararg or held.kwarg)
 
 
 def _questions(tree: ast.Module) -> set[str]:
-    """The names of the module-level functions that reach a subprocess, directly or through a function that does."""
+    """
+    The names of the module-level functions whose code mentions `subprocess`, and of the module-level functions that
+    name one of those.
+    """
     direct = {node.name for node in tree.body if isinstance(node, ast.FunctionDef) and "subprocess" in ast.dump(node)}
     held = set(direct)
     for node in tree.body:
@@ -121,8 +130,8 @@ def _questions(tree: ast.Module) -> set[str]:
     return held
 
 
-# The decorator that keeps a function's answer. A function wearing it reads the repository once. The callers behind the
-# first read what the decorator kept.
+# The decorator keeps a function's answer, as https://docs.python.org/3/library/functools.html#functools.cache says. A
+# function wearing it reads the repository once. A later caller reads what the decorator kept.
 _A_CACHING_DECORATOR = "cache"
 
 
@@ -137,7 +146,7 @@ def _is_memoized(node: ast.FunctionDef) -> bool:
 
 
 def _uncached_question_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` for a repository question that a pair of callers run afresh."""
+    """`(site, what is wrong)` for a repository question that two or more call sites run afresh."""
     held = []
     for path in gate.modules() + gate.hook_modules():
         name = str(path.relative_to(gate.TREE))
@@ -182,9 +191,15 @@ def _repeated_word_faults() -> list[tuple[str, str]]:
 
 
 def _bare_private_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` for a module-level name that has no underscore and that only its own module reads."""
+    """
+    `(site, what is wrong)` for a bare module-level name with no reader outside its own module. A bare name lacks a
+    leading underscore and is not `main`. A module, hook or MCP server reads a name as `module.name`. A shell script
+    that writes `module.name` also reads it.
+    """
     # A hook holds module-level names of its own, and a name only its own hook reads is as private as one in a module.
-    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in gate.modules() + gate.hook_modules()}
+    # An MCP server holds them the same way, and reads the names of the modules the same way.
+    outside = gate.hook_modules() + gate.mcp_modules()
+    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in gate.modules() + outside}
     # `(the module that reads, the module read, the name read)`, from each `module.name` in the tree.
     read = {
         (path.stem, node.value.id, node.attr)
@@ -266,16 +281,43 @@ def _enumeration_faults() -> list[tuple[str, str]]:
     return held
 
 
-# A `Makefile` assignment with a comment on a line of its own. The text before the hash goes into the value.
+# The names a fragment keeps its stored lines under.
+_STORED_LINES = frozenset({"starts", "start_line"})
+
+
+def _stored_line_faults() -> list[tuple[str, str]]:
+    """`(site, what is wrong)` for a read of a fragment's stored line outside `collect_fragments`."""
+    held = []
+    for path in gate.modules() + gate.hook_modules():
+        if path.stem == "collect_fragments":
+            continue
+        name = str(path.relative_to(gate.TREE))
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            read: object
+            if isinstance(node, ast.Attribute):
+                read = node.attr
+            elif isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant):
+                read = node.slice.value
+            else:
+                continue
+            if read in _STORED_LINES:
+                at = f"{name}:{node.lineno}"
+                held.append((at, f"{at} reads a stored line. `collect_fragments.site_lines` finds it by key."))
+    return held
+
+
+# A `Makefile` assignment with a value and then a comment on the same line.
 _AN_ASSIGNMENT_AND_A_COMMENT = re.compile(r"^([A-Za-z0-9_]+)\s*[:?+]?=.*?\S\s+#")
 
 
 def _make_trailing_faults() -> list[tuple[str, str]]:
     """
-    `(site, what is wrong)` for a `Makefile` assignment that has a comment sharing its line.
+    `(site, what is wrong)` for a `Makefile` assignment whose value runs into whitespace and then a comment on the same
+    line.
 
-    `make` keeps the whitespace before the hash inside the value. A value spent as a command word survives that. A value
-    concatenated into a path breaks.
+    `make` keeps the whitespace before the hash inside the value, as
+    https://www.gnu.org/software/make/manual/html_node/Simple-Assignment.html says. A value spent as a command word
+    survives that. A value concatenated into a path breaks. The example on that page builds such a path.
     """
     held = []
     for path in gate.build_files():
@@ -299,7 +341,8 @@ def _make_trailing_faults() -> list[tuple[str, str]]:
 # reads this same length.
 MOST_COMMENT_LINES = 2
 
-# A field with a trailing comment. A run of comment lines below the field continues that comment.
+# A line that opens on a field of `self`. A run of comment lines right below a field's trailing comment continues that
+# comment.
 _A_FIELD = re.compile(r"\s*self\.\w+")
 
 
@@ -325,13 +368,12 @@ def _comment_runs(source: str) -> list[tuple[int, int]]:
 
 def long_comment_runs(source: str) -> list[tuple[int, int]]:
     """
-    `(the line a run opens on, how many lines it runs)` for a comment run that sits inside a body and passes the length
-    limit.
+    `(the line a run opens on, how many lines it runs)` for a comment run that opens inside a function's body and passes
+    the length limit.
 
     A run that `_A_FIELD` joins to a field's trailing comment counts as part of that comment.
 
-    Public. The `short_comments` hook reads an edit through here, and this gate reads a module through here. A source
-    the parser refuses answers with nothing.
+    Public. The `short_comments` hook reads an edit through here. A source the parser refuses answers with nothing.
     """
     lines = source.split("\n")
     inside: set[int] = set()
@@ -352,29 +394,21 @@ def long_comment_runs(source: str) -> list[tuple[int, int]]:
     return held
 
 
-def _long_comment_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` for a comment inside a function body that runs past `MOST_COMMENT_LINES`."""
-    held = []
-    for path in gate.modules() + gate.hook_modules():
-        name = str(path.relative_to(gate.TREE))
-        for first, whole in long_comment_runs(path.read_text(encoding="utf-8")):
-            at = f"{name}:{first}"
-            held.append(
-                (at, f"{at} explains for {whole} lines inside a body, where a note of {MOST_COMMENT_LINES} would do")
-            )
-    return held
-
-
 def long_nested_docstrings(source: str) -> list[tuple[int, str, int]]:
     """
-    `(the line, the function, the lines its docstring runs)` for a nested function whose docstring runs past
-    `MOST_COMMENT_LINES`.
+    `(the line, the function, the lines its docstring runs)` for a function nested inside a top-level function whose
+    docstring runs past `MOST_COMMENT_LINES`.
 
     A nested function is no fragment of its own. `collect_fragments` folds its docstring into the enclosing function. A
-    docstring worth more than a note therefore belongs to a function at the top level.
+    docstring worth more than a note therefore belongs to a function that is a fragment of its own. Such a function sits
+    at the top level or in a class.
 
-    Public. The `nested_docstrings` checker reads an edit through here, and this gate reads a module through here. A
-    source the parser refuses answers with nothing.
+    Public. The `nested_docstrings` checker reads an edit through here. A source the parser refuses answers with
+    nothing.
+
+    A docstring on a single line that runs past `gate.WIDEST` counts as the block format-docstring rewraps it to. That
+    block puts the opening quotes and the closing quotes on lines of their own, and the text wraps at the docstring's
+    indent.
     """
     try:
         tree = ast.parse(source)
@@ -390,26 +424,15 @@ def long_nested_docstrings(source: str) -> list[tuple[int, str, int]]:
             continue
         said = node.body[0]
         length = (said.end_lineno or said.lineno) - said.lineno + 1
+        if length == 1 and (said.end_col_offset or 0) > gate.WIDEST:
+            length = 2 + len(textwrap.wrap(ast.get_docstring(node) or "", gate.WIDEST - said.col_offset))
         if length > MOST_COMMENT_LINES:
             held.add((node.lineno, node.name, length))
     return sorted(held)
 
 
-def _long_nested_docstring_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` for a nested function whose docstring runs past `MOST_COMMENT_LINES`."""
-    held = []
-    for path in gate.modules() + gate.hook_modules():
-        name = str(path.relative_to(gate.TREE))
-        for line, function, length in long_nested_docstrings(path.read_text(encoding="utf-8")):
-            at = f"{name}:{line}"
-            held.append(
-                (at, f"{at}: `{function}` nests and says {length} lines, where a note of {MOST_COMMENT_LINES} would do")
-            )
-    return held
-
-
 # The words a name asks a yes-or-no question with. `ys_are_tokens_stable` is the form the public API uses. The word goes
-# anywhere in the name. `ys_queue_is_ready` asks about the queue rather than about `ys`.
+# anywhere in the name but its end. `ys_queue_is_ready` asks about the queue rather than about `ys`.
 _ASKS = re.compile(r"(^|_)(is|has|did|does|are|was|were|can|may|should)_")
 
 # The word that marks a name as a command that runs and may fail. A `bool` from such a call is whether it worked.
@@ -454,7 +477,7 @@ def _boolean_annotations(tree: ast.Module) -> list[tuple[int, str, tuple[re.Patt
     `(line, name, what the name may be)` per `bool` the module writes down.
 
     A call hands a `bool` back, a parameter takes a `bool`, and an annotated assignment holds a `bool`. The walk passes
-    over `__bool__`, a name Python chooses rather than the author.
+    over the return of `__bool__`, a name Python chooses rather than the author.
     """
     held: list[tuple[int, str, tuple[re.Pattern[str], ...]]] = []
     for node in ast.walk(tree):
@@ -477,10 +500,11 @@ def _is_bool(annotation: ast.expr | None) -> bool:
 
 def _python_boolean_faults() -> list[tuple[str, str]]:
     """
-    `(site, what is wrong)` for a Python `bool` under a name which neither asks a question nor says it tries.
+    `(site, what is wrong)` for a Python `bool` under a name the rule below does not allow.
 
-    The rule is the C one, read off the annotation rather than off the declaration. A name holding a `bool` asks a
-    question. A call handing a `bool` back asks a question, or says it tries. The `bool` then says whether it worked.
+    The rule is `a-boolean-is-a-pure-question`. This check reads the type off the annotation rather than off the
+    declaration. A name holding a `bool` asks a question. A call handing a `bool` back asks a question, or says it
+    tries.
     """
     held = []
     for path in gate.modules() + gate.hook_modules():
@@ -495,12 +519,13 @@ def _python_boolean_faults() -> list[tuple[str, str]]:
     return held
 
 
-# The call that reads a source the way Python does. That call numbers its lines by the newline.
+# The calls that read a source the way Python does. That call numbers its lines by the newline, as
+# https://docs.python.org/3/reference/lexical_analysis.html#physical-lines says.
 _PARSES_A_SOURCE = frozenset({"parse", "generate_tokens", "StringIO"})
 
 
 def _parsed_names(holder: ast.AST) -> set[str]:
-    """The names a call inside `holder` hands to a parse. That parse numbers its lines by the newline."""
+    """The names a call inside `holder` hands to a parse. `_PARSES_A_SOURCE` names the calls that count as a parse."""
     held: set[str] = set()
     for node in ast.walk(holder):
         if not isinstance(node, ast.Call):
@@ -514,11 +539,11 @@ def _parsed_names(holder: ast.AST) -> set[str]:
 
 def _uncredited_hook_faults(conventions: dict[str, str]) -> list[tuple[str, str]]:
     """
-    `(site, what is wrong)` for a hook enforcing a convention the rule's own note does not credit it with.
+    `(site, what is wrong)` for a hook whose signed rule goes uncredited. A hook may sign a rule
+    `.claude/conventions.md` does not hold. A hook may also enforce a rule whose note does not name the hook.
 
-    A hook refusal ends on the name of the rule it enforces. `_uncited_convention_faults` reads the other direction,
-    from the note to the module. A hook enforcing a rule the note calls unmechanised leaves the note saying a reader
-    decides what a gate already decides.
+    A hook refusal names the rule it enforces. `_uncited_convention_faults` reads the other direction, from the note to
+    the module.
     """
     held = {}
     for name, body in conventions.items():
@@ -537,7 +562,7 @@ def _uncredited_hook_faults(conventions: dict[str, str]) -> list[tuple[str, str]
 
 def _tree_text() -> dict[str, str]:
     """
-    `{the path: the text}` over the files the project writes prose in.
+    `{the path: the text}` over the files that hold the project's prose.
     """
     if not _TREE_TEXT:
         for path in gate.prose_files():
@@ -546,7 +571,10 @@ def _tree_text() -> dict[str, str]:
 
 
 def _listed_names(tree: ast.Module) -> list[tuple[str, int, list[str]]]:
-    """`(the name bound, the line, the names listed)` for a module-level literal list of identifier names."""
+    """
+    `(the name bound, the line, the names listed)` for a module-level literal tuple, set or list. The literal holds
+    `_FEWEST_LISTED` strings or more. `_listed_names` skips a literal holding a string `_A_MATCHED_NAME` refuses.
+    """
     held = []
     for node in tree.body:
         targets: list[ast.expr]
@@ -630,9 +658,10 @@ def _own_payload_faults() -> list[tuple[str, str]]:
     """
     `(site, what is wrong)` for a hook that builds the tool's answer payload rather than calling the shared helper.
 
-    The payload's keys are a contract with the tool. A copy with a wrong key prints nothing, and the tool reads that as
-    an edit that passed. `refusal.py` holds the payload for a hook written in Python. `.claude/hooks/refusal.sh` holds
-    it for a hook written in shell. A helper naming its own keys is the helper rather than a copy.
+    The payload's keys are a contract with the tool, and https://code.claude.com/docs/en/hooks states that contract. A
+    copy with a wrong key prints nothing, and the tool reads that as an edit that passed. `refusal.py` holds the payload
+    for a hook written in Python. `.claude/hooks/refusal.sh` holds it for a hook written in shell. A helper naming its
+    own keys is the helper rather than a copy.
     """
     held = []
     for path in gate.hooks():
@@ -649,11 +678,8 @@ def _own_payload_faults() -> list[tuple[str, str]]:
 
 def _split_source_faults() -> list[tuple[str, str]]:
     """
-    `(site, what is wrong)` for a source that a parse reads and `splitlines` also cuts up.
-
-    A parse numbers a line by the newline. `splitlines` also cuts on U+2028 and U+0085. `star.py` writes both in string
-    literals. The line number a parse gives then picks the wrong entry of the list from `splitlines`. A source rebuilt
-    from that list stops parsing. A split on the newline gives the lines a parse counts.
+    `(site, what is wrong)` per `splitlines` call on a name that its function also hands to a parse.
+    `a-parsed-source-is-split-on-the-newline` says why.
     """
     held = []
     for path in gate.modules() + gate.hook_modules():
@@ -678,15 +704,17 @@ def _split_source_faults() -> list[tuple[str, str]]:
     return held
 
 
-# The note saying how far a module mechanises a convention. The note closes its item as an italic run.
-_A_MECHANISED_NOTE = re.compile(r"\*((?:Not\s+|Partly\s+)?[Mm]echanised[^*]*)\*")
+# The note saying how far a module mechanises a convention. The note is an italic run inside its item.
+_A_MECHANISED_NOTE = re.compile(r"\*((?:Not\s+)?[Mm]echanised[^*]*)\*")
 
-# The opening of a note saying the tree leaves a rule to a reader. Such a note names no module.
+# The opening of a note saying the tree leaves a rule to a reader. `_mechanised_by` reads no module out of such a note.
 _UNMECHANISED = "Not "
 
 
 def _mechanised_by(conventions: dict[str, str]) -> dict[str, set[str]]:
-    """The conventions `conventions` marks mechanised, against the modules of this tree their notes name."""
+    """
+    The conventions `conventions` marks mechanised, against the modules and the hooks of this tree their notes name.
+    """
     known = {path.stem for path in gate.modules() + gate.hook_modules()}
     held = {}
     for name, body in conventions.items():
@@ -698,29 +726,20 @@ def _mechanised_by(conventions: dict[str, str]) -> dict[str, set[str]]:
 
 def mechanised_rules() -> set[str]:
     """
-    The conventions a checker decides in full. A note opening on `Not` keeps its rule out. A note saying `in part` keeps
-    its rule out as well.
+    The conventions a checker decides. A note opening on `Not` keeps its rule out.
 
     Public. `write_agent_prompts` leaves such a rule out of the definitions of the agents that judge prose.
-    `batch_pending_fragments` leaves it out of the rules a writer of this project breaks. A reader deciding nothing
-    reads nothing about such a rule.
+    `agent_answers` leaves it out of the rules a writer of this project breaks. A reader deciding nothing reads nothing
+    about such a rule.
     """
-    held = gate.conventions()
-    decided = _mechanised_by(held)
-    found = set()
-    for name, body in held.items():
-        note = _A_MECHANISED_NOTE.search(body)
-        if name in decided and note and "in part" not in note.group(1):
-            found.add(name)
-    return found
+    return set(_mechanised_by(gate.conventions()))
 
 
 def _unstated_mechanism_faults(conventions: dict[str, str]) -> list[tuple[str, str]]:
     """
-    `(site, what is wrong)` for a convention whose item closes on no note about the gate deciding it.
+    `(site, what is wrong)` for a convention whose item holds no note about the gate deciding it.
 
-    The review's conventions question aims at what a reader still has to decide. A rule with no such note joins the
-    rules a reader has to decide. The author did not rule that a reader decides it.
+    A note says which gate decides the rule, or that a reader does. A rule with no note leaves that undecided.
     """
     held = []
     for name, body in conventions.items():
@@ -754,7 +773,10 @@ def _uncited_convention_faults(conventions: dict[str, str]) -> list[tuple[str, s
 
 
 def _note_faults(conventions: dict[str, str]) -> list[tuple[str, str]]:
-    """`(site, what is wrong)` for a note of `conventions` that disagrees with the modules of the tree."""
+    """
+    `(site, what is wrong)` for a rule of `conventions` whose note is missing, or disagrees with the modules and hooks
+    of the tree. A hook signing a rule `conventions` does not hold is a fault too.
+    """
     return (
         _uncited_convention_faults(conventions)
         + _unstated_mechanism_faults(conventions)
@@ -776,20 +798,18 @@ def convention_note_faults(path: str, text: str) -> list[str]:
 def _check() -> None:
     """Report the broken conventions."""
     found = (
-        _note_faults(gate.conventions())
-        + _uncached_question_faults()
+        _uncached_question_faults()
         + _repeated_word_faults()
         + _bare_private_faults()
         + _banned_word_name_faults()
         + _enumeration_faults()
+        + _stored_line_faults()
         + _own_payload_faults()
         + _unwalked_hook_faults()
         + _unmatched_name_faults()
         + _split_source_faults()
         + _c_boolean_faults()
         + _python_boolean_faults()
-        + _long_comment_faults()
-        + _long_nested_docstring_faults()
         + _make_trailing_faults()
     )
     gate.report(

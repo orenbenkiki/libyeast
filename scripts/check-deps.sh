@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Verify the given tools are available. An argument is either a command name (checked on PATH) or `python3:MODULE`
 # (checked by importing MODULE). Prints a line per entry. Exits with a failing status and a count where any are missing.
 # A run takes an argument per tool.
-set -eu
+set -euo pipefail
 
 missing=0
 for tool in "$@"; do

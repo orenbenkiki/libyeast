@@ -3,13 +3,13 @@
 """
 An MCP server offering a tool that does nothing.
 
-An agent definition lists the tools its agent may call. An empty list places no restriction. The agent then gets the
-tools a subagent can have. A list whose names resolve to nothing stops the agent launching. So an agent meant to call no
-tool must still list one. This server offers `nothing` for that. A call returns empty text and touches no file, no shell
-and no network.
+An agent definition lists the tools its agent may call. A definition that leaves the list out places no restriction. The
+agent then gets the tools a subagent can have. A list whose names resolve to nothing stops the agent launching.
+https://code.claude.com/docs/en/sub-agents says both. So an agent meant to call no tool must still list one. This server
+offers `nothing` for that. A call returns empty text and touches no file, no shell and no network.
 
-`.mcp.json` registers this server. `.claude/agents/prose-critic.md` and `.claude/agents/prose-compare.md` list only
-`mcp__inert__nothing`.
+`.mcp.json` registers this server. `.claude/agents/prose-critic.md` and `.claude/agents/prose-compare.md` list
+`mcp__inert__nothing` and `StructuredOutput`.
 
 Speaks JSON-RPC over stdin and stdout. A line holds a single message.
 """
@@ -17,7 +17,8 @@ Speaks JSON-RPC over stdin and stdout. A line holds a single message.
 import json
 import sys
 
-# The tool this server offers. An agent definition names it as `mcp__inert__nothing`.
+# The tool this server offers. `.mcp.json` registers this server as `inert`. An agent definition such as
+# `.claude/agents/prose-critic.md` names the tool as `mcp__inert__nothing`.
 _TOOL = {
     "name": "nothing",
     "description": "Does nothing and returns empty text. Answer from the prompt instead.",

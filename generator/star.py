@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 """
-Fold libyeast's yeast token stream up to the YAML Test Suite's event level, and check that both are compatible.
+Fold libyeast's yeast token stream up to the YAML Test Suite's event level. `_disagreement` in `check_star.py` checks
+the folded events against the suite's events.
 
 The community YAML Test Suite lives in `third_party/yaml-test-suite/`, as vendored data. Per case the suite states an
 `in.yaml` input and the `test.event` stream a conformant parser produces for that input. The suite states an `error`
@@ -8,15 +9,15 @@ marker instead where a parser must reject the input.
 
 libyeast is a token parser, and events sit a level above. So the check is a deterministic **fold**. The yeast stream's
 `begin-`/`end-` markers rebuild the event tree and the leaf tokens fill it. The question is whether that stream is
-*compatible* with the expected events, matched as far as the token layer settles them.
+*compatible* with the expected events, as far as the token layer settles them.
 
-Node and pair brackets are presentation the events leave out. So are indicators and whitespace. So are indentation and
-breaks. They fold away. A scalar's value comes back as far as the tokens mechanically give it. The content joins up, a
-`line-fold` gives a space and a `line-feed` a newline, and an escape resolves. A value-layer decision above the tokens
-comes into none of it.
+The fold drops node and pair brackets. An indicator survives the fold only as a scalar's style or as part of an escape,
+a tag or a directive. The fold also drops whitespace, indentation and breaks. A scalar's value comes back as far as the
+tokens mechanically give it. The fold joins the content. A `line-fold` gives a space, a `line-feed` gives a newline, and
+the fold resolves an escape. The fold makes no value-layer decision above the tokens.
 
-This is libyeast's independent net. The suite derives from the same spec but comes from other hands. It catches a
-grammar bug the fixtures of libyeast, migrated from a single reference, would share.
+The suite gives libyeast an independent net. The suite at https://github.com/yaml/yaml-test-suite derives from the same
+spec but comes from other hands.
 """
 
 import dataclasses
@@ -56,7 +57,8 @@ _ESCAPES = {
 
 def _unescape_wire(text: str) -> str:
     r"""
-    The characters a wire token's escaped text names. A codepoint per `\xHH` or `\uHHHH`, and a literal otherwise.
+    The characters a wire token's escaped text names. An escape `\xHH`, `\uHHHH` or `\UHHHHHHHH` names a codepoint. A
+    character outside an escape names itself.
     """
     return "".join(chr(value) for value, _length, _piece in wire.units(text))
 
@@ -95,8 +97,8 @@ def _expand_tag(handle: str, suffix: str, tags: Mapping[str, str]) -> str:
 
 class _Event:
     """
-    An event. The kind is `+MAP` or `=VAL` or another such marker. The suite compares the parts after the kind only as
-    far as they settle.
+    An event. The kind is `+MAP` or `=VAL` or another such marker. `_disagreement` in `check_star.py` compares events as
+    whole `__repr__` lines. A line leaves out an unset anchor, tag or style.
     """
 
     __slots__ = ("kind", "anchor", "tag", "style", "value")
@@ -116,7 +118,10 @@ class _Event:
         self.value = value
 
     def __repr__(self) -> str:
-        """Writes the event in the form the suite uses. A disagreement comes out in that form."""
+        """
+        Writes the event as a `test.event` line and leaves its value unescaped. `_disagreement` in `check_star.py`
+        compares the fold with `test.event` as these lines.
+        """
         parts = [self.kind]
         if self.anchor:
             parts.append(f"&{self.anchor}")
@@ -131,11 +136,11 @@ class _Event:
 
 def parse_events(text: str) -> list[_Event]:
     """
-    Parse a `test.event` file into a list of `Event`s.
+    Parse a `test.event` file into a list of `_Event`s.
 
-    A line is `KIND rest`. A collection marker keeps its kind and drops what follows. A flow `{}`/`[]` hint is
-    presentation. `=VAL` and `=ALI` take an optional `&anchor`, an optional `<tag>`, then a `<style><value>` where the
-    style comes from `:'"|>`.
+    A line is `KIND rest`. `-MAP` and `-SEQ` drop what follows their kind. `+MAP` and `+SEQ` keep an `&anchor` and a
+    `<tag>`. A flow `{}`/`[]` hint is presentation. An `=ALI` value drops a leading `*`. `=VAL` reads any `&anchor` and
+    `<tag>` first. Its next character is the style. The unescaped remainder is the value.
     """
     events = []
     for line in text.splitlines():
@@ -188,7 +193,7 @@ def _unescape_event(text: str) -> str:
     return "".join(out)
 
 
-# The wire character a fold-relevant marker takes.
+# A short name for `wire.CODE_CHAR`.
 _C = wire.CODE_CHAR
 _BEGIN = {_C["begin-document"]: "+DOC", _C["begin-mapping"]: "+MAP", _C["begin-sequence"]: "+SEQ"}  # the opening event.
 _END = {_C["end-document"]: "-DOC", _C["end-mapping"]: "-MAP", _C["end-sequence"]: "-SEQ"}  # the closing event.
@@ -200,7 +205,7 @@ _DEFAULT_TAGS = {"!": "!", "!!": "tag:yaml.org,2002:"}
 
 @dataclasses.dataclass
 class _Scalar:
-    """The scanner is gathering a scalar. It holds the style and the text of the `begin-scalar`..`end-scalar` span."""
+    """`_fold` is gathering a scalar. It holds the style and the text of the `begin-scalar`..`end-scalar` span."""
 
     style: str | None = None
     parts: list[str] = dataclasses.field(default_factory=list)
@@ -238,12 +243,13 @@ class _Directive:
 
 def _fold(tokens: Iterable[wire.Token]) -> list[_Event]:
     """
-    Fold a yeast token stream into the events it would produce. Raise `Incompatible` where the document is rejected, by
-    an error token or by a resolution the tokens cannot show.
+    Fold a yeast token stream into the events it would produce. The fold raises `Incompatible` to reject a document. An
+    error token rejects it. A stray `end-escape` rejects it. A second `%YAML` directive rejects it. An undefined tag
+    handle rejects it in `_expand_tag`.
 
-    An implicit `+STR`/`-STR` brackets the stream. A scalar gathers a run of `text`/`meta`/`line-fold`/`line-feed` and
-    escapes. That run sits between `begin-scalar` and `end-scalar`. The indicator that opens a scalar gives its style.
-    An alias becomes `=ALI`. An anchor or a tag annotates the value or collection it precedes.
+    An implicit `+STR`/`-STR` brackets the stream. A scalar gathers a run of `text`/`line-fold`/`line-feed` and escapes.
+    That run sits between `begin-scalar` and `end-scalar`. The indicator that opens a scalar gives its style. An alias
+    becomes `=ALI`. An anchor or a tag annotates the value or collection it precedes.
     """
     events = [_Event("+STR")]
     pending_anchor: str | None = None
@@ -375,10 +381,16 @@ def _resolve_escape(parts: Iterable[str]) -> str:
 
 
 class Incompatible(Exception):
-    """libyeast rejects the document. Incompatible holds an error token, or a resolution error only the fold can see."""
+    """
+    libyeast rejects the document. The fold raises Incompatible on an error token. A stray `end-escape` raises it. So
+    does a second `%YAML` directive in a document. An undefined tag handle raises it in `_expand_tag`.
+    """
 
 
 def run_case(grammar: dict[str, ir.Prod], data: bytes) -> list[_Event]:
-    """Fold the events libyeast produces for `data`, or raise `Incompatible` where it rejects the document."""
+    """
+    The interpreter runs `l-yeast-stream` on `data`. `_fold` turns the yeast tokens into events. `_fold` raises
+    `Incompatible` on a rejected document.
+    """
     tokens = interpreter.run(grammar, "l-yeast-stream", data, {})
     return _fold(tokens)

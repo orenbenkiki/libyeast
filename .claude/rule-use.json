@@ -2,42 +2,42 @@
   "_": "A settling run cites a rule of `.claude/conventions.md` per change. `cited` counts the changes citing a rule. `accepted` counts the changes the comparator let through. `overlaps` pairs a rule with a second rule. A later change applied that second rule to the same run of text. `record_run` writes this file.",
   "rules": {
     "a-comment-describes-what": {
-      "cited": 497,
-      "accepted": 281
+      "cited": 575,
+      "accepted": 324
     },
     "a-condition-names-what-decides-it": {
-      "cited": 1,
-      "accepted": 1
+      "cited": 6,
+      "accepted": 6
     },
     "a-count-is-answered-for": {
       "cited": 2,
       "accepted": 2
     },
     "a-hedge-names-its-condition": {
-      "cited": 6,
-      "accepted": 5
+      "cited": 8,
+      "accepted": 7
     },
     "a-name-keeps-its-meaning": {
-      "cited": 19,
-      "accepted": 3
+      "cited": 41,
+      "accepted": 4
     },
     "a-piece-of-prose-is-written-once": {
-      "cited": 876,
-      "accepted": 364
+      "cited": 1004,
+      "accepted": 402
     },
     "a-sentence-names-its-actor": {
-      "cited": 1780,
-      "accepted": 817
+      "cited": 1869,
+      "accepted": 900
     },
     "a-sentence-says-one-thing": {
-      "cited": 9147,
-      "accepted": 3681
+      "cited": 9639,
+      "accepted": 4123
     },
     "every-claim-is-checked-before-it-is-written": {
-      "cited": 242,
-      "accepted": 111
+      "cited": 248,
+      "accepted": 114
     },
-    "faulty-prose-is-re-said-not-patched": {
+    "faulty-prose-is-rewritten-not-patched": {
       "cited": 5,
       "accepted": 4
     },

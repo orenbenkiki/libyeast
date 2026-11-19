@@ -4,10 +4,12 @@ Check that no proposal waits for a ruling.
 
 A review proposes a convention. The author rules on the proposal. An accepted proposal goes into
 `.claude/conventions.md`. A rejected proposal goes into `.claude/rejected.md`. A proposal ruled on in conversation and
-written down in no file comes back the next round. It comes back the round after that too.
+written down in no file comes back the next round. `.claude/workflows/pre-commit-review.js` tells a reviewer to propose
+nothing `.claude/conventions.md` holds and to raise nothing `.claude/rejected.md` holds.
 
-The workflow appends what it proposed to `.claude/proposals-pending.md`. This refuses while that file holds anything.
-The author empties that file by ruling on the proposals it holds.
+`record_run` appends the proposals the workflow returns to `.claude/proposals-pending.md`. `converge_prose` appends the
+proposals a condense returns. `record_run.proposals_appended` does the append. This check refuses while
+`.claude/proposals-pending.md` holds a proposal. The author empties that file by ruling on the proposals it holds.
 
 **Usage:** `python3 generator/check_proposals.py`.
 """
@@ -22,10 +24,11 @@ _PENDING = settling_state.PENDING  # the file a review writes its proposals into
 
 # A proposal is a list item that starts at the left margin and opens with the rule in bold. The item takes a number or a
 # bullet. The pattern matches the bold rather than the wording around it. A pattern matching the whole line stops
-# matching the day somebody lays the file out differently. A gate with no match left reports green.
+# matching the day somebody lays the file out differently. A gate with no match left reports green. `report` prints the
+# summary when no error reaches it.
 #
-# An indented item is a label under a proposal. `record_run` writes such a label in bold, and the colon rule spares a
-# bold definition term.
+# An indented item is a label under a proposal. `record_run` writes such a label in bold, and `no-em-dash-and-no-colon`
+# spares a bold definition term.
 _A_PROPOSAL = re.compile(r"^(?:[0-9]+\.|[-*])\s+\*\*(.+?)(?:\*\*|$)", re.MULTILINE)
 
 # A heading names who raised the proposals under it.
@@ -33,7 +36,7 @@ _A_HEADING = re.compile(r"^#+\s+From\s+`([^`]+)`", re.MULTILINE)
 
 
 def _pending() -> list[tuple[str, str]]:
-    """The proposals written down and not yet ruled on, as `(the reviewer that raised it, the rule)`."""
+    """The proposals written down and awaiting a ruling, as `(the source its From heading names, the rule)`."""
     if not os.path.exists(_PENDING):
         return []
     with open(_PENDING, encoding="utf-8") as handle:
@@ -52,7 +55,7 @@ def _pending() -> list[tuple[str, str]]:
 
 
 def _check() -> None:
-    """Report the proposals the pending file still holds. Nobody has ruled on those."""
+    """Report the proposals the pending file still holds."""
     gate.report(
         [f"{_PENDING}: `{rule}` comes from `{who}`. no ruling file holds it." for who, rule in _pending()],
         "unruled proposal(s). Move a proposal into `.claude/conventions.md` or `.claude/rejected.md` with its reason, "

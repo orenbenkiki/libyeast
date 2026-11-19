@@ -3,18 +3,18 @@
 Check the subspace algebra against the states it describes.
 
 A `SubSpace` is a description, and the states inside that description are its meaning. So this module judges an
-operation by enumerating those states over a small alphabet. The alphabet holds a codepoint per side of a span boundary
-the cases use, and the end of the stream. An operation passes where its result holds exactly the states that set
-arithmetic on the enumerations gives.
+operation by enumerating those states over a small alphabet. The alphabet holds the codepoints at the span ends the
+cases use. The enumeration adds the end of the stream. An operation passes where its result holds exactly the states
+that set arithmetic on the enumerations gives.
 
 A subspace says a single thing per place and says it coalesced. The table hands out a single answer per set of states.
 Any form asking for that set gets the same object. The identities of the algebra hold where the alphabet cannot reach to
-show them. An axis of a place cuts the whole space in half.
+show them. An axis of a place cuts the whole space into a pair of sides that do not overlap.
 
 This judges the places themselves the same way, and in both directions. The module walks the quantities a place orders
 over a wider range than `spaces` walks them. The places must hold exactly the states that walk reaches. A place that no
 parse reaches is an enumeration that is not what it claims. A state that no place names is a hole a subspace would say
-nothing about.
+nothing about. The walk rests on facts about the grammar, and this checks the grammar holds them.
 
 Reports the problems found and exits with a failing status where it finds any.
 """
@@ -22,12 +22,16 @@ Reports the problems found and exits with a failing status where it finds any.
 import itertools
 from collections.abc import Sequence
 
+import annotated2ir
 import chars
 import gate
+import ir
 import spaces
+import validate_grammar
 
-# The alphabet holds a codepoint per side of a boundary the cases below name. It holds the invalid byte and the top
-# codepoint too. The alphabet separates a span that ends where another begins from a span that ends elsewhere.
+# The alphabet holds the span ends the cases below name. It adds a codepoint inside the letters and a codepoint past the
+# printable run. It holds the null codepoint and the top codepoint. It holds the codepoints on either side of the
+# surrogates.
 _ALPHABET = (-1, 0, 0x20, 0x41, 0x42, 0x5A, 0x7E, 0x7F, 0x80, 0xD7FF, 0xE000, chars.MAX_CODEPOINT)
 
 _END_OF_STREAM = "end of stream"  # The end of the stream has no codepoint. An enumeration lists the marker as itself.
@@ -54,7 +58,7 @@ def _cases() -> list[tuple[str, spaces.SubSpace]]:
 
 
 def _states_of(subspace: spaces.SubSpace) -> set[tuple[spaces.GuardAnswers, int | str]]:
-    """The states `subspace` holds, as a set of `(answer, codepoint or END_OF_STREAM)` pairs."""
+    """The states `subspace` holds over `_ALPHABET`, as a set of `(answer, codepoint or _END_OF_STREAM)` pairs."""
     states: set[tuple[spaces.GuardAnswers, int | str]] = set()
     for answer in spaces.ALL_GUARD_ANSWERS:
         admitted = subspace.under(answer)
@@ -78,9 +82,9 @@ def _check_canonical(named: Sequence[tuple[str, spaces.SubSpace]]) -> list[str]:
     return errors
 
 
-# `_FORMS` holds forms of a single set of states. A form writes the set whole. A form cuts the set in half at a boundary
-# that closes up. A form puts the spans out of order. A form repeats a span. The table must hand back the same object
-# across these forms. The algebra reads a pair of answers as a pair of sets.
+# `_FORMS` holds forms of a single set of characters that `spaces.held` reads. A form writes the set whole. A form cuts
+# the set in half at a boundary that `merged_spans` closes up. A form puts the spans out of order. A form repeats a
+# span. `spaces.held` must hand back the same object across these forms.
 _FORMS = (
     ("a run given whole", [(0x41, 0x5A)]),
     ("the same run cut in halves", [(0x41, 0x4F), (0x50, 0x5A)]),
@@ -91,8 +95,8 @@ _FORMS = (
 
 def _check_table() -> list[str]:
     """
-    Check that the table hands out a single `spaces._Characters` per set of states. A caller asking for that set in any
-    form gets the same object.
+    Check that the table hands out a single `spaces._Characters` per set of characters. A caller asking for that set in
+    any form gets the same object.
 
     The algebra takes equality to be identity. A pair of answers holding the same characters must be a single object.
     Otherwise a subspace written this way compares unequal to a subspace written that way, and the algebra reads them as
@@ -113,7 +117,10 @@ def _check_table() -> list[str]:
 
 
 def _check_operations(named: Sequence[tuple[str, spaces.SubSpace]]) -> list[str]:
-    """Check that union, intersection and containment hold exactly what set arithmetic on the states gives."""
+    """
+    Check ordered pairs of the named subspaces against set arithmetic on their states. A union, an intersection and a
+    difference must match that arithmetic. Containment and emptiness must agree with the states held.
+    """
     errors = []
     for (one_name, one), (other_name, other) in itertools.product(named, repeat=2):
         pair = f"{one_name} against {other_name}"
@@ -155,7 +162,10 @@ def _check_laws(named: Sequence[tuple[str, spaces.SubSpace]]) -> list[str]:
 
 
 def _check_axes() -> list[str]:
-    """Check that an axis of a place is an axis `where` narrows on. Check that no place appears twice."""
+    """
+    Check that `where` with an axis true and `where` with that axis false cover the whole space and do not overlap.
+    Check that no guard answer appears twice.
+    """
     errors = []
     if len(spaces.ALL_GUARD_ANSWERS) != len(set(spaces.ALL_GUARD_ANSWERS)):
         errors.append(
@@ -182,14 +192,15 @@ def _check_guard_answers() -> list[str]:
 
     The check owes both directions, and neither answers the other. A place that nothing realizes is a state the algebra
     admits and no parse reaches. That costs nothing, but says the enumeration is not what it claims. A state some parse
-    reaches and no place names is a hole, and a subspace would silently say nothing about it.
+    reaches and no place names is a hole, and a subspace would silently say nothing about it. A `spaces.SubSpace` holds
+    an entry per index of `spaces.ALL_GUARD_ANSWERS`, and a state outside that tuple has no entry.
 
     The check enumerates the states itself rather than re-deriving them. The check and `spaces` agree about the
     orderings without sharing a computation.
 
     The check also asserts the facts that bound the quantities. A line start is column `0`. A consumed length falls
-    within its line. A character an `ns-char` names sits at or after a line start. A full span leaves the parse
-    mid-line. A check that dropped those facts would call the places they exclude a hole.
+    within its line. A parse at a line start is not after an `ns-char`. A full span leaves the parse mid-line. A check
+    that dropped those facts would call the places they exclude a hole.
     """
     reached = set()
     for is_at_line_start in (False, True):
@@ -220,6 +231,65 @@ def _check_guard_answers() -> list[str]:
     ]
 
 
+def _check_grammar() -> list[str]:
+    """
+    Check that the grammar holds the facts `_check_guard_answers` assumes of it. A counted run of a single character
+    takes no `b-char`. A `(len)` of `(match)` comes right after a `(***)` run in a sequence. That run takes no `b-char`
+    and no `c-byte-order-mark`.
+    """
+    grammar = annotated2ir.load()
+    breaks = _spans(grammar, ir.RefCall("b-char", ()))
+    marks = _spans(grammar, ir.RefCall("c-byte-order-mark", ()))
+    if breaks is None or marks is None:
+        raise AssertionError("`b-char` or `c-byte-order-mark` denotes no set of characters")
+    excluded = chars.merged_spans(breaks + marks)
+    errors = []
+    placed = 0
+    for name, production in grammar.items():
+        for node in validate_grammar.walk(production.body):
+            repetition = ir.AS_A_REPETITION(node)
+            if repetition is not None and ir.is_one_char(repetition.item, grammar):
+                taken = _spans(grammar, repetition.item)
+                if taken is None:
+                    raise AssertionError(f"{name}: a counted run of a single character denotes no set")
+                if chars.intersected_spans(taken, breaks):
+                    errors.append(f"{name}: a counted run takes a `b-char`")
+            sequence = ir.AS_A_SEQUENCE(node)
+            items = sequence.items if sequence is not None else ()
+            for at, item in enumerate(items):
+                read = _lengths_read(item)
+                if not read:
+                    continue
+                placed += read
+                run = ir.AS_A_STAR(items[at - 1]) if at else None
+                taken = _spans(grammar, run.item) if run is not None else None
+                if taken is None or chars.intersected_spans(taken, excluded):
+                    errors.append(f"{name}: a `(len)` of `(match)` follows no `(***)` run free of breaks and marks")
+    everywhere = sum(_is_a_length_read(node) for one in grammar.values() for node in validate_grammar.walk(one.body))
+    if placed != everywhere:
+        errors.append(f"{everywhere - placed} `(len)` of `(match)` read(s) sit in no sequence")
+    return errors
+
+
+def _spans(grammar: dict[str, ir.Prod], node: ir.Node) -> list[tuple[int, int]] | None:
+    """The codepoint spans `node` takes as a single character. `None` where `node` takes no single character."""
+    denotation = chars.denote(grammar, node)
+    return chars.spans(denotation) if denotation is not None else None
+
+
+def _is_a_length_read(node: ir.Node) -> bool:
+    """Whether `node` is a `(len)` of `(match)`."""
+    length = ir.AS_A_LENGTH(node)
+    return length is not None and ir.AS_A_MATCH(length.arg) is not None
+
+
+def _lengths_read(node: ir.Node) -> int:
+    """The reads of a `(len)` of `(match)` inside `node`. The walk does not descend into a nested sequence."""
+    if ir.AS_A_SEQUENCE(node) is not None:
+        return 0
+    return _is_a_length_read(node) + sum(_lengths_read(child) for child in chars.children(node))
+
+
 def main() -> None:
     named = _cases()
     errors = (
@@ -229,6 +299,7 @@ def main() -> None:
         + _check_laws(named)
         + _check_axes()
         + _check_guard_answers()
+        + _check_grammar()
     )
     gate.report(
         errors,

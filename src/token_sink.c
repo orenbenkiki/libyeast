@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // A sink takes yeast tokens. A sink serializes the tokens to a yeast wire, or emits YAML. A sink mirrors a
 // `ys_token_source`. `ys_write_token` feeds a sink and `ys_delete_token_sink` releases a sink. Code
-// writing tokens does not know or care where they go.
+// writing tokens calls `ys_write_token` for a wire writer and an emitter alike. An emitter refuses a `YS_CODE_ERROR`
+// token that a wire writer writes.
 
 #include "token_sink.h"
 
@@ -12,7 +13,7 @@
 #include <yeast.h>
 
 // Allocate a sink over `writer`, or answer NULL with `errno` set. A failure closes the writer. On success `*memory`
-// holds the allocator the sink came from, for the caller to keep.
+// holds the allocator the sink came from. The sink keeps its own copy of that allocator.
 static ys_token_sink *ys_new_sink(ys_sink_kind kind, ys_bytes_writer writer, const ys_options *options,
                                   ys_memory *memory) {
     if (writer.write == NULL) {

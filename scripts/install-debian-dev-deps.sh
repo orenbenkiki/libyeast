@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Install the tools a sub-gate needs on Debian and Ubuntu, on top of the C build deps. The tools are the parser
 # generator's Python, the formatters and linters, and the coverage and docs tools.
 #
@@ -7,7 +7,7 @@
 # does the same.
 #
 # Assumes the apt index is current. Run it from the project root. It reads `.clang-format-version` there.
-set -eu
+set -euo pipefail
 goal="${1:-}"
 
 # Tool groups this goal needs.
@@ -40,8 +40,8 @@ sh "$here/install-debian-build-deps.sh" "$goal"
 
 apt=""
 pip=""
-# Python is not a C build dep. A group that runs the generator brings Python. So does a group that pip-installs its
-# tools. PyYAML serves the generator, and pip serves the formatters and the coverage tool.
+# `scripts/install-debian-build-deps.sh` installs no Python. PyYAML serves the generator. The vet goal pip-installs
+# formatters, linters and Conan. The gh-pages goal pip-installs gcovr.
 if $gen; then
     apt="$apt python3-yaml"
 fi
@@ -49,9 +49,10 @@ if $lint || $cov; then
     apt="$apt python3-pip"
 fi
 if $lint; then
-    # clang-format comes from a pip wheel rather than from apt. Apt ships a different version. That version formats
-    # code the gate then rejects. The wheel's major version comes from `.clang-format-version`. The gate and both dev-deps
-    # scripts share that file. clang-tidy is a linter rather than a formatter. Its version does not bear the same load.
+    # clang-format comes from a pip wheel rather than from apt. The gate's `CLANG_FORMAT_CHECK` refuses a clang-format
+    # of any other major before it formats anything. The wheel's major version comes from `.clang-format-version`. The
+    # gate and both dev-deps scripts share that file. clang-tidy is a linter rather than a formatter. Its version does
+    # not bear the same load.
     apt="$apt clang-tidy cppcheck shfmt"
     pip="$pip clang-format==$(cat .clang-format-version).* mdformat mdformat-gfm black format-docstring gersemi ruff pylint mypy types-PyYAML conan"
 fi
@@ -70,7 +71,7 @@ if [ -n "$pip" ]; then
     python3 -m pip install --break-system-packages $pip
 fi
 
-# Hand CI the pinned clang-format. The Makefile then uses that build ahead of another build on PATH.
+# Hand CI the pinned clang-format. The Makefile's `CLANG_FORMAT` then uses that build ahead of another build on PATH.
 if $lint && [ -n "${GITHUB_ENV:-}" ]; then
     echo "CLANG_FORMAT=$(python3 -c 'import clang_format, os; print(os.path.join(os.path.dirname(clang_format.__file__), "data", "bin", "clang-format"))')" >>"$GITHUB_ENV"
 fi

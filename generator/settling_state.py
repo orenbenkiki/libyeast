@@ -3,14 +3,14 @@
 The files that hold the state of the settling, and the lock a run takes over them.
 
 The ledger holds an approved prose digest per line. The prose queue holds a line per change of a `ProseState`, keyed by
-the prose digest. The unsettled prose queue holds a digest per line. The pending tasks queue holds the `Task`s waiting
-to run. The completed tasks queue holds a `TaskResult` per finished task.
+the prose digest. The unsettled prose queue holds a digest per line. The write journal holds a record per write of a
+pass into the tree. `converge_prose` keeps the `Task`s waiting to run in memory, in the `pending` list of `_Settling`.
+The completed tasks queue holds a `TaskResult` per finished task.
 
 A kill can tear the last line of a file. A reader drops that line. A rewrite goes in under a second name, and a rename
 puts it in place. An append to the completed tasks queue and a take off it both hold a file lock.
 
-`update_ledger_and_queue` and `converge_prose` read and write these files. `record_run` writes them for the critic
-workflow.
+`update_ledger_and_queue` and `converge_prose` read and write these files.
 """
 
 import contextlib
@@ -25,23 +25,27 @@ from typing import Any
 
 import gate
 
-# The approved prose digests. Git tracks this file.
+# The approved prose digests.
 LEDGER = os.path.join(gate.TREE, ".claude", "prose-ledger.jsonl")
 
-# The convention proposals the critics made and no condense has taken. Git tracks this file.
+# The convention proposals the critics made and no condense has taken.
 SUGGESTED = os.path.join(gate.TREE, ".claude", "suggested-proposals.jsonl")
 
-# The condensed proposals awaiting a ruling. `check_proposals` refuses while this file holds a proposal.
+# The proposals awaiting a ruling. `check_proposals` refuses while this file holds a proposal.
 PENDING = os.path.join(gate.TREE, ".claude", "proposals-pending.md")
 
 # The label of the bullet under a pending proposal that holds its `why` field. `record_run` writes it. `checkers` passes
 # a WHY clause in that bullet.
 WHY = "**Why:**"
 
-# The files under the settling directory. `make examine-prose` names that directory.
+# The name of the prose queue under the settling directory. `make examine-prose` names that directory through
+# `PROSE_DIR`.
 _PROSE_QUEUE = "prose-queue.jsonl"
-_UNSETTLED = "unsettled-prose.jsonl"  # the digests of the fragments past the round limit.
-_PENDING_TASKS = "pending-tasks.json"  # the tasks waiting for a slot.
+_UNSETTLED = (
+    "unsettled-prose.jsonl"  # the name of the file holding the digests of the fragments the prose pass gave up on.
+)
+_WRITES = "writes.jsonl"  # a record per write of a pass into the tree.
+REVIEW = "review.jsonl"  # a record per critic's draft a claims reader changed. A person reads the record.
 _COMPLETED_TASKS = "completed-tasks.jsonl"  # the results of the finished tasks.
 _COMPLETED_LOCK = "completed-tasks.lock"  # the file an append and a take lock.
 _RUN_LOCK = "run.lock"  # the file a run locks while it runs.
@@ -59,10 +63,12 @@ class Change:
     A change a critic suggested to a draft.
 
     `old` is the text the change replaces, and `new` is the text it puts there. `rule` names the convention the critic
-    cited. `is_old_first` says whether the comparator sees `old` under `A`. `verdict` is `None` until a comparator
-    judges the change. The comparator then sets `verdict` to `accept` or `reject`. `record_run.rule_use_counted` reads
-    those words. `is_asked_alone` says whether a comparator passed over the change. A later comparator task then holds
-    that change as its only item.
+    cited. `is_old_first` says whether the comparator sees `old` first. `agent_answers.SIDES` names `A` as the first
+    side. `verdict` is `None` until a comparator judges the change. `_read_compare` in `generator/converge_prose.py`
+    then sets `verdict` to `accept` or `reject` from the comparator's answer. `record_run.rule_use_counted` reads those
+    words. `is_asked_alone` says whether a comparator passed over the change in a batch of more than a single change. A
+    later comparator task then holds that change as its only item. `_try_compare_task` in `generator/converge_prose.py`
+    queues that task.
     """
 
     id: str
@@ -80,8 +86,10 @@ class ProseState:
     The work done on a fragment a critic has read.
 
     `key` names the fragment. `draft` holds the prose per site, and the tree holds the same prose. `rounds` counts the
-    critic calls over the fragment. `is_dirty` says whether the draft waits for a critic. `changes` holds the changes of
-    the last critic call.
+    critic calls that `_read_critic` read without passing the fragment. `is_dirty` says whether the draft waits for a
+    critic. `changes` holds the changes `_read_critic` took from the last critic call. `_resolved` empties `changes` as
+    it closes the round. `proposed` holds the prose per site the round accepted, while a claims reader checks it. An
+    empty `proposed` holds no such prose.
     """
 
     key: str
@@ -89,14 +97,16 @@ class ProseState:
     rounds: int
     is_dirty: bool
     changes: list[Change]
+    proposed: list[str] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass
 class Task:
     """
-    An agent call waiting to run. `kind` is `critic` or `compare`.
+    An agent call waiting to run. `kind` is `critic`, `compare` or `claims`, the kinds `converge_prose._read` reads.
 
-    A critic task lists prose digests under `items`. A comparator task lists change ids there.
+    A critic task lists prose digests under `items`. A comparator task lists change ids there. A claims task lists the
+    digest of the fragment whose `ProseState.proposed` the reader checks.
     """
 
     id: str
@@ -110,7 +120,8 @@ class TaskResult:
     The answer of a finished task.
 
     `answer` holds the object the agent answered, or `None` where the call died. A reply may stop the run, and `stopped`
-    then names the cause. `stopped` is empty for a reply that lets the run go on. `said` holds the text of the reply.
+    then names the cause. `stopped` is empty for a reply that lets the run go on. `said` holds the start of the text of
+    the reply. It also names the transcript of the call where the reply has one.
     """
 
     task: Task
@@ -132,7 +143,9 @@ def _task_result_of(held: dict[str, Any]) -> TaskResult:
 
 
 def _json_of(held: Any) -> Any:
-    """`held` in the form JSON takes. A dataclass turns into a dict."""
+    """
+    `held` in the form JSON takes. A dataclass instance turns into a dict. A dataclass class passes through unchanged.
+    """
     return dataclasses.asdict(held) if dataclasses.is_dataclass(held) and not isinstance(held, type) else held
 
 
@@ -178,7 +191,10 @@ def appended(path: str, held: Iterable[Any]) -> None:
 
 
 def ledger() -> list[str]:
-    """The approved digests, in the order of the file. This raises on a line holding anything besides a digest."""
+    """
+    The approved digests, in the order of the file. This raises on a line holding anything besides a digest. A torn last
+    line raises nothing.
+    """
     held = lines_read(LEDGER)
     for one in held:
         if not isinstance(one, str) or not _A_DIGEST.fullmatch(one):
@@ -230,11 +246,36 @@ def given_up(into: str, digest: str) -> None:
     appended(os.path.join(into, _UNSETTLED), [digest])
 
 
-def pending_tasks_written(into: str, held: Iterable[Task]) -> None:
-    """Write the pending tasks queue under `into`."""
-    _replaced(
-        os.path.join(into, _PENDING_TASKS), json.dumps([dataclasses.asdict(one) for one in held], indent=2) + "\n"
-    )
+def write_logged(into: str, run: str, key: str, before: list[str], after: list[str], digest: str) -> None:
+    """
+    Append a record of a write into the tree to the write journal under `into`. `run` names the pass that wrote. `key`
+    names the fragment. `before` and `after` hold the prose of the sites. `digest` is the prose digest of `after`.
+    """
+    record = {"run": run, "key": key, "before": before, "after": after, "digest": digest}
+    appended(os.path.join(into, _WRITES), [record])
+
+
+def review_logged(into: str, key: str, was: list[str], draft: list[str], claimed: list[str]) -> None:
+    """
+    Append a record to the review file under `into`. `key` names the fragment. `was` holds the `draft` of the fragment's
+    `ProseState`, the prose of the tree. `draft` holds the critic's draft. `claimed` holds the draft once the claims
+    reader's changes apply.
+
+    `converge_prose._read_claims` passes these values.
+    """
+    appended(os.path.join(into, REVIEW), [{"key": key, "was": was, "draft": draft, "claimed": claimed}])
+
+
+def last_write(into: str, digest: str) -> dict[str, Any] | None:
+    """
+    The latest record in the write journal under `into` whose write left the prose digest `digest`. The answer is `None`
+    where no logged write left that digest.
+    """
+    found = None
+    for one in lines_read(os.path.join(into, _WRITES)):
+        if one["digest"] == digest:
+            found = one
+    return found
 
 
 @contextlib.contextmanager
@@ -276,7 +317,8 @@ def run_locked(into: str) -> Iterator[None]:
     """
     Hold the run lock under `into`. A second run raises here rather than waiting.
 
-    The lock is an operating system file lock. The system releases the lock of a killed run.
+    The lock is an operating system file lock. The system releases the lock of a killed run, as
+    https://man7.org/linux/man-pages/man2/flock.2.html says.
     """
     os.makedirs(into, exist_ok=True)
     with open(os.path.join(into, _RUN_LOCK), "a", encoding="utf-8") as handle:

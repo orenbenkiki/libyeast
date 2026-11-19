@@ -15,8 +15,7 @@ You have no tools. Do not ask for a file. Your prompt and this definition hold w
 ## Rewrite for these
 
 - A universal, a superlative, or a count the tree decides.
-- A vague quantifier where a name belongs. Mechanised in part. `prose_rules` takes `a handful` and the words listed
-  beside it. `many`, `various` and `often` are yours.
+- A vague quantifier where a name belongs. `many`, `various` and `often` are such quantifiers.
 - A sentence nothing could refute. Ask what the tree would have to look like for the sentence to be false. A sentence
   with no such answer is decoration and comes out.
 - A sentence whose subject names no actor. Ask who or what does this, and what they do.
@@ -72,12 +71,12 @@ rather than over a kind of file.
 State a rule the way `.claude/conventions.md` states one. An accepted proposal lands in that file. The checkers in `prose_rules` read
 the wording of that file. The same checkers read a proposal in your answer. They pass `refuses a sentence ending on a verb` and turn back `refuses every sentence that ends on a verb`.
 
-A proposal is worth raising on either of these grounds. A machine could decide the rule, no checker covers the rule,
-and the turned-down list does not name the rule. Or the rule narrows a checker that exists.
+A proposal is worth raising where a machine could decide the rule, no checker covers the rule, and the turned-down list
+does not name the rule. A proposal that narrows a checker that exists is worth raising as well.
 
 Your definition holds the proposals the author has turned down. Do not raise one of those again.
 
-A proposal states a pair of quotes. `before` is prose the proposed checker refuses. `after` says that prose again in
+A proposal states a pair of quotes. `before` is prose the proposed checker refuses. `after` rewrites that prose into
 the form the checker passes. The pair is a fixture rather than an illustration. Whoever implements the rule holds the
 checker to refusing `before` and passing `after`. Drop a rule you cannot state such a pair for.
 
@@ -110,7 +109,7 @@ The text below comes from the files this heading names. `generator/write_agent_p
 
 ## The answer
 
-Answer by calling the StructuredOutput tool. The schema below decides the shape of the input to that call. Write no sentence beside the call. A hook may turn the call back with a refusal. Say the refused prose again, and call the tool again.
+Answer by calling the StructuredOutput tool. The schema below decides the shape of the input to that call. Write no sentence beside the call. A hook may turn the call back with a refusal. Rewrite the refused prose, and call the tool again.
 
 ```json
 {
@@ -135,7 +134,7 @@ Answer by calling the StructuredOutput tool. The schema below decides the shape 
               "rewritten",
               "out_of_budget"
             ],
-            "description": "your finding for this fragment. `passed` says the prose is sound. `rewritten` says you said areas of the prose again, and `changes` then holds them. `out_of_budget` says you ran out of room to read it"
+            "description": "your finding for this fragment. `passed` says the prose is sound. `rewritten` says you rewrote areas of the prose, and `changes` then holds them. `out_of_budget` says you ran out of room to read it"
           },
           "changes": {
             "type": "array",
@@ -168,6 +167,7 @@ Answer by calling the StructuredOutput tool. The schema below decides the shape 
     },
     "proposals": {
       "type": "array",
+      "maxItems": 1,
       "description": "a tightening of a write-time checker that would have caught a fault you rewrote. a batch raises the proposal you believe in hardest and leaves a weaker proposal unsaid",
       "items": {
         "type": "object",
@@ -197,7 +197,7 @@ Answer by calling the StructuredOutput tool. The schema below decides the shape 
           },
           "after": {
             "type": "string",
-            "description": "the same prose said again, in the form the proposed checker passes"
+            "description": "the same prose rewritten into the form the proposed checker passes"
           }
         }
       }
@@ -233,9 +233,7 @@ whether a gate decides it. The author asks that of an accepted rule before the n
 
 - **a-boolean-is-a-pure-question** - a `bool` answers a question and computes no more. A command reporting whether it
   worked hands back a `ys_status`. A parse hands back the position reached. `ys_next_line` answers NULL where the bytes
-  fell short. A command, a parse and a question return distinct types. The type decides the name. *Mechanised in part by
-  `check_conventions`. A `bool` under a name that is not a question is a fault, in C and in Python alike. Whether a
-  question is pure stays with the reader.*
+  fell short. A command, a parse and a question return distinct types. The type decides the name. *Not mechanised.*
 - **a-name-keeps-its-meaning** - new semantics take a new name, and nobody redefines an existing one. `pair` means a
   frame-scoped `Push`/`Pop` pair and no more. *Not mechanised.*
 - **long-names-over-short-ones** - a writer invents no shorthand where the project has a word for the thing. Grep for
@@ -262,10 +260,11 @@ The prose checkers read a comment beside code and a document alike.
 - **each-document-keeps-to-its-domain** - `DESIGN.md` is context, perspective and architecture, and it repeats no code
   comment. `CHANGELOG.md` records the work a change did. `PLAN.md` names the work the project still owes. *Not
   mechanised. Whether a passage keeps to its document's domain stays with the reader.*
-- **a-step-carries-its-argument** - a new step of the normalization pipeline comes with the argument that answers the
-  rules above `_Step` in `generator/normalize.py`. The argument says which invariant the step establishes, or why the
-  step establishes none. It says that the transform is local and mechanical. It says that a value the step produces is a
-  global or a stack entry. *Not mechanised. Whether the argument is true stays with the review.*
+- **a-step-carries-its-argument** - a new step of the normalization pipeline comes with an argument. The argument
+  answers the rules a pipeline step must satisfy. `generator/normalize.py` holds those rules. The argument says which
+  invariant the step establishes, or why the step establishes none. It says that the transform is local and mechanical.
+  It says that a value the step produces is a global or a stack entry. *Not mechanised. Whether the argument is true
+  stays with the review.*
 - **an-oracle-answers-and-a-checker-decides** - an oracle produces the answer. Haskell YamlReference produces a parse.
   The fixtures under `tests/spec/` hold the token stream a production must emit. `check_spaces._check_standings` writes
   out the comparison values. A checker produces pass or fail, and the hooks under `.claude/hooks/` call themselves
@@ -435,7 +434,7 @@ ______________________________________________________________________
    the word run. Permuting is not writing. The proposal aimed to stop that move. A later form asks whether a sentence of
    the old prose survived the edit. That form fails the same way over a single sentence. It refuses a rewrite that keeps
    a sentence the old prose already wrote well. A writer routes around a rule comparing new prose to old prose.
-   `faulty-prose-is-re-said-not-patched` replaced the proposal. That rule judges the new prose without the old, and
+   `faulty-prose-is-rewritten-not-patched` replaced the proposal. That rule judges the new prose without the old, and
    refuses opaquely.
 
 1. **"A part-of-speech tagger. The shape rules could then ask about a verb rather than about a word."** The reviewer
@@ -555,9 +554,7 @@ ______________________________________________________________________
    writes `Some of the character sets the grammar consumes admit non-ASCII characters.` *Rejected.* A sweep found the
    run in prose that can name no members. `include/yeast.h` writes
    `Setting some of the callbacks mixes custom and standard behavior.` That claim covers any strict subset of the
-   callbacks, and a list would narrow a true claim into a false one. `.claude/hooks/tense-check.sh` writes
-   `Some of these words are legitimate in prose about the parse itself.` The words sit in a list in that same file. A
-   sentence naming them goes stale the day somebody edits that list. The word rules reach `CHANGELOG.md`, where the run
+   callbacks, and a list would narrow a true claim into a false one. The word rules reach `CHANGELOG.md`, where the run
    appears in entries nobody should rewrite. The sentence after the cited line names the sets anyway. A list in the
    cited line would name the sets a second time. `a-piece-of-prose-is-written-once` covers that fault.
 

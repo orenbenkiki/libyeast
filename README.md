@@ -10,9 +10,10 @@
 A fast, single-pass, pull-driven **YAML 1.2 parser in C**. The generator derives libyeast *from the formal grammar*, and
 conformance follows from that derivation rather than from hand-testing.
 
-> **Status: pre-alpha.** The tree holds no parser. This repository holds the project framework and a placeholder API
-> (`ys_version`). The framework is the build and the tests. It is also the linting and the coverage. It is the docs and
-> the packaging. See [`DESIGN.md`](DESIGN.md) for the architecture and [`PLAN.md`](PLAN.md) for the roadmap.
+> **Status: pre-alpha.** The tree holds no working parser. A read from a parser returns the `YS_MESSAGE_NOT_IMPLEMENTED`
+> error. The public API, the byte streams and the yeast wire format are in place. The tree holds a build, tests and a
+> linter. The tree measures coverage, and the tree builds docs and packages. See [`DESIGN.md`](DESIGN.md) for the
+> architecture and [`PLAN.md`](PLAN.md) for the roadmap.
 
 ## Why
 
@@ -46,9 +47,9 @@ boundaries define what that claims.
 
 ## Requirements
 
-Building the C library needs a C99 compiler, CMake `>= 3.20` and pkg-config. GCC, Clang and MSVC compile it. The tree
-holds the generated sources. The build calls no Python. `make install-deps` installs the build tools on Debian and
-Ubuntu. The goal works on macOS and Windows as well.
+Building the C library needs a C99 compiler and CMake `>= 3.20`. GCC, Clang and MSVC compile it. The package test also
+needs pkg-config. The tree holds the generated sources. The build calls no Python. `make install-deps` runs the
+build-deps script for the OS. It covers Debian and Ubuntu, macOS and Windows.
 
 Working on the generator or running the gate needs Python 3 with PyYAML, the formatters and linters, and the coverage
 and docs tools. `make install-deps-pc` installs the whole set, and `make install-deps-<goal>` installs the part a single
@@ -100,14 +101,15 @@ regenerate its outputs. `make pc` is the developer gate over the whole tree.
 - `make vet`
 - `make gh-pages`
 
-A CI workflow runs `test` and `verify`. The same workflow runs `vet` and `gh-pages`. A status badge shows the result of
-that workflow. The workflow runs on a pull request and on `main`. A gate that refuses a change locally refuses the same
-change in CI. The workflow publishes the docs on a push to `main` and not on a pull request.
+`test.yml` runs `test`, and `verify.yml` runs `verify`. `vet.yml` runs `vet`, and `gh-pages.yml` runs `gh-pages`. A
+badge above shows the result of a workflow. The workflows run on a pull request and on `main`. A gate that refuses a
+change locally refuses the same change in CI. `gh-pages.yml` publishes the docs on a push to `main` and not on a pull
+request.
 
 - **`make all`:** the default. It builds the shared and static libraries, in pure C with no Python.
 - **`make test`:** build and run the C parser tests in pure C.
-  - **`make test-debug`:** Debug build (sanitized) + tests
-  - **`make test-release`:** Release build + tests
+  - **`make test-debug`:** the sanitized Debug build and its tests
+  - **`make test-release`:** the Release build and its tests
 - **`make verify`:** the generator pipeline is correct and its outputs are current.
   - **`make verify-roundtrip`:** the grammar round-trips through the IR losslessly
   - **`make verify-references`:** a reference resolves to a production of matching arity, and a production is reachable
@@ -133,18 +135,21 @@ change in CI. The workflow publishes the docs on a push to `main` and not on a p
   - **`make verify-agent-prompts`:** an agent definition holds the copy of the conventions its sources say
   - **`make verify-hooks`:** a registered hook answers a faulty edit and passes a clean edit
   - **`make verify-fragments`:** the project breaks into fragments, and a fragment holds prose of its own
-  - **`make verify-prose`:** the prose in the tree says nothing a write-time hook would refuse
+  - **`make verify-prose`:** the prose in the tree says nothing a write-time hook would refuse, and the prose queues are
+    empty
+  - **`make verify-claims`:** a claim pass has read the prose of the tree against the code
   - **`make verify-ascii`:** a tracked file holds ASCII, and `check_ascii` declares what holds a wider character
 - **`make vet`:** static code quality.
   - **`make vet-format`:** the formatters run in check-only mode.
     - **`make vet-format-c`:** clang-format
     - **`make vet-format-md`:** mdformat
-    - **`make vet-format-py`:** black + format-docstring + `wrap_long_comments` + ruff
+    - **`make vet-format-py`:** black and format-docstring, then `wrap_long_comments` and ruff
     - **`make vet-format-cmake`:** gersemi
     - **`make vet-format-sh`:** shfmt
+    - **`make vet-format-js`:** `wrap_long_comments` over the JavaScript comments
     - **`make vet-format-make`:** the column limit over the lines no formatter reflows
   - **`make vet-comments`:** the `/* */`-only-when-inline comment rule
-  - **`make vet-lint`:** clang-tidy + cppcheck
+  - **`make vet-lint`:** clang-tidy and cppcheck
   - **`make vet-pylint`:** pylint over `generator/` and `scripts/`, and `.pylintrc` configures it
   - **`make vet-mypy`:** mypy over the same files, and `mypy.ini` configures it. mypy checks what has an annotation
   - **`make vet-version`:** guards the vcpkg port against version drift
@@ -153,7 +158,7 @@ change in CI. The workflow publishes the docs on a push to `main` and not on a p
     file for writing that goal out. `vet` runs the scan.
 - **`make gh-pages`:** the GitHub Pages payload.
   - **`make gh-pages-docs`:** Doxygen HTML behind a completeness gate
-  - **`make gh-pages-coverage`:** the `// UNTESTED` coverage gate + HTML report
+  - **`make gh-pages-coverage`:** the `// UNTESTED` coverage gate and the HTML report
 
 Goals outside the gate.
 
@@ -162,9 +167,11 @@ Goals outside the gate.
   - **`make install-deps-pc`:** the deps the gate needs. `make install-deps-<sub-gate>` narrows the list, as
     `install-deps-verify` and `install-deps-vet` and `install-deps-gh-pages` do.
 - **`make install`:** install the built libraries. `PREFIX=...` sets the location, and `/usr/local` is the default.
-- **`make regen`:** regenerate `src/decoder_tables.h`.
+- **`make regen`:** regenerate `src/decoder_tables.h`, the agent definitions that judge prose, and
+  `generator/cited_names.json`.
 - **`make reformat`:** apply the formatters in place. A single language goes through `reformat-c` or `reformat-md`. A
   Python file goes through `reformat-py`, a CMake file through `reformat-cmake` and a shell file through `reformat-sh`.
+  A JavaScript file goes through `reformat-js`. The `Makefile` goes through `reformat-make`.
 - **`make check-build-deps` and `make check-dev-deps`:** report whether the required tools are there.
 - **`make clean`:** remove the build directories and stamps.
 
@@ -179,4 +186,4 @@ GitHub Pages.
 
 ## License
 
-MIT - see [`LICENSE`](LICENSE).
+MIT. [`LICENSE`](LICENSE) holds the text.

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-Emit a Shields endpoint-badge JSON from a gcovr `--json-summary` file.
+Emit a Shields endpoint-badge JSON from a gcovr `--json-summary` file. https://gcovr.com/en/stable/output/json.html
+shows the `line_percent` that summary holds.
 
 The published badge at `img.shields.io/endpoint?url=.../coverage.json` reads that JSON and shows the line-coverage
-percentage. Its colour steps from red at low coverage to bright green at high.
+percentage. https://shields.io/badges/endpoint-badge describes the keys the badge reads. Its colour steps from red at
+low coverage to bright green at high.
 """
 
 import json

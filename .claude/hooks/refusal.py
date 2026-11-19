@@ -2,15 +2,14 @@
 """
 The way a hook answers a tool call.
 
-A `PreToolUse` hook answers the tool with a JSON payload. The shape of that payload is a contract with the tool. A copy
-with a wrong key prints nothing and reads exactly like an edit that passed. This module holds the payload, and a hook
-imports it.
+A `PreToolUse` hook answers the tool with a JSON payload, as https://code.claude.com/docs/en/hooks says. This module
+holds the payload, and a hook imports it.
 
-`refuse` turns the call back. `amend` lets it through with other arguments. `prose_answer` amends, and the shape it
-sends came out of a probe rather than a document.
+`refuse` turns the call back. `amend` lets it through with other arguments. `prose_answer` amends.
 
 This is not a hook. `.claude/settings.json` registers the hooks and does not name this module. Python runs a hook by its
-path and puts the hook's directory first on the import path. A hook beside this file finds this module there.
+path and puts the hook's directory first on the import path, as https://docs.python.org/3/library/sys.html#sys.path
+says. A hook beside this file finds this module there.
 """
 
 import json

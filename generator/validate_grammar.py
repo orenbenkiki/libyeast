@@ -6,12 +6,11 @@ Loads libyeast's grammar (via `annotated2ir`) and checks the following.
 
   * A referenced production exists.
   * A reference passes as many arguments as the target declares.
-  * A production has a reference, and no production is dead. `UNREFERENCED` lists the exceptions, and a production it
-    names must exist.
+  * A production has a reference unless `_UNREFERENCED` names it. A production in `_UNREFERENCED` must exist.
   * A character the parser consumes lies within a token annotation.
-  * A `(match)` sits in a `(token)`, and the whole item of that `(token)` is the match.
-  * A node's `renamed` rewrites exactly the names its `references` reports.
-  * A case on a finite parameter names a branch per value, or has a default.
+  * A `(match)` sits inside a `(token)`. That `(token)` holds no inner `(token)`.
+  * A production's `renamed` rewrites exactly the names its `references` reports.
+  * A case without a default is on a parameter in `_FINITE_VALUES`. The case names a branch per value.
 
 Reports the problems found and exits with a failing status where the grammar breaks any of these.
 """
@@ -31,11 +30,11 @@ def walk(node: ir.Node) -> Iterator[ir.Node]:
         yield from walk(child)
 
 
-# The productions that nothing references. The root the parser runs, and c-reserved. The reserved characters (section
-# 5.4) are ones the grammar defines but does not use.
+# The productions that nothing references. `ROOT` names the root the parser runs. `c-reserved` matches the reserved
+# characters of section 5.3. The grammar defines `c-reserved` and leaves it unused.
 #
-# The indicator characters (section 5.3) have a production apiece too, and those *are* referenced. libyeast reaches an
-# indicator through the production that names it. That production gives a token annotation somewhere to attach.
+# `c-sequence-entry` is another indicator production of section 5.3, and the grammar references it. libyeast reaches an
+# indicator through the production naming it. That production holds the token annotation.
 _UNREFERENCED = frozenset({"l-yeast-stream", "c-reserved"})
 
 
@@ -43,11 +42,13 @@ def _consumed(node: ir.Node, is_annotated: bool, references: list[tuple[str, boo
     """
     For a character `node` consumes, yield whether a token annotation covers it. Collect the references reached.
 
-    A lookahead consumes nothing and emits nothing. A node inside a lookahead is neither counted nor followed. A `(---)`
-    matches a character and counts as such. The characters it subtracts are operands rather than matches.
+    `ASKED_NOT_TAKEN_NODES` holds the lookarounds and the exclusion. Such a node consumes nothing. `_consumed` neither
+    counts nor follows a node nested under such a node. A `(---)` is a `DiffSet`, and `CONSUMING` holds that kind. So a
+    `(---)` matches a character and counts as such. The characters it subtracts are operands rather than matches.
 
-    A kind this question does not name raises rather than walks into its children. A new way of taking a character would
-    otherwise yield nothing of its own. The characters that way takes would then pass this check without an annotation.
+    A kind this question does not name makes `Question` raise rather than walk into its children. A new way of taking a
+    character would otherwise yield nothing of its own. The characters that way takes would then pass this check without
+    an annotation.
     """
     yield from _CONSUMED(node, is_annotated, references)
 
@@ -75,8 +76,8 @@ def _taken_by_what_it_holds(node: ir.Node, is_annotated: bool, references: list[
     return (held for child in chars.children(node) for held in _consumed(child, is_annotated, references))
 
 
-# The kinds an annotated grammar uses. This reads libyeast's grammar as the author wrote it. Lowering has yet to run. A
-# canonical form arriving means a caller handed this gate the wrong grammar. It is not a shape to walk into.
+# The kinds an annotated grammar uses. A canonical form arriving means a caller handed this gate the wrong grammar. It
+# is not a shape to walk into.
 _CONSUMED: ir.Question[Iterable[bool]] = ir.Question(
     "a boolean per character a node takes. a boolean says whether a token annotation covers that character.",
     {
@@ -95,8 +96,7 @@ _CONSUMED: ir.Question[Iterable[bool]] = ir.Question(
             ir.EmptyTree,
         ): _taken_by_what_it_holds,
     },
-    # The canonical forms. An annotated grammar holds none of them. The shapes the lowerings mint fall past the reach of
-    # this gate.
+    # The canonical forms. An annotated grammar holds none of them.
     untested=(
         ir.CharSet,
         ir.ConsumeCharAction,
@@ -110,10 +110,6 @@ _CONSUMED: ir.Question[Iterable[bool]] = ir.Question(
 def _check_annotated(grammar: Mapping[str, ir.Prod]) -> list[str]:
     """
     A character the parser consumes must lie within a token annotation.
-
-    A character consumed outside an annotation reaches the caller as a token with the code `unparsed`. The parser gives
-    that code to input it could not parse. On the success path that is an annotation somebody forgot. Without this
-    check, only a comparison against the reference catches a missing annotation.
 
     The check reaches a production with an annotation around it, without one, or both ways. The check follows the
     references from the root and runs until the set of reached productions settles.
@@ -146,24 +142,24 @@ def _check_annotated(grammar: Mapping[str, ir.Prod]) -> list[str]:
 
 def _check_matches(grammar: Mapping[str, ir.Prod]) -> list[str]:
     """
-    A `(match)` read as text reads the token under construction. It gives back the characters since the last token cut.
-    That is the match of the rule itself where the rule matched inside a single `(token)`. Anything before the `(match)`
-    in that token must belong to the same rule. Such a `(match)` must sit inside a `(token)`, as that token's whole
-    item. It must sit past the point where the item already matched.
+    `interpreter._evaluated_match` reads a `(match)` off the token under construction. It gives back the characters
+    since the last token cut. That is the match of the rule itself where the rule matched inside a single `(token)`.
+    Such a `(match)` must sit inside a `(token)`. The item of a `(token)` holding a `(match)` must hold no nested
+    `(token)`.
 
-    A `(match)` under `(len)` is a different value and is no business of the check. The length of the last consume is a
-    slot the consume writes. A token cut touches no such slot.
+    The check also walks into `(len)`, as `children` yields its argument. A `(match)` under `(len)` falls under the same
+    rules. `interpreter._evaluated_length` reads the length of the last consume off a slot of its own.
     """
     errors = []
     for name, production in sorted(grammar.items()):
-        holders = [node for node in walk(production.body) if isinstance(node, ir.TokenWrapper)]
+        holders = [token for node in walk(production.body) if (token := ir.AS_A_TOKEN(node)) is not None]
         for token in holders:
-            inner = [node for node in walk(token.item) if isinstance(node, ir.TokenWrapper)]
-            if inner and any(isinstance(node, ir.MatchValue) for node in walk(token.item)):
+            inner = [held for node in walk(token.item) if (held := ir.AS_A_TOKEN(node)) is not None]
+            if inner and any(ir.AS_A_MATCH(node) is not None for node in walk(token.item)):
                 errors.append(f"{name}: a `(match)` reads a run a nested `(token)` has cut")
         covered = {id(node) for token in holders for node in walk(token.item)}
         for node in walk(production.body):
-            if isinstance(node, ir.MatchValue) and id(node) not in covered:
+            if ir.AS_A_MATCH(node) is not None and id(node) not in covered:
                 errors.append(f"{name}: a `(match)` sits outside any `(token)`, and no run is its own")
     return errors
 
@@ -172,9 +168,9 @@ def _check_renaming(grammar: Mapping[str, ir.Prod]) -> list[str]:
     """
     A node's `renamed` rewrites exactly the names its `references` reports.
 
-    A rename keeps `renamed` and `references` in step. A name in the grammar goes to itself with a mark, and what comes
-    back must report the marked names and no others. A class that adds a field to reachability and leaves that field out
-    of the rename fails here.
+    A rename keeps `renamed` and `references` in step. The check maps the names a production references to themselves
+    with a mark. The renamed production must report the marked names in order. A class that adds a field to reachability
+    and leaves that field out of the rename fails here.
     """
     errors = []
     for name, production in grammar.items():
@@ -185,7 +181,7 @@ def _check_renaming(grammar: Mapping[str, ir.Prod]) -> list[str]:
     return errors
 
 
-# The values a finite parameter takes. A case on such a parameter has to name those values in full.
+# The values a finite parameter takes. A case on such a parameter has to name those values in full or have a default.
 _FINITE_VALUES = {
     "c": annotated2ir.CONTEXTS,
     "i": annotated2ir.INDENT_MODES,
@@ -196,17 +192,18 @@ _FINITE_VALUES = {
 
 def _check_total_cases(grammar: Mapping[str, ir.Prod]) -> list[str]:
     """
-    Check that a case on a finite parameter names a branch per value it takes, or has a default.
+    Check that a case with no default is on a finite parameter and names a branch per value that parameter takes.
 
-    A case silent about a value declines it. A reader then has to infer the production's behaviour from that absence. An
-    absence can mean "it matches nothing" or "nobody asks". Those meanings differ, and the absence cannot say which
-    holds. A decline named in full is `<fail>` and says which meaning holds. The specialization can then raise where a
-    value has no branch instead of inventing a match for it.
+    A `CaseTree` silent about a value declines it. A reader then has to infer the production's behaviour from that
+    absence. An absence can mean "it matches nothing" or "nobody asks". Those meanings differ, and the absence cannot
+    say which holds. A `<fail>` branch names the decline in full. That node is an `ir.FailTree`. `interpreter._MATCHED`
+    answers false for a `FailTree`. A `<fail>` branch says the case matches nothing.
     """
     errors = []
     for name, production in grammar.items():
-        for node in walk(production.body):
-            if not isinstance(node, ir.CaseTree) or node.default is not None:
+        for walked in walk(production.body):
+            node = ir.AS_A_CASE(walked)
+            if node is None or node.default is not None:
                 continue
             if node.var not in _FINITE_VALUES:
                 errors.append(f"{name}: the case is on {node.var}. nothing enumerates the values of that parameter.")
@@ -225,7 +222,7 @@ def _validate(grammar: Mapping[str, ir.Prod]) -> list[str]:
     )
     referenced: set[str] = set()
     for name, production in grammar.items():
-        for reference in (node for node in walk(production.body) if isinstance(node, ir.RefCall)):
+        for reference in (call for node in walk(production.body) if (call := ir.AS_A_CALL(node)) is not None):
             referenced.add(reference.name)
             if reference.name not in grammar:
                 errors.append(f"{name}: reference to undefined production {reference.name!r}")

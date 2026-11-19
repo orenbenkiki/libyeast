@@ -5,9 +5,9 @@
 #include <stdlib.h>
 #include <yeast.h>
 
-// Version components the build system (CMake) injects from `project(yeast VERSION ...)`. That call is the source of
-// truth. The `0.0.0` fallback lets out-of-build tooling parse this file. A binary actually built at `0.0.0` refuses to
-// load (below).
+// CMake injects the version components from `project(yeast VERSION ...)`. That call is the source of
+// truth. The `0.0.0` fallback lets out-of-build tooling parse this file. A binary that GCC or Clang built at `0.0.0`
+// refuses to load (below).
 #ifndef YS_VERSION_MAJOR
 #define YS_VERSION_MAJOR 0
 #endif
@@ -18,9 +18,12 @@
 #define YS_VERSION_PATCH 0 // the third component. CMake injects it the same way.
 #endif
 
-// Compose the major, the minor and the patch into a dotted string at preprocess time.
+// The inner pass turns its argument into a string literal. It does not expand the argument, as
+// https://gcc.gnu.org/onlinedocs/cpp/Stringizing.html says.
 #define YS_STRINGIFY_(x) #x
-#define YS_STRINGIFY(x) YS_STRINGIFY_(x) // the outer pass. It expands x, and the inner pass then quotes the result.
+// The outer pass expands x, as https://gcc.gnu.org/onlinedocs/cpp/Argument-Prescan.html says. The inner pass then
+// quotes the result.
+#define YS_STRINGIFY(x) YS_STRINGIFY_(x)
 // The components above joined with full stops. `ys_version` hands this back.
 #define YS_VERSION_STRING                                                                                              \
     YS_STRINGIFY(YS_VERSION_MAJOR) "." YS_STRINGIFY(YS_VERSION_MINOR) "." YS_STRINGIFY(YS_VERSION_PATCH)

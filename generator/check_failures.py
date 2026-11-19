@@ -16,15 +16,17 @@ An agent may fail at a task. Such an agent reports a failure. That agent still a
 present and empty. A guard asking only whether an answer arrived passes an empty answer through. Code after that guard
 reads emptiness as work.
 
-An `except` may put the caught exception into the run's report. Such an `except` takes `failure-is-reported:` on a line
-of its own. That marker says where the failure comes out. A gate collecting divergences over a corpus wants the whole
-set rather than the first crash. A crash is a divergence like any other.
+An `except` may put the caught exception into the run's report. Such an `except` takes `failure-is-reported:` in a
+comment on the `except` line itself. That marker says where the failure comes out. A gate collecting divergences over a
+corpus wants the whole set rather than the first crash. A crash is a divergence like any other.
+`check_normalize._corpus_errors` is such a gate.
 
-An `except` whose exception is an ordinary answer takes `not-a-failure:` on a line of its own. That marker says what the
-answer means. The decoder answers `(None, 1)` about a byte of a malformed UTF-8 sequence.
+An `except` whose exception is an ordinary answer takes `not-a-failure:` in a comment on the `except` line itself. That
+marker says what the answer means. `interpreter._decode_one` answers `(None, 1)` about a byte of a malformed UTF-8
+sequence.
 
 A marker sits on the line it excuses. A store keyed by `file:line` goes stale under an edit above the line. A stale key
-reads as a site that stopped ignoring anything.
+reads as a site that stopped ignoring anything. `a-fragment-is-found-by-its-key` says the same of a stored line.
 
 Usage: `python3 generator/check_failures.py`.
 """
@@ -35,48 +37,55 @@ import re
 
 import gate
 
-# The line a shell script starts with. `-e` stops on a failed command. `-u` refuses an unset name. `pipefail` gives a
+# The `set` line a bash script holds. `-e` stops on a failed command. `-u` refuses an unset name. `pipefail` gives a
 # pipeline the status of the command that failed rather than the trailing status.
-#
-# `pipefail` is bash. POSIX `sh` has no such option and dash refuses it. A `#!/bin/sh` script uses `set -eu`.
+# https://www.gnu.org/software/bash/manual/html_node/The-Set-Builtin.html documents `-e`, `-u` and `pipefail`. A shell
+# script of the tree is a bash script.
 _WANTED_SET = "set -euo pipefail"
-_WANTED_SET_IN_SH = "set -eu"  # the rule a `#!/bin/sh` script follows instead.
 
-# A recipe line `make` runs without stopping on its status, and the pair of forms that discard a status.
+# A recipe line `make` runs without stopping on its status, as
+# https://www.gnu.org/software/make/manual/html_node/Errors.html says. The pair of forms that discard a status follow,
+# as https://pubs.opengroup.org/onlinepubs/9799919799/utilities/V3_chap02.html says.
 _SWALLOWED_IN_MAKE = re.compile(r"^\t-|\|\|\s*true\b|\|\|\s*:")
 
-# An agent call whose result a name binds, and a call whose result goes unbound.
+# An agent call whose result a `const` name binds. The pattern captures that name.
 _BOUND_AGENT = re.compile(r"\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+agent\s*\(")
 _BARE_AGENT = re.compile(r"^\s*await\s+agent\s*\(", re.MULTILINE)  # the unbound call. Its answer goes unread.
 
-# An expression in this set asks whether a bound answer holds anything. It reads the length, the keys or the values of
-# the answer.
+# An expression in this set asks whether a bound answer holds anything. Such an expression reads the keys or the values
+# of the answer. Another reads a length within the answer.
 _ASKS_IF_EMPTY = r"Object\.(?:keys|values)\(\s*{name}\b|\b{name}\b[\w.\[\]]*\.length"
 
-# A call writes this keyword to raise no error on a failure. `subprocess.run(check=False)` writes it.
+# A call sets this keyword to `False` to raise no error on a failure. `subprocess.run(check=False)` writes it, as
+# https://docs.python.org/3/library/subprocess.html#subprocess.run says.
 _UNRAISED = "check"
 
-# The markers on an `except` a reader has already ruled on. Both sit on the `except` line and state their reason.
-# `failure-is-reported:` says where the failure comes out. `not-a-failure:` says what the exception answers instead.
+# The markers on an `except` a reader has already ruled on. Both sit on the `except` line and state their reason. A
+# writer of `failure-is-reported:` should say where the failure comes out. A writer of `not-a-failure:` should say what
+# the exception answers instead.
 _IS_EXCUSED = re.compile(r"#.*\b(?:failure-is-reported|not-a-failure):\s*(\S.*)$")
 
 
 def _shell_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` per shell script that does not stop on a failed command."""
+    """
+    `(site, what is wrong)` per fault of a shell script. A script whose first line is no bash line holds a fault. So
+    does a script that lacks `_WANTED_SET`. A bash script's first line ends in `bash`.
+    """
     held = []
     for path in gate.shell_scripts():
         name = str(path.relative_to(gate.TREE))
         lines = path.read_text(encoding="utf-8").splitlines()
-        wanted = _WANTED_SET if lines and lines[0].endswith("bash") else _WANTED_SET_IN_SH
+        if not (lines and lines[0].endswith("bash")):
+            held.append((name, f"{name} opens on {lines[0] if lines else '(nothing)'!r}, and wants a bash first line"))
         said = [line.strip() for line in lines if line.startswith("set ")]
-        if wanted not in said:
+        if _WANTED_SET not in said:
             opened = said[0] if said else "(no set line)"
-            held.append((name, f"{name} starts {opened!r}, and wants {wanted!r}"))
+            held.append((name, f"{name} starts {opened!r}, and wants {_WANTED_SET!r}"))
     return held
 
 
 def _make_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` per `Makefile` recipe that discards the status of its own command."""
+    """`(site, what is wrong)` per `Makefile` line that discards the status of its own command."""
     held = []
     for at, line in enumerate(pathlib.Path(gate.TREE, "Makefile").read_text(encoding="utf-8").splitlines(), start=1):
         if _SWALLOWED_IN_MAKE.search(line):
@@ -98,7 +107,11 @@ def _call_from(said: str, opened_at: int) -> str:
 
 
 def _workflow_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` per workflow that reads an agent's result without asking whether the agent answered."""
+    """
+    `(site, what is wrong)` per fault of an agent call in a workflow. A bound call faults where no test asks whether the
+    agent answered. A bound call under a schema faults where no test asks whether the result holds anything. An unbound
+    agent call faults.
+    """
     held = []
     for path in gate.workflows():
         name = str(path.relative_to(gate.TREE))
@@ -124,15 +137,18 @@ def _workflow_faults() -> list[tuple[str, str]]:
 
 def _does_swallow(handler: ast.ExceptHandler) -> bool:
     """
-    Whether an `except` handler answers with nothing rather than raising.
+    Whether an `except` handler holds no `raise` anywhere in its body.
 
-    This reports such a handler unless its `except` line has a marker.
+    `_python_faults` reports such a handler unless its `except` line has a marker.
     """
     return not any(isinstance(node, ast.Raise) for node in ast.walk(handler))
 
 
 def _python_faults() -> list[tuple[str, str]]:
-    """`(site, what is wrong)` per site where Python suppresses an exception or reads output without a status."""
+    """
+    `(site, what is wrong)` per fault. An `except` handler that raises nothing is a fault. A marker on the `except` line
+    excuses such a handler. A call with `check=False` is a fault in a function whose code names no `returncode`.
+    """
     held = []
     for path in gate.modules() + gate.hook_modules():
         name = str(path.relative_to(gate.TREE))
@@ -169,7 +185,10 @@ def _python_faults() -> list[tuple[str, str]]:
 
 
 def _check() -> None:
-    """Report the ignored failures, over the languages a recipe or a hook can swallow a failure in."""
+    """
+    Report ignored failures. A shell script can ignore a failure. So can a Makefile recipe, a workflow and a Python
+    module.
+    """
     found = _shell_faults() + _make_faults() + _workflow_faults() + _python_faults()
     gate.report(
         [said for _site, said in found],

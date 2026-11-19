@@ -15,7 +15,8 @@ typedef struct ys_lead {
     uint8_t first_max;
 } ys_lead;
 
-// The shape of the sequence `byte` begins. RFC 3629 fixes that shape, and the grammar has no say in it.
+// The shape of the sequence `byte` begins. https://www.rfc-editor.org/rfc/rfc3629 fixes that shape, and the grammar has
+// no say in it.
 static ys_lead lead_of(uint8_t byte) {
     if (byte >= 0xC2u && byte <= 0xDFu) {
         return (ys_lead){2, 0x80u, 0xBFu};
@@ -70,8 +71,8 @@ size_t ys_utf8_length(const uint8_t *bytes, size_t size) {
     return lead.length;
 }
 
-// A sequence running past the end of the window is invalid. That is the right answer at the true end of the input. A
-// buffer that hands the decoder a partial sequence anywhere else has a fault of its own. The decoder answers "a
+// A sequence running past the end of the window is invalid. That is the right answer at the true end of the input.
+// The decoder answers "a
 // character" or "not UTF-8", and it holds no further answer.
 ys_char ys_next_char_slow(const uint8_t *bytes, size_t size) {
     const ys_lead lead = lead_of(bytes[0]);
@@ -109,10 +110,7 @@ ys_char ys_next_char_slow(const uint8_t *bytes, size_t size) {
     return YS_KEY_CONTENT | YS_LENGTH_BITS(lead.length);
 }
 
-// A (***) or a (+++) over a character set compiles to this. The parse consumes the bytes of a YAML document in
-// stretches. A stretch is a plain scalar or comment text. Indentation and quoted content are stretches as well.
-// The ASCII loop classifies a byte at a time. A vector kernel replaces that loop. A nibble-table lookup classifies `16`
-// bytes at a time under SSSE3 or NEON. The signature holds, and the generated parser changes no line.
+// Advance while the character is in `set`. The ASCII branch classifies a byte at a time.
 ys_consumed ys_consume_set(const uint8_t *bytes, size_t size, ys_set_id set) {
     const uint32_t wanted = YS_SET_BITS[set];
     ys_consumed taken = {0, 0};
@@ -135,9 +133,7 @@ ys_consumed ys_consume_set(const uint8_t *bytes, size_t size, ys_set_id set) {
 }
 
 // `ys_consume_trim_sets` is the consume behind a trimmed span. The function takes the `full` set as `ys_consume_set`
-// does. The function also remembers the split. `decoder.h` says which bytes the span keeps and which go back. A
-// nibble-table kernel vectorizes a plain consume and a trimmed consume. The kernel tests a pair of masks a block at a
-// time.
+// does. The function also remembers the split. `decoder.h` says which bytes the span keeps and which go back.
 ys_trim ys_consume_trim_sets(const uint8_t *bytes, size_t size, ys_set_id full, ys_set_id trim) {
     const uint32_t in_full = YS_SET_BITS[full];
     const uint32_t in_trim = YS_SET_BITS[trim];

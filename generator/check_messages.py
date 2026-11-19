@@ -4,8 +4,7 @@ Check that the grammar's error sites and the message table agree.
 
 `grammar/messages.yaml` holds the message table. A `(cut)` in `yeast-spec-1.2.yaml` names a code from that table. So
 does an `(error)`. So do a `(max)` and a `(commit)`. An action names a message in the table. A renamed code or an
-orphaned message fails the build. Character-level errors do not depend on the grammar. The table holds no
-character-level error.
+orphaned message fails the build. The table holds no message for a byte that is no codepoint.
 """
 
 import os
@@ -18,18 +17,22 @@ import yaml
 
 MESSAGES = os.path.join(os.path.dirname(annotated2ir.DEFAULT_GRAMMAR), "messages.yaml")  # the grammar's own messages.
 
+# The message code an action names. The vendored grammar's bare `(max)` names no message.
+_NAMED_CODE: ir.Question[str | None] = ir.Question(
+    "the message code an action names",
+    {
+        (ir.CutAction, ir.ErrorAction, ir.MaxWrapper, ir.CommitWrapper): lambda node: node.message,
+        ir.kinds_other_than(ir.CutAction, ir.ErrorAction, ir.MaxWrapper, ir.CommitWrapper): None,
+    },
+)
+
 
 def _named_codes(grammar: dict[str, ir.Prod]) -> set[str]:
     """
     The message codes that the actions of `grammar` name. A `(cut)` names a code. So does an `(error)`. So does a
     wrapping `(max)` or a `(commit)`.
     """
-    named = set(
-        chars.gathered(
-            grammar, (ir.CutAction, ir.ErrorAction, ir.MaxWrapper, ir.CommitWrapper), lambda node: node.message
-        )
-    )
-    return named - {None}  # the vendored grammar's bare `(max)` names no message
+    return set(chars.gathered(grammar, _NAMED_CODE))
 
 
 def codes() -> dict[str, str]:

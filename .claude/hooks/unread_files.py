@@ -1,32 +1,30 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-PreToolUse on Edit and Write. The hook holds an edited path to `a-file-of-the-tree-has-a-reader`.
+A checker of `checkers`. This checker holds a written path to `a-file-of-the-tree-has-a-reader`.
 
-A hook asks `collect_fragments` for the fragments an edit leaves. `collect_fragments` yields no fragment for a file in a
-language no reader knows. The hook then passes in silence. The prose in that file then lands unread.
+A checker asks `collect_fragments.fragments_touched` for the fragments whose prose an edit changes. `collect_fragments`
+yields no fragment for a file in a language no reader knows. The prose checkers then pass in silence, and the prose in
+that file lands unread. This checker asks whether a reader knows the language of the path. The written file need not
+exist.
 
-`collect_fragments._unnamed_prose` asks whether a tracked file has a reader. This hook asks that question of the edited
-path. The edited file need not exist.
-
-The hook skips a file outside the tree and a path `git` ignores.
+The checker skips a path `git` ignores.
 """
 
-import json
 import os
 import subprocess
-import sys
 
 import check_documents
 import collect_fragments
 import gate
-import refusal
 
 
 def _is_ignored(path: str) -> bool:
     """
-    Whether `git` ignores `path`.
+    Whether `git` ignores `path`. This answers yes for a path under `.git`.
     """
+    if os.path.relpath(os.path.join(gate.TREE, path), gate.TREE).split(os.sep)[0] == ".git":
+        return True
     answered = subprocess.run(
         ["git", "-C", gate.TREE, "check-ignore", "-q", path], capture_output=True, text=True, check=False
     )
@@ -35,9 +33,11 @@ def _is_ignored(path: str) -> bool:
 
 def _refusal_for(path: str) -> str | None:
     """
-    The refusal `a-file-of-the-tree-has-a-reader` gives for `path`, or None where a reader knows the language.
+    The refusal `a-file-of-the-tree-has-a-reader` gives for `path`, or None where `path` holds no prose of the project
+    or where a reader knows its language.
 
-    `gate.NOT_OURS` names the data of this tree. `gate.UNREAD` names the file the checkers leave alone.
+    `gate.NOT_OURS` names the paths in this tree holding no prose of the project. `gate.UNREAD` names the base names of
+    the files the checkers leave alone.
     """
     if not check_documents.is_prose_of_the_project(path) or collect_fragments.language_of(path) is not None:
         return None
@@ -51,18 +51,11 @@ def _refusal_for(path: str) -> str | None:
     )
 
 
-def main() -> None:
-    payload = json.load(sys.stdin)
-    named = payload.get("tool_input", {}).get("file_path")
-    if not isinstance(named, str) or not gate.is_in_the_tree(named):
-        return
-    path = os.path.relpath(os.path.abspath(named), gate.TREE)
-    if _is_ignored(path):
-        return
-    found = _refusal_for(path)
-    if found:
-        refusal.refuse(found)
+def refusal_for(_text: str, path: str) -> str | None:
+    """
+    The refusal `a-file-of-the-tree-has-a-reader` gives for `path`, or None where the path holds no prose of the project
+    or a reader knows the language. A path `git` ignores takes no refusal.
 
-
-if __name__ == "__main__":
-    main()
+    Public. `checkers` runs this over a file an edit writes.
+    """
+    return None if _is_ignored(path) else _refusal_for(path)

@@ -7,15 +7,12 @@
     "A hook takes a list of pairs. `probes` names what the pair puts the fault in. A hook reading a comment and a",
     "string literal gets a pair apiece. An arm no pair fires against goes untried.",
     "",
-    "This is data rather than Python. The hooks refuse the faults below. A hook that reads a module of `generator/`",
-    "would find such a fault in the source of the check that runs it.",
+    "The pairs live in JSON. A Python module of `generator/` holding their faults would fail `check_prose`.",
     "",
-    "`TREE` in a path names the root of the repository. The Edit tool hands an absolute path. A hook matching",
-    "`*/x/*.py` answers nothing about a relative one.",
+    "`TREE` in a path names the root of the repository.",
     "",
-    "A pair with a `file` fires as an edit into that text. `check_hooks` writes the text under a scratch directory by",
-    "its basename. The payload is then the Edit the tool would send. Its `old_string` cuts a slice out of a line, with",
-    "no comment marker in the slice. A hook reading that slice sees no prose and passes."
+    "A pair with a `file` fires as an edit into that text. `check_hooks` writes the text under a scratch directory, at",
+    "the pair's path from the root of the tree. The payload is then the Edit the tool would send."
   ],
 
   "no-shell-file-writes.sh": [
@@ -33,73 +30,56 @@
     }
   ],
 
-  "question-rule.sh": [
+  "kind_dispatches.py": [
     {
       "probes": "an isinstance call",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef _probe(node):\n    \"\"\"A probe.\"\"\"\n    return node\n",
       "answers": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "if isinstance(node, ir.SeqTree):\n    pass\n" }
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    return node", "new_string": "    return isinstance(node, ir.SeqTree)" }
       },
       "passes": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "if isinstance(node, ir.Node):\n    pass\n" }
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    return node", "new_string": "    return isinstance(node, ir.Node)" }
       }
     },
     { "probes": "a comment", "skips": "this reads an isinstance call over ir kinds. a comment is no call." },
     { "probes": "a docstring", "skips": "this reads an isinstance call over ir kinds. a docstring is no call." },
     { "probes": "a markdown line", "skips": "this reads a module of generator. a markdown file goes past it." },
-    { "probes": "a string literal", "skips": "this reads an isinstance call over ir kinds. a literal is no call." }
-  ],
-
-  "step-rules.sh": [
+    { "probes": "a string literal", "skips": "this reads an isinstance call over ir kinds. a literal is no call." },
     {
-      "probes": "a step name",
+      "probes": "a fault the file held",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef _probe(node):\n    \"\"\"A probe.\"\"\"\n    return isinstance(node, ir.SeqTree)\n",
       "answers": {
-        "tool_input": { "file_path": "TREE/generator/normalize.py", "new_string": "_Step(\"mint-probes\", _mint_probes)\n" }
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "def _probe(node):", "new_string": "def _probe(node: object):" }
       },
       "passes": {
-        "tool_input": { "file_path": "TREE/generator/normalize.py", "new_string": "held = sorted(grammar)\n" }
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "ir.SeqTree", "new_string": "ir.Node" }
+      }
+    }
+  ],
+
+  "step_arguments.py": [
+    {
+      "probes": "a step name",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\nHELD = ()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/normalize.py", "old_string": "HELD = ()", "new_string": "HELD = (_Step(\"mint-probes\", _mint_probes),)" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/normalize.py", "old_string": "HELD = ()", "new_string": "HELD = (sorted(GRAMMAR),)" }
       }
     },
     { "probes": "a comment", "skips": "this reads a `_Step(` call in normalize.py. a comment is no call." },
     { "probes": "a docstring", "skips": "this reads a `_Step(` call in normalize.py. a docstring is no call." },
     { "probes": "a markdown line", "skips": "this reads normalize.py. a markdown file goes past it." },
-    { "probes": "a string literal", "skips": "this reads a `_Step(` call in normalize.py. a literal is no call." }
-  ],
-
-  "tense-check.sh": [
+    { "probes": "a string literal", "skips": "this reads a `_Step(` call in normalize.py. a literal is no call." },
     {
-      "probes": "a comment",
+      "probes": "a fault the file held",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\nHELD = (_Step(\"mint-probes\", _mint_probes),)\nOTHER = 1\n",
       "answers": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "# The cache previously held the whole walk.\n" }
+        "tool_input": { "file_path": "TREE/generator/normalize.py", "old_string": "OTHER = 1", "new_string": "OTHER = 2" }
       },
       "passes": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "# The cache holds the whole walk.\n" }
-      }
-    },
-    {
-      "probes": "a docstring",
-      "answers": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "\"\"\"The cache previously held the whole walk.\"\"\"\n" }
-      },
-      "passes": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "\"\"\"The cache holds the whole walk.\"\"\"\n" }
-      }
-    },
-    {
-      "probes": "a markdown line",
-      "answers": {
-        "tool_input": { "file_path": "TREE/DESIGN.md", "new_string": "The cache will be the whole walk.\n" }
-      },
-      "passes": {
-        "tool_input": { "file_path": "TREE/DESIGN.md", "new_string": "The cache holds the whole walk.\n" }
-      }
-    },
-    {
-      "probes": "a string literal",
-      "answers": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "HELD = \"The cache will be the whole walk.\"\n" }
-      },
-      "passes": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "new_string": "HELD = \"The cache holds the whole walk.\"\n" }
+        "tool_input": { "file_path": "TREE/generator/normalize.py", "old_string": "HELD = (", "new_string": "# A probe.\nHELD = (" }
       }
     }
   ],
@@ -206,7 +186,17 @@
       "skips": "this counts the lines of a comment run inside a body. a literal is no comment."
     },
     { "probes": "a docstring", "skips": "this counts an indented run of `#` lines. a docstring opens on quotes." },
-    { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." }
+    { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." },
+    {
+      "probes": "a fault the file held",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # one\n    # two\n    # three\n    return 1\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    return 1", "new_string": "    return 2" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # three\n", "new_string": "" }
+      }
+    }
   ],
 
   "nested_docstrings.py": [
@@ -222,7 +212,17 @@
     },
     { "probes": "a comment", "skips": "this counts the lines of a nested docstring. a comment opens on a marker." },
     { "probes": "a string literal", "skips": "this counts the lines of a nested docstring. a literal is no docstring." },
-    { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." }
+    { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." },
+    {
+      "probes": "a fault the file held",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a nested function sits in.\"\"\"\n\n    def inner() -> int:\n        \"\"\"\n        A note on the inner function.\n        \"\"\"\n        return 1\n\n    return inner()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    return inner()", "new_string": "    return inner() + 1" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "        \"\"\"\n        A note on the inner function.\n        \"\"\"\n", "new_string": "        \"\"\"A note on the inner function.\"\"\"\n" }
+      }
+    }
   ],
 
   "document_rules.py": [
@@ -255,6 +255,91 @@
     { "probes": "a comment", "skips": "this reads DESIGN.md. that file is markdown and holds no comment." },
     { "probes": "a docstring", "skips": "this reads DESIGN.md. that file is markdown and holds no docstring." },
     { "probes": "a string literal", "skips": "this reads DESIGN.md. that file is markdown and holds no literal." }
+  ],
+
+  "public_citations.py": [
+    { "probes": "a markdown line", "skips": "this reads a header under include/. such a header is C and holds no markdown." },
+    {
+      "probes": "a comment",
+      "file": "// SPDX-License-Identifier: MIT\n#ifndef PROBE_H\n#define PROBE_H\n\n/// The count of things a caller holds.\nint ys_probe_count(void);\n\n#endif\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/include/probe.h", "old_string": "things a caller holds", "new_string": "things `check_documents` reads" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/include/probe.h", "old_string": "things a caller holds", "new_string": "things a `ys_token` holds" }
+      }
+    },
+    { "probes": "a docstring", "skips": "this reads a header under include/. such a header is C and holds no docstring." },
+    { "probes": "a string literal", "skips": "this reads the prose of a public declaration. a string literal is no such prose." }
+  ],
+
+  "plan_pointers.py": [
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nThe pass reads the grammar.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "reads the grammar", "new_string": "reads the grammar, as PLAN.md says" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "reads the grammar", "new_string": "reads the whole grammar" }
+      }
+    },
+    {
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The set a walk builds.\nHELD = ()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set PLAN.md names" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long walk builds" }
+      }
+    },
+    {
+      "probes": "a docstring",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\n\nThe set a walk builds.\n\"\"\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set PLAN.md names" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long walk builds" }
+      }
+    },
+    {
+      "probes": "a string literal",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\nHELD = \"The set a walk builds.\"\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set PLAN.md names" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long walk builds" }
+      }
+    }
+  ],
+
+  "design_copies.py": [
+    {
+      "probes": "a markdown line",
+      "file": "# The design\n\nA rewrite moves the key.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "moves the key", "new_string": "moves the key. `collect_fragments.key_for` says that a fragment with a declared name keeps its key" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "moves the key", "new_string": "moves the key. `collect_fragments.key_for` gives the new key" }
+      }
+    },
+    { "probes": "a comment", "skips": "this reads DESIGN.md. that file is markdown and holds no comment." },
+    { "probes": "a docstring", "skips": "this reads DESIGN.md. that file is markdown and holds no docstring." },
+    { "probes": "a string literal", "skips": "this reads DESIGN.md. that file is markdown and holds no literal." },
+    {
+      "probes": "a fault the file held",
+      "file": "# The design\n\nA rewrite moves the key. `collect_fragments.key_for` says that a fragment with a declared name keeps its key.\n\nThe end.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": "The end.", "new_string": "The last line." }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/DESIGN.md", "old_string": " `collect_fragments.key_for` says that a fragment with a declared name keeps its key.", "new_string": "" }
+      }
+    }
   ],
 
   "prose_rewrite.py": [
@@ -303,7 +388,7 @@
   "prose_answer.py": [
     {
       "probes": "a proposal the critic states",
-      "_": "A call names proposals and no changes. The word rules then cover `rule` and `why`. A faulty proposal comes out of the answer.",
+      "_": "A call names proposals and no changes. `proposal_refusals` then runs the checkers over `rule` and `why`, as `record_run._said` writes them. `prose_answer` drops a faulty proposal from the answer.",
       "answers": {
         "agent_id": "probe",
         "tool_input": { "proposals": [{ "rule": "A gate refuses the one word the project turned down.", "why": "The tree holds no such word." }] }
@@ -315,7 +400,7 @@
     },
     {
       "probes": "a rewrite the critic hands back",
-      "_": "The critic answers with a verdict per key. A `rewritten` verdict holds its changes under `changes`. The word rules read the prose those changes leave.",
+      "_": "The critic answers with a verdict per key. A `rewritten` verdict holds its changes under `changes`. `.claude/hooks/prose_answer.py` hands the prose those changes leave to `apply_prose.draft_refusals`.",
       "answers": {
         "agent_id": "probe",
         "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The codepoint of `character`", "new": "The one codepoint of `character`", "rule": "long-names-over-short-ones" }] } } }
@@ -327,7 +412,7 @@
     },
     {
       "probes": "a change citing a rule the conventions do not hold",
-      "_": "A change cites a bullet of `.claude/conventions.md` by name. `gate.conventions` holds the names that file writes.",
+      "_": "A change cites a bullet of `.claude/conventions.md` by name, and `prose_answer` refuses a change citing a name that file does not hold. `gate.conventions` holds the names that file writes.",
       "answers": {
         "agent_id": "probe",
         "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The codepoint of `character`", "new": "The codepoint that `character` holds", "rule": "prose-reads-well" }] } } }
@@ -339,7 +424,7 @@
     },
     {
       "probes": "a change quoting text the fragment does not hold",
-      "_": "A change copies `old` out of the batch character for character. A quote the fragment does not hold names no area to rewrite.",
+      "_": "A change copies `old` out of the batch character for character. A quote the fragment does not hold names no area to rewrite. `prose_answer` refuses such a change.",
       "answers": {
         "agent_id": "probe",
         "tool_input": { "verdicts": { "Python:check_ascii.py:named_character": { "verdict": "rewritten", "changes": [{ "old": "The byte of `character`", "new": "The codepoint that `character` holds", "rule": "long-names-over-short-ones" }] } } }
@@ -354,7 +439,7 @@
   "unread_files.py": [
     {
       "probes": "a file whose language no reader knows",
-      "_": "A file's path decides its reader. A `.md` file has a reader here. A `.txt` file has none.",
+      "_": "`language_of` picks a reader from a file's path. `_LANGUAGES` gives a `.md` file a reader. It gives a `.txt` file other than `CMakeLists.txt` none.",
       "answers": { "tool_input": { "file_path": "TREE/NOTES.txt", "content": "A probe. The hooks read it.\n" } },
       "passes": { "tool_input": { "file_path": "TREE/NOTES.md", "content": "A probe. The hooks read it.\n" } }
     },
@@ -449,6 +534,38 @@
       "passes": {
         "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long slow walk builds" }
       }
+    }
+  ],
+  "edit_landed.py": [
+    {
+      "probes": "a landed file",
+      "file": "# SPDX-License-Identifier: MIT\n# keep.NEXT = 1\n",
+      "answers": {
+        "tool_use_id": "toolu_probe_differs",
+        "predicted": "# SPDX-License-Identifier: MIT\n# keep.\nNEXT = 1\n",
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": " drop me.", "new_string": "" }
+      },
+      "passes": {
+        "tool_use_id": "toolu_probe_agrees",
+        "predicted": "# SPDX-License-Identifier: MIT\n# keep.NEXT = 1\n",
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": " drop me.", "new_string": "" }
+      }
+    },
+    {
+      "probes": "a comment",
+      "skips": "this compares the file an edit left with a recorded prediction. the kind of text the edit touched decides nothing."
+    },
+    {
+      "probes": "a docstring",
+      "skips": "this compares the file an edit left with a recorded prediction. the kind of text the edit touched decides nothing."
+    },
+    {
+      "probes": "a markdown line",
+      "skips": "this compares the file an edit left with a recorded prediction. the kind of text the edit touched decides nothing."
+    },
+    {
+      "probes": "a string literal",
+      "skips": "this compares the file an edit left with a recorded prediction. the kind of text the edit touched decides nothing."
     }
   ]
 }

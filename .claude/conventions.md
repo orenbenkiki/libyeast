@@ -31,9 +31,7 @@ whether a gate decides it. The author asks that of an accepted rule before the n
   `bool` off the C declaration and off the Python annotation.*
 - **a-boolean-is-a-pure-question** - a `bool` answers a question and computes no more. A command reporting whether it
   worked hands back a `ys_status`. A parse hands back the position reached. `ys_next_line` answers NULL where the bytes
-  fell short. A command, a parse and a question return distinct types. The type decides the name. *Mechanised in part by
-  `check_conventions`. A `bool` under a name that is not a question is a fault, in C and in Python alike. Whether a
-  question is pure stays with the reader.*
+  fell short. A command, a parse and a question return distinct types. The type decides the name. *Not mechanised.*
 - **a-name-keeps-its-meaning** - new semantics take a new name, and nobody redefines an existing one. `pair` means a
   frame-scoped `Push`/`Pop` pair and no more. *Not mechanised.*
 - **long-names-over-short-ones** - a writer invents no shorthand where the project has a word for the thing. Grep for
@@ -63,6 +61,11 @@ whether a gate decides it. The author asks that of an accepted rule before the n
   nothing and leaves with a status the tool ignores. A dead checker then reads as a checker that passed a clean call.
   `run.sh` turns the death into a refusal the model reads. *Mechanised by `check_hooks`. That gate reads
   `.claude/settings.json` and fails a command that opens with anything else.*
+- **an-edit-leaves-the-hooks-running** - the hooks import modules of `generator/` and `.claude/hooks/`. An edit to such
+  a module leaves those imports working, and leaves the checkers running. An edit that breaks an import stops the edits
+  after it, and the edit that would fix the fault stops too. A name exists before the edit that uses it. A new parameter
+  takes a default before a caller passes it. *Mechanised by `hook_health`. The `hook_health` hook refuses such an edit
+  ahead of the checkers.*
 - **a-write-time-hook-reads-the-edit-in-place** - a hook decides about the file the edit would leave. The text the tool
   hands over is a slice. An edit rewording a comment can leave the `#` in place. The slice then holds the words and no
   `#`. A hook reading only the slice finds no prose there and passes. `collect_fragments` rebuilds the file from
@@ -77,16 +80,20 @@ whether a gate decides it. The author asks that of an accepted rule before the n
   Adding a category then touches a single file. A module outside `gate` leaves the filesystem to `gate`. *Mechanised by
   `check_conventions`. That gate holds the calls it refuses.*
 - **a-kind-dispatch-raises** - a question about the grammar is a total `ir.Question`. A default arm reports the
-  question's blindness as a fact about the grammar. *Mechanised by `ir`. A `Question` raises on a kind its table does
-  not name, and `check_normalize` reports a handler that a corpus run left unreached.*
+  question's blindness as a fact about the grammar. *Mechanised by `ir` and `kind_dispatches`. A `Question` raises on a
+  kind its table does not name, and `check_normalize` reports a handler that a corpus run left unreached. The
+  `kind_dispatches` checker refuses an `isinstance` test and a `type()` comparison over kinds.*
 - **a-declared-exception-carries-its-reason** - the gate checks the declaration in both directions. A declaration the
   tree has outgrown fails as loudly as a missing one. `KEPT_THOUGH_DEAD` and `NAMES_THE_TREE_NO_LONGER_HOLDS` are such
-  declarations. `NAMES_STILL_OWED`, `DEVIATIONS` and `NAMES_A_FILE_MAY_CITE_UNANSWERED` are such declarations as well. A
+  declarations. `NAMES_STILL_OWED`, `DEVIATIONS` and `ABSENT_NAMES_A_FILE_MAY_CITE` are such declarations as well. A
   declaration keys on something durable. A name, a path glob and a production are durable. A make target is durable. A
   line number moves with the next edit. A declaration takes no line number. A declaration with no such key sits at the
   site as a comment marker. `not-prose:` is one. That marker says why the literal beside it holds a layout rather than a
   sentence. *Mechanised by `check_dead_code`, `check_documents` and `check_vendor_spec`. `check_prose` mechanises it
   too.*
+- **an-owed-name-lives-while-the-plan-owes-it** - a name sits in `check_documents._NAMES_STILL_OWED` while `PLAN.md`
+  cites it. `PLAN.md` holds the work still to do. No other text cites such a name. The name comes off the day the
+  pipeline builds the thing. *Mechanised by `check_documents`.*
 - **a-gates-prerequisites-list-what-it-reads** - a gate reads a file, and that gate's stamp rule names the file as a
   prerequisite. A stamp rule missing an input turns a skipped gate into a green one. *Not mechanised. The `Makefile`
   cannot check itself.*
@@ -102,7 +109,10 @@ whether a gate decides it. The author asks that of an accepted rule before the n
 - **a-parsed-source-is-split-on-the-newline** - a parse numbers a line by the newline. `splitlines` cuts on more than
   that. U+2028 and U+0085 are among the cuts, and `star.py` writes both in string literals. `splitlines` returns a list.
   A caller indexes that list with a line number the parse counted. The list and the parse then disagree about that line.
-  A source rebuilt from that list stops the parse. *Mechanised by `check_conventions`.*
+  A source rebuilt from that list can break a string literal. *Mechanised by `check_conventions`.*
+- **a-fragment-is-found-by-its-key** - a write moves the lines below it. A line number stored before a write points
+  elsewhere after it. A module outside `collect_fragments` never reads a fragment's stored line. That module calls
+  `collect_fragments.site_lines`. `site_lines` finds the fragment by its key. *Mechanised by `check_conventions`.*
 - **a-matched-name-is-spelled-somewhere-else** - a check matches source against a literal list of identifier names. Such
   a list holds names the tree writes elsewhere. A name whose single occurrence is the list itself is a guess about code
   that does not exist. The check covering that name reads exactly like a check that fires. Such a name comes out, or
@@ -136,22 +146,35 @@ The prose checkers read a comment beside code and a document alike.
   text narrates no plan step. *Mechanised by `check_documents` for the documents, and the `document_rules` checker
   refuses the same wording as the writer writes it. `prose_rules` refuses the tense word wherever prose appears, through
   the `prose_rewrite` hook and the `check_prose` gate.*
-- **a-sentence-states-no-plan** - the checker refuses `yet` where a full stop or a comma follows it. A clause ending on
-  that word points at work the project still owes, and the prose goes stale the day that work lands. `PLAN.md` holds the
-  work the project owes. `The parser core does not exist yet.` points. `The tree holds no parser core.` says what is.
-  *Mechanised by `prose_rules`, through the `prose_words` hook and the `check_prose` gate.*
+- **a-sentence-states-no-plan** - the checker refuses `yet` where a full stop or a comma follows it. The checker also
+  refuses a word of the future tense, such as `not yet` or `will be`. Such a clause points at work the project still
+  owes, and the prose goes stale the day that work lands. `PLAN.md` holds the work the project owes.
+  `The parser core does not exist yet.` points. `The tree holds no parser core.` says what is. *Mechanised by
+  `prose_rules`, through the `prose_words` hook and the `check_prose` gate.*
+- **no-prose-points-at-the-plan** - a file that neither checks the plan nor states the plan's rules names no `PLAN.md`.
+  The project deletes `PLAN.md` when its work lands. A pointer to the plan would then dangle. `README.md` links the
+  plan. `CHANGELOG.md` keeps its history. *Mechanised by `plan_pointers`.*
+- **public-c-cites-public-c** - the prose of a public C declaration cites no Python and no private C. A caller of the
+  library reads that prose, and that caller holds the public API alone. The prose may cite a public C declaration. It
+  may cite a file holding no C and no Python, such as `DESIGN.md` or `CMakeLists.txt`. *Mechanised by
+  `public_citations`.*
 - **each-document-keeps-to-its-domain** - `DESIGN.md` is context, perspective and architecture, and it repeats no code
   comment. `CHANGELOG.md` records the work a change did. `PLAN.md` names the work the project still owes. *Not
   mechanised. Whether a passage keeps to its document's domain stays with the reader.*
+- **a-design-paragraph-copies-no-cited-prose** - a paragraph of `DESIGN.md` cites a name. The prose beside that name
+  holds the detail. The paragraph shares no run of more than `check_documents._MOST_SHARED_WORDS` words with that prose.
+  A code span ends a run. *Mechanised by `design_copies`.*
 - **a-design-citation-keeps-its-altitude** - a citation of a private name in `DESIGN.md` repeats the docstring beside
   that name. `check_documents.private_citation_errors` decides which citations are private. *Mechanised by
   `check_documents`, and the `altitude` hook refuses such a citation as the writer writes it.*
-- **a-step-carries-its-argument** - a new step of the normalization pipeline comes with the argument that answers the
-  rules above `_Step` in `generator/normalize.py`. The argument says which invariant the step establishes, or why the
-  step establishes none. It says that the transform is local and mechanical. It says that a value the step produces is a
-  global or a stack entry. *Not mechanised. Whether the argument is true stays with the review.*
-- **a-step-opens-its-argument** - a step's prose opens the argument the rules above `_Step` in `generator/normalize.py`
-  ask for. *Mechanised by the `step-rules` hook.*
+- **a-step-carries-its-argument** - a new step of the normalization pipeline comes with an argument. The argument
+  answers the rules a pipeline step must satisfy. `generator/normalize.py` holds those rules. The argument says which
+  invariant the step establishes, or why the step establishes none. It says that the transform is local and mechanical.
+  It says that a value the step produces is a global or a stack entry. *Not mechanised. Whether the argument is true
+  stays with the review.*
+- **a-step-opens-its-argument** - a `_Step(` call in `generator/normalize.py` has a comment directly above it. The
+  comment holds the argument `a-step-carries-its-argument` asks for. *Mechanised by `step_arguments`. The
+  `step_arguments` checker refuses a step whose argument is missing.*
 - **a-reference-parser-has-one-name** - a pair of upstream projects both go by "the reference parser". This project
   gives the pair distinct names. **Haskell YamlReference** is the Haskell parser vendored under
   `third_party/yamlreference/`, and it is the token-level oracle. **YAML Reference Parser** is the spec-generated parser
@@ -170,8 +193,8 @@ The prose checkers read a comment beside code and a document alike.
   no verb. Such a tail covers the appositive and the trailing absolute. It refuses a relative clause hung off the last
   comma at any length. A list runs to the length `prose_rules` allows. The checker refuses a verb elided after a
   negation. *Mechanised by `prose_rules`. That module holds the checker. The `prose_rewrite` hook refuses a fragment as
-  the writer writes it, and the refusal names no pattern. `faulty-prose-is-re-said-not-patched` says why. `check_prose`
-  asks the same of the prose in the tree.*
+  the writer writes it, and the refusal names no pattern. `faulty-prose-is-rewritten-not-patched` says why.
+  `check_prose` asks the same of the prose in the tree.*
 - **a-sentence-says-one-thing** - a sentence says a single thing. The subject and the verb sit near the front and close
   together. A pair of plain sentences beat a compressed clause. Density is not the goal. Compression is where writing
   goes wrong. A compressed sentence keeps the rhythm of the style and holds no readable claim. Read a sentence once and
@@ -192,7 +215,8 @@ The prose checkers read a comment beside code and a document alike.
   `A tested set is a maximal character node, whose parent is no character node itself` says
   `A tested set is a maximal character node. Its parent is no character node itself.` *Mechanised by `prose_rules`,
   through the `prose_rewrite` hook and the `check_prose` gate.*
-- **a-fragment-opens-on-its-own-referent** - the opening sentence of a fragment writes no `such a` or `such an`. A
+- **a-fragment-opens-on-its-own-referent** - the opening sentence of a fragment writes no `such a` or `such an`. It
+  writes no `the former` or `the latter`. It writes no `neither`, `either` or `both` before a stop or before `of`. A
   reader who opens the fragment cold finds no earlier sentence naming the thing the pointer reaches back to. Naming the
   noun is shorter than pointing at it. *Mechanised by `prose_rules`, through the `prose_rewrite` hook and the
   `check_prose` gate. `_fragment_faults` reads the opening sentence.*
@@ -266,8 +290,8 @@ The prose checkers read a comment beside code and a document alike.
   naming the subject leads the message, and the gate's verdict follows the colon. *Mechanised by `prose_rules`, through
   the `prose_rewrite` hook and the `check_prose` gate. The checker refuses a semicolon and a raised dot alongside the
   em-dash. Either replaces a full stop.*
-- **faulty-prose-is-re-said-not-patched** - a shape rule refuses a fragment and tells the writer no more. The writer
-  says the whole prose of that fragment again, from the code and from the claims the old text made. A refusal naming the
+- **faulty-prose-is-rewritten-not-patched** - a shape rule refuses a fragment and tells the writer no more. The writer
+  rewrites the whole prose of that fragment, from the code and from the claims the old text made. A refusal naming the
   shape reads as a to-do list. A writer keeps the word order and swaps words around it until the pattern stops matching.
   The fault lives in the word order. So the refusal names no pattern and quotes no sentence. The refusal states the
   writing guidelines instead, and those reach the writer at the keyboard. A word rule runs the other way round, and
@@ -343,13 +367,12 @@ The prose checkers read a comment beside code and a document alike.
   passage there restates the code in prose, or defends a decision nobody questioned. A field's trailing comment and the
   run wrapped below it count as a single comment. A blank line ends a wrap. A block documenting the next field sits
   below that blank line. A field wanting more than a note says the detail in the class docstring, where the prose rules
-  reach. *Mechanised by `check_conventions`. That gate reads the syntax tree, and the `short_comments` hook refuses the
-  shape as the writer writes it.*
+  reach. *Mechanised by `short_comments`. `check_conventions.long_comment_runs` reads the syntax tree.*
 - **a-nested-docstring-is-a-note** - a function nested inside another keeps its docstring to the length of a note.
   Docstring syntax works there. `collect_fragments` folds such a docstring into the enclosing function's fragment. A
   reader who opens only the nested function sees nothing of that docstring. A passage worth more than a note belongs to
-  a function at the top level. *Mechanised by `check_conventions`. That gate reads the syntax tree, and the
-  `nested_docstrings` checker refuses the shape as the writer writes it.*
+  a function at the top level. *Mechanised by `nested_docstrings`. `check_conventions.long_nested_docstrings` reads the
+  syntax tree.*
 - **a-comment-describes-what** - a comment says HOW only where HOW matters. Density matches the surrounding code. **The
   default is no WHY at all.** A comment may say why code sits where it sits. The comment says so only where a reader
   would otherwise move the code. The explanation runs to a single sentence, and a checker holds its claims like any
@@ -364,7 +387,7 @@ The prose checkers read a comment beside code and a document alike.
   things about the tree exactly as code does. A comment wants the same evidence code wants. A claim no word marks wants
   checking too. *Not mechanised.*
 - **a-claim-writes-no-universal** - the checker refuses a universal and a superlative. It names the determiner classes
-  rather than a list of words. It refuses `the sole door` beside `the only door`. It refuses a negation in subject
+  rather than a list of words. It refuses `the sole caller` beside `the only caller`. It refuses a negation in subject
   position, and a negation passes in object position. *Mechanised by `prose_rules`, through the `prose_words` hook and
   the `check_prose` gate.*
 - **a-refusal-may-write-the-words-it-bans** - a hook refusal names the rule it enforces, and ends on that name. Such a
@@ -392,7 +415,7 @@ The prose checkers read a comment beside code and a document alike.
   `check_prose` skips that name. *Mechanised by `check_prose` for the docstring. The name stays with the author.*
 - **a-mechanised-rule-names-its-convention** - a convention marked mechanised above names the module that mechanises it.
   That module's docstring names the convention back. Otherwise a rule lands in the code, and the list here goes stale.
-  *Mechanised by `check_conventions`, and the `document_rules` checker refuses an edit of this file that breaks it.*
+  *Mechanised by `document_rules`. `check_conventions.convention_note_faults` reads the notes.*
 
 ## Layout
 
@@ -406,8 +429,8 @@ The prose checkers read a comment beside code and a document alike.
   edit writes it.*
 - **a-file-of-the-tree-has-a-reader** - a tracked file holds prose. `collect_fragments.language_of` names the reader of
   that file. A file holding no prose of ours goes in `gate.UNREAD`, and the comment above that list says why. A checker
-  finds no fragment in a file without a reader. The prose in such a file goes unread. *Mechanised by
-  `collect_fragments`, and the `unread_files` hook refuses such a path as an edit names it.*
+  finds no fragment in a file without a reader. The prose in such a file goes unread. *Mechanised by `unread_files`. The
+  `unread_files` checker refuses such a path as an edit names it.*
 - **formatting-is-make-reformat** - a writer runs no formatter by hand and reflows no text by hand. *Mechanised by
   `vet-format-*`.*
 

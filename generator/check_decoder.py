@@ -31,10 +31,10 @@ def _check_keys(model: chars.Model, grammar: dict[str, ir.Prod]) -> list[str]:
     """
     Check that a set bit of a key agrees with a direct evaluation of the set it names.
 
-    Different code computes the keys and the set definitions. This catches a packing bug that a round-trip through the
-    generator would reproduce faithfully in both directions. The check tries a single codepoint per segment, and that
-    codepoint covers the whole segment. The literals and ranges of the grammar build the sets, and a key cannot vary
-    within a segment.
+    `Model.key` sets a bit where `does_contain` holds. This check calls `does_contain` as well. It compares the packed
+    bit against that evaluation. This catches a set bit that lands on the literal id or the length field. The check
+    tries a single codepoint per segment, and that codepoint covers the whole segment. The literals and ranges of the
+    grammar build the sets, and a key cannot vary within a segment.
     """
     errors = []
     for index, (name, denotation) in enumerate(model.sets):
@@ -52,14 +52,13 @@ def _check_consumed_sets(model: chars.Model, grammar: dict[str, ir.Prod]) -> lis
     """
     Check that no character set a run consumes admits a line break.
 
-    `ys_consume_set` reports how many bytes and how many characters a consume covered, and the parser advances its
-    column by the characters. That is exact only while a run cannot cross a line. The sets `ir.repeated` returns exclude
-    the line breaks. Those are the sets under a `(***)`. A `(+++)`, a `({n})` and a trimmed star hold such a set as
-    well. A set that admitted a break would drift the parser's line and column, and the test suite would not notice.
+    `ys_consume_set` reports how many bytes and how many characters a consume covered. `ys_window_advance` advances the
+    parser's column by the characters. That is exact only while a run cannot cross a line. The sets `ir.repeated`
+    returns exclude the line breaks. Those are the sets under a kind in `ir.REPETITIONS`, and the sets under a trimmed
+    star.
 
-    The gate asks nothing of a consume of a single character. Such a consume advances a single character, and a break
-    there is a break the emitter counts the same way. `b-line-feed` consuming only `LF` is such a consume, and it is no
-    fault.
+    The gate asks nothing of a set holding a single codepoint. A run of such a set goes unchecked even where it repeats.
+    `b-line-feed` consuming only `LF` is such a consume, and it is no fault.
     """
     errors = []
     by_denotation = {denotation: name for name, denotation in model.sets}
@@ -90,8 +89,9 @@ def _check_literals(model: chars.Model) -> list[str]:
     """
     Check that no literal id collides with a sentinel, and that a key holds the id of its character.
 
-    `chars.Model` numbers the literals while enumerating them. The ids are therefore distinct by construction. The
-    numbering leaves the sentinel collision and the held id for this check to settle.
+    `chars.Model` numbers the literals while enumerating them. The ids are therefore distinct by construction.
+    `chars.Model` places the sentinels just past the literal ids, and `Model.key` reads `literal_ids`. This check
+    confirms that both still hold.
     """
     errors = []
     for codepoint, literal_id in model.literal_ids.items():

@@ -1,13 +1,13 @@
-#!/bin/sh
-# Install the tools a sub-gate needs on macOS, on top of the C build deps. Those are the parser generator's PyYAML, the
-# formatters and linters, and the coverage and docs tools.
+#!/usr/bin/env bash
+# Install the tools a sub-gate needs on macOS, on top of the C build deps that `scripts/install-macos-build-deps.sh`
+# installs. The tools are the parser generator's PyYAML, the formatters and linters, and the coverage and docs tools.
 #
 # The goal argument `$1` picks the sub-gate. `c` or `test` add nothing. `verify` adds PyYAML. `vet` adds the formatters
 # and linters. `gh-pages` adds the coverage and docs tools. `pc` installs the whole set. A call with no goal does the
 # same.
 #
-# Run it from the project root. It reads `.clang-format-version` there.
-set -eu
+# Run it from the project root. A `vet` goal, a `pc` goal and a call with no goal read `.clang-format-version` there.
+set -euo pipefail
 goal="${1:-}"
 
 # Tool groups this goal needs.
@@ -38,11 +38,10 @@ esac
 here="$(cd "$(dirname "$0")" && pwd)"
 sh "$here/install-macos-build-deps.sh" "$goal"
 
-# LLVM supplies clang-tidy (lint) and llvm-cov (coverage). Install LLVM once where either group needs it. clang-format
-# comes from a pip wheel rather than from LLVM. Brew ships a different version. That version formats code the gate
-# then rejects. The wheel's major version comes from `.clang-format-version`. The gate and both dev-deps scripts read that
-# same file. Python 3 itself comes with the Xcode Command Line Tools the build-deps script installs. The pip install
-# here covers PyYAML.
+# The lint group and the coverage group take LLVM from Homebrew. This script installs LLVM once for either group.
+# clang-format comes from a pip wheel. `.clang-format-version` sets the major of that wheel. The `Makefile` gate, this
+# script and `scripts/install-debian-dev-deps.sh` read `.clang-format-version`. This script takes PyYAML from pip.
+# `scripts/install-debian-dev-deps.sh` takes PyYAML from apt.
 need_llvm=false
 brew_pkgs=""
 pip_pkgs=""
@@ -71,11 +70,13 @@ fi
 if [ -n "$pip_pkgs" ]; then
     python3 -m pip install --break-system-packages $pip_pkgs
 fi
-# Homebrew LLVM is keg-only. On CI, put clang-tidy / clang / llvm-cov on PATH.
+# Homebrew LLVM is keg-only, as https://formulae.brew.sh/formula/llvm says. On CI, put clang-tidy / clang / llvm-cov on
+# PATH.
 if $need_llvm && [ -n "${GITHUB_PATH:-}" ]; then
     echo "$(brew --prefix llvm)/bin" >>"$GITHUB_PATH"
 fi
-# Hand CI the pinned clang-format. The Makefile then uses that pinned binary rather than the Homebrew clang-format on PATH.
+# Hand CI the pinned clang-format. The Makefile takes `CLANG_FORMAT` from the environment. Make then runs the pinned
+# binary, not the Homebrew clang-format on PATH.
 if $lint && [ -n "${GITHUB_ENV:-}" ]; then
     echo "CLANG_FORMAT=$(python3 -c 'import clang_format, os; print(os.path.join(os.path.dirname(clang_format.__file__), "data", "bin", "clang-format"))')" >>"$GITHUB_ENV"
 fi

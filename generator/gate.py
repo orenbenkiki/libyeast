@@ -23,13 +23,17 @@ from typing import TypeGuard, TypeVar, cast
 
 import ir
 
-# The repository's root, worked out from where this file is rather than from where a command ran. A module that needs
-# the root reads this binding.
-TREE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The repository's root. A module that needs the root reads this binding. The variable `YEAST_TREE` names the root where
+# a caller sets it. `hook_health` sets it for a copy of this file run outside the tree. The root otherwise comes from
+# where this file is rather than from where a command ran.
+TREE = os.environ.get("YEAST_TREE") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The column the formatters wrap a source line at. `Makefile` and `.clang-format` set the same limit.
+WIDEST = 120
 
 
 def is_in_the_tree(path: str) -> bool:
-    """Whether `path` names a file inside this repository."""
+    """Whether `path` lies inside the root `TREE` names."""
     return os.path.commonpath([os.path.abspath(path), TREE]) == TREE
 
 
@@ -43,10 +47,21 @@ def modules() -> list[pathlib.Path]:
 
 def hook_modules() -> list[pathlib.Path]:
     """
-    The Python of `.claude/hooks`. A hook is no module of the project, and no gate reports over a hook. A hook does
-    import the modules and read names out of them. The checker of who reads a name walks the hooks too.
+    The Python of `.claude/hooks`. A hook is no module of the project. The dead-code gate reports nothing a hook
+    defines, and other gates walk the hooks beside the modules. A hook does import the modules and read names out of
+    them. The checker of who reads a name walks the hooks too.
     """
     return sorted(pathlib.Path(TREE).glob(".claude/hooks/*.py"))
+
+
+def mcp_modules() -> list[pathlib.Path]:
+    """
+    The Python of the servers under `.claude/mcp`. A server is no module of the project. `check_dead_code` reports no
+    name a server defines. `check_conventions` does report a server's name that only that server reads and that has no
+    underscore. A server does import the modules and read names out of them. The checker of who reads a name walks the
+    servers too.
+    """
+    return sorted(pathlib.Path(TREE).glob(".claude/mcp/*.py"))
 
 
 def hooks() -> list[pathlib.Path]:
@@ -56,13 +71,13 @@ def hooks() -> list[pathlib.Path]:
 
 def shell_scripts() -> list[pathlib.Path]:
     """
-    The shell the project writes. The hooks come first and then the setup scripts.
+    Name the shell scripts the project writes. The hooks come first and then the scripts under `scripts/`.
     """
     return sorted(pathlib.Path(TREE).glob(".claude/hooks/*.sh")) + sorted(pathlib.Path(TREE).glob("scripts/*.sh"))
 
 
 def workflows() -> list[pathlib.Path]:
-    """The review workflows."""
+    """The workflows under `.claude/workflows`."""
     return sorted(pathlib.Path(TREE).glob(".claude/workflows/*.js"))
 
 
@@ -86,7 +101,7 @@ def test_sources() -> list[pathlib.Path]:
 
 
 def grammar_files() -> list[pathlib.Path]:
-    """The grammar the generator reads."""
+    """The grammar files under `grammar/`."""
     return sorted(pathlib.Path(TREE).glob("grammar/*.yaml"))
 
 
@@ -95,18 +110,15 @@ def build_files() -> list[pathlib.Path]:
     return [pathlib.Path(TREE, name) for name in ("CMakeLists.txt", "Makefile", "conanfile.py")]
 
 
-def documents() -> list[pathlib.Path]:
-    """
-    The markdown the project writes. This roster takes in the documents of `.claude/`, and those documents state the
-    process.
-
-    Public. `check_documents` holds this roster to the number rule.
-    """
-    return sorted(pathlib.Path(TREE).glob("*.md")) + sorted(pathlib.Path(TREE).glob(".claude/**/*.md"))
+def files_by_age(directory: str) -> list[pathlib.Path]:
+    """The files in `directory`, ordered from the oldest write to the newest."""
+    return sorted(
+        (held for held in pathlib.Path(directory).iterdir() if held.is_file()), key=lambda held: held.stat().st_mtime
+    )
 
 
-# A convention, as `.claude/conventions.md` writes one. The name leads the list item in bold. The next item ends the
-# item. So does a heading. So does a blank line with unindented prose under it.
+# A convention, as `.claude/conventions.md` writes one. The name leads the list item in bold. The next item led by a
+# bold name ends the item. So does a heading. So does a blank line with unindented prose under it.
 _A_CONVENTION = re.compile(r"^- \*\*([a-z0-9-]+)\*\*(.*?)(?=\n- \*\*|\n#|\n\n(?! )|\Z)", re.MULTILINE | re.DOTALL)
 
 
@@ -134,10 +146,10 @@ def conventions_in(text: str) -> dict[str, str]:
 
 def rule_use() -> dict[str, dict[str, int]]:
     """
-    The counts `.claude/rule-use.json` holds, as `{the rule's name: {"cited": .., "accepted": ..}}`.
+    The counts `.claude/rule-use.json` holds under `rules`, as `{the rule's name: {"cited": .., "accepted": ..}}`.
 
-    Public. `record_run` writes the file. `batch_pending_fragments` gives the counts to the agents that write prose. A
-    tree whose loop has run no round yet holds no such file, and this answers with an empty map.
+    Public. `record_run` writes the file. `agent_answers` gives the counts to the agents that generate prose. A tree
+    whose loop has run no round yet holds no such file, and this answers with an empty map.
     """
     path = pathlib.Path(TREE, ".claude", "rule-use.json")
     if not path.exists():
@@ -146,24 +158,45 @@ def rule_use() -> dict[str, dict[str, int]]:
     return {name: one for name, one in held.get("rules", {}).items() if isinstance(one, dict)}
 
 
-# The base names `prose_files` leaves out. A file named here writes prose the checkers refuse. The project declines to
-# say that prose again. `LICENSE` is the MIT text and belongs to whoever wrote it. The other files named here configure
-# tools outside the tree. `collect_fragments` holds the tree to this list.
+# The base names `prose_files` leaves out. The checkers do not read the prose of such a file. `LICENSE` holds the MIT
+# license text. The other files configure tools outside the tree. `.gitattributes` configures git, `.pylintrc`
+# configures pylint, and `Doxyfile` and `DoxygenLayout.xml` configure Doxygen. `mypy.ini` configures mypy, and
+# `ports/yeast/portfile.cmake` configures vcpkg. `collect_fragments.code_only` reads a file named here as a file
+# fragment holding no prose.
 UNREAD = ("LICENSE", ".gitattributes", ".pylintrc", "Doxyfile", "DoxygenLayout.xml", "mypy.ini", "portfile.cmake")
 
-# The paths this project writes no prose in. A fixture is data. `third_party/` holds somebody else's code.
-# `grammar/yeast-spec-1.2.yaml` is the specification's BNF with a tweak or two. `grammar2decoder` writes
-# `src/decoder_tables.h`, and the prose about that table lives in the generator's own source.
-# `.claude/prose-ledger.jsonl` holds a digest per settled fragment, and a digest is data.
-# `.claude/suggested-proposals.jsonl` is a queue. The driver passes a proposal through the checkers before the queue
-# takes it.
+# The paths that hold no prose of this project. A fixture is data. `third_party/` holds somebody else's code.
+# `grammar/yeast-spec-1.2.yaml` is the specification's grammar, and libyeast annotates it with the tokens the parser
+# emits. `generator/annotated2ir.py` reads those annotations. `grammar2decoder` writes `src/decoder_tables.h`, and the
+# prose about that table lives in the generator's own source. `.claude/prose-ledger.jsonl` holds a digest per settled
+# fragment, and a digest is data. `settling_state.LEDGER` names that file, and `settling_state.ledger` reads it.
+# `.claude/suggested-proposals.jsonl` is a queue. `settling_state.SUGGESTED` names that file.
+# `converge_prose._is_refused` passes a proposal through the checkers before the queue takes it.
+# `.claude/prose-dependencies.json` records what a claims reader found. `claim_state` writes it. `claim_state` keys an
+# unsettled entry by a fragment the author edits. The entry says why the reader gave up, and holds the claims left open.
+# `generator/check_prose.py` hands that file to `refusals_for_edit`. `refusals_for_edit` runs the `_ANY` checkers over a
+# path of this list. The other checkers skip such a path.
 NOT_OURS = (
     "third_party/",
     "tests/spec/",
+    "tests/star/",
     "grammar/yeast-spec-1.2.yaml",
     "src/decoder_tables.h",
     ".claude/prose-ledger.jsonl",
     ".claude/suggested-proposals.jsonl",
+    ".claude/prose-dependencies.json",
+)
+
+# The files a claims reader reads that hold no prose of this project. `src/decoder_tables.h` holds the keys and the set
+# bits the decoder's prose describes. `grammar/yeast-spec-1.2.yaml` holds the productions the grammar prose names. The
+# stress test under `third_party/` holds the cases the decoder's test reads. `CMakeLists.txt` sets `YS_UTF8_STRESS_TEST`
+# to the stress test's path. `tests/test_decoder.c` opens that path. `NOT_OURS` keeps these files out of the settling
+# pass, and a claims reader still reads them.
+READ_ONLY = (
+    "src/decoder_tables.h",
+    "grammar/yeast-spec-1.2.yaml",
+    "third_party/acutest/acutest.h",
+    "third_party/utf8-stress-test/UTF-8-test.txt",
 )
 
 
@@ -179,11 +212,11 @@ def tracked_files() -> list[str]:
 
 def prose_files() -> list[pathlib.Path]:
     """
-    The files the project writes prose in, sorted and named once apiece.
+    The sorted files that hold the project's prose.
 
-    The roster holds a tracked file that neither `NOT_OURS` nor `UNREAD` names. `NOT_OURS` names the data, and `UNREAD`
-    names the files whose prose the checkers do not read. A file added to the tree therefore lands in this roster, and
-    the checkers read it without anybody widening a list.
+    The roster holds a tracked file that neither `NOT_OURS` nor `UNREAD` names. `NOT_OURS` names the paths that hold no
+    prose of the project, and `UNREAD` names the files whose prose the checkers do not read. A file `git` tracks and
+    neither list names therefore lands in this roster, and the checkers read it without anybody widening a list.
 
     `check_documents.is_prose_of_the_project` decides the same question for a path an edit names.
     """
@@ -212,6 +245,7 @@ def defined_names(statement: ast.stmt) -> tuple[str, ...]:
     its plain targets.
 
     The name an `import` binds stays out. A checker of the names a file merely writes has to read the tokens instead.
+    `check_documents.names_written_by` reads the tokens that way.
     """
     if is_a_definition(statement):
         return (statement.name,)
@@ -226,8 +260,8 @@ def names_defined_in_modules() -> set[str]:
     The names the modules of `generator/` and `scripts/` define at their top level.
 
     A caller wanting a defined name rather than a written name asks this. `check_documents` uses it to find a stale
-    declaration of a gone name. `review_input` drops a name it finds here from what a change took away. That name moved
-    rather than went.
+    declaration of a gone name. `review_input` drops a name it finds here from what a change took away. The tree still
+    binds that name.
     """
     found = set()
     for path in modules():
@@ -248,8 +282,7 @@ def _impatient(what: str, seconds: int = _PATIENCE) -> None:
     Arm the watchdog over `what`. The watchdog waits `seconds`. The watchdog then prints `what` and the thread stacks.
     The watchdog then takes the whole run down.
 
-    A stack names the walk that spins. `what` names the question that walk answers. A walk finishes over a grammar and
-    sticks over another, and `what` tells those runs apart.
+    A stack names the walk that spins. `what` names the question that walk answers.
     """
     _patient()
 
@@ -280,8 +313,8 @@ _WATCHDOG: threading.Timer | None = None
 
 def _one(item: object) -> tuple[object, ir.Reached]:
     """
-    Answer an item in a worker. Hand back the answer and the kinds the work on the item reached. The parent folds the
-    kinds into its own.
+    Answer an item in a worker. Hand back the answer and the whole record of the worker. The parent folds the kinds into
+    its own.
     """
     assert _SPREAD is not None, "a worker running outside a `spread` call"
     work, held, named = _SPREAD
@@ -295,8 +328,10 @@ def _one(item: object) -> tuple[object, ir.Reached]:
         ir.working("")
 
 
-# The value the workers of `spread` read. The value is a grammar or a corpus. `spread` sets the value before forking the
-# workers. A forked child copies this process, and the copy stays put while the workers run.
+# The value the workers of `spread` read. The value holds the `work`, the `held` and the `named` of the `spread` call.
+# `spread` sets the value before forking the workers. A forked child copies this process, and the copy stays put while
+# the workers run. https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods describes the fork
+# start method.
 _SPREAD: tuple[Callable[..., object], object, Callable[..., str] | None] | None = None
 
 # The types a call of `spread` is over. The thing a worker reads, the items shared out, and an answer.
@@ -319,15 +354,16 @@ def spread(
     and of an item of that list.
 
     `spread` forks the workers rather than starting them afresh, and keeps `held` in this process. The workers hand back
-    their answers. The fork happens on the calling thread, and that thread's stack goes with the workers. A check that
-    recurses deeply then keeps its stack in a worker.
+    their answers. The fork happens on the calling thread, and that thread's stack goes with the workers.
+    https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html gives the child a replica of the calling
+    thread. A check that recurses deeply then keeps its stack in a worker.
 
     The kinds a worker reached come back with its answer. The process running a question marks the kinds that question
     covered. `spread` folds those kinds into this process. A kind a single worker reached then reads as reached here
     too.
 
-    `named` says what an item is, for the lines a worker prints while it works on that item. Without a name a line says
-    the time and no more.
+    `named` says what an item is, for the lines a worker prints while it works on that item. Without a name a line names
+    the item by `str(item)`.
     """
     # What the forked workers read. There is one per process.
     global _SPREAD  # noqa: PLW0603  # pylint: disable=global-statement
@@ -350,12 +386,11 @@ def spread(
     return answers
 
 
-# The stack a check walking a grammar gets. `gate` raises it past the limit `interpreter` sets at import. A walk over a
-# transformed grammar goes past that limit.
+# The stack a check walking a grammar gets. `run_deep` sets the thread stack to this size. `run_deep` also raises the
+# recursion limit `interpreter` sets at import. A walk over a transformed grammar goes past that limit.
 _STACK_BYTES = 256 * 1024 * 1024
-_RECURSION_LIMIT = (
-    200000  # the depth Python lets a walk over a grammar reach. `gate` raises Python's recursion limit to that depth.
-)
+# the depth Python lets a walk over a grammar reach. `run_deep` raises Python's recursion limit to that depth.
+_RECURSION_LIMIT = 200000
 
 
 def run_deep(work: Callable[[], None]) -> None:
@@ -363,7 +398,9 @@ def run_deep(work: Callable[[], None]) -> None:
     Run `work` on a thread with a stack for a grammar's recursion, and end the process with what it came to.
 
     An exception `work` raises decides the exit code. An exception raised in a worker thread goes to that thread's
-    excepthook while the main thread exits with a success. A gate then reads green over a check that did not finish.
+    excepthook while the main thread exits with a success.
+    https://docs.python.org/3/library/threading.html#threading.excepthook describes that hook. A gate then reads green
+    over a check that did not finish.
     """
     sys.setrecursionlimit(_RECURSION_LIMIT)
     threading.stack_size(_STACK_BYTES)

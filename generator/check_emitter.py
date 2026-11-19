@@ -4,35 +4,32 @@ Check that the interpreter's emitter can be undone.
 
 The backtracking rests on a promise `Emitter` makes in its own docstring. A checkpoint captures the state whole. The
 interpreter can rewind a failed alternative to the checkpoint before it. An `(any)`, a `(---)` and a repetition take
-that on trust.
-
-
-The fixtures cannot check that promise. A leak shows where a rule sets a parameter in a branch of an alternation and
-reads it in a later branch. The grammar's sites of that shape are `c-chomping-indicator` twice and
-`c-indentation-indicator`. A site sets the same parameter in its branches, and the branch that matches overwrites the
-leaked value. That is why an aliased `env` reproduced the fixtures byte for byte while quietly breaking the promise.
+that on trust. `interpreter._try_alternation`, `interpreter._try_difference` and `interpreter._try_repeat` go back to a
+checkpoint.
 
 So this checks the promise rather than an incident. The promise breaks in a pair of ways. A checkpoint may miss a field.
 A checkpoint may also hand a field out rather than copy it.
 
-The first is why this file names the field list. A field added to `Emitter` and forgotten is a field nothing rewinds. It
-fails this gate instead of passing quietly.
+This file names the field list. A field added to `Emitter` and left off that list fails this gate.
 
-This checks the provisional run too. An `Emitter` holds that run, and the fixtures do not reach it. A retype rewrites
-held tokens by kind. A retype's region names the side of the mark that the retype rewrites. An injection puts a marker
-where the injection says, ahead of the run or between its sides.
+This checks the provisional run too. An `Emitter` holds that run in `provisional`. `check_dead_code._KEPT_THOUGH_DEAD`
+keeps the provisional actions, and no step builds one. A retype rewrites held tokens by kind. A retype's region names
+the side of the mark that the retype rewrites, or `all` for the whole run. An injection puts a marker where the
+injection says, ahead of the run or between its sides.
 """
 
 import gate
 import interpreter
 import wire
 
-# The fields an `Emitter` holds, and whether a checkpoint must restore them. A pair of them are not the parse's state.
-# The run reads the input and writes it at no point. The run writes the record of the productions it reached, and reads
-# that record back at no point.
+# The fields of an `Emitter` that a checkpoint must restore. The input and the record of the productions the run reached
+# are not among them. The run reads the input and writes it at no point. The run writes the record of the productions it
+# reached, and reads that record back at no point.
 #
-# A rewind leaves that record untouched. A production a fixture reached stays reached under any later parse.
-_RESTORED = (  # in alphabetical order.
+# A rewind leaves that record untouched. A production a fixture reached stays reached under any later parse. The
+# interpreter only adds names to `Coverage.reached` and `Coverage.rejected`. `interpreter._evaluated_call`,
+# `interpreter._try_call` and `interpreter._try_way` make those adds.
+_RESTORED = (  # The tuple names the fields in alphabetical order.
     "ceiling",
     "ceiling_message",
     "code",
@@ -63,20 +60,24 @@ _READ_ONLY = (  # in alphabetical order.
     "passing_arguments",
     "raw",
 )
-# The emitter's own pushes and pops balance this. A checkpoint does not. The depth guard traces the production stack.
+# `interpreter._try_call` pushes and pops `entered` and `returns` in balance. `failing` and `unwinding` say where a
+# failure is going. A checkpoint of an `Emitter` captures neither field. The depth guard traces the production stack.
 # That stack holds the live chain of entered productions. A production goes on at entry and comes off at exit, even as
-# an exception unwinds. A rewind happens inside a production, and that production's entry stays on the stack. The rewind
-# must leave the stack untouched rather than cut it back. A production holds a single return point. That return point
-# goes on and comes off with the production's entry.
+# an exception unwinds. A rewind happens inside a production, and that production's entry stays on the stack. A rewind
+# of an `Emitter` leaves `entered` and `returns` untouched rather than cut them back. A production holds a single return
+# point. That return point goes on and comes off with the production's entry.
 _TRANSIENT = ("entered", "failing", "returns", "unwinding")
 
 
-# The input `_dirty` needs to read. A caller handing it anything shorter than this runs off the end.
+# The input `_dirty` needs to read. A caller handing `_dirty` a shorter input has `try_consume` run off the end.
 _ENOUGH_TO_DIRTY = b"abcd"
 
 
 def _dirty(emitter: interpreter.Emitter) -> None:
-    """Mutate the restorable fields of `emitter`. Matching a character under an annotation would do the same."""
+    """
+    Mutate the restorable fields of `emitter`. The first pair of lines match a character under an annotation, the way
+    `interpreter._try_token` sets the code and `Emitter.try_consume` takes the character.
+    """
     emitter.code = "text"
     emitter.try_consume()
     # What a consume leaves behind for a later question, which no method here writes. A field the dirtying leaves alone
@@ -136,7 +137,7 @@ def _state(emitter: interpreter.Emitter) -> dict[str, object]:
 
 
 def _fields_are_accounted(errors: list[str]) -> None:
-    """A field of an `Emitter` is either restored by a checkpoint or declared read-only."""
+    """A field of an `Emitter` is restored by a checkpoint, declared read-only, or declared transient."""
     held = set(vars(interpreter.Emitter(b"x")))
     for name in sorted(held - set(_RESTORED) - set(_READ_ONLY) - set(_TRANSIENT)):
         errors.append(f"`Emitter.{name}`: nothing says whether a checkpoint restores it")
@@ -168,8 +169,9 @@ def _rewind_is_repeatable(errors: list[str]) -> None:
     """
     A single checkpoint rewound to twice restores the same state twice.
 
-    An alternation rewinds to a checkpoint once per branch. A checkpoint may hand out its own mutable state rather than
-    a copy. A branch can then reach into the state the next branch rewinds to.
+    An alternation rewinds to its checkpoint after a branch fails, and the next branch starts from there. A checkpoint
+    may hand out its own mutable state rather than a copy. A branch can then reach into the state the next branch
+    rewinds to.
     """
     emitter = interpreter.Emitter(_ENOUGH_TO_DIRTY)
     before = _state(emitter)

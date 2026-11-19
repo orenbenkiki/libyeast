@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-PreToolUse on Edit and Write. This hook refuses prose citing a name the tree does not hold. `every-cited-name-exists` is
-the rule.
+`prose_gate` runs this checker on PreToolUse for Edit and Write. The checker gives a refusal for prose citing a name the
+tree does not hold. `every-cited-name-exists` is the rule.
 
-The gate refuses the same citation minutes later. Refusing it here keeps the dangling name out of the file.
+The refusal keeps a dangling name out of the file.
 
-`check_documents.citation_refusal` decides the fault. This hook imports that checker rather than copying it. The names
-the pipeline mints come off a generated file. This hook therefore runs no pipeline.
+`check_documents.citation_refusal` decides the fault. This checker imports `check_documents` rather than copying it. The
+names the pipeline mints come off a generated file that `c_sources` lists. This checker therefore runs no pipeline.
 
 There is no import guard. A checker that cannot check must fail loudly. A silent checker and a clean edit read the same.
 
@@ -35,10 +35,12 @@ def refusal_for(prose: str, path: str, minted: frozenset[str] | None = None) -> 
     """
     The refusal the citation rule gives for `prose` at `path`, or None where the citations pass.
 
-    A caller with prose and no file asks here. `prose_answer` gives the critic's rewrite this same refusal.
+    `checkers._CHECKERS` asks here. It passes the names `checkers._measured` reads off the file the edit would leave.
+    `prose_answer` gives the critic's rewrite this same refusal. It asks `draft_refusals`, and `text_refusals` runs the
+    checkers from there.
 
-    `minted` comes from `minted_by`. A caller that gives none has `minted_by` read `prose` where `path` names a Python
-    file.
+    `minted` comes from `minted_by` where the edited file is a Python file. For any other file `minted` is empty. A
+    caller that gives none has `minted_by` read `prose` where `path` names a Python file.
     """
     named = minted if minted is not None else (minted_by(prose) if path.endswith(".py") else frozenset())
     return check_documents.citation_refusal(path, list(enumerate(prose.split("\n"), start=1)), set(named))

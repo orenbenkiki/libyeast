@@ -1,35 +1,39 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-PreToolUse on Edit and Write. This hook refuses a sentence with a faulty shape. The refusal asks the writer to say the
-fragment again.
+`prose_gate` runs this hook through `checkers._CHECKERS` on PreToolUse for Edit and Write. This hook refuses a sentence
+with a faulty shape. The refusal asks the writer to rewrite the fragment.
 
-This hook enforces `faulty-prose-is-re-said-not-patched` and `text-says-what-is`. `a-sentence-hangs-a-single-tail` and
-`a-run-of-pronouns-reaches-back-to-a-noun` join them. `a-paragraph-opens-on-a-noun`, `a-sentence-opens-on-a-subject` and
-`a-comment-writes-no-why-clause` join them too.
+This hook enforces the rules below.
 
-`a-whose-clause-is-a-hung-tail`, `a-possessive-owns-a-noun` and `a-sentence-does-not-define-by-itself` join them as
-well. `a-fragment-opens-on-its-own-referent` and `a-code-span-hides-no-passive` join them.
+- `faulty-prose-is-rewritten-not-patched`
+- `text-says-what-is`
+- `a-sentence-hangs-a-single-tail`
+- `a-run-of-pronouns-reaches-back-to-a-noun`
+- `a-paragraph-opens-on-a-noun`
+- `a-sentence-opens-on-a-subject`
+- `a-comment-writes-no-why-clause`
+- `a-whose-clause-is-a-hung-tail`
+- `a-possessive-owns-a-noun`
+- `a-sentence-does-not-define-by-itself`
+- `a-fragment-opens-on-its-own-referent`
+- `a-code-span-hides-no-passive`
 
-This refusal names no pattern. The refusal quotes the refused sentence. A caller of this hook reads that quote.
-
-The refusal states the writing guidelines instead. A guideline reaches the writer at the keyboard.
+The refusal names no pattern and states the writing guidelines instead. The refusal quotes the refused sentence.
+`prose_gate` hands that quote to the writer through `refusal.refuse`.
 
 This hook takes the shape rules. `prose_words` takes the word rules. This hook enforces
-`a-sentence-stays-within-the-limits` and `no-em-dash-and-no-colon`. A word rule refuses a claim, and the fix is a grep
-or a deletion. A reader has to know which word the rule refused. A shape rule refuses a sentence, and the fix is saying
-it again.
+`a-sentence-stays-within-the-limits` and `no-em-dash-and-no-colon`. A word rule refuses a claim.
+`prose_rules.word_refusal` names the word the rule refused. A shape rule refuses a sentence.
 
-`prose_rules` judges the prose the edit leaves behind. `prose_rules` reads none of the prose the edit replaces. The
-author refused a rule comparing new prose against old prose. `.claude/rejected.md` holds that ruling under the word-run
-entry.
+`checkers.refusals_for_edit` hands `prose_rules` the prose the edit leaves behind. `prose_rules` reads none of the prose
+the edit replaces.
 
-A reader opens a fragment through a hover or a symbol index. A refusal therefore names a fragment and asks for that
-fragment again.  This hook judges a string literal too. The refusal names the place the literal appears.
-`prose_rules.literal_shape_faults` judges a literal. `check_prose` judges the literals of the tree through that
-function.
+A refusal names the file the edit writes into. This hook judges a string literal too. The refusal names the file the
+literal appears in. `prose_rules.literal_shape_faults` judges a literal. `check_prose` judges the literals of the tree
+through that function.
 
-`check_prose` prints the faults in full.
+`check_prose` prints the opening line of a refusal.
 
 `.claude/settings.json` sets the `PYTHONPATH` that puts `generator` on the path.
 """
@@ -37,10 +41,10 @@ function.
 import collect_fragments
 import prose_rules
 
-# The refusal this hook prints.
+# The opening of the refusal `_refusal` builds.
 _SAID = """The prose this edit leaves in {where} is shaped past what one pass reads. It is refused.
 
-Say the whole prose of that fragment again. Delete it, then write it from what the code does and from the claims the old
+Rewrite the whole prose of that fragment. Delete it, then write it from what the code does and from the claims the old
 text made. Keep the claims, including the ones the code cannot show you. Do not repair the sentences you have.
 
 You are told nothing of the fault itself. Hunting a pattern is what produced the fault.
@@ -72,12 +76,12 @@ These five are the moves that got this text refused before. Each one reads clean
 
 Then run `make verify-prose` and see what it says.
 
-Rule: faulty-prose-is-re-said-not-patched."""
+Rule: faulty-prose-is-rewritten-not-patched."""
 
-# A writer without a checker reads this line under the refusal. The quoted sentences follow this line.
+# The paragraph above the quoted sentences of a refusal.
 _QUOTED = """
 
-The sentences below are the refused sentences. Say them again. This refusal names the sentence and nothing besides. A
+The sentences below are the refused sentences. Rewrite them. This refusal names the sentence and nothing besides. A
 pattern hunt gets nothing here.
 """
 
@@ -95,10 +99,12 @@ def _refusal(where: list[str], quoted: list[str]) -> str:
 
 def refusal_for(prose: str, where: str, is_stating_why: bool = False, is_literal: bool = False) -> str | None:
     """
-    The refusal the shape rules give for `prose` at `where`, or None where the shape passes.
+    The refusal the shape rules give for `prose` at `where`. The answer is None where the shape passes, and None where
+    `collect_fragments.is_about_the_tree` turns `where` down.
 
-    A caller with prose and no file asks here. `prose_answer` gives the critic's rewrite this same refusal. A proposal's
-    `why` field states a reason, and `is_stating_why` takes the WHY clause off that field.
+    `checkers._CHECKERS` asks here with the prose of an edit and the path that edit lands in. `prose_answer` gives the
+    critic's rewrite this same refusal through `apply_prose.draft_refusals`. A proposal's `why` field states a reason,
+    and `is_stating_why` takes the WHY clause off that field.
 
     `is_literal` marks a string literal. `literal_shape_faults` holds the shape rules a literal takes.
     """

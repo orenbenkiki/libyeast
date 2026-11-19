@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-A checker `checkers` runs. It holds a nested function's docstring to `a-nested-docstring-is-a-note`.
+`checkers` runs this checker. It holds a nested function's docstring to `a-nested-docstring-is-a-note`.
 
 `collect_fragments` folds the docstring of a nested function into the enclosing fragment. A reader who opens the nested
 function sees nothing of that docstring. A docstring worth more than a note belongs to a function at the top level.
 
-`check_conventions` holds the length. This checker and that gate read a source through the same function.
+`check_conventions` holds the length. This checker reads a source through `check_conventions.long_nested_docstrings`.
 """
 
 import check_conventions
@@ -35,8 +35,8 @@ def refusal_for(source: str, path: str, long_ones: tuple[tuple[int, str, int], .
         return None
     said = "; ".join(f"`{function}` at line {line} runs {length} lines" for line, function, length in found)
     return (
-        f"This edit writes a docstring of more than {check_conventions.MOST_COMMENT_LINES} lines on a nested function, "
-        f"into {path}: {said}.\n\n"
+        f"This edit leaves a docstring of more than {check_conventions.MOST_COMMENT_LINES} lines on a nested function, "
+        f"in {path}: {said}.\n\n"
         "A nested function is no fragment of its own. A reader who opens it sees nothing of that docstring. Cut the "
         "docstring to a note, or move the function to the top level of the module.\n\n"
         "Rule: a-nested-docstring-is-a-note."

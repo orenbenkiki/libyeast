@@ -5,11 +5,11 @@ libyeast's own conformance fixtures.
 `tests/spec/` holds libyeast's differential oracle. A `<production>[.n=N][.p=N][.c=C][.t=T][.r=R][.i=I].<case>` has an
 `.input` YAML fragment and an `.output` YEAST token stream the production must emit for it.
 
-The filename says which production to run and with which parameters. This module decodes that convention. It mirrors the
-test runner the reference ships. The module pairs an input with its expected output.
+The filename says which production to run and with which parameters. This module decodes that convention. The module
+pairs an input with its expected output.
 
-The suite came once from the vendored reference parser's fixtures, and libyeast adds to that suite and corrects it from
-there. The fixture gate checks a fixture against the grammar using `runnable_fault` and `bad_value`.
+The fixture gate `check_spec_tests` checks a fixture against the grammar with `runnable_fault`. It checks the form of
+the fixture's parameter values with `bad_value`.
 """
 
 import os
@@ -22,35 +22,34 @@ import ir
 
 TESTS_DIR = os.path.join(gate.TREE, "tests", "spec")  # the directory the conformance fixtures live in.
 
-# The grammar's own reader states the parameter values the grammar understands, rather than a second list stated here.
-# `n` is an indentation, any integer (`-1` is the auto-detect base). `n` has none. A fixture whose value falls outside
-# the parameter values above comes out malformed rather than merely foreign.
+# `annotated2ir` lists the parameter values the grammar understands. This module keeps no second list. `n` is an
+# indentation. `bad_value` accepts any integer for `n`. `l-bare-document` enters at an `n` of `-1`. `p` counts
+# characters. `bad_value` accepts only a non-negative integer for `p`. `check_spec_tests` reports a fixture with a bad
+# value as malformed.
 CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
-_INDENT_MODES = annotated2ir.INDENT_MODES  # the values `i` may take, read from the same source.
+_INDENT_MODES = (
+    annotated2ir.INDENT_MODES
+)  # Indent modes come from `annotated2ir.INDENT_MODES`. A mode says how a block scalar gets `i`.
 
-# `r` is the resume policy. A caller chooses that policy, and the grammar does not thread it. A fixture that does not
-# name it runs under the default a zeroed `ys_options` selects. That default is `YS_RESUME_NONE`. A parameter besides
-# `r` has to have a name. Such a parameter has no default to fall back on.
+# `r` is the resume policy. A fixture that does not name it runs under `n`. The filename names a declared parameter
+# other than `r`, `m` or `f`. Such a parameter has no default to fall back on.
 _DEFAULTS = {"r": "n"}
 
-# The parameters that a production detects rather than takes. The auto-detected indent `m` and the block scalar's floor
-# `f` come from the production that measures them. A caller passes neither `m` nor `f`, and a fixture names neither `m`
-# nor `f`. A production may declare such a parameter. A fixture entering that production finds the parameter unset. A
-# fresh parse leaves the parameter unset the same way.
+# The parameters that a production detects rather than takes. `runnable_fault` lets a fixture leave either out.
 _DETECTED = ("m", "f")
 
-# The parameters a run enters under, rather than a production declaring them. Past `read-indents` the stack holds the
-# indentation, and a push lands where the indentation changes. A fixture naming `n` seeds that stack, and no production
-# takes `n` as an argument. A fixture names `n` either way, for the stack and for the parameter alike.
+# The parameters a run enters under, rather than parameters a production declares. Past `read-indents`, a run's stack
+# holds the indentation. A push lands where the indentation changes. `run` seeds the stack from the `n` a fixture names.
+# A fixture names `n` for the stack and for the parameter alike.
 #
-# `p` counts the characters of the input the parse crossed to reach the rule. The run begins past those characters, and
-# the token they built drops. The line, the column and the input behind the parse follow from those characters rather
-# than from what the name asserts. `p` goes undeclared by any production of any stage. The productions declare `n` as
-# the author writes the grammar, and stop once `read-indents` has taken it off.
+# `p` counts the characters a parse crossed to reach a rule. `run` starts past those characters and drops their token.
+# `run` derives the line, the column and the input behind a parse from the characters it consumes. `run` pops `p` before
+# it enters a production. A production ahead of `read-indents` declares `n`. A production past `read-indents` declares
+# no `n`.
 _ENTERED = ("n", "p")
 
-# A production name is the leading run of a filename. That run ends at the first `.`. A parameter is a `.<name>=<value>`
-# segment.
+# A production name is the leading run of a filename. That run ends at the first `.`. A parameter is a
+# `.<letter>=<value>` segment. The letter comes from `nctrip`. The value holds no `.`.
 _PARAMETER = re.compile(r"\.([nctrip])=([^.]+)")
 
 
@@ -101,11 +100,11 @@ def runnable_fault(fixture: Fixture, grammar: dict[str, ir.Prod]) -> str | None:
     Return None if `grammar` can run `fixture`, else a single-line reason it cannot.
 
     Runnable means a pair of things. The grammar has the production and declares the parameters the filename supplies,
-    bar the `ENTERED` parameters a run enters under. The filename supplies the parameters the grammar declares. That
-    holds bar the parameters `DEFAULTS` supplies, and bar the `DETECTED` parameters a production binds for itself.
+    bar the `_ENTERED` parameters a run enters under. The filename supplies the parameters the grammar declares. That
+    holds bar the parameters `_DEFAULTS` supplies, and bar the `_DETECTED` parameters a production binds for itself.
 
-    This is the structural test the interpreter driver filters on. Whether the grammar understands a supplied value is a
-    separate data check the reference-test gate makes.
+    This is the structural test `check_normalize` filters fixtures on before the interpreter runs them. A separate
+    function, `bad_value`, tests the form of a supplied value. `check_spec_tests` calls both.
     """
     name, runtime = ir.entry(grammar, fixture.production, fixture.parameters)
     production = grammar.get(name)
@@ -125,7 +124,8 @@ def runnable_fault(fixture: Fixture, grammar: dict[str, ir.Prod]) -> str | None:
 
 def arguments(fixture: Fixture, grammar: dict[str, ir.Prod]) -> dict[str, str]:
     """
-    The parameters to run `fixture` with. The filename names some, and `DEFAULTS` supplies a parameter it omits.
+    The parameters to run `fixture` with. The filename names some, and `_DEFAULTS` supplies a parameter the production
+    declares and the filename omits.
     """
     resolved, _runtime = ir.entry(grammar, fixture.production, fixture.parameters)
     declared = grammar[resolved].params
@@ -137,7 +137,7 @@ def bad_value(fixture: Fixture) -> str | None:
     """
     Return a single-line reason a parameter value comes out malformed, or None where the values are well-formed.
 
-    `n` is an integer. The root takes the auto-detect base `-1`. `p` is a count of characters and is therefore not
+    `n` is an integer. `l-bare-document` enters at an `n` of `-1`. `p` is a count of characters and is therefore not
     negative. `c` is a context, and `t` is a chomping mode. `r` is a resume policy, and `i` is an indentation mode. The
     check of a value does not depend on the production that takes the value.
     """

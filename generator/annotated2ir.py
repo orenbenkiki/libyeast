@@ -2,9 +2,11 @@
 """
 Translate libyeast's annotated grammar into the typed IR (the IR).
 
-A yaml-grammar operator maps to a single IR node. The translation neither flattens nor normalizes. The round-trip
-through `ir2annotated.py` stays exact. The translation raises an error on an unexpected input rather than dropping that
-input.
+A yaml-grammar operator maps to a single IR node. The vendored `(<<<)` maps to no node of its own. `_node` returns the
+translation of its operand. The translation neither flattens nor normalizes, except that the vendored `(ord)` translates
+to the node `(atoi)` gives. The round-trip through `ir2annotated.py` reproduces libyeast's grammar exactly, and
+`check_annotated_roundtrip.py` checks that. The translation raises an error on an unexpected input rather than dropping
+that input.
 
 Usage: `python3 generator/annotated2ir.py [spec.yaml] > grammar.py`.
 """
@@ -26,24 +28,35 @@ DEFAULT_GRAMMAR = os.path.join(gate.TREE, "grammar", "yeast-spec-1.2.yaml")
 
 # The grammar's parameters. `n` and `m` and `f` are indentations. `c` is a context and `t` a chomping mode. `r` is the
 # resume policy. `i` says whether a block scalar's indicator gives the indentation or the first content line owes it. A
-# bare name among these is that parameter. Any other bare name is the value it names.
+# bare name among these is that parameter. Any other bare name is the value it names. `grammar/yeast-spec-1.2.yaml`
+# opens on a list of the YAML parameters. `RESUMES` holds the values of `r`. `INDENT_MODES` holds the values of `i`.
+# `normalize._DROP_F` describes `f`.
 PARAMS = frozenset({"c", "f", "i", "m", "n", "r", "t"})  # in alphabetical order.
 
-# The values of the finite parameters. Generation specializes those parameters away. A gate holding the grammar to those
-# values enumerates them here. `n` and `m` are indentations and have no such list. `r` reaches as far as the policies
-# the build knows, and no further.
+# The values of the context parameter `c`, one of the finite parameters `ir.FINITE_PARAMS` lists.
+# `normalize._monomorphize` specializes that parameter away. A gate holding the grammar to those values enumerates them
+# here. `n` and `m` are indentations and have no such list. `r` takes the values `RESUMES` lists.
 CONTEXTS = ("block-in", "block-out", "block-key", "flow-in", "flow-out", "flow-key")
+# The chomping mode decides how a block scalar treats its trailing breaks, as
+# https://yaml.org/spec/1.2.2/#8112-block-chomping-indicator says.
 CHOMPINGS = (
     "strip",
     "clip",
     "keep",
-)  # the values `t` may take. The chomping mode decides how a block scalar treats its trailing breaks.
-RESUMES = ("n", "d", "i")  # the values `r` may take. That policy governs a flow scalar's continuation lines.
-INDENT_MODES = ("given", "detected")  # whether a block scalar's indicator gave the indentation or the content says it.
-_HEX = re.compile(r"^x[0-9A-Fa-f]+$")  # a character written as its codepoint `xHH`.
+)  # the values `t` may take.
+RESUMES = (
+    "n",
+    "d",
+    "i",
+)  # the values `r` may take. `l-recover` and `l-unparsed` show what a policy does with input the parser cannot parse.
+# Whether a block scalar's indicator gave the indentation or the content says it. `c-indentation-indicator` sets `i`.
+INDENT_MODES = ("given", "detected")
+_HEX = re.compile(r"^x[0-9A-Fa-f]+$")  # a character written as its codepoint, an `x` and then a run of hex digits.
 _REP = re.compile(r"^\(\{(.+)\}\)$")  # a repetition written `({2})` or `({n})`.
-_INT = re.compile(r"^-?[0-9]+$")  # a count written as a number. A parameter name is not that.
-_SPECIAL = re.compile(r"^<(.+)>$")  # <empty>, <fail>, <start-of-line>, <end-of-stream>, <auto-detect-indent>.
+_INT = re.compile(r"^-?[0-9]+$")  # a whole number. It may start with a minus sign. A parameter name is not that.
+_SPECIAL = re.compile(
+    r"^<(.+)>$"
+)  # _SPECIAL matches a token wrapped in angle brackets. _SPECIALS lists the names _special accepts.
 _SPECIALS: dict[str, type[ir.Node]] = {
     "empty": ir.EmptyTree,
     "fail": ir.FailTree,
@@ -51,13 +64,17 @@ _SPECIALS: dict[str, type[ir.Node]] = {
     "end-of-stream": ir.EndOfStreamGuard,
     "invalid": ir.InvalidSet,
     "column": ir.ColumnValue,
-    # the vendored grammar writes this and libyeast's grammar leaves it out.
+    # The vendored grammar writes <auto-detect-indent>. libyeast's grammar `grammar/yeast-spec-1.2.yaml` leaves it out
+    # and writes <column> instead.
     "auto-detect-indent": ir.AutoDetectIndentValue,
 }
 
 
 def _special(x: object) -> ir.Node | None:
-    """The marker node for a `<...>` token, or None where `x` is no such token."""
+    """
+    The marker node for a `<...>` token, or None where `x` is no such token. A `<...>` token whose name `_SPECIALS` does
+    not list raises ValueError.
+    """
     marker = _SPECIAL.match(x) if isinstance(x, str) else None
     if marker is None:
         return None
@@ -67,19 +84,22 @@ def _special(x: object) -> ir.Node | None:
 
 
 def _char(text: str) -> ir.OneCharSet:
-    """A quoted character or `xHH` hex codepoint becomes a `OneCharSet`."""
+    """`_char` makes a `OneCharSet` from a single character or from `x` and hex digits."""
     if _HEX.match(text):
         return ir.OneCharSet(int(text[1:], 16))
     return ir.OneCharSet(ord(text))
 
 
 def _is_char(x: object) -> TypeGuard[str]:
-    """Whether `x` is a single character or an `xHH` hex codepoint. `char` translates those forms."""
+    """
+    Whether `x` is a single character or a hex codepoint, written as `x` followed by hex digits. `_char` translates
+    those forms.
+    """
     return isinstance(x, str) and (_HEX.match(x) is not None or len(x) == 1)
 
 
 def _count(spec: str) -> ir.Node:
-    """Parse the `({N})` count. A digit literal or a parameter name."""
+    """Parse the `({N})` count. N is an integer literal or a parameter name. The literal may start with a minus sign."""
     return ir.LitValue(int(spec)) if _INT.match(spec) else ir.ParamValue(spec)
 
 

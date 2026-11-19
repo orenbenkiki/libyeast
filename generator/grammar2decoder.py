@@ -2,13 +2,14 @@
 """
 Emit the decoder's tables from the grammar IR. This is the data half of the decoder.
 
-RFC 3629 fixes the UTF-8 mechanics, and `decoder.c` holds them hand-written. The grammar derives the classification, and
-this file holds the whole classification.
+RFC 3629 fixes the UTF-8 mechanics, and `decoder.c` holds them hand-written. https://www.rfc-editor.org/rfc/rfc3629 is
+that RFC. The grammar derives the classification. `chars.Model` computes the keys, and this file emits them. `decoder.c`
+picks among the non-ASCII keys by hand, and `check_groups` holds the grammar to that grouping.
 
 The classification holds the key of an ASCII character and the key of a character the grammar names. The classification
 also holds the bit of a character set the grammar tests, and the keys a non-ASCII character can take.
 
-The key's layout belongs to this file. Code reading or building a key goes through the macros this file emits.
+The key's layout belongs to `chars`. Code reading or building a key goes through the macros this file emits.
 
 Run `make regen` or `python3 generator/grammar2decoder.py`. The script writes `src/decoder_tables.h`.
 """
@@ -23,15 +24,22 @@ import chars
 import gate
 import ir
 
-_ASCII_LIMIT = 0x80  # the codepoint the ASCII table ends at. The probing starts there.
+_ASCII_LIMIT = 0x80  # the first codepoint past the ASCII table. The probing starts there.
 _DELETE = 0x7F  # DEL. The key table names it.
-_NEL = 0x85  # NEXT LINE. The key table names it.
-_NONCHARACTERS = (0xFFFE, 0xFFFF)  # probed, and reached by no decode.
-_SURROGATES = (0xD800, 0xDFFF)  # probed, and refused where a decode reaches a surrogate.
+_NEL = 0x85  # NEXT LINE. `_CONTROL_NAMES` names it.
+_NONCHARACTERS = (
+    0xFFFE,
+    0xFFFF,
+)  # The noncharacters `check_groups` probes and `_non_ascii_group` keys as `YS_KEY_NOT_PRINTABLE`.
+_SURROGATES = (
+    0xD800,
+    0xDFFF,
+)  # The first and the last surrogate. `check_groups` skips a surrogate among its probes.
 _C1_LIMIT = 0xA0  # the C1 controls run from the end of ASCII up to here.
-_HEX_LETTERS = "ABCDEFabcdef"  # the letters a hex escape may use, in upper case and in lower case.
+_HEX_LETTERS = "ABCDEFabcdef"  # the letters `ns-hex-digit` takes, in upper case and in lower case.
 
-# Unicode gives the control characters an alias rather than a name. These are the aliases the grammar names.
+# Unicode gives the control characters an alias rather than a name.
+# https://www.unicode.org/Public/UCD/latest/ucd/NameAliases.txt lists those aliases.
 _CONTROL_NAMES = {
     0x09: "CHARACTER TABULATION",
     0x0A: "LINE FEED",
@@ -65,8 +73,7 @@ def _non_ascii_group(codepoint: int) -> str:
     The name of the key an unnamed non-ASCII character takes, with the length bits left out. `decoder.c` ORs the length
     bits in.
 
-    The C1 controls and the noncharacters share a key. To the grammar, both are merely JSON-compatible and not
-    printable.
+    The unnamed C1 controls and the noncharacters share a key. Both fall inside `nb-json` and outside `c-printable`.
     """
     if codepoint < _C1_LIMIT or codepoint in _NONCHARACTERS:
         return "YS_KEY_NOT_PRINTABLE"
@@ -106,7 +113,10 @@ def _record(keys: dict[str, int], group: str, key: int, codepoint: int) -> None:
 
 
 def _literal_name(codepoint: int) -> str:
-    """The C identifier for a character the grammar names. The Unicode name of the character gives it."""
+    """
+    The C identifier for a character the grammar names. A control character takes its alias from `_CONTROL_NAMES`. Any
+    other character takes its Unicode name.
+    """
     name = _CONTROL_NAMES.get(codepoint) or unicodedata.name(chr(codepoint))
     return name.replace(" ", "_").replace("-", "_")
 
@@ -124,7 +134,8 @@ def _set_cite(name: str, grammar: Mapping[str, ir.Prod]) -> str:
 
 def _form(codepoint: int) -> str:
     """
-    The way a comment shows a character. The character itself where that is legible, and its Unicode notation otherwise.
+    _form writes a character for a comment. _form quotes printable ASCII other than a space, a single quote and a
+    backslash. _form writes other characters in Unicode notation.
     """
     if 0x21 <= codepoint <= 0x7E and codepoint not in (ord("'"), ord("\\")):
         return f"'{chr(codepoint)}'"
@@ -145,15 +156,15 @@ def _defined(grammar: Mapping[str, ir.Prod], body: ir.Node) -> int | None:
 
 def _sites(grammar: Mapping[str, ir.Prod]) -> dict[int, tuple[list[str], list[str]]]:
     """
-    The places the grammar names a character. A codepoint keys a pair of lists of production texts. The first list holds
-    the productions that define the character. The second holds the productions that use it.
+    The places the grammar names a character. A codepoint keys a pair of lists of production citations. The first list
+    holds the plainest production that defines the character. The second holds the productions that use it.
 
     A production defines a character where its body takes that character and takes nothing besides. A pair of
     productions may do so, and the plainest of them names the character. `chars.naming_productions` answers that for a
     lone character exactly as it does for a wider set.
 
-    The characters that no production names appear inline. The `ns-uri-char` production and its like hold such a
-    character. A citation of such a character names the productions it appears in.
+    The characters that no production names appear inline. `ns-uri-char` writes `;` inline, and no production defines
+    `;`. A citation of such a character names the productions it appears in.
     """
     cited = {name: f"[{production.number:03d}] {name}" for name, production in grammar.items()}
     naming = chars.naming_productions(grammar)
@@ -186,8 +197,8 @@ def _sites(grammar: Mapping[str, ir.Prod]) -> dict[int, tuple[list[str], list[st
 
 def _cite(codepoint: int, where: Mapping[int, tuple[list[str], list[str]]]) -> str:
     """
-    The comment naming the productions a character comes from. The productions that define the character, or those that
-    merely use it.
+    _cite returns the text of a comment naming the productions that define a character. A character no production
+    defines gets the productions that use it.
     """
     defining, using = where.get(codepoint, ([], []))
     return ", ".join(sorted(defining or using))
@@ -209,8 +220,8 @@ def _entries(out: io.StringIO, rows: Sequence[tuple[str, str]]) -> None:
         out.write(f"    {value + ',':<{width + 1}} // {comment}\n")
 
 
-# The whole header this generator owns. The header sits in the tree, and `make verify-decoder` fails where it differs
-# from what the grammar says.
+# TABLES holds the path of the header this generator writes. The header sits in the tree. `make verify-decoder` runs
+# `generator/check_decoder.py`, and that script fails where the header differs from what the grammar says.
 TABLES = os.path.join(gate.TREE, "src", "decoder_tables.h")
 
 
@@ -218,9 +229,10 @@ def emit(out: io.StringIO, model: chars.Model, grammar: Mapping[str, ir.Prod], k
     """
     Write the header.
 
-    This file settles the layout rather than clang-format. The tables read as tables only when their columns line up,
-    and the citations are too long to survive a reflow at the column limit. The header therefore holds a `clang-format
-    off`, and this function emits the formatting clang-format would otherwise impose.
+    The tables read as tables only when their columns line up. `src/decoder_tables.h` holds citation lines past the
+    column limit `.clang-format` sets. clang-format would break such a line, as
+    https://clang.llvm.org/docs/ClangFormatStyleOptions.html#reflowcomments says. The header therefore holds a
+    `clang-format off`, and this function aligns the columns itself in place of clang-format.
     """
     where = _sites(grammar)
     out.write("// SPDX-License-Identifier: MIT\n")

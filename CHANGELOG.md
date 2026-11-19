@@ -164,10 +164,41 @@
 - The prose of the tree says nothing a write-time hook would refuse, and the settling loop sets nothing aside.
   `check_prose` reported faults across the tree, and a checker answered on text that holds no fault. `_A_BARE_PATH` read
   a bare `//` as a path, and read the `/` of a closing markup tag the same way. `_A_SO_CLAUSE` read the pro-verb in
-  `does so` and in `did so`, and `do so` was already spared. `_SENTENCE` cut a sentence at the `..` of a range and at an
-  ellipsis, and the piece behind the cut opened on a dot that read as a dotted name. `_quoted_runs` ended a JS template
-  literal at a backtick inside an interpolation, and the expression behind that backtick reached the checkers as prose.
-  `_past_interpolation` counts the braces of an interpolation and takes the scan over both.
+  `does so` and in `did so`, and the checker already spared `do so`. `_SENTENCE` cut a sentence at the `..` of a range
+  and at an ellipsis, and the piece behind the cut opened on a dot that read as a dotted name. `_quoted_runs` ended a JS
+  template literal at a backtick inside an interpolation, and the expression behind that backtick reached the checkers
+  as prose. `_past_interpolation` counts the braces of an interpolation and takes the scan over the whole interpolation.
+
+- The gate holds the prose and the claims. `make examine-prose` runs the critic, and the `critic.js` workflow is gone.
+  `make examine-claims` reads the prose of a fragment against the code that prose documents. The reader rewrites a
+  sentence the code contradicts. `make pc` fails while a fragment waits for either pass. A claims reader checks a
+  critic's draft before the write. A draft whose rewrite the code contradicts stays out of the tree, and a person
+  reviews it. Both passes log a write into the tree with the prose before and after. A fragment holds its prose without
+  the wrapping of its file, and a rewrap moves no digest and no answer.
+
+- A claim rests on the code it cites. A claims reader fetches code by name through `.claude/mcp/fetch_fragments.py`. The
+  answer cites the lines of code that bear a claim out. `prose_answer` refuses a citation that reaches no code.
+  `.claude/prose-dependencies.json` records what a reading cited. An edit to cited code sends the fragment back to the
+  pass. Public C cites only public C.
+
+- The checkers and `make reformat` catch the faults below.
+
+  - `kind_dispatches` refuses a look at a node's kind outside an `ir.Question`.
+  - `step_arguments` refuses a pipeline step with no argument in the comment above it.
+  - `design_copies` refuses a `DESIGN.md` text that copies the prose of a name it cites.
+  - `written_by` follows a script into the modules of the tree it writes through.
+  - `hook_health` refuses an edit that leaves the hooks unable to import. `edit_landed` compares the landed file against
+    the text the hooks read.
+  - `check_spaces` checks that a counted run takes no line break.
+  - `ruff` rule D301 refuses a backslash in a docstring that is not raw.
+  - `nested_docstrings` refuses a nested docstring that `make reformat` would rewrap past the limit.
+  - `prose_rules` refuses a spaced hyphen, star or plus used as punctuation. Flattening keeps a bullet's nesting.
+  - `make reformat` moves an over-width inline comment above its line, and refills an over-width docstring bullet. It
+    also rewraps the comment blocks of a JavaScript file, and `make vet-format-js` checks them.
+  - `check_grammar_coverage` counts the calls of a body that is no choice as ungated.
+
+- The decoder tests read Markus Kuhn's UTF-8 decoder stress test. `third_party/utf8-stress-test` holds the file, and the
+  head of the file names its license. `test_stress_test` checks the numbered cases of the file against the decoder.
 
 - The settling loop writes a fragment of any language the tree holds. `apply_prose.does_hold` refused a JSON note
   outright, and `converge_prose` set such a note aside before a critic read it. The prose of that note reached no
@@ -217,8 +248,9 @@
   first. The docstring of `ir.kept_for` states that discipline.
 
 - `_NAMES_STILL_OWED` answers in both directions, as `_NAMES_THE_TREE_NO_LONGER_HOLDS` already did. A name there excuses
-  a citation of something unbuilt. After the pipeline builds that thing, the excuse still stops a check of the citation.
-  The list's own comment says a name comes off on that day. A gate reported nothing when that day came.
+  a citation of something unbuilt in `PLAN.md`. `_dangling_step_errors` refuses such a citation in another text. After
+  the pipeline builds that thing, the excuse still stops a check of the citation. The list's own comment says a name
+  comes off on that day. A gate reported nothing when that day came.
 
 - `EndMustConsumeAction` matches wherever a parse reaches it. The coverage gate reads the node that way. The node sat
   among the kinds that may refuse, and a reason sat beside the node. That reason said the node answers with the state
@@ -339,7 +371,7 @@
   property on a step behind a claim. The law checks a settled invariant on a step the same way. A writer may name such a
   property on the step that runs next. A reader then takes that step to establish the property. That reader then blames
   the step for a later break. A step naming an invariant **the grammar already held at none** is therefore itself a
-  fault. The fix for such a step is a claim. `every-conditional-way-is-gated` became a claim at the door.
+  fault. The fix for such a step is a claim. `every-conditional-way-is-gated` became a claim at the start.
   `no-production-reaches-itself-unconsumed` became a claim once the optionals are ways.
   `accepted-and-gated-charsets-are-equal` became a claim where the consumed sets agree. `every-path-reaches-a-leaf-way`
   became a claim for the leaf paths.
@@ -940,7 +972,7 @@
   `no-sequence-of-sequences` falls to a residue. The recursion guard holds that residue.
 
   `no-gate-decides-nothing` sits beside `flatten-called-sequences`. A gate on a body that offers a single way selects
-  nothing. The invariant reads **none at the door**. A way holds no gate until a step re-encodes the way. A count under
+  nothing. The invariant reads **none at the start**. A way holds no gate until a step re-encodes the way. A count under
   the invariant therefore names the step that strands such a gate. The hoists strand such a gate, and a hoist declares
   the gate it strands. The hoists gate a way where they can. A body's single way is such a place. There the gate is an
   assertion the callers can discharge.
@@ -991,12 +1023,11 @@
   a form the walk did not recognise. The walk missed a character wrapped in a `(token)`. The walk read a way's items and
   missed a character in the way's gate. The walk also missed a repetition and a count the parse works out.
 
-  `is_one_char` had an unreachable `(case)` branch. `_is_actions_alone` claimed a single kind. The kinds that reach it
-  are the kinds a way can begin with. The `ir.Question` tables state the handler for a pair of overlapping kinds. The
-  order of a test chain had settled those handlers silently. `ErrorAction` and `PushMessageAction` are actions and
-  commits both. A walk finds the places a way can refuse. That walk must stop at such an action rather than step over
-  it. A step that strips "the scopes written around a match" strips a `(token)` and no more. A `(max)`, a `(recover)`
-  and a `(wrap)` reach that strip at no point.
+  `is_one_char` had an unreachable `(case)` branch. The `ir.Question` tables state the handler for a pair of overlapping
+  kinds. The order of a test chain had settled those handlers silently. `ErrorAction` and `PushMessageAction` are
+  actions and commits both. A walk finds the places a way can refuse. That walk must stop at such an action rather than
+  step over it. A step that strips "the scopes written around a match" strips a `(token)` and no more. A `(max)`, a
+  `(recover)` and a `(wrap)` reach that strip at no point.
 
   A checker may answer with a named `Verdict` rather than a value. A walk over a way's items can then be a table as
   well. The table takes the item. It may step over that item, or stop. It follows the call the item makes, or follows
@@ -1370,7 +1401,7 @@
   none of the grammar it hands on. The invariant made no sense before the step ran. The step builds the shape the
   invariant is about. `settles` means that a step receives a broken count and takes that count to none. A step that
   settles a count already at none is a fault. A **claim** is a step that transforms nothing and establishes what it
-  names. `holds-at-the-door` and `holds-once-optionals-are-ways` are claims that named themselves with the wrong word.
+  names. `holds-at-the-start` and `holds-once-optionals-are-ways` are claims that named themselves with the wrong word.
 
   The change buys a hard fault where there was a silence. The gate asked an invariant of a stage. A checker could reach
   a shape the pipeline had not built, and that checker raised. The gate caught the raise and read it as "not a question
@@ -1405,11 +1436,11 @@
 
 - The gate reads the crossing table's values. `GUARD_CROSSES_ACTION` answers `True` or `False`. It may answer nothing at
   all. An unnamed pair refuses the move, and the table records that the pair came up. A walk then cannot mistake "No"
-  for "not yet". The tree called `unnamed()` and `unconsulted()` at no site. The table recorded the difference, and no
-  site reported it. A walk took an unnamed pair for a worked-out refusal. The gate then named `LookGuard` in front of
-  `OpenWindow` at once. That pair held a flow mapping's implicit key ungated. The table answers that pair a line above.
-  A window bounds the characters a committed consume may take. A window bounds no lookaround. The gate also named cells
-  nothing asks. Those cells are gone.
+  for a pair nobody answered. The tree called `unnamed()` and `unconsulted()` at no site. The table recorded the
+  difference, and no site reported it. A walk took an unnamed pair for a worked-out refusal. The gate then named
+  `LookGuard` in front of `OpenWindow` at once. That pair held a flow mapping's implicit key ungated. The table answers
+  that pair a line above. A window bounds the characters a committed consume may take. A window bounds no lookaround.
+  The gate also named cells nothing asks. Those cells are gone.
 
 - **A conflict that a continuation decides has to hold that continuation.** `every-conflict-is-a-tail-call` counts the
   call sites. At such a site a way enters a production the machine cannot steer through. A continuation sits behind that
@@ -1707,7 +1738,7 @@
   that found none still knows there is no space. A path is narrower than the set the tail consumes. The union of the
   paths admits exactly that set.
 
-- **A leaf way takes what the parse entered it on, and a path reaches such a way.** A way holding no call answers by its
+- **A leaf way takes what the parse entered it on, and a path reaches a leaf way.** A way holding no call answers by its
   own actions. The parse enters such a way in a space. The way accepts another space. An invariant checks that the pair
   agree before the pipeline moves anything. `_asked_where_entered` already gave the guards asked along a path into a
   production. `_asked_where_entered` gathers those guards from the last take onward. A parse may enter a way in the
@@ -1738,17 +1769,17 @@
   `validate_grammar._check_total_cases` refuses a case that names no such value. The specialization raises where a value
   has no branch. It mints no emptiness.
 
-- **The ways nothing takes come out, and no later phase sees such a way.** `prune-failures` is a phase of its own behind
-  the specialization. The phase can go no earlier. A `<fail>` is a branch until the specialization runs. A branch does
-  not yet say what the production does. A choice drops the ways nothing enters. A choice left with no way becomes a
-  `<fail>`. A run holding a `<fail>` matches nothing. A call of a production that matches nothing matches nothing. A
-  recovery whose handler nothing enters is no recovery. The cut goes on unwinding to the handler above, as it did with a
-  recovery that matched nothing. A commit keeps what sits under it. A refusal there is the error the commit names, and
-  not the error of the choice. The specialization writes a single decline, and the phase writes none. The grammar loses
-  the productions nothing could reach, and `no-fails` reads none from there on. The phase dropped the dead recovery.
-  Without the dead recovery, a non-recovering policy keeps its compact mapping. That mapping stays apart from the
-  mapping of the indentation-bounded policy. The separate mappings showed that the corpus held no `r=i` fixture with a
-  compact mapping. The merge had hidden that hole. `l-yeast-stream.recover-compact.r=i` closes it.
+- **The ways nothing takes come out, and no later phase sees a way nothing takes.** `prune-failures` is a phase of its
+  own behind the specialization. The phase can go no earlier. A `<fail>` is a branch until the specialization runs. Such
+  a branch differs from the production it belongs to. A choice drops the ways nothing enters. A choice left with no way
+  becomes a `<fail>`. A run holding a `<fail>` matches nothing. A call of a production that matches nothing matches
+  nothing. A recovery whose handler nothing enters is no recovery. The cut goes on unwinding to the handler above, as it
+  did with a recovery that matched nothing. A commit keeps what sits under it. A refusal there is the error the commit
+  names, and not the error of the choice. The specialization writes a single decline, and the phase writes none. The
+  grammar loses the productions nothing could reach, and `no-fails` reads none from there on. The phase dropped the dead
+  recovery. Without the dead recovery, a non-recovering policy keeps its compact mapping. That mapping stays apart from
+  the mapping of the indentation-bounded policy. The separate mappings showed that the corpus held no `r=i` fixture with
+  a compact mapping. The merge had hidden that hole. `l-yeast-stream.recover-compact.r=i` closes it.
   `generator/regen_fixture.py` wrote that fixture. A fixture's stream comes from the interpreter. An indent or a white
   token holds trailing spaces that a writer typing the fixture by hand loses.
 
@@ -1951,10 +1982,14 @@
   make by hand. The script prepares the items below:
 
   - The staged diff, split by the subject a question asks about.
-  - A changed run of Python with its function, the docstring of that function in the tree and in `HEAD`, and the lines
-    around the change.
+  - A changed run of Python with its function, the docstring of that function in the tree and at the base of the diff,
+    and the lines around the change.
+  - The findings of the last review of the commit.
   - A name or swept word the change removed, with the text the tree still says about it.
   - A number the documents state, beside the names the gate can measure.
+
+  The diff runs from the tree the last review of the commit read, and from `HEAD` where no review of the commit ran.
+  `record_run` keeps that tree and the findings of the review. A reader checks the previous findings against the tree.
 
   `.claude/workflows/pre-commit-review.js` asks the review questions of a change. `.claude/agents/reader.md` answers
   those questions. That reader has `Read`, `Grep` and `Glob`, and no shell. A reviewer that reaches for a shell has
@@ -2081,6 +2116,24 @@
   `ys_close_counting_allocator`. That close reports a leak as a failure. It answers `-1`, sets `errno` to `ENOMEM`, and
   reports the memory the counter still holds. A delete through that allocator therefore surfaces the leak as
   `YS_FAILED_MEMORY` rather than asserting.
+
+- The transformations of `normalize` keep their equivalence.
+
+  - `_split` answers presence only.
+  - `_lifted_commit` lifts a commit only past parts that take no character and cannot fail. The ways of such a part
+    agree on their effects.
+  - The fixpoints over the call graph run as worklists through `ir.fixed_point`.
+
+- The agent runs survive their failures.
+
+  - A prompt reaches its agent as a file.
+  - A seed call stops at its first answer.
+  - A stopped run exits within a minute and leaves its stacks.
+  - A partial verdict leaves its transcript behind.
+  - A run stops where an agent lacks a tool its definition names.
+
+- The hooks that checked an edit apart from the roster run through `checkers._CHECKERS`. `check_prose` runs those
+  checkers over the tracked files.
 
 ### Fixed
 

@@ -5,14 +5,14 @@ A checker `checkers` runs. It holds a document to the rules `check_documents` an
 whole file.
 
 `check_documents.history_errors` reads `DESIGN.md`, `PLAN.md` and `CHANGELOG.md` for a document narrating its own
-history. `check_documents.domain_errors` reads the same documents for a tense another document owns. `text-says-what-is`
-is the rule of both. `check_conventions.convention_note_faults` reads `.claude/conventions.md`.
+history. `check_documents.domain_errors` reads `DESIGN.md` and `CHANGELOG.md` for a tense another document owns.
+`text-says-what-is` is the rule of both. `check_conventions.convention_note_faults` reads `.claude/conventions.md`.
 `a-mechanised-rule-names-its-convention` is that rule.
 
-`roster_faults_of` reads `README.md` against the `Makefile`. A target of the `Makefile` is code. `checkers` takes that
-reading of the file and hands the faults to `refusal_for`.
+`roster_faults_of` reads `README.md` against the `Makefile`. `checkers` takes that reading of the file and hands the
+faults to `refusal_for`.
 
-The gates read the tree through the same functions.
+The `check_prose` gate reads the tree through the same functions by way of `checkers.refusals_for_edit`.
 """
 
 import check_conventions
@@ -23,7 +23,7 @@ def roster_faults_of(text: str, path: str) -> tuple[str, ...]:
     """
     The disagreements between the roster `README.md` lists and the targets the `Makefile` holds.
 
-    `checkers` reads this off the file the edit would leave. A target is code, and the prose of the file names none.
+    `checkers` reads this off the file the edit would leave.
     """
     return tuple(check_documents.readme_roster_errors(path, text))
 

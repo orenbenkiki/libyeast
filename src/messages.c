@@ -3,9 +3,8 @@
 
 #include "messages.h"
 
-// The messages libyeast says of data it cannot read. A host failure has no message at all. Such a failure is a
-// return value rather than a token with text. A message is a single literal. A message split across lines inside this
-// table would read as a pair.
+// The messages libyeast says to its caller that do not depend on the grammar. A host failure has no message at all.
+// Such a failure is a return value rather than a token with text. A message is a single literal.
 static const char *const YS_MESSAGES[YS_MESSAGE_COUNT] = {
     [YS_MESSAGE_NOT_IMPLEMENTED] = "not implemented",
     [YS_MESSAGE_WIRE_BAD_POSITION] = "not the yeast wire format: expected a token position line",

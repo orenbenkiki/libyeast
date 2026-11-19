@@ -1,11 +1,12 @@
-# Build the Doxygen API docs and the gcovr coverage report. Publish the docs and the report to GitHub Pages. The generated files
+# The `gh-pages` make target builds the Doxygen API docs through `build-docs/.docs` and the gcovr coverage report through `build-coverage/.cov`. Publish the docs and the report to GitHub Pages. The generated files
 # stay out of the repository.
 #
 # The build runs on a pull request too. The deploy runs from main.
 
-# The gh-pages sub-gate holds the `// UNTESTED` coverage contract and the docs completeness check.
+# The `gh-pages` target holds the `// UNTESTED` coverage contract in `gh-pages-coverage` and the docs completeness check in `build-docs/.docs`.
 #
-# A repo setting made once. Settings -> Pages -> Source = GitHub Actions.
+# An owner of the repository sets Settings -> Pages -> Source to GitHub Actions once. https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+# gives the steps.
 
 name: gh-pages
 
@@ -17,7 +18,7 @@ on:
 permissions:
   contents: read
 
-# The workflow holds a concurrency group per branch or pull request. GitHub cancels a superseded run in that group. The deploy job holds a separate concurrency group. Pages takes a single deployment at a time across branches.
+# The workflow holds a concurrency group per branch or pull request. GitHub cancels a superseded run in that group. The deploy job holds a separate concurrency group. The `pages` group runs a single deployment at a time. A newer deploy cancels the deploy in progress.
 concurrency:
   group: gh-pages-${{ github.ref }}
   cancel-in-progress: true

@@ -4,8 +4,7 @@ Check that a registered hook still answers.
 
 A hook reads an edit and answers where the edit breaks a rule. A hook that has stopped answering falls silent. Silence
 is also what a hook says about a clean edit. The pair of cases reads alike from outside. `gate` lists the hook files and
-`check_failures` reads their text, and neither runs a hook. A checker once blanked the code spans `altitude` looks for.
-`altitude` said nothing for as long as the blanking lasted.
+`check_failures` reads their text, and neither runs a hook.
 
 So this runs a hook, against an edit the hook must answer and an edit the hook must pass. `tests/hooks.json` holds the
 pairs. The roster comes from `.claude/settings.json`. A hook registered there with no pair fails as loudly as a pair
@@ -15,20 +14,22 @@ A hook on an edit gets an entry per kind in `_KINDS`. An entry holds a pair. A `
 hook that reads a comment and skips a string literal passes the comment's pair, and it reads as complete. This refuses
 that silence.
 
-`.claude/settings.json` registers the command, and this runs the command as written. That command names the hook and the
-`PYTHONPATH` the hook needs.
+`.claude/settings.json` registers the command, and this runs the command as written. A checker that `checkers.CALLED`
+names runs under the command registered for `checkers.THE_HOOK`.
 
-This module holds `a-prose-checker-reads-flattened-prose`. `_flattening_faults` re-wraps the prose of the tree and asks
-whether `collect_fragments.flattened` gives the same text back. `_raw_prose_faults` reads the calls of `checkers` and
-asks whether a prose checker takes a flattened text.
+This module holds `a-prose-checker-reads-flattened-prose` of `.claude/conventions.md`. `_flattening_faults` re-wraps the
+prose of the tree and asks whether `collect_fragments.flattened` gives the same text back. `_raw_prose_faults` reads the
+calls of `checkers` and asks whether a prose checker takes a flattened text.
 
-This module holds `a-hook-answers-through-the-runner`. A registered command opens with `run.sh`. A hook that dies
-otherwise writes nothing and leaves with a status the tool ignores, and that reads as a hook that passed.
+This module holds `a-hook-answers-through-the-runner` of `.claude/conventions.md`. A registered command opens with
+`run.sh`. A hook that dies otherwise writes nothing and leaves with a status the tool ignores, and that reads as a hook
+that passed. https://code.claude.com/docs/en/hooks says which statuses the tool reads.
 
-This module holds `a-write-time-hook-reads-the-edit-in-place`. This module writes a pair's `file` text into a scratch
-file inside the tree. The hook then gets an Edit into that scratch file. A hook decides about a path the tree holds, and
-a directory outside it would make the hook silent. The `old_string` is a slice of a comment with no marker. A hook that
-reads only the slice finds no prose there and passes, and this reports that hook as silent.
+This module holds `a-write-time-hook-reads-the-edit-in-place` of `.claude/conventions.md`. This module writes a pair's
+`file` text into a scratch file inside the tree. The hook then gets an Edit into that scratch file. A hook decides about
+a path the tree holds, and `.claude/hooks/prose_gate.py` passes a path outside it in silence. The `old_string` of a pair
+in `tests/hooks.json` may be a slice of a comment with no marker. A hook that reads only the slice finds no prose there
+and passes, and this reports that hook as silent.
 
 Usage: `python3 generator/check_hooks.py`.
 """
@@ -44,7 +45,7 @@ import sys
 import tempfile
 import textwrap
 
-from collections.abc import Iterable
+from collections.abc import Container, Iterable
 from typing import Any, Mapping
 
 import collect_fragments
@@ -54,24 +55,33 @@ _SETTINGS = os.path.join(gate.TREE, ".claude", "settings.json")  # the file that
 
 # The command a registered hook goes through. `.claude/hooks/run.sh` turns a dead hook into a refusal.
 _RUNNER = ".claude/hooks/run.sh"
-_TRIED = os.path.join(gate.TREE, "tests", "hooks.json")  # the pair a registered hook fires against.
+_TRIED = os.path.join(gate.TREE, "tests", "hooks.json")  # the file holding the pairs a registered hook fires against.
 
-# The events whose hooks get a tool call to decide.
+# The events whose hooks get a tool call to decide, as https://code.claude.com/docs/en/hooks says.
 _READS_A_TOOL_CALL = frozenset({"PreToolUse", "PostToolUse"})
 
-# The tools that hand a hook a file to read. A hook on one of these gets an entry per kind of prose below.
+# The tools that write a file. Such a tool hands a hook an edit to read, as https://code.claude.com/docs/en/hooks says.
+# A hook on one of these needs a pair in `tests/hooks.json` per kind in `_KINDS`.
 _WRITES_A_FILE = ("Edit", "Write")
+
+# The name a probe directory opens on. The hooks under test read a path of this tree. The probe therefore sits here
+# rather than under the system temporary directory. `FIND_PRUNE` in the `Makefile` keeps a directory of this name out of
+# the rosters the formatters and the linters read.
+_SCRATCH = "junk-hooks-"
 
 # The kinds of prose an edit may hold. A pair names the kind it puts the fault in.
 _KINDS = ("a comment", "a docstring", "a markdown line", "a string literal")
 
+# A checker of `checkers.READS_THE_FILE` holds a pair, and `probes` names that pair. The file of such a pair in
+# `tests/hooks.json` holds the fault before the edit. The `answers` edit changes text away from that fault. The hook
+# must pass the `passes` edit.
+_A_HELD_FAULT = "a fault the file held"
+
 
 def _pairs() -> dict[str, list[dict[str, Any]]]:
     """
-    `{the hook's filename: the pairs it fires against}`. The pairs name their paths from the root of the tree.
-
-    A pair tries `prose_rewrite` on a comment, and another pair tries it on a string literal. An arm no pair fires
-    against goes untried.
+    `{the name a pair is keyed by: the pairs it fires against}`. This function writes the root of the tree in place of
+    `TREE/` in the file. A path in a pair is then absolute.
     """
     with open(_TRIED, encoding="utf-8") as handle:
         said = handle.read()
@@ -81,13 +91,17 @@ def _pairs() -> dict[str, list[dict[str, Any]]]:
 
 def _landed(pair: Mapping[str, Any], scratch: str) -> Mapping[str, Any]:
     """
-    `pair` with the file it names written into `scratch`. An edit then has somewhere to land.
+    Write the file the pair names into `scratch`, and answer the pair. An edit then has somewhere to land.
 
     A hook reads the file its payload names and asks what the edit would leave. At a path holding nothing, a hook sees
-    an edit that cannot apply and passes the payload it came in with. The pair says what the path holds.
+    an edit that cannot apply and passes the payload it came in with. `collect_fragments.written` answers `None` for
+    such an edit, and `prose_gate` then passes it. The pair says what the path holds.
 
     The directory the pair names comes along. A hook that decides by directory reads `generator/probe.py` as a file of
-    the generator. Dropping that directory made such a hook silent.
+    the generator. `kind_dispatches.dispatches_of` decides by directory.
+
+    A side of the pair may hold `predicted`. That is the text `prose_gate` would have recorded for the call.
+    `edit_landed.predicted_at` names the file that takes it.
     """
     text = pair.get("file")
     if not isinstance(text, str):
@@ -100,20 +114,27 @@ def _landed(pair: Mapping[str, Any], scratch: str) -> Mapping[str, Any]:
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
         held["file_path"] = path
+        predicted = payload[what].pop("predicted", None)
+        if isinstance(predicted, str):
+            recorded = importlib.import_module("edit_landed").predicted_at(str(payload[what]["tool_use_id"]))
+            os.makedirs(os.path.dirname(recorded), exist_ok=True)
+            with open(recorded, "w", encoding="utf-8") as handle:
+                handle.write(predicted)
     return payload
 
 
-def _registered() -> dict[str, tuple[str, str]]:
+def _registered(events: Container[str] = _READS_A_TOOL_CALL) -> dict[str, tuple[str, str]]:
     """
-    `{the hook's filename: (the command that runs it, the tool it matches)}`, over the hooks that read a tool call.
+    `{the hook's filename: (the command that runs it, the tool it matches)}`, over the hooks registered on `events`.
 
-    The map leaves out `UserPromptSubmit`. A hook on it puts context into the turn and decides nothing about an edit.
+    The default `events` leaves out `UserPromptSubmit`. A hook on it puts context into the turn and decides nothing
+    about an edit, as https://code.claude.com/docs/en/hooks says.
     """
     with open(_SETTINGS, encoding="utf-8") as handle:
         held = json.load(handle)
     named = {}
     for event, entries in held.get("hooks", {}).items():
-        if event not in _READS_A_TOOL_CALL:
+        if event not in events:
             continue
         for entry in entries:
             for one in entry.get("hooks", []):
@@ -123,13 +144,13 @@ def _registered() -> dict[str, tuple[str, str]]:
     return named
 
 
-# The columns a reflow re-wraps prose to. A wider column leaves fewer breaks.
+# The columns a reflow re-wraps prose to.
 _COLUMNS = (120, 400)
 
-# A code span. A reflow keeps a span whole, and a re-wrap here keeps it whole too.
+# A code span. `_rewrapped` keeps a span whole.
 _A_SPAN = re.compile(r"`[^`]*`")
 
-# The classes of checker that read prose. Such a checker reads the line breaks of a text nothing flattened.
+# The classes of checker that read prose. Such a checker reads a text that `collect_fragments.flattened` flattened.
 _READS_PROSE = ("_PROSE", "_DOCUMENT")
 
 # The module whose calls `_raw_prose_faults` reads.
@@ -137,7 +158,10 @@ _THE_CHECKERS = os.path.join(gate.TREE, ".claude", "hooks", "checkers.py")
 
 
 def _masked(line: str) -> tuple[str, dict[str, str]]:
-    """`line` with a code span put behind a marker, beside the spans by marker. A wrap then keeps a span whole."""
+    """
+    `line` with the matches of `_A_SPAN` put behind numbered markers, and a map from marker to span. A wrap then keeps a
+    span whole.
+    """
     spans: dict[str, str] = {}
 
     def hidden(found: re.Match[str]) -> str:
@@ -150,7 +174,8 @@ def _masked(line: str) -> tuple[str, dict[str, str]]:
 
 def _rewrapped(text: str, columns: int) -> str:
     """
-    `text` re-wrapped to `columns`. A table row and a fenced block keep the layout the writer gave them.
+    `text` re-wrapped to `columns`. A table row keeps a line of its own. A fenced block keeps the layout the writer gave
+    it.
 
     A code span stays whole.
     """
@@ -165,16 +190,42 @@ def _rewrapped(text: str, columns: int) -> str:
             held.append(line)
             continue
         masked, spans = _masked(line.strip())
-        for said in textwrap.wrap(masked, columns, break_on_hyphens=False, break_long_words=False) or [masked]:
+        indent = line[: len(line) - len(line.lstrip())]
+        under = indent + "  " if collect_fragments.does_open_a_block(line) else indent
+        wrapped = textwrap.wrap(
+            masked,
+            columns,
+            initial_indent=indent,
+            subsequent_indent=under,
+            break_on_hyphens=False,
+            break_long_words=False,
+        )
+        for said in wrapped or [masked]:
             for key, span in spans.items():
                 said = said.replace(key, span)
             held.append(said)
     return "\n".join(held)
 
 
+def _unflattened_faults() -> list[str]:
+    """
+    Report a fault for a fragment whose prose differs from the text `collect_fragments.flattened` gives. A site's prose
+    takes the same test. A fault also names a fragment whose prose digest differs from `prose_digest` over its sites.
+    """
+    faults = []
+    for fragment in collect_fragments.fragments():
+        said = [site.prose for site in fragment.sites]
+        if any(one != collect_fragments.flattened(one) for one in [fragment.prose.content, *said]):
+            faults.append(f"`{fragment.key}` holds prose that `flattened` changes")
+        if fragment.prose.sha != collect_fragments.prose_digest(said):
+            faults.append(f"`{fragment.key}` holds a prose digest that `prose_digest` over its sites does not give")
+    return faults
+
+
 def _flattening_faults() -> list[str]:
     """
-    The fragments whose flattened prose moves when a reflow re-wraps the file.
+    Report a fault for a fragment whose flattened prose moves once `_rewrapped` wraps it to a width in `_COLUMNS`. The
+    fault names the fragment's site.
 
     `collect_fragments.flattened` takes the wrapping out. A checker reads the text it gives, and `prose_digest` takes
     the digest of that text.
@@ -229,10 +280,11 @@ def _calls_reading_raw(source: str) -> list[str]:
 
 def _runner_faults() -> list[str]:
     """
-    The registered hooks whose command opens with something other than `run.sh`.
+    The faults naming the registered hooks whose command has a first word that lacks `.claude/hooks/run.sh`.
 
     A hook that dies writes nothing and leaves with a status the tool ignores. That reads as a hook that passed a clean
-    call. A command registered around `run.sh` keeps that silence.
+    call. https://code.claude.com/docs/en/hooks says which statuses the tool ignores. A command registered around
+    `run.sh` breaks that silence. `run.sh` turns the death into a refusal.
     """
     with open(_SETTINGS, encoding="utf-8") as handle:
         held = json.load(handle)
@@ -251,25 +303,23 @@ def _runner_faults() -> list[str]:
 
 def _unasked_faults(named: Iterable[str]) -> list[str]:
     """
-    The hooks on an edit that `checkers` neither calls nor declares.
+    The faults naming a hook on an edit that `checkers` does not call. `checkers.THE_HOOK` draws no fault.
 
-    `prose_answer` puts an agent's answer through `checkers.refusals_for_edit`. A hook missing from there reads an edit
-    a writer makes. It then says nothing about the same prose from an agent.
+    `prose_answer` checks the rewrites of an agent with `apply_prose.draft_refusals`. That call reaches
+    `checkers.refusals_for_edit` through `text_refusals`. A hook missing from there reads an edit a writer makes. It
+    then says nothing about the same prose from an agent.
     """
     checkers = importlib.import_module("checkers")
     faults = []
     for name in sorted(named):
-        if name in checkers.CALLED or name in checkers.NO_CALLABLE or name == checkers.THE_HOOK:
+        if name in checkers.CALLED or name == checkers.THE_HOOK:
             continue
-        faults.append(
-            f"`checkers` says nothing of `{name}`. Name it in `CALLED`. A hook it cannot call goes in `NO_CALLABLE` "
-            f"with a reason."
-        )
+        faults.append(f"`checkers` says nothing of `{name}`. Make it a checker of `_CHECKERS`.")
     return faults
 
 
 def _reached(path: Any) -> tuple[set[str], set[tuple[str, str]]]:
-    """The modules `path` imports, and the `(module, name)` pairs its code reads."""
+    """The modules `path` imports, and the `(name, attribute)` pairs its code reads off a bare name."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     imported = {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
     imported |= {str(node.module) for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
@@ -321,7 +371,7 @@ def _unchecked_agent_faults() -> list[str]:
     The agent definitions whose answer `prose_answer` cannot read.
 
     An agent answers through the StructuredOutput tool, and `prose_answer` reads that call. A definition whose tools
-    line leaves the tool out answers in text, and the checkers read nothing of that answer.
+    line leaves the tool out gives the checkers nothing to read.
     """
     faults = []
     for path in gate.agents():
@@ -339,8 +389,8 @@ _CHECKS_ITS_PROSE = ("refusals_for_edit", "text_refusals", "draft_refusals", "pr
 # The scripts that write a file and put no new prose in it. The value says what the script writes. A declared writer
 # outside this list calls the checkers.
 _WRITES_NO_NEW_PROSE = {
-    "batch_pending_fragments": "The batches of a settling run sit under the git directory.",
     "check_hooks": "A probe file sits under a temporary directory.",
+    "claim_state": "The claim store holds keys, digests, and a note this module states.",
     "coverage_badge": "The coverage badge is a build artifact.",
     "grammar2decoder": "The comments of the decoder tables come from the literals of that module.",
     "regen_fixture": "A fixture's expected output is data.",
@@ -359,7 +409,9 @@ def _declared_writers() -> list[str]:
 
 def _unchecked_writer_faults() -> list[str]:
     """
-    The scripts that write a file, put prose in it, and ask no checker.
+    The faults of the writers `no-shell-file-writes.sh` declares. A writer outside `_WRITES_NO_NEW_PROSE` that asks no
+    checker is a fault where the gate's modules or hook modules hold it. A name `_WRITES_NO_NEW_PROSE` declares and
+    `no-shell-file-writes.sh` does not is a fault too.
 
     `_WRITES_NO_NEW_PROSE` declares a writer whose file holds no new prose. A writer outside that list calls one of
     `_CHECKS_ITS_PROSE`.
@@ -387,8 +439,10 @@ def _runners() -> dict[str, tuple[str, str]]:
     """
     `{the name a pair is keyed by: (the command that runs it, the tool it matches)}`.
 
-    A checker of `checkers.CHECKERS` gets a pair of its own. The hook registered on an edit runs that pair. A checker
-    registers as no hook of its own. A shell hook runs as itself.
+    A checker of `checkers._CHECKERS` shares the pair of `checkers.THE_HOOK`. A settings file registering no
+    `checkers.THE_HOOK` leaves a checker with no pair. `.claude/settings.json` registers no checker as a hook of its
+    own. `.claude/settings.json` registers `checkers.THE_HOOK` on an edit. Any registered hook but `checkers.THE_HOOK`
+    keeps its own pair.
     """
     checkers = importlib.import_module("checkers")
     registered = _registered()
@@ -400,10 +454,12 @@ def _runners() -> dict[str, tuple[str, str]]:
 
 def _kind_faults(name: str, pairs: list[dict[str, Any]]) -> list[str]:
     """
-    The kinds of prose `name` says nothing about.
+    The faults in the pairs `name` holds. A kind can have no pair. A pair can skip its kind and write no reason. A hook
+    in `checkers.READS_THE_FILE` can hold no pair for `_A_HELD_FAULT`.
 
     `_KINDS` lists the kinds an edit may hold. A hook that reads a comment and skips a string literal passes the
-    comment's pair. That hook then reads as complete. So a kind gets an entry. An entry holds a pair or a reason.
+    comment's pair. That hook then reads as complete. So a kind in `_KINDS` needs a pair. A pair that skips its kind
+    writes a reason.
     """
     probed = {one["probes"]: one for one in pairs}
     faults = []
@@ -413,11 +469,17 @@ def _kind_faults(name: str, pairs: list[dict[str, Any]]) -> list[str]:
             faults.append(f"`{name}` reads an edit and `tests/hooks.json` says nothing of {kind}. Add a pair for it.")
         elif "skips" in one and not str(one["skips"]).strip():
             faults.append(f"`{name}` skips {kind} and writes no reason")
+    checkers = importlib.import_module("checkers")
+    if name in checkers.READS_THE_FILE and _A_HELD_FAULT not in probed:
+        faults.append(f"`{name}` reads the whole file and `tests/hooks.json` holds no pair for {_A_HELD_FAULT}.")
     return faults
 
 
 def _answered(command: str, payload: Mapping[str, Any]) -> str:
-    """The answer a hook gives about `payload`, as the tool would receive it. An empty string is the hook passing."""
+    """
+    The answer a hook gives about `payload`, as the tool would receive it. https://code.claude.com/docs/en/hooks says
+    what the tool receives, and that a hook printing nothing passes. An empty string is the hook passing.
+    """
     run = subprocess.run(
         command.replace("$CLAUDE_PROJECT_DIR", gate.TREE),
         shell=True,
@@ -434,13 +496,21 @@ def _answered(command: str, payload: Mapping[str, Any]) -> str:
 
 
 def _silent_hook_faults() -> list[str]:
-    """The hooks that answer an edit a pair says to pass, or pass an edit a pair says to answer."""
+    """
+    List the faults of the hooks. A fault names a hook that passes an edit its pair says to answer. A fault names a hook
+    that answers an edit its pair says to pass. A fault names a hook that only one of `tests/hooks.json` and
+    `.claude/settings.json` holds. The helper checks add their own faults.
+    """
     sys.path.insert(0, os.path.join(gate.TREE, ".claude", "hooks"))
     tried = _pairs()
-    on_an_edit = [name for name, (_, matcher) in _registered().items() if any(t in matcher for t in _WRITES_A_FILE)]
+    # A hook after the edit reads no prose an agent could hand over. `edit_landed` compares a landed file instead.
+    on_an_edit = [
+        name for name, (_, matcher) in _registered(("PreToolUse",)).items() if any(t in matcher for t in _WRITES_A_FILE)
+    ]
     faults = (
         _runner_faults()
         + _flattening_faults()
+        + _unflattened_faults()
         + _raw_prose_faults()
         + _unasked_faults(on_an_edit)
         + _bypass_faults()
@@ -448,7 +518,7 @@ def _silent_hook_faults() -> list[str]:
         + _unchecked_writer_faults()
     )
     registered = _runners()
-    with tempfile.TemporaryDirectory(dir=gate.TREE) as scratch:
+    with tempfile.TemporaryDirectory(dir=gate.TREE, prefix=_SCRATCH) as scratch:
         for name in sorted(set(registered) | set(tried)):
             if name not in registered:
                 faults.append(
@@ -483,7 +553,7 @@ def _silent_hook_faults() -> list[str]:
 
 
 def _check() -> None:
-    """Report the registered hooks that have stopped answering the edit their pair calls for."""
+    """Report the hooks that fail to tell a broken edit from a clean edit."""
     gate.report(
         _silent_hook_faults(),
         "hook(s) that fail to tell a broken edit from a clean edit",

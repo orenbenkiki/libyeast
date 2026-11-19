@@ -118,7 +118,7 @@ ______________________________________________________________________
    the word run. Permuting is not writing. The proposal aimed to stop that move. A later form asks whether a sentence of
    the old prose survived the edit. That form fails the same way over a single sentence. It refuses a rewrite that keeps
    a sentence the old prose already wrote well. A writer routes around a rule comparing new prose to old prose.
-   `faulty-prose-is-re-said-not-patched` replaced the proposal. That rule judges the new prose without the old, and
+   `faulty-prose-is-rewritten-not-patched` replaced the proposal. That rule judges the new prose without the old, and
    refuses opaquely.
 
 1. **"A part-of-speech tagger. The shape rules could then ask about a verb rather than about a word."** The reviewer
@@ -238,9 +238,7 @@ ______________________________________________________________________
    writes `Some of the character sets the grammar consumes admit non-ASCII characters.` *Rejected.* A sweep found the
    run in prose that can name no members. `include/yeast.h` writes
    `Setting some of the callbacks mixes custom and standard behavior.` That claim covers any strict subset of the
-   callbacks, and a list would narrow a true claim into a false one. `.claude/hooks/tense-check.sh` writes
-   `Some of these words are legitimate in prose about the parse itself.` The words sit in a list in that same file. A
-   sentence naming them goes stale the day somebody edits that list. The word rules reach `CHANGELOG.md`, where the run
+   callbacks, and a list would narrow a true claim into a false one. The word rules reach `CHANGELOG.md`, where the run
    appears in entries nobody should rewrite. The sentence after the cited line names the sets anyway. A list in the
    cited line would name the sets a second time. `a-piece-of-prose-is-written-once` covers that fault.
 

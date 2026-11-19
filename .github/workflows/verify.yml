@@ -1,4 +1,4 @@
-# The "verify" sub-gate. The generator pipeline is correct and its outputs current. Pure Python. The job needs no
+# The "verify" sub-gate. The `verify` target of the `Makefile` runs the verify gates its prerequisites name. The job needs no
 # matrix.
 
 name: verify

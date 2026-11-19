@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# UserPromptSubmit.
-#
-# The model loses a rule it read far back in a session.
+# UserPromptSubmit, as `.claude/settings.json` registers it.
 #
 # This hook puts the rules in the prompt afresh per turn.
 #
-# Keep this list SHORT. A long list decays the same way the conversation does.
+# Keep this list SHORT.
 set -euo pipefail
 
 cat <<'RULES'
@@ -35,7 +33,8 @@ These bind your messages as much as your file edits.
 </rules>
 RULES
 
-# The settling loop records the rules this project's writers break. The lines below print those rules. `batch_pending_fragments.rules_by_use` writes
-# those rules to a list. The critic reads that list too. The hook prints nothing in a tree where the settling loop has run no round.
+# The settling loop records the rules this project's writers break. The lines below print those rules.
+# `agent_answers.rules_by_use` writes those rules to a list. The critic reads that list too. In a tree where the
+# settling loop has run no round, `gate.rule_use` answers with an empty map. The hook then prints nothing.
 PYTHONPATH="$CLAUDE_PROJECT_DIR/generator" python3 -c \
-    'import batch_pending_fragments; said = batch_pending_fragments.rules_by_use(); print(said) if said else None'
+    'import agent_answers; said = agent_answers.rules_by_use(); print(said) if said else None'

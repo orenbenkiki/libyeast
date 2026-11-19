@@ -1,21 +1,15 @@
 # SPDX-License-Identifier: MIT
 """
-Write down what a critic run or a review run answered.
+Write down what a review run answered.
 
-A workflow opens no file, and an agent inside a workflow holds no tool. The answer comes back as JSON, and this module
-writes it. The proposals go under a heading naming the run. The rule counts go into `.claude/rule-use.json`.
+The answer of a workflow comes back as JSON, and this module writes down the proposals the answer holds. The proposals
+go under a heading naming the run. `rule_use_counted` writes the rule counts into `.claude/rule-use.json`.
 
-`apply_prose` writes the rewrites of a critic run into the tree. The next `update_ledger_and_queue` queues the new
-prose. The prose digest of a passed fragment goes into the ledger, and leaves the prose queue. `apply_prose` and
-`update_ledger_and_queue` hold the run lock.
-
-**Usage:** `python3 generator/record_run.py <run.json> [directory]`. The run file holds a workflow's answer. A critic
-run that rewrote prose or passed a key wants the directory of the settling queues named.
+**Usage:** `python3 generator/record_run.py <run.json>`. The run file holds the answer of `pre-commit-review.js`.
 """
 
 import json
 import os
-import subprocess
 import sys
 
 from typing import Any
@@ -23,16 +17,13 @@ from typing import Any
 import apply_prose
 import collect_fragments
 import gate
+import review_input
 import settling_state
 
-_USAGE = "usage: record_run.py <run.json> [directory]"  # a bad call gets it.
+_USAGE = "usage: record_run.py <run.json>"  # a bad call gets it.
 
-# The name a run goes under, keyed by what only that run's answer holds. `critic.js` examines fragments.
-# `pre-commit-review.js` reports findings.
-_RUNS = (("examined", "critic"), ("findings", "review"))
-
-# The file `apply_prose` reads the rewrites out of. It sits in the directory of the settling queues.
-_REWRITTEN = "rewritten.json"
+# The name the proposals of a review go under.
+_REVIEW = "review"
 
 # The file holding how a rule fares. `gate.rule_use` reads it back.
 _RULE_USE = os.path.join(gate.TREE, ".claude", "rule-use.json")
@@ -52,25 +43,11 @@ def _loaded(path: str) -> Any:
     return held["result"] if isinstance(held, dict) and "result" in held else held
 
 
-def _who(held: dict[str, Any]) -> str:
-    """The run that raised the proposals. `_RUNS` says which key a run's answer holds."""
-    for key, who in _RUNS:
-        if key in held:
-            return who
-    raise ValueError(f"the answer names no run this writes down. it holds {sorted(held)}")
-
-
-def _changed(held: dict[str, Any]) -> list[dict[str, Any]]:
-    """The changes a critic run's answer holds. The comparator does not see those changes."""
-    said = []
-    for one in held.get("rewritten") or []:
-        for change in one.get("changes") or []:
-            said.append({**change, "key": one.get("key", ""), "round": 1, "verdict": "unjudged"})
-    return said
-
-
 def _counted(changes: list[dict[str, Any]], was: dict[str, Any]) -> dict[str, Any]:
-    """`was` with `changes` counted into it. A rule holds the changes citing it and the changes the comparator took."""
+    """
+    `was` with `changes` counted into it. A rule holds a count of the changes citing it and a count of the changes the
+    comparator took.
+    """
     held = {name: dict(one) for name, one in was.items()}
     for one in changes:
         rule = str(one.get("rule", ""))
@@ -85,10 +62,11 @@ def _counted(changes: list[dict[str, Any]], was: dict[str, Any]) -> dict[str, An
 
 def _overlapped(changes: list[dict[str, Any]]) -> list[tuple[str, str]]:
     """
-    The rule pairs the accepted changes contend over.
+    _overlapped returns the rule pairs that accepted changes contend over.
 
-    A change rewrites a run of text. A later change of the same fragment quotes text inside that run. The pair of rules
-    names a place where applying a rule opened work for another.
+    An early change writes new text into a fragment. A change in a later round quotes old text from that fragment.
+    _overlapped pairs the early change with the later change where either text holds the other. The pair of rules names
+    a place where applying a rule opened work for another.
     """
     taken = [one for one in changes if one.get("verdict") == "accept"]
     found = []
@@ -104,7 +82,8 @@ def _overlapped(changes: list[dict[str, Any]]) -> list[tuple[str, str]]:
 
 def rule_use_counted(changes: list[dict[str, Any]]) -> tuple[int, int]:
     """
-    Count `changes` into `.claude/rule-use.json`. This answers with the rules counted and the pairs found.
+    Count `changes` into `.claude/rule-use.json`. This answers with the number of rules and the number of rule pairs the
+    file holds after the count.
 
     Public. `converge_prose` counts the changes of a comparator's answer here.
     """
@@ -129,13 +108,11 @@ def rule_use_counted(changes: list[dict[str, Any]]) -> tuple[int, int]:
 
 def _said(one: dict[str, Any]) -> str:
     """
-    A proposal as the pending file writes it. The rule opens the item in bold, and the reasons indent under it.
+    A proposal as the pending file writes it. The rule opens the item in bold, and the other fields indent under it.
+    `agent_answers._PROPOSED` describes the `Before` and `After` fields.
 
-    `Before` quotes prose the proposed checker refuses. `After` says that prose again in the form it passes. The pair is
-    a fixture. Whoever implements the rule holds the checker to refusing `Before` and passing `After`.
-
-    A label goes in bold. `no-em-dash-and-no-colon` spares the colon of a definition term written that way, and refuses
-    the colon of a term written in italics.
+    A label goes in bold. The checker in `generator/prose_rules.py` spares the colon of a definition term written that
+    way, and refuses the colon of a term written in italics.
     """
     return (
         f"- **{one.get('rule', '')}**\n"
@@ -148,11 +125,13 @@ def _said(one: dict[str, Any]) -> str:
 
 def proposal_refusals(one: Any, who: str = "converge") -> list[str]:
     """
-    The refusals the checkers give for the pending proposals file with `one` written in under `who`. The checkers read
-    the item as `proposals_appended` writes it.
+    The refusals the checkers give for the pending proposals file with `one` written in under `who`. A `one` that is not
+    a dict gets the refusal "a proposal holds no object", and the checkers do not run. The checkers read the item as
+    `proposals_appended` writes it.
 
     Public. `prose_answer` asks this of an agent's proposal. `converge_prose` asks this of a critic's proposal and of a
-    condensed one. `update_ledger_and_queue` asks this of a suggested proposal.
+    condensed one. `update_ledger_and_queue` asks this of a suggested proposal. `record_run.main` asks this of a review
+    run's proposal.
     """
     if not isinstance(one, dict):
         return ["a proposal holds no object"]
@@ -165,7 +144,7 @@ def _pending_with(held: list[dict[str, Any]], who: str) -> str:
     The text of the pending file with the proposals `held` written in. A heading names the run that raised them. The
     proposals go at the end of that heading.
 
-    A second heading of the same text would key a pair of markdown paragraphs alike. `collect_fragments` calls that a
+    A repeated heading over a repeated paragraph would repeat a markdown key. `collect_fragments` calls that a
     collision.
     """
     with open(settling_state.PENDING, encoding="utf-8") as handle:
@@ -197,96 +176,31 @@ def proposals_appended(held: list[dict[str, Any]], who: str) -> int:
     return len(held)
 
 
-def _rewrites(held: dict[str, Any]) -> list[dict[str, Any]]:
-    """The rewrites a critic run's answer holds, in the shape `apply_prose` takes. `apply_prose` applies the changes."""
-    return [
-        {"key": one["key"], "changes": one["changes"]}
-        for one in held.get("rewritten") or []
-        if isinstance(one, dict) and one.get("changes")
-    ]
-
-
-def _written(held: list[dict[str, Any]], into: str) -> set[str]:
-    """
-    Write the rewrites `held` names into the tree, and answer with the keys that landed.
-
-    `apply_prose` holds back a rewrite it cannot shape. A key held back keeps the prose the tree had. An `apply_prose`
-    that answers nothing crashed, and the run ends there.
-    """
-    path = os.path.join(into, _REWRITTEN)
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(held, handle, indent=2)
-    run = subprocess.run(
-        ["python3", os.path.join(gate.TREE, "generator", "apply_prose.py"), path],
-        cwd=gate.TREE,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    print(run.stderr, end="", file=sys.stderr)
-    if not run.stdout.strip().startswith("{"):
-        sys.exit(run.returncode or 1)
-    said = json.loads(run.stdout)
-    for one in said.get("held_back") or []:
-        print(f"  held back: {one}", file=sys.stderr)
-    return set(said.get("landed") or [])
-
-
-def _approved(keys: list[str], into: str) -> None:
-    """
-    Put the prose digests of `keys` into the ledger, and take them out of the prose queue.
-
-    A run whose passed keys the prose queue lacks reached this module once already. `_approved` stops on such a run. A
-    second call would count the proposals and the rules twice.
-    """
-    by_key = {one.key: one.prose.sha for one in collect_fragments.fragments()}
-    digests = [by_key[key] for key in keys if key in by_key]
-    queue = settling_state.prose_queue(into)
-    if not [digest for digest in digests if digest in queue]:
-        print(f"the prose queue lacks the {len(keys)} passed key(s). this module wrote the run down before.")
-        sys.exit(1)
-    settling_state.appended(settling_state.LEDGER, digests)
-    for digest in digests:
-        settling_state.prose_state_written(into, digest, None)
-    print(f"{len(digests)} passed digest(s) reached the ledger")
-
-
 def main() -> None:
     """
-    Bank the passed keys, write the proposals and the rule counts, then write the rewrites.
+    Write the proposals of a review run. A proposal the checkers refuse stops the run before anything lands.
 
-    A proposal the checkers refuse stops the run before anything lands. `apply_prose` holds back a rewrite the checkers
-    refuse.
+    The run then moves `review_input.PREPARED` to `review_input.REVIEWED`, beside the findings of the run. The next
+    review reads the change since that tree, and the findings beside it.
     """
-    if len(sys.argv) not in (2, 3):
+    if len(sys.argv) != 2:
         print(_USAGE, file=sys.stderr)
         sys.exit(2)
     held = _loaded(sys.argv[1])
-    who = _who(held)
-    refused = [found for one in held.get("proposals") or [] for found in proposal_refusals(one, who)]
+    if "findings" not in held:
+        raise ValueError(f"the answer holds no findings. it holds {sorted(held)}")
+    refused = [found for one in held.get("proposals") or [] for found in proposal_refusals(one, _REVIEW)]
     if refused:
         print("the checkers refused a proposal of this run. nothing was written.\n\n" + "\n\n".join(refused))
         sys.exit(1)
-    rewrites, keys = _rewrites(held), list(held.get("passed") or [])
-    if (rewrites or keys) and len(sys.argv) != 3:
-        print(f"{len(rewrites)} rewrite(s) and {len(keys)} passed key(s) want the directory of the settling queues.")
-        sys.exit(1)
-    if keys:
-        with settling_state.run_locked(sys.argv[2]):
-            _approved(keys, sys.argv[2])
-    count = proposals_appended(held.get("proposals") or [], who)
-    print(f"{count} proposal(s) appended to `.claude/proposals-pending.md` under `From {who}`")
-    changes = _changed(held)
-    if changes:
-        rules, overlaps = rule_use_counted(changes)
-        print(f"{len(changes)} change(s) counted into `.claude/rule-use.json`")
-        print(f"that file holds {rules} rule(s) and {overlaps} pair(s)")
-    if rewrites:
-        landed = _written(rewrites, sys.argv[2])
-        stale = {one["key"] for one in rewrites} - landed
-        print(f"{len(landed)} rewrite(s) reached a file, and {len(stale)} stayed out")
-        if stale:
-            sys.exit(1)
+    count = proposals_appended(held.get("proposals") or [], _REVIEW)
+    print(f"{count} proposal(s) appended to `.claude/proposals-pending.md` under `From {_REVIEW}`")
+    with open(review_input.PREPARED, encoding="utf-8") as handle:
+        reviewed = {**json.load(handle), "findings": held["findings"]}
+    with open(review_input.REVIEWED, "w", encoding="utf-8") as handle:
+        json.dump(reviewed, handle, indent=2)
+    os.remove(review_input.PREPARED)
+    print(f"reviewed: tree {reviewed['tree']}, {len(held['findings'])} finding(s)")
 
 
 if __name__ == "__main__":

@@ -2,13 +2,14 @@
 """
 Check that libyeast's grammar documents the tokens its rules emit.
 
-The grammar libyeast derives from is a document. A rule is preceded by its spec BNF, and a rule that needs explaining
-gets a section of prose. libyeast's additions deserve no less. A reader should not have to work out for themselves why
-`c-quoted-quote` marks the second quote `meta` while the first is an `indicator`.
+The grammar libyeast derives from is a document. The YAML specification at https://yaml.org/spec/1.2.2/ holds it. A rule
+is preceded by its spec BNF, and a rule that needs explaining gets a section of prose. libyeast's additions deserve no
+less. A reader should not have to work out for themselves why `c-quoted-quote` marks the second quote `meta` while the
+first, a `c-single-quote`, is an `indicator`.
 
-So a rule with a token action is preceded by an `Emits:` line. The line names the codes, in the order the rule emits
-them. The codes come from the grammar itself. A mere presence check would let the comment drift. A note that is wrong
-fails the build exactly as a note that is missing does.
+So a rule that emits a token is preceded by an `Emits:` line. The line names the codes without repeats, in the order the
+rule first emits them. The codes come from the grammar itself. A mere presence check would let the comment drift. A note
+that is wrong fails the build exactly as a note that is missing does.
 """
 
 import re
@@ -25,7 +26,7 @@ def _emitted(node: ir.Node) -> list[str]:
     """
     The codes that a node emits, in the order the node emits them. Repeats come out.
 
-    A kind this question does not name raises rather than walking into its children.
+    A kind this question does not name makes `Question` raise rather than walking into its children.
     """
     return list(dict.fromkeys(_EMITTED(node)))
 
@@ -43,7 +44,8 @@ def _emitted_by_what_it_holds(node: ir.Node) -> list[str]:
     return [code for child in chars.children(node) for code in _emitted(child)]
 
 
-# The kinds an annotated grammar uses. This question reads libyeast's grammar before any lowering.
+# The kinds an annotated grammar uses. `main` asks this question of the grammar `annotated2ir.load` returns.
+# `annotated2ir.load` translates that grammar and does not lower it.
 _EMITTED: ir.Question[list[str]] = ir.Question(
     "the list of token codes a node emits, in the order of emission and with repeats",
     {
@@ -61,7 +63,7 @@ _EMITTED: ir.Question[list[str]] = ir.Question(
             *(kind for kind in ir.CONSUMING if kind not in ir.ACTIONS),
         ): _emitted_by_what_it_holds,
     },
-    # The canonical forms. An annotated grammar holds none of them.
+    # The canonical forms. An annotated grammar holds none of them. `annotated2ir.translate` builds none of them.
     untested=(
         ir.CharSet,
         ir.ConsumeCharAction,
@@ -74,8 +76,8 @@ _EMITTED: ir.Question[list[str]] = ir.Question(
 
 def _documented(text: str) -> dict[str, list[str]]:
     """
-    Map a rule to the codes its comment block says the rule emits, as `{name: [code, ...]}`. A rule whose block names no
-    code gets no entry.
+    Map a rule to the codes its comment block says the rule emits, as `{name: [code, ...]}`. A rule whose block holds no
+    `Emits:` line gets no entry.
     """
     said = {}
     for match in re.finditer(r"^:\d+: ([\w+.-]+)\n((?:#.*\n)*)", text, re.M):

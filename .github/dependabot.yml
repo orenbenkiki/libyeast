@@ -1,6 +1,5 @@
-# Dependabot version updates. The tracked ecosystem here is the GitHub Actions pinned in the workflows. Keep them
-# current via a single grouped PR per month. The repository settings configure security alerts and security updates.
-# This file does not.
+# Dependabot version updates. The tracked ecosystem here is the GitHub Actions pinned in the workflows. Dependabot keeps the Actions
+# current via a single grouped PR per month.
 version: 2
 updates:
   - package-ecosystem: github-actions

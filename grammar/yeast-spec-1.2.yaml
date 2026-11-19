@@ -363,7 +363,7 @@
 # unparsed-text and unparsed-break for what the parser says when it cannot go
 # on, and unparsed-invalid for the bytes among them that encode no character at
 # all; and detected, which no parse emits yet, for what a detection rule worked
-# out (see the token-emission levels in `PLAN.md`).
+# out.
 #
 #===============================================================================
 

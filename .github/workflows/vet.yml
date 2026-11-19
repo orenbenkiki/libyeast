@@ -1,4 +1,4 @@
-# The "vet" sub-gate. Static code quality and packaging. A target, and a badge for it.
+# The "vet" sub-gate. The workflow runs the static code quality and packaging checks that the `vet` target in `Makefile` lists. `README.md` shows a badge for the workflow.
 
 name: vet
 

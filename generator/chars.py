@@ -6,7 +6,7 @@ The parser asks whether a character is a literal the grammar names. It also asks
 character set the grammar tests. `Model.key` answers those questions at once. The key is a 32-bit word holding the
 character's named-literal id, a bit per character set the character belongs to, and the UTF-8 length.
 
-`chars` works out a union and a subtraction here. A test in the parser is then a single bit test.
+`chars` works out the unions and subtractions of the tested sets here. A test in the parser is then a single bit test.
 """
 
 import dataclasses
@@ -18,10 +18,12 @@ import ir
 if TYPE_CHECKING:
     from _typeshed import SupportsRichComparison
 
-MAX_CODEPOINT = 0x10FFFF  # the last codepoint Unicode has. A span reaching the top stops here.
+# The last codepoint Unicode has, as https://www.unicode.org/glossary/#codespace says. A span reaching the top stops
+# here.
+MAX_CODEPOINT = 0x10FFFF
 
-# The codepoints a node consumes. `shape` names how the grammar builds the set, and `spans` names the characters in the
-# set.
+# The codepoints a node consumes. The denotation says how the grammar builds the set, and `spans` names the characters
+# in the set.
 _Denotation = (
     tuple[Literal["literal"], int]
     | tuple[Literal["range"], int, int]
@@ -29,11 +31,12 @@ _Denotation = (
     | tuple[Literal["difference"], "_Denotation", tuple["_Denotation", ...]]
 )
 
-# The value `gathered` takes from a node it finds. `gathered` hands `of` a value that depends on the kind of that node.
+# The value `gathered` takes from a node it finds. The `of` that a caller passes decides that type.
 _Taken = TypeVar("_Taken", bound="SupportsRichComparison")
 
-# The key's layout. The parser tests it with `key & YS_SET_*` and `YS_LIT(key) == YS_LIT_*`. The fields must not move
-# without the generated tables moving with them.
+# The key's layout. `src/decoder_tables.h` defines a `YS_LIT_KEY_*` key per named character and a `YS_SET_BIT_*` mask
+# per tested set. The head of `src/decoder_tables.h` describes the layout. The fields must not move without the tables
+# `grammar2decoder` generates moving with them.
 LIT_BITS = 6  # the width of the named-literal id. The field starts at the lowest bit.
 SET_SHIFT = 6  # the bit the set bits start at. The key holds a bit per tested set from there up.
 LEN_SHIFT = 26  # the bit the UTF-8 length starts at.
@@ -49,11 +52,10 @@ def denote(grammar: Mapping[str, ir.Prod], node: ir.Node, seen: tuple[str, ...] 
     ask what admits the character. A gate takes no width and says which ways a parse may enter, rather than what a way
     takes.
 
-    `ConsumeCharAction` joins a gate to an action. The action takes the character its gate found. A way built from that
-    pair takes the set the gate admits.
+    `ConsumeCharAction` is an action that follows a gate. The action takes the character its gate found.
+    `interpreter._try_gated_char` runs the action. A way built from that pair takes the set the action's `set` names.
 
-    `denote` raises on a kind outside `_DENOTES` and does not answer `None`. "No set" and "no answer" differ. Reading
-    the second as the first would leave a character class unlowered and unseen.
+    `denote` raises on a kind outside `_DENOTES` and does not answer `None`. `Question` raises there.
     """
     return _DENOTES(node, grammar, seen)
 
@@ -102,11 +104,11 @@ def _denoted_difference(node: ir.DiffSet, grammar: Mapping[str, ir.Prod], seen: 
 
 def _denoted_call(node: ir.RefCall, grammar: Mapping[str, ir.Prod], seen: tuple[str, ...]) -> _Denotation | None:
     """
-    A call's codepoints. The production the call names decides them.
+    The production a call names decides the call's codepoints.
 
-    A call passing arguments takes what its callee takes under those arguments. The callee's body read without those
-    arguments does not say what the call takes. A call the walk reaches again is a recursion. A recursion takes more
-    than a single character, or it takes none.
+    A call passing arguments takes what its callee takes under those arguments. Without those arguments, the callee's
+    body does not say what the call takes. A call the walk reaches again is a recursion, and `denote` reads it as no
+    set.
     """
     if node.args or node.name not in grammar or node.name in seen:
         return None
@@ -137,34 +139,54 @@ def _denoted_choice(node: ir.ChoiceState, grammar: Mapping[str, ir.Prod], seen: 
 _TAKES_WHAT_IT_HOLDS = (ir.CommitWrapper, ir.TokenWrapper, ir.Wrapper)
 
 
+# The node an action of a way takes characters through. A set among the actions names itself. A consume names its `set`.
+# A span names itself, and `denote` raises on a span. An action that takes nothing answers `None`.
+_TAKEN: ir.Question[ir.Node | None] = ir.Question(
+    "the node an action of a way takes characters through",
+    {
+        ir.ACTIONS: None,
+        ir.ConsumeCharAction: lambda action: action.set,
+        (
+            ir.CharSet,
+            ir.ConsumeLimitedSpanAction,
+            ir.ConsumeSpanAction,
+            ir.ConsumeTrimmedSpanAction,
+            ir.DiffSet,
+            ir.InvalidSet,
+            ir.OneCharSet,
+            ir.RangeSet,
+        ): lambda action: action,
+    },
+)
+
+
 def _consumed_by_a_way(
     node: ir.AlternativeState, grammar: Mapping[str, ir.Prod], seen: tuple[str, ...]
 ) -> _Denotation | None:
     """
     Answer a way's codepoints where the way's action takes a single character.
 
-    The way's gate is no part of the answer. A guard takes nothing, and a consume names the set it takes.
+    The way's gate is no part of the answer. An action in `ir.ACTIONS` takes nothing, and a consume names the set it
+    takes.
 
-    A way that hands control on takes what it calls. A span, a literal or a counted run takes a longer stretch and names
-    no set. A pair of things taking at once does the same.
+    A way that hands control on takes what it calls. A span goes on to `denote`, and `denote` raises on a span.
+    `Question` raises on an action that `_TAKEN` does not list. A pair of things taking at once names no set.
     """
-    taking = [action for action in node.actions if isinstance(action, ir.CONSUMING)]
+    taking = [taken for taken in map(_TAKEN, node.actions) if taken is not None]
     calls = [held for held in (node.first, node.second) if held is not None]
     if len(taking) + len(calls) != 1:
         return None
     if calls:
         return denote(grammar, calls[0], seen)
-    # A set standing among the actions names itself; a consume names its `set`; a run names nothing.
-    taken = taking[0].set if isinstance(taking[0], ir.ConsumeCharAction) else taking[0]
-    return denote(grammar, taken, seen)
+    return denote(grammar, taking[0], seen)
 
 
 # The groups below say why a kind names no set of a single character. A group states a reason rather than a list beside
-# the answer. The groups hold the kinds that reach this question. The walk raises on a kind no group holds. The raise
-# names that kind.
+# the answer. `Question.unused` reports a handled kind that no input reaches. `Question` raises on a kind that the table
+# of `_DENOTES` leaves out. The raise names that kind.
 #
-# This group takes a run rather than a character. The run turns as often as the input allows, as often as a count fixes,
-# or item after item.
+# This group takes a run or an optional item rather than a single character. A repetition turns as often as the input
+# allows or as often as a count fixes. A sequence takes item after item. An option takes its item or nothing.
 _TAKES_MORE_THAN_ONE = (*ir.REPETITIONS, ir.OptTree, ir.SeqTree)
 # A kind here takes no character at all. A guard reads and gives back, and an action leaves something behind. An empty
 # match does neither. A failing match takes nothing. A comparison of counts asks about neither the input nor a
@@ -203,7 +225,7 @@ _MATCHES_NOTHING = (
 
 
 def _takes_no_single_character(_node: ir.Node, _grammar: Mapping[str, ir.Prod], _seen: tuple[str, ...]) -> None:
-    """The result a kind gives where it takes nothing, or takes more than a single character."""
+    """The result a kind gives where no single character set describes what it takes."""
     return None
 
 
@@ -235,11 +257,11 @@ _DENOTES: ir.Question[_Denotation | None] = ir.Question(
         # A caller settles a branch of a switch, and the switch takes what that branch takes. A single set cannot
         # describe the switch.
         ir.CaseTree: _takes_no_single_character,
-        # A recovery takes what its item takes where the item matches. A recovery takes the set its handler takes where
-        # a cut fired. Those are separate answers.
+        # A recovery takes what its item takes where the item matches. A recovery takes the set its `recovery` takes
+        # where a cut fired. Those are separate answers.
         ir.RecoverWrapper: _takes_no_single_character,
         # The byte that begins no character belongs to no character set of its own. The interval `(-1, -1)` is how a set
-        # says it holds the byte.
+        # says it holds the byte. `normalize._PEEK_SPANS` answers that interval for an `ir.InvalidSet`.
         ir.InvalidSet: _takes_no_single_character,
     },
 )
@@ -256,15 +278,16 @@ def _form_size(grammar: Mapping[str, ir.Prod], node: ir.Node, seen: tuple[str, .
     tree. A size stopping at the call would rank an alias ahead of the production the alias calls. It would put
     `c-non-specific-tag` ahead of `c-tag`.
 
-    A name the walk reaches again adds nothing. A recursion writes no more the second time round.
+    A name already on the path down from the top adds nothing. A name the subtree names twice counts once. A recursion
+    writes no more the second time round.
 
     `children` and `references` answer different questions. A question comes once, at the scope where it answers.
     `children` gives the nodes nested a level down. Counting through `children` reaches the nodes of the subtree and no
     name.
 
     `references` gives the productions the subtree names. A walk of the fields could not find them. A `RefCall`'s name
-    and an `(emit)`'s code are both strings. Asking `references` once at the top reaches the names and no node. Asking
-    both further down would count a named production once per level above it.
+    and an `EmitAction`'s code are both strings. Asking `references` once at the top reaches the names and no node.
+    Asking both further down would count a named production once per level above it.
     """
     total = _nested_count(node)
     for name in dict.fromkeys(node.references()):
@@ -283,10 +306,10 @@ def _nested_count(node: ir.Node) -> int:
 
 def simplest_name(grammar: Mapping[str, ir.Prod], names: Iterable[str]) -> str:
     """
-    The name in `names` to call a set by. The shortest form, then the shortest name, then the first.
+    The name in `names` to call a set by. The shortest form, then the shortest name, then the alphabetically first.
 
-    A pair of productions may denote the same characters, such as `c-tag` and the rules that just call it. A table
-    should cite the plainest of them. `_form_size` measures plainness rather than settling it alphabetically.
+    A pair of productions may denote the same characters. `c-non-specific-tag` just calls `c-tag`. A table should cite
+    the plainest of them. `_form_size` measures plainness rather than settling it alphabetically.
     """
     return min(names, key=lambda name: (_form_size(grammar, grammar[name].body), len(name), name))
 
@@ -351,9 +374,12 @@ def merged_spans(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
 
 def intersected_spans(intervals: Sequence[tuple[int, int]], others: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
     """
-    The intervals `intervals` and `others` both hold, as sorted disjoint pairs. The caller passes both sorted and
-    disjoint.
+    The intervals `intervals` and `others` both hold, as sorted disjoint pairs. A call raises where a pair's end reaches
+    the start of the pair after it.
     """
+    for held in (intervals, others):
+        if any(one[1] >= other[0] for one, other in zip(held, held[1:])):
+            raise ValueError(f"`intersected_spans` takes sorted disjoint intervals, and got {list(held)}")
     kept, here, there = [], 0, 0
     while here < len(intervals) and there < len(others):
         low = max(intervals[here][0], others[there][0])
@@ -408,40 +434,53 @@ def children(node: ir.Node) -> Iterator[ir.Node]:
                 yield item
 
 
-def gathered(
-    grammar: Mapping[str, ir.Prod],
-    kind: type[ir.Node] | tuple[type[ir.Node], ...],
-    of: Callable[..., _Taken],
-) -> list[_Taken]:
-    """The values `of` takes from the nodes of `kind` anywhere in `grammar`, without repeats and in order."""
+def gathered(grammar: Mapping[str, ir.Prod], of: Callable[[ir.Node], _Taken | None]) -> list[_Taken]:
+    """
+    The values `of` takes from the nodes anywhere in `grammar`, without repeats and in sorted order. `of` answers `None`
+    for a node it takes nothing from.
+    """
     found: set[_Taken] = set()
     for production in grammar.values():
         pending = [production.body]
         while pending:
             node = pending.pop()
-            if isinstance(node, kind):
-                found.add(of(node))
+            taken = of(node)
+            if taken is not None:
+                found.add(taken)
             pending.extend(children(node))
     return sorted(found)
 
 
+# The codepoint a literal character names.
+_LITERAL: ir.Question[int | None] = ir.Question(
+    "the codepoint a literal character names",
+    {ir.OneCharSet: lambda node: node.cp, ir.kinds_other_than(ir.OneCharSet): None},
+)
+
+# The bounds of a codepoint range.
+_RANGE: ir.Question[tuple[int, int] | None] = ir.Question(
+    "the bounds of a codepoint range",
+    {ir.RangeSet: lambda node: (node.lo, node.hi), ir.kinds_other_than(ir.RangeSet): None},
+)
+
+
 def _literals(grammar: Mapping[str, ir.Prod]) -> list[int]:
     """The codepoints the grammar names as a literal character. The list runs in codepoint order."""
-    return gathered(grammar, ir.OneCharSet, lambda node: node.cp)
+    return gathered(grammar, _LITERAL)
 
 
 def _ranges(grammar: Mapping[str, ir.Prod]) -> list[tuple[int, int]]:
     """The codepoint ranges the grammar names, as an ordered `[(low, high)]`."""
-    return gathered(grammar, ir.RangeSet, lambda node: (node.lo, node.hi))
+    return gathered(grammar, _RANGE)
 
 
 def representatives(grammar: Mapping[str, ir.Prod]) -> list[int]:
     """
     A codepoint per segment the grammar can tell apart. The list runs in codepoint order.
 
-    The grammar's literals and ranges build a set of boundaries. A key holds across the codepoints between consecutive
-    boundaries. Probing a codepoint per segment is therefore exhaustive. The probes number the segments rather than the
-    codepoints.
+    The grammar's literals and ranges build a set of boundaries. The result of `key` holds across the codepoints between
+    consecutive boundaries. Probing a codepoint per segment is therefore exhaustive. The probes number the segments
+    rather than the codepoints.
     """
     boundaries = {0}
     for codepoint in _literals(grammar):
@@ -455,12 +494,13 @@ def _tested_sets(grammar: Mapping[str, ir.Prod]) -> list[tuple[str, _Denotation]
     """
     The character sets the grammar tests, as an ordered `[(name, denotation)]`.
 
-    A tested set is a *maximal* character node. Its parent is no character node itself. So the ranges inside
-    `c-printable`'s union do not count. The parser asks about `c-printable` rather than about those ranges.
+    A tested set is a *maximal* character node other than a lone character. The walk records no node lying anywhere
+    under a character node. So the ranges inside `c-printable`'s union do not count. The parser asks about `c-printable`
+    rather than about those ranges. `src/decoder_tables.h` holds the bit `YS_SET_BIT_C_PRINTABLE`.
 
-    Sets denoting the same codepoints share an entry. A set takes the name of the production defining it. A set the
-    grammar tests inline takes the name of the enclosing production plus an index. `ns-plain-first` tests more than a
-    single set inline.
+    Sets with the same denotation share an entry. A set takes the name of the production defining it. A set the grammar
+    tests inline takes the name of the enclosing production plus an index. `ns-plain-first` tests more than a single set
+    inline. `src/decoder_tables.h` holds `YS_SET_BIT_NS_PLAIN_FIRST_INLINE_0` and `YS_SET_BIT_NS_PLAIN_FIRST_INLINE_1`.
     """
     owners: dict[_Denotation, str] = {}
 

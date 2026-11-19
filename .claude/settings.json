@@ -4,7 +4,10 @@
       "Read(//Users/obk/projects/libyeast/**)",
       "Grep",
       "Glob",
-      "Read(//private/tmp/claude-502/**/scratchpad/**)"
+      "Read(//private/tmp/claude-502/**/scratchpad/**)",
+      "mcp__fetch_fragments__fetch",
+      "mcp__fetch_fragments__callers",
+      "mcp__fetch_fragments__mentions"
     ]
   },
   "hooks": {
@@ -72,33 +75,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/question-rule.sh\"",
-            "timeout": 10,
-            "statusMessage": "checking the Question rule"
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/step-rules.sh\"",
-            "timeout": 10,
-            "statusMessage": "checking a new step states its argument"
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/tense-check.sh\"",
-            "timeout": 10,
-            "statusMessage": "checking tense"
-          },
-          {
-            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/prose_gate.py\"",
             "timeout": 30,
             "statusMessage": "checking the prose an edit leaves"
-          },
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/unread_files.py\"",
-            "timeout": 10,
-            "statusMessage": "checking a reader knows the file"
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" PYTHONPATH=\"$CLAUDE_PROJECT_DIR/generator\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/edit_landed.py\"",
+            "timeout": 30,
+            "statusMessage": "comparing the file an edit left with the text the hooks read"
           }
         ]
       }

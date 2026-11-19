@@ -2,15 +2,17 @@
 """
 Check that the grammar's zero-width markers balance.
 
-A `begin-` marker gets its own `end-` on any path through the rule. Otherwise the token stream is a tree on a run here
-and a tangle on a run there. The fold that rebuilds the production tree then has nothing to rest on.
+The branches of a rule open the same markers and close the same markers. The stream as a whole closes the markers it
+opens. Otherwise the token stream is a tree on a run here and a tangle on a run there. The fold that turns the token
+stream into events then has nothing to rest on. `star._fold` is that fold.
 
-The rule that a consumed character lies within a token action says nothing about markers. A marker consumes nothing at
-all. A marker that goes unemitted looks exactly like a marker nobody needs.
+The rule that a consumed character lies within a token action says nothing about markers.
+`validate_grammar._check_annotated` holds that rule. A marker consumes nothing at all. A marker that goes unemitted
+looks exactly like a marker nobody needs.
 
-The chomping decides where a block scalar ends. `b-chomped-last` closes it when there is content to close.
-`l-keep-empty` closes it when the content was empty and kept. So the markers balance per value of `t` rather than per
-branch.
+The chomping decides where a block scalar ends. `b-chomped-last` closes it under the `clip` and `strip` chompings.
+`l-keep-empty` closes it under the `keep` chomping, after the kept empty lines. So the markers balance per value of `t`
+rather than per branch.
 
 The check therefore specializes. It fixes a finite parameter to a value in turn, and requires balance under the values
 that parameter takes. The context `c` and the chomping `t` are finite parameters. So are the resume policy `r` and the
@@ -29,10 +31,10 @@ _INDENT_MODES = (
 )  # The values of the indentation mode `i`, a finite parameter the marker walk enumerates.
 
 # The nodes that emit no marker. A character or a guard. A commit point or an error token. The empty and failing
-# matches, the writes, and the `(flip)` that makes up a value production.
+# matches, the writes, and the `(flip)`.
 #
-# The gate names these nodes rather than assuming them. The gate reports a node missing from this list rather than
-# passing that node. In alphabetical order.
+# The gate names these nodes rather than assuming them. `_EFFECT` is a `Question`. A `Question` raises on a node kind
+# that its table does not name. In alphabetical order.
 _SILENT = (
     ir.CharSet,
     ir.CutAction,
@@ -51,12 +53,12 @@ _SILENT = (
     ir.SetVarAction,
     ir.StartOfLineGuard,
 )
-# A scope whose markers are the markers of the item it holds. The scope matches that item, and the item emits. A walk
-# passing over such a scope would miss a marker opened there and left unclosed.
+# `_SCOPES` holds a scope whose markers are the markers of the item it holds. The scope matches that item, and the item
+# emits. A walk passing over such a scope would miss a marker opened there and left unclosed.
 #
-# A `(max)` is such a scope where it wraps a match. A bare `(max)` in the vendored grammar is a length note rather than
-# a scope, and the module checks a bare `(max)` separately. A `(recover)` is no such scope either. Its ways have to
-# agree. The answer does not come from a single way.
+# `_SCOPES` leaves out `(max)`. The module handles `ir.MaxWrapper` in an entry of its own. A wrapping `(max)` there
+# takes the markers of its item, and a bare `(max)` takes none. A `(recover)` is no such scope either. Its ways have to
+# agree. The markers of a `(recover)` do not come from a single way.
 _SCOPES = (ir.CommitWrapper, ir.TokenWrapper)
 
 # The markers a node leaves behind. The markers the node closes without opening, and the markers it leaves open.
@@ -112,7 +114,7 @@ def _effect(node: ir.Node, values: Mapping[str, str], known: Mapping[str, _Effec
 
 
 def _effect_of_run(node: ir.SeqTree, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
-    """A sequence's markers. An item follows the item before it, and may close what that item left open."""
+    """A sequence's markers. An item follows the items before it, and may close what those items left open."""
     settled = _BALANCED
     for item in node.items:
         settled = _compose(settled, _effect(item, values, known))
@@ -121,22 +123,24 @@ def _effect_of_run(node: ir.SeqTree, values: Mapping[str, str], known: Mapping[s
 
 def _effect_of_switch(node: ir.CaseTree, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
     """
-    A `(case)`'s markers. A case takes the markers of the branch the values select. A case with no such branch takes
-    none.
+    A `(case)`'s markers. A case takes the markers of the branch the values select, or of its default.
 
-    A rule reached in a context lists that context. `ns-plain` has no block-in branch. A parse reaches `ns-plain` under
-    other contexts. A branch that is not there is a path nobody can take, and such a path emits no marker.
+    `validate_grammar._check_total_cases` holds a case to a branch per value or a default. This raises on a case holding
+    neither for the value.
     """
-    taken = {branch.value: branch.item for branch in node.branches}.get(values[node.var])
-    return _BALANCED if taken is None else _effect(taken, values, known)
+    taken = {branch.value: branch.item for branch in node.branches}.get(values[node.var], node.default)
+    if taken is None:
+        raise ValueError(f"a case on {node.var} has no branch for {values[node.var]} and no default")
+    return _effect(taken, values, known)
 
 
 def _effect_of_recovery(node: ir.RecoverWrapper, values: Mapping[str, str], known: Mapping[str, _Effect]) -> _Effect:
     """
     A recovery's markers depend on how its paths balance.
 
-    A recovery closes what its item left open. The recovery closes down to where it began. The recovering path leaves
-    only what the recovery emits. The item's own way has to agree with that path.
+    A recovery closes what its item left open. The recovery closes down to where it began. `interpreter._try_recovering`
+    does that closing. The recovering path leaves only what the recovery emits. The item's own way has to agree with
+    that path.
     """
     return _agreed([_effect(node.item, values, known), _effect(node.recovery, values, known)], "a recovery")
 
@@ -150,11 +154,11 @@ _EFFECT: ir.Question[_Effect] = ir.Question(
             _compose(_marker(node.begin), _effect(node.item, values, known)), _marker(node.end)
         ),
         _SCOPES: lambda node, values, known: _effect(node.item, values, known),
-        # A wrapping `(max)` counts as such a scope. A bare `(max)` is a length note and matches nothing.
+        # A wrapping `(max)` takes the markers of its item. A bare `(max)` is a length note, as `ir.MaxWrapper` says.
         ir.MaxWrapper: lambda node, values, known: (
             _BALANCED if node.item is None else _effect(node.item, values, known)
         ),
-        # the item under this emits no marker, and the match it makes changes nothing.
+        # A lookahead takes no markers. `interpreter._try_probe` rewinds the tokens its pattern emits.
         ir.ASKED_NOT_TAKEN_NODES: _BALANCED,
         _SILENT: _BALANCED,
         ir.SeqTree: _effect_of_run,
@@ -165,8 +169,8 @@ _EFFECT: ir.Question[_Effect] = ir.Question(
         ir.OptTree: lambda node, values, known: _agreed(
             [_effect(node.item, values, known), _BALANCED], "an optional rule"
         ),
-        # A rule that opens or closes a marker takes no repetition. A second pass around the repetition leaves twice as
-        # many markers open.
+        # A rule that leaves a marker open, or closes a marker it did not open, takes no repetition. A second pass
+        # around the repetition leaves twice as many markers open.
         ir.REPETITIONS: lambda node, values, known: _agreed(
             [_effect(node.item, values, known), _BALANCED], "a repeated rule"
         ),
@@ -181,7 +185,7 @@ def _settle(grammar: Mapping[str, ir.Prod], values: Mapping[str, str]) -> tuple[
     """
     The way a rule balances its markers. `values` fixes the finite parameters. The walk assumes balance and iterates.
 
-    A pass can only take an answer a call further. A grammar of `n` productions settles in at most `n` passes, and a
+    A pass takes an answer at least a call further. A grammar of `n` productions settles in at most `n` passes, and a
     grammar that has not settled by then is not settling.
 
     The walk then raises rather than returning. The answers say what a rule does with its markers. A partial answer

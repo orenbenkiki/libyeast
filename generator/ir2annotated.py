@@ -19,8 +19,8 @@ import yaml
 
 def _hex_text(codepoint: int) -> str:
     """
-    A codepoint as `xHH`. The padding runs to `2`, `4` or `6` digits, as the source does. A range's endpoints take this
-    form.
+    A codepoint as `xHH`. The padding runs to `2`, `4` or `6` digits, as `c-printable` in `grammar/yeast-spec-1.2.yaml`
+    writes them. A range's endpoints take this form.
     """
     width = 2 if codepoint <= 0xFF else 4 if codepoint <= 0xFFFF else 6
     return f"x{codepoint:0{width}X}"
@@ -28,14 +28,16 @@ def _hex_text(codepoint: int) -> str:
 
 def _char_text(codepoint: int) -> str:
     """
-    A single character literal. The printable-ASCII character comes out as itself. Anything else takes its `xHH` form.
+    A single character literal. A printable-ASCII character other than space comes out as itself. Anything else takes
+    its `xHH` form.
     """
     return chr(codepoint) if 0x21 <= codepoint <= 0x7E else _hex_text(codepoint)
 
 
 def _args_yaml(arguments: Sequence[ir.Node]) -> object:
     """
-    A reference's argument list. A single argument comes out as a bare expression. More than that comes out as a list.
+    A reference's argument list. A single argument comes out as a bare expression. Any other count comes out as a list.
+    An empty argument list comes out as a list too.
     """
     if len(arguments) == 1:
         return _expr_yaml(arguments[0])
@@ -55,7 +57,7 @@ _EXPR_YAML: ir.Question[object] = ir.Question(
         ir.LitValue: lambda value: value.value,
         ir.MatchValue: "(match)",
         ir.ColumnValue: "<column>",
-        # `ir2spec` writes this back where it regenerates the vendored grammar.
+        # `ir2spec` writes this back through `regenerate` where `ir2spec` regenerates the vendored grammar.
         ir.AutoDetectIndentValue: "<auto-detect-indent>",
         ir.AddValue: lambda value: {"(+)": [_expr_yaml(value.a), _expr_yaml(value.b)]},
         ir.SubValue: lambda value: {"(-)": [_expr_yaml(value.a), _expr_yaml(value.b)]},
@@ -70,14 +72,14 @@ _EXPR_YAML: ir.Question[object] = ir.Question(
 
 
 def _node_yaml(node: ir.Node) -> object:
-    """Regenerate a grammar node."""
+    """Return the annotated YAML form of a grammar node."""
     return _NODE_YAML(node)
 
 
 def _max_yaml(node: ir.MaxWrapper) -> dict[str, object]:
     """
-    A `(max)`'s form. The wrapping form writes what the `(max)` covers. The vendored grammar's bare form writes just the
-    limit.
+    A `(max)`'s form. The wrapping form writes the limit, the message and what the `(max)` covers. The vendored
+    grammar's bare form writes just the limit.
     """
     if node.item is not None:
         return {"(max)": [_expr_yaml(node.limit), node.message, _node_yaml(node.item)]}
@@ -111,8 +113,8 @@ _NODE_YAML: ir.Question[object] = ir.Question(
         ir.StarTree: lambda node: {"(***)": _node_yaml(node.item)},
         ir.PlusTree: lambda node: {"(+++)": _node_yaml(node.item)},
         ir.OptTree: lambda node: {"(???)": _node_yaml(node.item)},
-        # A fixed count comes out as a number. A parameterized count comes out as the parameter's name. A value
-        # expression writes either.
+        # A repetition writes a key holding a count. A literal count writes a value. A parameterized count comes out as
+        # the parameter's name. Any other count writes a value expression.
         ir.RepTree: lambda node: {f"({{{_expr_yaml(node.count)}}})": _node_yaml(node.item)},
         ir.LookGuard: lambda node: {"(===)": _node_yaml(node.item)},
         ir.NegLookGuard: lambda node: {"(!==)": _node_yaml(node.item)},
@@ -143,7 +145,7 @@ _NODE_YAML: ir.Question[object] = ir.Question(
 
 
 def regenerate(productions: Mapping[str, ir.Prod]) -> dict[str, object]:
-    """Rebuild the yaml-grammar mapping (index entries + definitions) from `{name: Prod}`."""
+    """Rebuild the yaml-grammar mapping from `{name: Prod}`. The mapping holds the index entries and the definitions."""
     regenerated: dict[str, object] = {}
     for name, production in productions.items():
         regenerated[f":{production.number:03d}"] = name

@@ -3,20 +3,16 @@
 Freeze a conformance fixture's token stream. Run the interpreter over the fixture's input and write the `.output` beside
 that input.
 
-A fixture holds the tokens the base grammar emits. That content has to come from the interpreter rather than from a
-hand. An indent or a white token holds the characters as text. Trailing spaces sit among those characters. A page hides
-a trailing space. A stream typed out therefore loses it. Authoring a fixture means running it.
+A fixture holds the tokens the base grammar emits.
 
-This freezes a fixture the caller names. This sweeps no set of fixtures. Rewriting the whole set would re-freeze the
-tokens the interpreter emits on the day of the sweep. That is the oracle copying the thing it judges. Naming a fixture
-says the author meant the change to it. This prints how a new stream differs from the stream the fixture already holds.
-The author reads a re-freeze before committing it.
+This freezes a fixture the caller names. This sweeps no set of fixtures. A sweep would re-freeze the fixtures from the
+interpreter they judge. This prints how a new stream differs from the stream the fixture already holds. The author reads
+a re-freeze before committing it.
 
-Run by hand, as `python3 generator/regen_fixture.py <stem>`. Somebody writing a fixture or fixing a fault in a fixture
-runs it. The stem is the filename without its extension.
+Somebody writing a fixture or fixing a fault in a fixture runs this by hand, as `python3 generator/regen_fixture.py
+<stem>`. The stem is the filename without its extension.
 
-The gate holds the grammar to a fixture. The gate runs this script at no point. A target that rewrites a fixture is the
-opposite of that. The gate would reach such a target.
+The gate in the `Makefile` holds the grammar to the fixtures and runs this script at no point.
 """
 
 import os
@@ -31,15 +27,17 @@ import wire
 
 
 def _emitted(fixture: spec_tests.Fixture, grammar: dict[str, ir.Prod]) -> str:
-    """`fixture`'s input makes a token stream. `_emitted` writes that stream as the wire text a `.output` file holds."""
+    """
+    `fixture`'s input makes a token stream. `_emitted` returns that stream as the wire text a `.output` file holds.
+    """
     arguments = spec_tests.arguments(fixture, grammar)
     return wire.serialize(interpreter.run(grammar, fixture.production, fixture.input, arguments))
 
 
 def _differences(was: str, now: str) -> list[str]:
     """
-    The lines on which the frozen stream differs from the emitted stream, or none where the frozen stream and the
-    emitted stream agree.
+    The function reports a line where the frozen stream and the emitted stream differ. A report names the line number,
+    the frozen text and the emitted text. The list is empty where the frozen stream and the emitted stream agree.
     """
     lines = []
     old, new = was.split("\n"), now.split("\n")

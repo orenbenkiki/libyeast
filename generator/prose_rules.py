@@ -22,26 +22,24 @@ reads a code span as a word, and a passive behind such a span names its actor.
 `a-free-choice-word-is-a-universal` refuses `whatever`. `a-purpose-clause-says-no-action` refuses `exists for` and
 `exists to`. `a-pointer-names-its-referent` refuses the runs `That last` and `This last`.
 `a-name-of-the-tree-sits-in-a-code-span` refuses a name written outside the backticks. `a-question-word-is-no-noun`
-refuses a free relative behind a preposition. `a-sentence-states-no-plan` refuses a sentence ending on `yet`.
-`a-marked-up-word-is-read-as-a-word` takes the emphasis off a word before the rules above read it.
+refuses a free relative behind a preposition. `a-sentence-states-no-plan` refuses a sentence ending on `yet` and a word
+of the future tense. `a-marked-up-word-is-read-as-a-word` takes the emphasis off a word before the word rules read it.
 
 A shape fault is a construction. `a-sentence-stays-within-the-limits` counts the commas, the words and the third-person
 pronouns. That rule refuses a possessive with its noun dropped. It refuses a bare participle where the subject belongs.
-`no-em-dash-and-no-colon` refuses those marks, the semicolon and the raised dot. `a-comment-writes-no-why-clause`
-refuses a clause giving WHY. `text-says-what-is` refuses a tense word. `a-sentence-opens-on-a-subject` refuses a
-sentence opening on a bare interrogative. `a-sentence-hangs-a-single-tail` refuses a modifier stacked behind another.
+`no-em-dash-and-no-colon` refuses a colon and a semicolon here. `a-comment-writes-no-why-clause` refuses a clause giving
+WHY. `text-says-what-is` refuses a tense word. `a-sentence-opens-on-a-subject` refuses a sentence opening on a bare
+interrogative. `a-sentence-hangs-a-single-tail` refuses a modifier stacked behind another.
 
-The rules read characters. A trailing absolute clause shows up as a comma and then a participle the sentence ends on. A
-verbless clause elsewhere goes to the review. Deciding it wants a part-of-speech tagger this tree does not have. The
-passive voice goes to the review.
+The rules read characters. A trailing absolute clause shows up as a comma and then a word ending in `ing` near the end
+of the sentence. The checker refuses a form of `be` before a past participle where no `by` follows.
 
-`prose_faults` reads a fragment whole, the way a hover or a symbol index shows it. It refuses a first sentence pointing
-outside the fragment. It refuses a last sentence with no full stop. `a-run-of-pronouns-reaches-back-to-a-noun` refuses a
-run of pronoun openers that reaches back to a demonstrative. `a-paragraph-opens-on-a-noun` refuses a paragraph opening
-on a pronoun.
+`prose_faults` reads a fragment whole. It refuses a first sentence pointing outside the fragment. It refuses a last
+sentence with no full stop. `a-run-of-pronouns-reaches-back-to-a-noun` refuses a run of pronoun openers that reaches
+back to a demonstrative. `a-paragraph-opens-on-a-noun` refuses a paragraph opening on a pronoun.
 
-The checker takes a markdown table row a cell at a time. A markdown list item ends where its line ends. The checker
-drops a doxygen `@code` block and a doxygen command.
+The checker takes a markdown table row a cell at a time. A markdown list item ends at the end of its line. An indented
+line below continues the item. The checker drops a doxygen `@code` block and a doxygen command.
 
 **Usage:** `import prose_rules`. Then call `prose_rules.word_refusal(text, path)` and `prose_rules.prose_faults(text)`.
 """
@@ -49,19 +47,19 @@ drops a doxygen `@code` block and a doxygen command.
 import os
 import re
 
-# A claim that one counter-example refutes. English has a closed set of determiners that make such a claim. The checker
-# names the classes of those determiners rather than the words a writer happened to reach for. A list of words is a game
-# of whack-a-mole. A writer refused `the only` writes `the one door`, and a writer refused that writes `the sole door`.
+# A claim that one counter-example refutes. The checker lists the members of the determiner classes that make such a
+# claim, beyond the words a writer happened to reach for. A list of words is a game of whack-a-mole. A writer refused
+# `the only` writes `the one caller`, and a writer refused that writes `the sole caller`.
 #
-# The patterns take totality first and uniqueness second. A pattern opens on a word boundary. Without the boundary `all
-# of` fired inside "a call of it".
+# The patterns take the free-choice words first, totality second and uniqueness third. A pattern opens on a word
+# boundary. Without the boundary `all` would fire inside "a call of it".
 #
-# `at all` and `after all` are emphasis. `left alone` and `leaves it alone` mean untouched. `the one that` points back
-# at a thing already named. A hyphen turns `the single` into a compound adjective, as in `the single-entry mapping`. The
-# checker still refuses a claim about a class.
+# `at all` and `after all` are emphasis. `left alone`, `leave alone` and `leaves alone` mean untouched. `the one that`
+# points back at a thing already named. A hyphen turns `the single` into a compound adjective, as in `the single-entry
+# mapping`. The checker still refuses a claim about a class.
 #
-# `whatever` is the free-choice word, and `a-free-choice-word-is-a-universal` refuses it. A free relative naming a thing
-# takes the noun instead, as `whatever is on top` says `the entry on top`.
+# `whatever` and `whichever` are the free-choice words, and `a-free-choice-word-is-a-universal` refuses them. A free
+# relative naming a thing takes the noun instead, as `whatever is on top` says `the entry on top`.
 _UNIVERSAL = re.compile(
     r"\bwhatever\b|\bwhichever\b"
     r"|\bevery\b|\beach\b|(?<!at )(?<!after )(?<!not )\ball\b|\balways\b|\bnever\b|\beverything\b|\beverywhere\b"
@@ -118,23 +116,26 @@ _A_SUBORDINATOR = re.compile(r"^(?:and|or|but|which|where|that|who|whose|when|wh
 # The tail after the last comma, up to the sentence end.
 _A_TAIL = re.compile(r",\s*([^,]+?)[.!?]?$")
 
-# The words a tail may run to. Past this the tail reads as a clause rather than a phrase hung off the end. The verb list
-# below is a list rather than a checker, and a longer tail with a verb outside it reads as verbless.
+# `_hung_tail` checks a tail of at most this many words. Past this the tail reads as a clause rather than a phrase hung
+# off the end. The verb list `_A_FINITE_VERB` sits above this count and is a list rather than a checker. A tail within
+# this count that holds a verb outside that list reads as verbless.
 _MOST_TAIL_WORDS = 4
 
 # A tense word. A comment says what is, not what was or what is coming.
 _A_TENSE_WORD = re.compile(
-    r"\bnow\b|\bno longer\b|\bused to\b|\bpreviously\b|\bcurrently\b|\btoday\b|\bso far\b|\bas of\b|\bwill soon\b",
+    r"\bnow\b|\bno longer\b|\bused to\b|\bpreviously\b|\bcurrently\b|\btoday\b|\bso far\b|\bas of\b|\bwill soon\b"
+    r"|\bhas landed\b|-\s*landed\b",
     re.IGNORECASE,
 )
 
-# A sentence ending on a verb with nothing after it.
+# _ENDS_ON_A_COPULA matches a sentence ending on a form of "be" other than "am" or "being".
 _ENDS_ON_A_COPULA = re.compile(r"\b(?:is|are|was|were|be|been)\s*[.!?]?\s*$", re.IGNORECASE)
 
-# A fragment opening on a word that points outside itself. A reader takes a fragment out of an index or a hover.
+# A fragment opening on a word that points outside itself.
 _A_DEICTIC_OPENER = re.compile(r"^(?:It|They|This|That|These|Those|The same|Likewise|And )\b")
 
-# A sentence opening on a third-person pronoun. A run of these reads as a list under a subject the prose named earlier.
+# A sentence opening on `It` or `They`. A possessive form of either matches as well. A run of such sentences reads as a
+# list under a subject the prose named earlier.
 _A_PRONOUN_OPENER = re.compile(r"^(?:It|Its|They|Their)\b")
 
 # A sentence opening on a word that points back rather than naming. Such a sentence anchors no run of pronoun openers.
@@ -144,16 +145,16 @@ _A_BACK_POINTER = re.compile(r"^(?:It|Its|They|Their|That|Those|This|These)\b")
 # The pronoun openers in a row before the run wants a named subject behind it.
 _FEWEST_IN_A_RUN = 2
 
-# The markup closing a sentence off. A full stop goes inside the emphasis rather than behind it.
+# The markup closing a sentence off. The full-stop check strips this markup first. A full stop inside emphasis then
+# counts.
 _CLOSING_MARKUP = re.compile(r"[*_`\s]+$")
 
-# A run up to a full stop, or up to the end of a block that holds no stop. A stop between word characters belongs to a
-# name such as `wire.py`, and the split skips it. A stop in front of another stop opens an ellipsis or a range, and the
-# split skips it as well.
+# The pattern matches a sentence. A sentence ends at a full stop, a question mark or an exclamation mark. A block
+# holding none of these marks is a single sentence. The pattern skips a stop in front of a word character, as in
+# `wire.py`. The pattern skips a stop in front of another stop, as in an ellipsis or a range.
 _SENTENCE = re.compile(r"(?:[^.!?]|[.!?](?=[\w.]))+[.!?]?")
 
-# A name in backticks. The sentence writes it as code rather than as prose. A colon inside a code span is punctuation
-# the writer did not choose.
+# A run of text in backticks. A writer marks such a run as code rather than as prose.
 _A_CODE_SPAN = re.compile(r"`[^`]*`")
 
 # A hyphenated name in bold. `.claude/conventions.md` opens an entry with the rule's name written that way. A name is
@@ -167,14 +168,16 @@ _A_NAME = "name"
 # A sentence-ending mark inside a code span. The mark belongs to the name rather than to the sentence.
 _A_STOP = re.compile(r"[.!?]")
 
-# A web address. Its punctuation belongs to the address rather than to the sentence.
-_A_URL = re.compile(r"https?://\S+")
+# A web address. Its punctuation belongs to the address rather than to the sentence. `check_documents` ends a run of
+# words at such an address.
+A_URL = re.compile(r"https?://\S+")
 
-# The label a message writes in front of its text. A gate writes its own name there. `check_emitter` writes
-# `Emitter.<field>` and `check_decoder` writes `U+<codepoint>`. A label holds no comma and no full stop between words.
+# The label a message writes in front of its text. `check_emitter` writes `Emitter.<field>` and `check_decoder` writes
+# `U+<codepoint>`. A label holds no comma, semicolon or colon. A full stop, question mark or exclamation mark in a label
+# has no space after it.
 _A_SPEAKER = re.compile(r"^\s*(?:[^.!?,;:\n]|[.!?](?=\S)){0,60}?(?<!\s): ")
 
-# A hook closes a refusal by naming the rule. Such a text writes the words the rule bans.
+# A hook closes a refusal by naming the rule.
 _STATES_ITS_RULE = re.compile(r"Rule: [a-z0-9]+(?:-[a-z0-9]+)+\.\s*$")
 
 # A place a literal names in front of a message. The literal opens on the file and a colon. The line follows that colon
@@ -186,10 +189,11 @@ _A_PLACE = re.compile(r"^\s*(?:#{1,6}\s+)?`[^`]*`:(?:`[^`]*`)?:?(?=\s)")
 # A markdown autolink. The angle brackets hold a web address rather than a sentence.
 _AN_AUTOLINK = re.compile(r"<https?://[^>]*>")
 
-# A markdown image. The alt text names a badge, and the target is a web address.
+# A markdown image. The pattern accepts alt text holding no `]` and a target holding no `)`.
 _AN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 
-# A markdown link. The text between the brackets is prose. The target after them is a web address.
+# A markdown link. The text between the brackets is prose. The target after them is any text up to the closing
+# parenthesis.
 _A_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 
 # A directive addressed to a tool rather than to a reader.
@@ -201,7 +205,8 @@ _A_DIRECTIVE = re.compile(
 # rather than the shape of a sentence. The checker takes a cell.
 _A_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 
-# A markdown list item. It ends where the line ends and has no full stop.
+# A markdown list item. The pattern matches the marker opening the item. `_does_continue` takes an indented line below
+# that holds more than whitespace as a continuation, unless the pattern matches that line too.
 _AN_ITEM = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
 
 # The marks that already end a line. A list lead closes on a colon, and the list under it is not a second clause.
@@ -210,12 +215,14 @@ _ENDS_A_LINE = (".", "!", "?", ":")
 # A doxygen code block. It holds a program an author cannot reword.
 _A_CODE_BLOCK = re.compile(r"@code\b.*?@endcode\b", re.DOTALL)
 
-# A doxygen command. A command naming a thing keeps the name with it. `@ref`, `@p` and `@param` do that, and `@file`
-# names the source file it documents. Any other command leads prose, and the pattern drops the command and keeps the
-# prose. A name ends before the punctuation that closes the sentence around it.
+# A doxygen command. A match of a naming command takes in the name. `said_by` blanks the whole match. `@ref`, `@p` and
+# `@param` do that, and `@file` names the source file it documents. https://www.doxygen.nl/manual/commands.html#cmdfile
+# defines `@file`. Any other command leads prose, and the pattern drops the command and keeps the prose. A trailing
+# period or comma stays out of the name. So does a trailing colon or semicolon.
 _A_DOXYGEN_COMMAND = re.compile(r"@(?:ref|p|param|file)\s+\S*[^\s.,;:]|@[a-z]+")
 
-# A clause giving WHY. A comment explains WHAT the code does, and this pattern does not touch such a comment.
+# A clause giving WHY. The pattern matches the words of such a clause in any sentence. `_over` skips the pattern on a
+# text stating a reason.
 _EXPLAINS_WHY = re.compile(
     r"\bbecause\b|,\s+so\b|\bso that\b|,\s+since\b|\bwhich is why\b|\bthe reason\b|\bwhat that buys\b"
     r"|\bfor the same reason\b|\bwhich is what\b",
@@ -225,8 +232,8 @@ _EXPLAINS_WHY = re.compile(
 # The length the term of a definition may run to. Past this the bold is a sentence rather than a term.
 _MOST_TERM_CHARS = 48
 
-# A term and its gloss. The form is `**term:** what it is`. The term leads the line and the item takes a line of its
-# own. A list marker may open the line. A gloss is not a sentence.
+# A term and its gloss. The form is `**term:** what it is`. The term leads the line. A list marker may open the line.
+# The comma count and the word count skip a definition.
 _A_DEFINITION = re.compile(rf"^(?:[-*+]|\d+\.)?\s*\*\*[^*\n]{{1,{_MOST_TERM_CHARS}}}:\*\*\s+\S")
 
 # The term of a definition, without the gloss under the term.
@@ -239,6 +246,18 @@ _A_DEFINITION_GERUND = re.compile(rf"^(?:[-*+]|\d+\.)?\s*\*\*[^*\n]{{1,{_MOST_TE
 # words between the rules are the prose.
 _A_DIVIDER_RULE = re.compile(r"(?m)^\s*-{3,}(?=\s|$)|(?<=\s)-{3,}\s*$")
 
+
+def is_a_heading(said: str) -> bool:
+    """
+    Whether the comment block `said` opens a section and says nothing besides.
+
+    Public. Such a block names the code below it. A heading documents no code of its own. `collect_fragments` makes no
+    fragment of one.
+    """
+    lines = [line for line in said.strip().split("\n") if line.strip()]
+    return len(lines) == 1 and bool(_A_DIVIDER_RULE.match(lines[0]))
+
+
 # A colon ending a sentence. The text after the colon is the list rather than a second clause.
 _A_LIST_LEAD = re.compile(r":\s*\.?\s*$")
 
@@ -250,10 +269,12 @@ _AN_ELIDED_NOUN = re.compile(
 )
 
 # A possessive with its noun dropped in front of a conjunction. This checker takes the prose as the author wrote it.
-# `said_by` blanks a code span. A blanked span reads as a dropped noun.
+# `prose_rules.said_by` swaps a code span for the word `_A_NAME`. A code span owning a noun would then match as
+# `name's`.
 _AN_ELIDED_NOUN_BEFORE_A_CONJUNCTION = re.compile(r"\b\w+'s\s+(?:and|or|alike)\b")
 
-# A sentence opening on a bare past participle and joining a full clause. The first half drops its subject.
+# _AN_ELIDED_SUBJECT matches a sentence opening with a capitalised word that ends in "ed" or "en". A lookahead in
+# _AN_ELIDED_SUBJECT exempts adverbs such as "When". Such a sentence drops its subject.
 _AN_ELIDED_SUBJECT = re.compile(
     r"^[A-Z][a-z]+ed\b[^.]*,\s+and\b|^(?!Even\b|Often\b|Then\b|When\b)[A-Z][a-z]+(?:ed|en)\b\s"
 )
@@ -271,22 +292,24 @@ _A_PASSIVE = re.compile(
     re.IGNORECASE,
 )
 
-# A relative clause hung off the last comma. The sentence has finished, and a second idea rides in behind it. This
-# belongs to the tail family. The checker refuses it at any length. `It records what a change did, which stays true as
-# the code moves on` is a pair of sentences.
+# A relative clause opening on `which` after a comma. The sentence has finished, and a second idea rides in behind it.
+# This belongs to the tail family. The checker refuses it at any length. `It records what a change did, which stays true
+# as the code moves on` is a pair of sentences.
 _A_WHICH_TAIL = re.compile(r",\s+which\b")
 
-# A relative clause hung off a comma on `whose`. The reader walks back to find the noun the clause is about. This
-# belongs to the tail family beside `_A_WHICH_TAIL`.
+# A relative clause hung off a comma on `whose`. This belongs to the tail family beside `_A_WHICH_TAIL`.
 _A_WHOSE_TAIL = re.compile(r",\s+whose\b")
 
 # A sentence ending on a possessive. The noun the thing owns is gone, and an edit ate it. `A lookahead's.` is such a
 # docstring.
 _ENDS_ON_A_POSSESSIVE = re.compile(r"\w's\s*[.!?]\s*$")
 
-# A pointer opening a fragment. A reader who opens the fragment cold finds no earlier sentence naming what the pointer
-# points at.
-_A_SUCH_POINTER = re.compile(r"\bsuch an?\b", re.IGNORECASE)
+# A pointer in the first sentence of a fragment. A reader who opens the fragment cold finds no earlier sentence naming
+# what the pointer points at. `neither`, `either` and `both` point before `of`. They also point before a mark ending a
+# clause or a parenthesis.
+_A_SUCH_POINTER = re.compile(
+    r"\bsuch an?\b|\bthe (?:former|latter)\b|\b(?:neither|either|both)\b(?=\s*[.,;!?)]|\s+of\b)", re.IGNORECASE
+)
 
 # A step named by a numeral. The number moves when somebody adds a step, and the prose then points at another step.
 _NAMES_A_STEP_BY_A_NUMERAL = re.compile(r"\b(?:phase|step|stage)\s+\d", re.IGNORECASE)
@@ -299,9 +322,10 @@ _A_SO_CLAUSE = re.compile(
     re.IGNORECASE,
 )
 
-# A path, a scope and a dotted name outside a code span. `said_by` blanks a URL and takes a link's target off. This
-# pattern reads the prose left after that. `check_documents` verifies a backticked name, and a bare path gets past that
-# gate. A slash right after an opening angle bracket closes a markup tag rather than dividing a path.
+# A path, a scope and a dotted name outside a code span. `prose_rules.said_by` blanks a URL and takes a link's target
+# off. `words_found` reads this pattern over the prose left after that. `citation_refusal` verifies a backticked name,
+# and a bare path gets past that gate. A slash right after an opening angle bracket closes a markup tag rather than
+# dividing a path.
 _A_BARE_PATH = re.compile(
     rf"(?<![\w./:-])(?!e\.g|i\.e)(?!(?:{_A_NAME}[/.])+{_A_NAME}\b)"
     r"[\w-]*(?:(?<!<)/[\w.-]*\w[\w./-]*|::\w+|\.[a-zA-Z]\w*)"
@@ -331,26 +355,27 @@ def _defined_in_its_own_terms(said: str) -> str:
     return ""
 
 
-# A modifier hung off a comma. `_hung_tail` reads the tail after the last comma and stops there. A sentence stacking a
-# modifier behind another passes that checker. A reader tracks such a modifier to the word it lands on. A stacked
-# modifier sends the reader back through the clause. `a-sentence-hangs-a-single-tail` is the rule.
+# A comma in front of `with`, `behind` or `without`. `_over` refuses a sentence holding more of these than `_MOST_TAILS`
+# allows. `_hung_tail` reads the tail after the last comma and stops there. A modifier stacked in front of the last
+# comma escapes that checker. A reader tracks such a modifier to the word it lands on. A stacked modifier sends the
+# reader back through the clause. `a-sentence-hangs-a-single-tail` is the rule.
 _A_STACKED_TAIL = re.compile(r",\s+(with|behind|without)\b", re.IGNORECASE)
 
 # The modifiers a single sentence may hang off its commas.
 _MOST_TAILS = 1
 
-# The word that introduces the agent of a passive. It follows the participle, and a search starts there. `by default`
-# and `by hand` name a manner rather than an actor.
+# The word that introduces the agent of a passive. It follows the participle, and a search starts there. The lookahead
+# skips a `by` before a word that names no actor, such as `default` or `hand`.
 _NAMES_AN_AGENT = re.compile(r"\bby\b(?!\s+(?:default|hand|then|now|contrast|turns|itself|design)\b)", re.IGNORECASE)
 
-# A sentence opening on a bare interrogative. The writer put a nominalized clause where the actor belongs, as in "What
-# libyeast adds cannot quietly become what libyeast changes". Naming the actor gives "an edit that meant to add
-# something must not turn out to have changed an official production". `Whether` opens the docstring of a predicate and
-# passes. `When` opens a fronted condition and passes.
+# A sentence opening on an interrogative such as `what` or `how`. A connective such as `So` or `But` may precede the
+# interrogative. The writer put a nominalized clause where the actor belongs, as in "What libyeast adds cannot quietly
+# become what libyeast changes". Naming the actor gives "an edit that meant to add something must not turn out to have
+# changed an official production". `Whether` opens the docstring of a predicate and passes. `When` opens a fronted
+# condition and passes.
 _A_NOMINAL_SUBJECT = re.compile(r"^(?:(?:So|And|But|Yet|Then),?\s+)?(what|how|which|where)\b", re.IGNORECASE)
 
-# A word listed here does not appear in this project's prose. A word arrives here after somebody wrote it and the author
-# turned the word down. This list is where the ruling lives.
+# A word listed here does not appear in this project's prose. This list is where the ruling lives.
 #
 # This list bans `meet` outright. A reader opens a fragment. Say `intersected with` for the lattice sense. A thing
 # satisfies a requirement.
@@ -368,15 +393,17 @@ _A_NOMINAL_SUBJECT = re.compile(r"^(?:(?:So|And|But|Yet|Then),?\s+)?(what|how|wh
 #
 # This list bans `spell` outright. A grammar writes a production. A source holds a name. Say which form a thing takes.
 #
-# This list bans `by itself` outright. `on its own`, `on their own` and `of its own accord` go with it. A phrase here
-# came in as a way past the ban in front of it, and the chain runs back to `alone`. The phrase says little. Say `only`
-# where the point is that one thing takes part. Name the thing that is missing where the point is an absence. Delete the
-# phrase where it does neither. A possessive wants another form. `on a line of its own` says what `on its own line`
-# said.
+# This list bans `door` outright, and `doorway` goes with it. `coathanger` would say as much. Name the thing and say
+# what it does. `ys_options::max_bytes` caps a struct. A phase runs at the start of the pipeline.
 #
-# This list bans `if desired` outright. `as needed`, `as appropriate` and `where appropriate` go with it. A hedge reads
-# as a condition and states none. A hedge names nobody who decides. Say who chooses and on what, or say the claim
-# without the hedge.
+# This list bans `by itself` outright. `on its own`, `on their own` and `of its own accord` go with it. The phrase says
+# little. Say `only` where the point is that one thing takes part. Name the thing that is missing where the point is an
+# absence. Delete the phrase where it does neither. A possessive wants another form. `on a line of its own` says what
+# `on its own line` said.
+#
+# This list bans `if desired` outright. `as needed`, `as appropriate` and `where appropriate` go with it. So does `in
+# general`. A hedge reads as a condition and states none. A hedge names nobody who decides. Say who chooses and on what,
+# or say the claim without the hedge.
 #
 # This list bans a bare `YamlReference`. `the YAML reference parser` goes with it. A pair of upstream projects go by
 # both forms. Write `Haskell YamlReference` for the vendored Haskell parser. Write `YAML Reference Parser` for the
@@ -386,6 +413,12 @@ _A_NOMINAL_SUBJECT = re.compile(r"^(?:(?:So|And|But|Yet|Then),?\s+)?(what|how|wh
 # nothing. Say the verb the thing does. A rule passes. A comment holds a name. A line follows another. A file is in the
 # tree.
 #
+# This list bans `turns out` and `turned out`.
+#
+# This list bans `say` with `again` a short way after it in the same sentence. `says`, `said` and `saying` go with it.
+# The phrase means repeat, and the writer means rewrite. Say `rewrite`. A subject that writes nothing takes the verb it
+# performs.
+#
 # This list bans `the rest`. `the one`, `the ones` and `the others` go with it. The phrase points at a noun instead of
 # saying it. Name the noun. An `of` after the phrase names the noun. `the rest of the queue` passes.
 _NOT_OUR_WORD = re.compile(
@@ -394,25 +427,32 @@ _NOT_OUR_WORD = re.compile(
     r"|\b(?:hold|holds|holding|held)\s+to\b"
     r"|\b(?:carry|carries|carried|carrying)\b"
     r"|\b(?:spell|spells|spelled|spelt|spelling|spellings|respelled)\b"
+    r"|\b(?:door|doors|doorway|doorways)\b"
     r"|\bby\s+itself\b|\bon\s+(?:its|their)\s+own\b|\bof\s+(?:its|their)\s+own\s+accord\b"
     r"|\bif\s+desired\b|\bas\s+needed\b|\b(?:as|where)\s+appropriate\b|\bin\s+general\b"
     r"|(?<!Haskell )\bYamlReference\b|(?-i:\bthe\s+YAML\s+reference\s+parser\b)"
     r"|\b(?:stand|stands|standing|standings|stood)\b"
     r"|\bturn(?:s|ed)\s+out\b"
+    r"|\b(?:say|says|said|saying)\b[^.]{0,40}\bagain\b"
     r"|\bthe\s+(?:ones?|others|rest)\b(?!\s+of\b)",
     re.IGNORECASE,
 )
 
-# A free relative after a preposition. The sentence points at a thing rather than naming it. `to what the tree bears
-# out` points, and `to the entries the tree bears out` names.
+# A free relative after a preposition or after a form of `be`. The sentence points at a thing rather than naming it. `to
+# what the tree bears out` points, and `to the entries the tree bears out` names.
 _A_POINTING_RELATIVE = re.compile(
     r"\b(?:to|of|for|about|through)\s+what\b|\b(?:is|are|was|were)\s+what\b", re.IGNORECASE
 )
 
-# A clause ending on `yet`. Such a clause points at work the project still owes, and `PLAN.md` holds that work. A
+# The pattern finds a clause ending on `yet`. It finds `not yet` and `for now`. It finds `will be` and `will need`. It
+# finds `to be cut`, `to be done` and `to be written` before `later` or `when`. Such a clause points at work the project
+# still owes, and `PLAN.md` holds that work by `each-document-keeps-to-its-domain` in `.claude/conventions.md`. A
 # trailing `yet` sits before a comma as often as before a full stop. A conjunction `yet` opens a clause and sits before
 # neither.
-_POINTS_AT_A_PLAN = re.compile(r"\byet\s*[.!?,]")
+_POINTS_AT_A_PLAN = re.compile(
+    r"\byet\s*[.!?,]|\bnot yet\b|\bwill (?:be|need)\b|\bfor now\b|\bto be (?:cut|done|written) (?:later|when)\b",
+    re.IGNORECASE,
+)
 
 # A clause saying what a thing is there for. It gives WHY where the question asked WHAT.
 _A_PURPOSE_CLAUSE = re.compile(r"\bexists\s+(?:for|to)\b", re.IGNORECASE)
@@ -420,8 +460,8 @@ _A_PURPOSE_CLAUSE = re.compile(r"\bexists\s+(?:for|to)\b", re.IGNORECASE)
 # A pointer at the thing named last. The prose names the rule, the file or the option instead.
 _POINTS_AT_A_LAST_THING = re.compile(r"\b(?:that|this) last\b", re.IGNORECASE)
 
-# A name of the tree written outside a code span. `said_by` blanks the code spans, the links and the URLs. An underscore
-# between letters remains.
+# A name of the tree written outside a code span. `prose_rules.said_by` puts the word `name` in place of a code span and
+# blanks the URLs. It keeps the text of a link and drops the target. An underscore between letters remains.
 _AN_UNMARKED_NAME = re.compile(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*[A-Za-z0-9]\b")
 
 # The emphasis markers around a word. A rule below matches the word without them.
@@ -430,8 +470,7 @@ _EMPHASIS = re.compile(r"\*+")
 # A paragraph break. The referent of a pronoun opening the paragraph sits across that break.
 _A_PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
 
-# The third-person pronouns. A demonstrative stays out of this checker. `that` is a relative pronoun far more often than
-# a demonstrative, and no character rule separates a relative pronoun from a demonstrative.
+# Some third-person pronouns. A demonstrative stays out of this checker. So does `that`.
 _A_PRONOUN = re.compile(r"\b(?:it|its|they|them|their)\b", re.IGNORECASE)
 
 # A verb the sentence drops and the reader supplies. "that file would hold and this one does not" ends on the negation
@@ -448,17 +487,17 @@ _JOINS_A_LAST_ITEM = re.compile(r"\b(?:and|or)\b", re.IGNORECASE)
 # The items a list in a single sentence may run to. Past this the reader is holding a table in their head.
 _MOST_ITEMS = 3
 
-# The commas a single sentence may hold. Past this the clauses are a pile.
+# The commas a sentence other than a definition may hold. Past this the clauses are a pile.
 _MOST_COMMAS = 2
 
 # The words a single sentence may run to.
 _MOST_WORDS = 26
 
-# The third-person pronouns a single sentence may hold. A second pronoun makes the reader match a second referent.
-# Naming the noun is shorter than pointing at it.
+# The third-person pronouns a single sentence may hold.
 _MOST_PRONOUNS = 1
 
-# The shortest sentence the shape rules read. A short label states a single idea under any punctuation.
+# The fewest words a sentence holds for `_shape_faults` to hand it to `_over`. A short label states a single idea under
+# any punctuation.
 _FEWEST_WORDS = 6
 
 
@@ -490,10 +529,11 @@ def _does_continue(below: str) -> bool:
 
 def _itemized(line: str, below: str) -> str:
     """
-    `line` with a list item's end said as a full stop, and any other line unchanged.
+    `line` with a full stop after an item that opens and ends on it, and any other line unchanged. A line already ending
+    on a mark in `_ENDS_A_LINE` stays unchanged too.
 
-    An item wraps at the column limit, and `below` is the line under it. A sentence therefore runs past the end of the
-    line an item opens on. The full stop goes at the end of the item rather than at the end of that line.
+    An item may wrap, and `below` is the line under it. A sentence therefore runs past the end of the line an item opens
+    on. A wrapped item therefore gains no full stop, and a continuation line matches no item marker.
     """
     ended = line.rstrip()
     if not _AN_ITEM.match(line) or not ended or ended.endswith(_ENDS_A_LINE) or _does_continue(below):
@@ -506,7 +546,7 @@ def said_by(prose: str) -> str:
     named = _A_DEFINED_NAME.sub(" ", prose)
     without_code = _A_CODE_SPAN.sub(_A_NAME, _A_CODE_BLOCK.sub(" ", named))
     without_links = _A_LINK.sub(r"\1", _AN_IMAGE.sub(" ", _AN_AUTOLINK.sub(" ", without_code)))
-    blanked = _A_DIRECTIVE.sub(" ", _A_URL.sub(" ", _A_DOXYGEN_COMMAND.sub(" ", without_links)))
+    blanked = _A_DIRECTIVE.sub(" ", A_URL.sub(" ", _A_DOXYGEN_COMMAND.sub(" ", without_links)))
     without_dividers = _A_DIVIDER_RULE.sub(" ", blanked)
     said = [_celled(line) for line in without_dividers.splitlines()]
     read = "\n".join(_itemized(line, said[at + 1] if at + 1 < len(said) else "") for at, line in enumerate(said))
@@ -515,7 +555,7 @@ def said_by(prose: str) -> str:
 
 def _sentences(prose: str) -> list[str]:
     """
-    The sentences `prose` writes, a line apiece, with the code spans intact.
+    The sentences `prose` writes, a list entry apiece, with the code spans intact.
 
     A full stop inside a code span belongs to the name. The split skips it.
     """
@@ -553,8 +593,8 @@ _A_WORD_RULE: dict[str, tuple[tuple[re.Pattern[str], ...], str]] = {
     ),
     "sentence pointing at a plan": (
         (_POINTS_AT_A_PLAN,),
-        "This edit ends a sentence on `yet`, into {path}: {said}. Such a sentence points at work the project still "
-        "owes, and the prose goes stale the day that work lands. `PLAN.md` holds the work the project owes. Say what "
+        "This edit points at work the project still owes, into {path}: {said}. The prose goes stale the day that work "
+        "lands. `PLAN.md` holds the work the project owes. Say what "
         "is: not `the parser core does not exist yet` but `the tree holds no parser core`. Rule: "
         "a-sentence-states-no-plan.",
     ),
@@ -627,20 +667,21 @@ def words_found(prose: str) -> dict[str, list[str]]:
     return {what: sorted(said) for what, said in found.items()}
 
 
-# The files whose text states a rule. A rule wording holds a universal. A checker reads `refuses every sentence ending
-# on a verb` as the rule it enforces, and the universal rule passes such a wording here. `.claude/proposals-pending.md`
-# takes a proposal the critic raised, and `prose_answer` names that path when it reads one. `write_agent_prompts` copies
-# the conventions and the rejections into the agent definitions, and those hold the same wordings.
+# The files beyond the agent definitions whose text states a rule. A rule wording holds a universal. A checker reads
+# `refuses every sentence ending on a verb` as the rule it enforces, and the universal rule passes such a wording here.
+# `settling_state.PENDING` names `.claude/proposals-pending.md`. That file takes a proposal the critic raised, and
+# `record_run.proposal_refusals` names that path when `prose_answer` checks one. `write_agent_prompts` copies the
+# conventions and the rejections into agent definitions, and those hold the same wordings.
 _A_RULE_IS_STATED_IN = (
     "conventions.md",
     "rejected.md",
     "proposals-pending.md",
-    "prose-critic.md",
-    "prose-compare.md",
-    "prose-condense.md",
 )
 
-# The word classes the rule files may hold. A rule quotes the words it refuses.
+# The directory holding the agent definitions. A definition instructs an agent, and an instruction states a rule.
+_AGENT_DEFINITIONS = os.path.join(".claude", "agents")
+
+# The word classes the rule files may hold. A rule in `.claude/conventions.md` quotes the words it refuses.
 _A_RULE_MAY_SAY = ("universal", "vague quantifier", "question word for a noun")
 
 # The class a plan document may write. `PLAN.md` states the work the project owes, and a word about when belongs there.
@@ -651,8 +692,9 @@ _THE_PLAN = "PLAN.md"
 
 
 def _does_state_a_rule(path: str) -> bool:
-    """Whether the text of `path` states a rule. The tuple above names the files that do."""
-    return os.path.basename(path) in _A_RULE_IS_STATED_IN
+    """Whether the text of `path` states a rule. An agent definition states rules. `_A_RULE_IS_STATED_IN` names more."""
+    is_a_definition = os.path.dirname(os.path.normpath(path)).endswith(_AGENT_DEFINITIONS)
+    return is_a_definition or os.path.basename(path) in _A_RULE_IS_STATED_IN
 
 
 def word_refusal(prose: str, path: str) -> str | None:
@@ -661,7 +703,7 @@ def word_refusal(prose: str, path: str) -> str | None:
 
     `_A_WORD_RULE` decides both the classes and the wording, and the `prose_words` hook calls here.
 
-    The universal rule passes a file that `_A_RULE_IS_STATED_IN` names.
+    The universal rule passes a file that `_does_state_a_rule` answers true for.
     """
     found = words_found(prose)
     for what, (_, wording) in _A_WORD_RULE.items():
@@ -687,10 +729,10 @@ def _fragment_faults(prose: str) -> list[str]:
     """
     The faults `prose` has as a whole fragment rather than as a sentence.
 
-    A reader opens a fragment through a symbol index or a hover. A first sentence opening on `It` or `The same` leans on
-    a neighbour the index withholds. A last sentence with no full stop runs into the text after it. Emphasis around that
-    sentence is markup, and the full stop goes inside it. A paragraph opening on a pronoun sends the reader back over
-    the blank line to find the noun.
+    A first sentence opening on a word such as `It`, `This` or `The same` leans on a neighbour outside the fragment.
+    `_A_DEICTIC_OPENER` lists those words. A last sentence with no full stop runs into the text after it. Emphasis
+    closing that sentence is markup, and a full stop inside it counts. A paragraph opening on a pronoun sends the reader
+    back over the blank line to find the noun.
     """
     said = [one for one in _sentences(said_by(prose)) if _CLOSING_MARKUP.sub("", one)]
     if not said:
@@ -708,15 +750,21 @@ def _fragment_faults(prose: str) -> list[str]:
         found.append(f"[a fragment whose last sentence has no full stop] {said[-1].strip()}")
     found += _unanchored_runs(said)
     found += _pronoun_openers(prose, bool(opener))
+    found += [
+        f"[a hyphen, a star or a plus set off by spaces] {said_by(line).strip()}"
+        for line in prose.split("\n")
+        if not line.lstrip().startswith("|") and _A_SPACED_MARK.search(_A_TERM_SEPARATOR.sub("", said_by(line)))
+    ]
     return found
 
 
 def _pronoun_openers(prose: str, is_opener_reported: bool) -> list[str]:
     """
-    The paragraphs of `prose` whose opening sentence begins with a third-person pronoun.
+    `_pronoun_openers` returns a list of reports on paragraphs opening on a pronoun. `_A_PRONOUN_OPENER` decides which
+    pronouns count.
 
-    The first paragraph opens the fragment. `_A_DEICTIC_OPENER` reads that opening, and `is_opener_reported` says
-    whether it reported one.
+    The first paragraph opens the fragment. `_A_DEICTIC_OPENER` reads that opening. `is_opener_reported` says whether
+    `_A_DEICTIC_OPENER` matched.
     """
     found = []
     for at, paragraph in enumerate(_A_PARAGRAPH_BREAK.split(prose)):
@@ -754,11 +802,12 @@ def _unanchored_runs(said: list[str]) -> list[str]:
 
 def _hung_tail(said: str) -> str | None:
     """
-    The tail `said` hangs off its last comma with no verb, or None.
+    The tail hung off the last comma of `said` with no verb, or None.
 
-    A tail passes where it holds a finite verb or opens on `and`, `which` or `that`. A tail holding `and` or `or` ends a
-    list, and `_MOST_ITEMS` governs the list. The function refuses a short tail of another shape. An appositive has that
-    shape. A trailing absolute has that shape. A verb elided after a conjunction leaves a tail of that shape.
+    A tail passes where it holds a verb `_A_FINITE_VERB` names or opens on a word `_A_SUBORDINATOR` names. A tail
+    holding `and` or `or` ends a list, and `_MOST_ITEMS` governs the list. The function refuses a short tail of another
+    shape. An appositive has that shape. A trailing absolute has that shape. A tail eliding its verb after `and` or `or`
+    still passes.
     """
     found = _A_TAIL.search(said)
     if not found:
@@ -771,6 +820,15 @@ def _hung_tail(said: str) -> str | None:
     if _JOINS_A_LAST_ITEM.search(tail):
         return None
     return tail
+
+
+# A hyphen, a star or a plus with a space on both sides. `collect_fragments.flattened` reads a line opening on such a
+# mark as a bullet. `prose_rules.said_by` has already taken the code spans out of the text this reads.
+_A_SPACED_MARK = re.compile(r"(?<=\S)[ \t][-*+][ \t](?=\S)")
+
+# The hyphen that `- **term** - gloss` writes between a term and its gloss. `prose_rules.said_by` drops a bold term
+# written as a hyphenated name, and a code span becomes `name`. The item reads `- - gloss` or `- name - gloss`.
+_A_TERM_SEPARATOR = re.compile(r"^\s*[-*+][ \t]+(?:name[ \t]+)?-[ \t]")
 
 
 def _over(said: str, is_stating_why: bool = False) -> list[str]:
@@ -833,8 +891,6 @@ def _over(said: str, is_stating_why: bool = False) -> list[str]:
 def is_stating_its_rule(said: str) -> bool:
     """
     Whether `said` is a refusal that ends by naming the rule it enforces.
-
-    A hook's refusal quotes the words its rule bans. The word rules would refuse such a refusal.
     """
     return bool(_STATES_ITS_RULE.search(said))
 
@@ -854,7 +910,7 @@ def refused_sentences(prose: str, is_stating_why: bool = False) -> list[str]:
     """
     The sentences of `prose` a shape rule refuses, with no fault named beside them.
 
-    A caller quotes these at a writer that holds no checker of its own.
+    `prose_rewrite.refusal_for` quotes those sentences in its refusal.
     """
     held = [said.partition("] ")[2] for said in prose_faults(prose, is_stating_why)]
     return [one for one in dict.fromkeys(held) if one]
@@ -864,12 +920,12 @@ def _shape_faults(prose: str, is_stating_why: bool = False) -> list[str]:
     """
     The sentences of `prose` shaped past what a single pass reads.
 
-    `_over` reads only a sentence running past `_FEWEST_WORDS`. A short sentence states a single idea under any
-    punctuation. A nominalized subject counts at any length. `What the checker answers.` drops the actor and falls under
-    `_FEWEST_WORDS`.
+    `_over` reads only a sentence holding at least `_FEWEST_WORDS` words. A short sentence states a single idea under
+    any punctuation. A nominalized subject counts at any length. `What the checker answers.` drops the actor and falls
+    under `_FEWEST_WORDS`.
 
-    `is_stating_why` passes a text whose whole job is a reason. A proposal's `why` field is one. The WHY clause goes
-    unread there, and the rest of the shape rules apply.
+    `is_stating_why` passes a text whose whole job is a reason. `checkers` marks the `why` bullet of a pending proposal
+    that way. The WHY clause goes unread there, and the rest of the shape rules apply.
     """
     whole = said_by(prose)
     found = [

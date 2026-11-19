@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """
-PreToolUse on Edit and Write. This hook refuses a character past ASCII. `a-tracked-file-holds-ascii` is the rule.
+`prose_gate` runs this checker on Edit and Write. This checker refuses a character past ASCII.
+`a-tracked-file-holds-ascii` is the rule.
 
 An em-dash looks like a hyphen. A curly quote looks like an apostrophe. A non-breaking space looks like a space. A
 reader cannot tell them apart. A column count disagrees with the editor. A grep for the ASCII form skips the line.
 
-The hook reads the file the edit would leave. The hook skips a file outside the tree.
+`refusals_for_edit` hands this checker the file the edit would leave. `prose_gate` skips a file outside the tree. This
+checker skips a path that `_MAY_HOLD_ANY_BYTE` declares.
 
-`check_ascii` refuses the same characters in the tree.
+`check_ascii` refuses a pattern of `_MAY_HOLD_ANY_BYTE` that matches no file holding such a character.
 """
 
 import check_ascii
@@ -18,8 +20,8 @@ def refusal_for(text: str, path: str) -> str | None:
     """
     Return the refusal the ASCII rule gives for `text` at `path`. Return None where the characters of `text` pass.
 
-    A caller with prose and no file asks here. `check_ascii` finds the characters, and the gate over the tree finds them
-    the same way. `check_ascii.declaring` names a file holding such a character as content, and `refusal_for` passes
+    A caller holding the text of an edit asks here, before that text lands in its file. `check_ascii` finds a character
+    past ASCII. `check_ascii.declaring` names a file holding a character past ASCII as content, and `refusal_for` passes
     that file.
     """
     if check_ascii.declaring(path):
@@ -28,7 +30,7 @@ def refusal_for(text: str, path: str) -> str | None:
     if not found:
         return None
     return (
-        f"This edit writes a character past ASCII into {path}: {', '.join(found)}.\n\n"
+        f"This edit leaves a character past ASCII in {path}: {', '.join(found)}.\n\n"
         "The character looks like the ASCII it stands in for. A reader cannot tell them apart. A column count "
         "disagrees with the editor, and a grep for the ASCII form skips the line.\n\n"
         "WRITE ASCII. An em-dash comes out as a full stop and a second sentence. A curly quote comes out straight. "

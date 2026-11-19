@@ -1,36 +1,50 @@
 # SPDX-License-Identifier: MIT
 """
-Check that the documents and the prose beside the code describe the tree.
+The readings that tell whether the documents and the prose beside the code describe the tree.
+
+The checkers of `checkers` ask through these readings. This gate holds the declarations those readings excuse.
 
 `a-count-is-answered-for`. A document states no number the tree decides. `_NOT_A_NUMBER_OF_THE_TREE` says which numbers
 may appear. The rule covers `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`, and it covers the prose beside the code too. The
-gate prints the live figures on a run. `prose_rules` says what replaces a number.
+`no_tree_numbers` checker applies the rule. The gate prints the live figures on a run. `prose_rules` says what replaces
+a number.
 
-`a-design-citation-keeps-its-altitude`. A private name cited in `DESIGN.md` repeats the docstring beside that name.
-`private_citation_errors` decides which citations are private.
+`a-design-citation-keeps-its-altitude` of `.claude/conventions.md`. `private_citation_errors` decides which citations
+are private.
+
+`a-design-paragraph-copies-no-cited-prose`. A paragraph of `DESIGN.md` shares no long run of words with the prose of a
+fragment it cites. `copied_prose_errors` finds such a run.
+
+`no-prose-points-at-the-plan`. A file that neither checks the plan nor states its rules names no `PLAN.md`.
+`plan_pointer_errors` finds such a name.
 
 `text-says-what-is`. `DESIGN.md` says what is. `CHANGELOG.md` says what a change did. Neither writes in the tense
-`PLAN.md` owns. This module holds `DESIGN.md` and `CHANGELOG.md` to that rule. A comment beside code may use the tense
-of `PLAN.md`. A comment names a parse position in that tense.
+`PLAN.md` owns. `domain_errors` holds `DESIGN.md` and `CHANGELOG.md` to that rule. `history_errors` refuses a word
+narrating history in `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`.
 
 `every-cited-name-exists` is the half of `every-claim-is-checked-before-it-is-written` a gate can decide. A backticked
-name names something in the tree. This module asks that of `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`, and of the prose
-beside the code. `CHANGELOG.md` may also cite a name that `_NAMES_THE_TREE_NO_LONGER_HOLDS` declares gone. An entry
-naming what a change took away is the entry doing its job.
+name names something in the tree. `citation_refusal` asks that of `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`, and of the
+prose beside the code. `CHANGELOG.md` may also cite a name that `_NAMES_THE_TREE_NO_LONGER_HOLDS` declares gone. An
+entry naming what a change took away is the entry doing its job.
+
+`an-owed-name-lives-while-the-plan-owes-it`. `_unplanned_owed_errors` refuses an owed name `PLAN.md` does not cite.
+`_stale_owed_errors` refuses an owed name the tree holds.
 
 `a-declared-exception-carries-its-reason`. This module holds `_NAMES_THE_TREE_NO_LONGER_HOLDS`, `_NAMES_STILL_OWED` and
-`_NAMES_A_FILE_MAY_CITE_UNANSWERED` in both directions. A declaration the tree has outgrown fails as loudly as a missing
-one.
+`_ABSENT_NAMES_A_FILE_MAY_CITE` in both directions. A declaration the tree has outgrown fails as loudly as a missing
+one. `_stale_elsewhere_errors` holds `_NAMES_FROM_ELSEWHERE` to the texts that cite its names.
 
-A single checker reads a document and a comment alike. `_joined` flattens either to the line that holds the count.
-`_AS_DIGITS` writes a word numeral as digits.
+A single checker reads a document and a comment alike. `_joined` flattens either into a single line, and `_line_of` maps
+an offset in that line back to the line of the text. `_AS_DIGITS` writes a word numeral as digits.
 
 This module builds the stages of the pipeline the documents describe, and measures the counts off those stages. The
-measure reads the grammar and runs the steps. The measure needs no interpreter and no corpus.
+measure reads the grammar and runs the steps. The measure needs no interpreter. It counts the conformance fixtures
+`spec_tests.load` lists.
 """
 
 import ast
 import collections
+import difflib
 import functools
 import io
 import json
@@ -48,27 +62,22 @@ import gate
 import ir
 import ir2spec
 import normalize
+import prose_rules
 import spaces
 import spec_tests
 import wire
 
-# The quantities `DESIGN.md` may state, by the words that name them. `DESIGN.md` states a count of the tree. It
-# describes what is, and there a magnitude is part of the argument.
+# The quantities the gate prints, by the words that name them. `no_tree_numbers.refusal_for` refuses such a count in a
+# document and in a comment alike.
 #
-# `PLAN.md` states none. It says what the tree owes rather than how much of that remains. `CHANGELOG.md` states none
-# either. Nobody can check a count in it once the tree has moved.
+# The gate prints a count as `<number> <name>`. A reader wanting a figure runs the gate.
 #
-# A count reads `<number> <name>` and no more. Such a count reads as prose and greps as data. That shape lets a gate
-# find a count that a reviewer would otherwise hunt for. A number that nobody can find is a number nobody re-derives. A
-# quantity worth stating in this document is worth naming here first.
+# This list does not cover the invariants the gate also counts. An invariant has its own name, and the count goes in
+# front of that name. `_measured_for_the_report` reads such a count off the pipeline rather than off any list. The list
+# below names the quantities no invariant names.
 #
-# This list does not cover what else the document may count. An invariant has its own name, and the count goes in front
-# of that name. `_measured_for_the_report` reads such a count off the pipeline rather than off any list. The list below
-# names the quantities no invariant names.
-#
-# The words come first. The counting below follows them. A quantity's name and its value are separate questions.
-# `review_input` asks the name without the value and prepares a review from it. A caller reaching the name through the
-# value would build the whole pipeline to learn a list.
+# The words come first. The counting below follows them. `_measured_for_the_report` refuses a count whose name this list
+# does not hold.
 _NAMES_A_DOCUMENT_MAY_STATE = (
     "standings",
     "parameters of the grammar",
@@ -111,8 +120,8 @@ def _measured_for_the_report(
     """
     `{the words a quantity is named by: what it actually is}`. The gate prints this mapping, and no document writes it.
 
-    A reader runs the gate to get such a figure. This checks nothing against a document. A document states no number for
-    it to check.
+    A reader runs the gate to get such a figure. This checks nothing against a document. `no_tree_numbers.refusal_for`
+    refuses a count in a document.
     """
     invariants = normalize.invariants_by_name()
     # What `verify-spec` compares against the official grammar, read off `ir2spec`'s own sets. The indicator productions
@@ -155,17 +164,16 @@ def _measured_for_the_report(
     return counts
 
 
-# The numbers a text in this project may write. A count of the tree is not among them. The list holds the marker of an
-# ordered list, a spec version, and a milestone. It holds an item of the order of work, a section of this document, and
-# an effort estimate. It holds a bound the grammar states, a test-suite case, and a value the code compares against.
+# The numbers a text in this project may write. A count of the tree is not among them. The list holds a spec version and
+# a milestone. It holds an item of the order of work, a section of this document, and an effort estimate. It holds a
+# bound the grammar states, a test-suite case, and a value the code compares against.
 #
 # The list names what may appear. The list does not name what may not appear. A count somebody writes then fails here. A
 # wording nobody thought of does not excuse that count. A number in this list depends on nothing in the tree. The gate
 # refuses a number that does depend on the tree, in a document and in a comment alike. A measurement copied into prose
 # is a copy nobody re-measures.
 #
-# The documents and the prose beside the code share this list. A list per document drifted apart. A changelog allowed a
-# bound that a design refused, and neither could state a reason.
+# The documents and the prose beside the code share this list.
 _NOT_A_NUMBER_OF_THE_TREE = re.compile(
     # The specification, the vendored grammar, and what either of them numbers.
     r"YAML 1\.[0-9]|libyaml/1\.[0-9]|spec-1\.[0-9]|\b1\.[0-9] quirks|section [0-9.]+|\brules? [0-9]+(?:/[0-9]+)?"
@@ -175,8 +183,8 @@ _NOT_A_NUMBER_OF_THE_TREE = re.compile(
     # nothing.
     r"|\(max\)[: ]+[0-9]+|\bcolumn [0-9]+|[0-9]+ columns?|\bindentation of [0-9]+|[0-9]+ or more|[0-9]+ or -[0-9]"
     r"|UTF-[0-9]+"
-    # A width or a codepoint. The pattern also takes a literal, and a version of something outside this tree.
-    # `zero-width` names a guard that reads without moving.
+    # A width or a codepoint. The pattern also takes a literal, and a version of something outside this tree. zero-width
+    # names a guard that reads without moving. `ir.LookGuard` is such a guard.
     r"|(?:zero|0)-width|[0-9]+-bit|[0-9]+[ -]?(?:bits?|bytes?|MB|KB)|\b1024\b|U\+[0-9A-F]{4}|0x[0-9A-Fa-f]+|RFC [0-9]+"
     r"|Python [0-9]+|[0-9]+ hexadecimal digits|\w+\([0-9]\)|\\0"
     # The numbers `decoder_tables.h` writes beside a key. A quoted literal is a character, a bracketed number is the
@@ -197,12 +205,13 @@ _NOT_A_NUMBER_OF_THE_TREE = re.compile(
 )
 
 
-# A line whose numbers are no count of anything. That is a table. Its leading column is a milestone. This reads a
-# heading like any other line. A count stated in a heading counts the tree as much as a count stated in a sentence.
+# A row of a markdown table. `_joined` drops such a row before the count patterns read it. `_joined` keeps a heading,
+# and the count patterns read it like any other line. A count stated in a heading counts the tree as much as a count
+# stated in a sentence.
 _A_TABLE_ROW = re.compile(r"^\s*\|")
 
-# The fence around the YAML a document may open with. An agent definition names itself and its tools there. Those fields
-# are data.
+# The fence around the YAML a document may open with. An agent definition names itself and its tools there, as
+# https://code.claude.com/docs/en/sub-agents says. Those fields are data.
 _A_FRONT_MATTER = re.compile(r"^---\s*$")
 
 # The digits a numeral word comes to. `_joined` writes them over the word in place. The offsets hold, and a single
@@ -283,28 +292,34 @@ _NARRATES_ITS_OWN_HISTORY = re.compile(
 
 
 # A check looks for the backticked names of `DESIGN.md` and `PLAN.md` in the places below. A name in backticks is a
-# citation. A citation nothing answers describes a thing the tree lacks.
+# citation. A citation of a name the tree lacks describes a thing that is not there.
 #
-# The check skips `CHANGELOG.md`. `CHANGELOG.md` names things a change removed. `OpenMatch`, `ColumnLtGuard` and
-# `YS_CODE_UNPARSED` are such names.
+# The check reads `CHANGELOG.md` too. `CHANGELOG.md` may also cite a name a change removed.
+# `_NAMES_THE_TREE_NO_LONGER_HOLDS` declares such names, `CloseMatch` and `ColumnLeGuard` among them.
 #
-# The rosters come from `gate`. `an-enumeration-of-the-tree-lives-in-gate` refuses a second glob here.
+# The rosters come from `gate`. `an-enumeration-of-the-tree-lives-in-gate` of `.claude/conventions.md` refuses a second
+# glob here.
 
 # The suffixes that name a category. A check reads these suffixes to resolve the shorthand the code and the documents
-# share. Both write `PushCode` for `PushCodeAction` and `Look` for `LookGuard`. A citation is no worse for using the
-# short form the source uses.
+# share. `lower-tokens` writes `PushCodeAction` in full. `normalize._split_consumes_into_gates` writes `Look` for
+# `LookGuard`. A citation is no worse for using the short form the source uses.
 _A_CATEGORY = re.compile(r"(Action|Guard|Tree|Wrapper|Value|Set|State|Part|Call|Prod)$")
 
-# Names that name something outside this tree. They are the ABI libyeast is a drop-in for, and a build shape another
-# language writes. They are also the debug view vendored beside the reference parser, and the tools the review workflow
-# gives a reader. Last, they are the external programs the vet targets run.
+# Names that name something outside this tree. `load_all` names the ABI that the milestone `Milestone 05 - ABI layer` of
+# `PLAN.md` plans. `next_token` and `cdylib` are names the milestone `Milestone 04 - C codegen` of `PLAN.md` uses. The
+# milestone `Milestone 04 - C codegen` of `PLAN.md` plans to migrate `yaml2html` into the package. That milestone
+# describes `yaml2html` as a C program that renders the yeast stream as colorized HTML. `Grep` and `Glob` are among the
+# tools the review workflow gives a reader in `.claude/agents/reader.md`. `clang-tidy` and `clang-format` are the
+# external programs the vet targets of `Makefile` run. `LANG` names the locale variable Python decodes a file by, as
+# https://docs.python.org/3/library/functions.html#open says. `BASH_ENV` names the startup file a non-interactive bash
+# sources, as https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html says.
 _NAMES_FROM_ELSEWHERE = frozenset(
-    {"cdylib", "load_all", "next_token", "yaml2html", "Grep", "Glob", "clang-tidy", "clang-format"}
+    {"cdylib", "load_all", "next_token", "yaml2html", "Grep", "Glob", "clang-tidy", "clang-format", "LANG", "BASH_ENV"}
 )
 
-# The hyphenated names `PLAN.md` gives to work still owed. The tree holds none of them. The check beside this list
-# refuses a sentence saying such a thing already runs. A name earns its place here where the plan describes the work as
-# unwritten. A name comes off the day the pipeline builds the thing, and the pipeline then defines the name.
+# The hyphenated names of work `PLAN.md` still owes. The tree holds none of them. `_stale_owed_errors` refuses a name
+# here that the tree holds. `_unplanned_owed_errors` refuses a name here that `PLAN.md` does not cite.
+# `_dangling_step_errors` passes a citation of a name here in `PLAN.md` and refuses it in any other text.
 _NAMES_STILL_OWED = frozenset(
     {
         "distribute-empties",
@@ -319,17 +334,31 @@ _NAMES_STILL_OWED = frozenset(
 
 def _stale_owed_errors(named: Container[str], known: Container[str]) -> list[str]:
     """
-    The names the tree holds though `_NAMES_STILL_OWED` declares them unbuilt.
+    The faults naming the names the tree holds though `_NAMES_STILL_OWED` declares them unbuilt.
 
-    This is the other direction of the rule `_NAMES_THE_TREE_NO_LONGER_HOLDS` states. A name here excuses a citation of
-    something that does not exist. The day the pipeline builds the name, that excuse hides the citation from the check.
-    The name reads as owed for as long as nobody notices. The list's comment says a name `comes off the day it is
-    built`. This check says the day has come.
+    `_stale_gone_errors` makes the same check of `_NAMES_THE_TREE_NO_LONGER_HOLDS`. The rule
+    `an-owed-name-lives-while-the-plan-owes-it` says a name `comes off the day the pipeline builds the thing`.
     """
     return [
         f"`NAMES_STILL_OWED` declares `{name}`, and the tree holds it"
         for name in sorted(_NAMES_STILL_OWED)
         if name in named or name.replace("-", "_") in known
+    ]
+
+
+def _unplanned_owed_errors(plan: _Lines) -> list[str]:
+    """
+    The errors for the names `_NAMES_STILL_OWED` declares that `plan` does not cite. `plan` holds the lines of
+    `PLAN.md`.
+
+    A name stays owed while the plan holds its work. A plan that drops the work leaves the name excusing a citation of
+    something nobody will build.
+    """
+    said = "\n".join(line for _number, line in plan)
+    return [
+        f"`NAMES_STILL_OWED` declares `{name}`, and `PLAN.md` does not cite it"
+        for name in sorted(_NAMES_STILL_OWED)
+        if f"`{name}`" not in said
     ]
 
 
@@ -357,7 +386,8 @@ def _file_names() -> set[str]:
 @functools.cache
 def _named_in_the_tree() -> frozenset[str]:
     """
-    The names the tree writes, with the category suffixes stripped. The shorthand a source writes then resolves too.
+    The names the tree writes, both as written and with the category suffixes stripped. The shorthand a source writes
+    then resolves too.
     """
     known = set(_file_names())
     reached = (
@@ -377,13 +407,13 @@ def _named_in_the_tree() -> frozenset[str]:
 def named_by_the_pipeline(stages: Sequence[tuple[str, dict[str, ir.Prod]]]) -> set[str]:
     """
     The hyphenated names a text may cite. A phase, a step and an invariant are such names. A production of any stage is
-    another. The values a parameter takes and the codes of the wire go in as well.
+    another. The values of the context parameter `c` and the codes of the wire go in as well. So do the names the
+    process uses.
 
     The grammar writes a parameter's value hyphenated, and the prose cites it that way. `annotated2ir` names the context
     `block-in`.
 
-    A text may cite a production that a step mints. `monomorphize` mints `b-l-folded_c_flow-in`, and `PLAN.md` reasons
-    over that production.
+    A text may cite a production that a step mints. `monomorphize` mints `b-l-folded_c_flow-in`.
     """
     named = {step.name for step in normalize.STEPS}
     named |= set(normalize.PHASE_NAMES)
@@ -393,8 +423,8 @@ def named_by_the_pipeline(stages: Sequence[tuple[str, dict[str, ir.Prod]]]) -> s
     return named | set(wire.CODE_CHAR) | set(annotated2ir.CONTEXTS) | _named_by_the_process()
 
 
-# The file holding the names `named_by_the_pipeline` answers with. `write_cited_names` writes it, and `make regen` runs
-# that script.
+# The file holding the names `named_by_the_pipeline` answers with. `write_cited_names` writes it, and the `regen` target
+# of `Makefile` runs that script.
 CITED_NAMES = os.path.join("generator", "cited_names.json")
 
 
@@ -411,7 +441,10 @@ def _cited_names() -> frozenset[str]:
 
 
 def _stale_cited_names_errors(stages: Sequence[tuple[str, dict[str, ir.Prod]]]) -> list[str]:
-    """The ways `CITED_NAMES` disagrees with the pipeline. A disagreement means `make regen` has not run."""
+    """
+    The ways `CITED_NAMES` disagrees with the pipeline. A disagreement means the `regen` target of `Makefile` has not
+    run.
+    """
     live = named_by_the_pipeline(stages)
     held = _cited_names()
     return [
@@ -423,12 +456,12 @@ def _stale_cited_names_errors(stages: Sequence[tuple[str, dict[str, ir.Prod]]]) 
 
 def _named_by_the_process() -> set[str]:
     """
-    The hyphenated names the process uses. Such a name is a rule of `.claude/conventions.md`, a hook that enforces a
-    rule, or a workflow.
+    The names the process uses. Such a name is a rule of `.claude/conventions.md`, the stem of a file under
+    `.claude/hooks`, or a workflow.
 
     The code that enforces a rule cites the rule by name. `check_conventions` names the rules it decides. A hook names
-    the rule it enforces. A workflow takes the name its own `meta` declares. Such a name is no step and no production.
-    It names something a reader can open.
+    the rule it enforces. A workflow file contributes the values of its single-quoted `name:` fields.
+    `.claude/workflows/pre-commit-review.js` declares `pre-commit-review` in its `meta`.
     """
     held = set()
     for path in gate.hooks():
@@ -439,15 +472,16 @@ def _named_by_the_process() -> set[str]:
     return held
 
 
-# A hyphenated name, in the shape a citation takes. A segment past the first holds a letter. That letter tells a name
-# from the arithmetic a comment writes the same way. `n-1` is a column and not a count to justify.
+# A hyphenated name, in the shape a citation takes. A segment past the first holds a letter or a `+`. That character
+# tells a name from the arithmetic a comment writes the same way. `n-1` is a column and not a count to justify.
 #
 # The first segment may be a single letter, as it is in a production of the grammar. `c-printable` and `s-white` begin
 # with a letter. So do `l-yaml-stream` and `b-break`. A rule wanting a longer first segment would be blind to the
 # productions the documents cite.
 #
 # A segment may hold an underscore. That is how a monomorphized copy writes the arguments moved into its name, as in
-# `b-l-folded_c_flow-in`. The backticked-identifier rule does not match such a name either.
+# `b-l-folded_c_flow-in`. `ir.specialized` writes such a name. The backticked-identifier rule does not match such a name
+# either.
 _A_HYPHENATED_NAME = re.compile(r"`([a-z][a-z0-9_]*(?:-[a-z0-9_+]*[a-z+][a-z0-9_+]*)+)`")
 
 _A_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")  # An identifier, in the shape the tree writes.
@@ -455,8 +489,8 @@ _A_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")  # An identifier, in the shape t
 # A name the `Makefile` declares. That is a variable or a target at a line's start.
 _A_MAKE_DECLARATION = re.compile(r"^([A-Za-z0-9_./%-]+)\s*(?::(?!=)|[:?+]?=)", re.MULTILINE)
 
-# A name as a text cites it. The name is in backticks, and has a dot where it names a member of something. The dot tells
-# a citation from an identifier.
+# A name as a text cites it. The name is in backticks, and has a dot where it names a member of something. The pattern
+# matches a backticked name with or without a dot.
 _A_CITED_NAME = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
 
 
@@ -464,10 +498,9 @@ def private_citation_errors(where: str, lines: _Lines) -> list[str]:
     """
     The places a text cites a name its module keeps to itself.
 
-    The function is public. The `altitude` hook calls the function on a sentence as the writer writes that sentence.
+    The function is public. The `altitude` hook calls the function on the prose of an edit to `DESIGN.md`.
 
-    The function looks for a leading underscore on the name or on a part of a dotted name. The source writes that
-    underscore to say a reader outside the module has no business with the name.
+    The function looks for a leading underscore on the name or on a part of a dotted name.
     """
     faults = []
     for number, line in lines:
@@ -477,9 +510,97 @@ def private_citation_errors(where: str, lines: _Lines) -> list[str]:
     return faults
 
 
-def _does_answer(known: Container[str], cited: str) -> bool:
+# The longest run of words `DESIGN.md` may share with the prose of a name it cites. A longer run copies that prose.
+_MOST_SHARED_WORDS = 7
+
+# A word, as the copy check compares it.
+_A_WORD = re.compile(r"[a-z0-9_']+")
+
+
+def _word_runs(prose: str) -> list[list[str]]:
+    """The runs of lowercased words in `prose`. A code span ends a run. A web address ends a run too."""
+    return [_A_WORD.findall(run.lower()) for span in _A_CODE_SPAN.split(prose) for run in prose_rules.A_URL.split(span)]
+
+
+def _longest_shared(first: list[list[str]], second: list[list[str]]) -> list[str]:
+    """The longest run of words that a run of `first` and a run of `second` both hold."""
+    best: list[str] = []
+    for one in first:
+        for other in second:
+            found = difflib.SequenceMatcher(None, one, other, autojunk=False).find_longest_match()
+            if found.size > len(best):
+                best = one[found.a : found.a + found.size]
+    return best
+
+
+def copied_prose_errors(text: str, cited_prose: Mapping[str, Sequence[tuple[str, str]]]) -> list[str]:
     """
-    Whether `known` is the name `cited` writes. The private form counts as well.
+    The faults of the fragments reached through the names `text` cites. Such a fragment faults where its prose shares a
+    run of more than `_MOST_SHARED_WORDS` words with `text`. A fault holds the fragment's key and the longest shared
+    run. `cited_prose` maps a name to the fragments the name reaches, as a key and a prose apiece.
+
+    Public. The `design_copies` checker reads a `DESIGN.md` text through here.
+    """
+    runs = _word_runs(text)
+    faults = []
+    for cited in sorted(set(_A_CITED_NAME.findall(text))):
+        for key, prose in cited_prose.get(cited, ()):
+            shared = _longest_shared(runs, _word_runs(prose))
+            if len(shared) > _MOST_SHARED_WORDS:
+                faults.append(f"`{key}`: {' '.join(shared)!r}")
+    return faults
+
+
+# A name of the plan document.
+_A_PLAN_NAME = re.compile(r"\bPLAN(?:\.md)?\b")
+
+# The paths that may name the plan document. `README.md` links the plan in its opening note. `CHANGELOG.md` is history.
+# `PLAN.md` is the plan. The claim store `.claude/prose-dependencies.json` quotes the claims it holds.
+# `tests/hooks.json` holds the edits a probe of the plan checker writes. `generator/claim_state.py` keeps the plan out
+# of the claim pass. `generator/review_input.py` hands a reviewer the diff of the plan. `.claude/conventions.md` and
+# `.claude/workflows/pre-commit-review.js` state the rules the plan keeps to. So do the agent definitions, where
+# `write_agent_prompts` copies the conventions. `no-prose-points-at-the-plan` is such a rule. `document_rules`, this
+# module and `prose_rules` check the plan. The `Makefile` names the plan among its `DOCUMENTS`. A path ending in `/`
+# names the files under it.
+_MAY_NAME_THE_PLAN = (
+    "README.md",
+    "CHANGELOG.md",
+    "PLAN.md",
+    "Makefile",
+    ".claude/prose-dependencies.json",
+    ".claude/agents/",
+    ".claude/conventions.md",
+    ".claude/hooks/document_rules.py",
+    ".claude/workflows/pre-commit-review.js",
+    "generator/check_documents.py",
+    "generator/claim_state.py",
+    "generator/prose_rules.py",
+    "generator/review_input.py",
+    "tests/hooks.json",
+)
+
+
+def _may_name_the_plan(path: str) -> bool:
+    """Whether `_MAY_NAME_THE_PLAN` names `path`, or a directory above it."""
+    return any(path == one or (one.endswith("/") and path.startswith(one)) for one in _MAY_NAME_THE_PLAN)
+
+
+def plan_pointer_errors(where: str, lines: _Lines) -> list[str]:
+    """
+    The places a text names the plan document outside the paths `_may_name_the_plan` allows.
+
+    `no-prose-points-at-the-plan` of `.claude/conventions.md` is the rule.
+
+    Public. The `plan_pointers` checker reads a text through here.
+    """
+    if _may_name_the_plan(where):
+        return []
+    return [f"{where}:{number} names the plan" for number, line in lines if _A_PLAN_NAME.search(line)]
+
+
+def _is_known(known: Container[str], cited: str) -> bool:
+    """
+    Whether `known` holds the name `cited` writes. The private form counts as well.
 
     The tree writes `_lowered_once`, and prose cites `lowered_once` for the same thing. The underscore goes on the last
     part of a dotted name.
@@ -496,22 +617,24 @@ def _dangling_step_errors(
     """
     The places a text cites a hyphenated name that is no step, no invariant and no production.
 
-    A name for work still owed is fine. A sentence claiming the thing already runs is a fault. Whether the tree holds
-    the name tells the pair apart.
+    `_NAMES_STILL_OWED` lists the names of work still owed. `PLAN.md` may cite such a name. Any other text says what the
+    tree holds, and this refuses such a name there.
 
     A name whose underscore form the tree writes counts too. The same transformation is a step called
     `lower-continuations-into-conflicts` and a function called `_lower_continuations_into_conflicts`. Prose citing
     either is citing the thing that exists.
 
-    A `verify-`, `vet-` or `gh-` name is no citation of this kind, and this passes it. Such a name is a `Makefile`
-    target, and the `Makefile` defines it. `_readme_gate_errors` holds `README.md`'s roster to the gates a target runs.
+    A `verify-`, `vet-` or `gh-` name is no citation of this kind, and this passes it. The `Makefile` names some of its
+    targets with those prefixes. This checks no such name against the `Makefile`. `_readme_gate_errors` holds
+    `README.md`'s roster to the gates a target runs.
     """
     faults = []
     for number, line in lines:
         for cited in _A_HYPHENATED_NAME.findall(line):
-            if cited in named or cited in _NAMES_STILL_OWED or cited.startswith(("verify-", "vet-", "gh-")):
+            is_owed_in_the_plan = cited in _NAMES_STILL_OWED and where == "PLAN.md"
+            if cited in named or is_owed_in_the_plan or cited.startswith(("verify-", "vet-", "gh-")):
                 continue
-            if _does_answer(known, cited.replace("-", "_")) or cited in gone:
+            if _is_known(known, cited.replace("-", "_")) or cited in gone:
                 continue
             # A name from outside names nothing here, under any check that reaches it. `_A_NAME` splits a hyphenated
             # name. The tree cannot be said to write `clang-tidy` however often a recipe runs it.
@@ -545,11 +668,11 @@ def _dangling_name_errors(
         for cited in _A_CITED_NAME.findall(line):
             if not is_a_bare_word_a_citation and "_" not in cited and "." not in cited:
                 continue
-            if cited in _NAMES_FROM_ELSEWHERE or _does_answer(known, cited) or cited in gone:
+            if cited in _NAMES_FROM_ELSEWHERE or _is_known(known, cited) or cited in gone:
                 continue
-            # A dotted citation is answered by each part of it. Held to the first alone, a citation naming an absent
-            # member resolves against the module it hangs off.
-            if all(_does_answer(known, part) for part in cited.split(".")):
+            # A dotted citation holds where the tree knows each part of it. A check of the first part alone would pass a
+            # citation of an absent member of a module the tree has.
+            if all(_is_known(known, part) for part in cited.split(".")):
                 continue
             faults.append(f"{where}:{number} cites `{cited}`. that name names nothing in the tree.")
     return faults
@@ -559,19 +682,15 @@ def _dangling_name_errors(
 # took away is the point of an entry. A citation naming nothing is correct in `CHANGELOG.md`. The same citation in
 # `DESIGN.md` or `PLAN.md` is a fault.
 #
-# The list is for an entry of another kind. Such an entry describes the mechanism as it is and names that mechanism
-# wrongly. Such an entry reads as history, and nobody checks it. Somebody wrote `Step`'s fields here under a name the
-# type did not have. The invariant report gave a name that named nothing. The claims the pipeline makes sat under
-# invariant names that named nothing. Such names looked exactly like the legitimate citations around them.
-#
-# So this list declares the names an entry writes. The check refuses a name the list leaves out. The tree may hold a
-# name of this list again. The check reports such a name as a stale declaration, as it reports the other exemptions of
-# the tree.
+# This list declares the names an entry writes. The check refuses a name the list leaves out. The tree may hold a name
+# of this list again. The check reports such a name as a stale declaration. `_stale_owed_errors` does the same for
+# `_NAMES_STILL_OWED`. `_stale_excuse_errors` does it for `_ABSENT_NAMES_A_FILE_MAY_CITE`. `_stale_elsewhere_errors`
+# reports a name of `_NAMES_FROM_ELSEWHERE` that no text cites.
 _NAMES_THE_TREE_NO_LONGER_HOLDS = frozenset({
-    "ALWAYS_CONSUMES", "CRLF", "CloseMatch", "ColumnLeGuard", "ConsumeCountedSpan", "ConsumeLiteralAction",
-    "ConsumePeekedAction",
+    "ALWAYS_CONSUMES", "CRLF", "CloseMatch", "ColumnLeGuard", "ColumnLtGuard", "ConsumeCountedSpan",
+    "ConsumeLiteralAction", "ConsumePeekedAction", "OpenMatch", "YS_CODE_UNPARSED",
     "EndMustConsumeGuard", "Invariant.__call__", "LiteralPeekGuard", "NEVER", "PEEK_OUTPUT", "Region",
-    "TAKES_CHARACTERS", "Verdict", "licensed",
+    "TAKES_CHARACTERS", "Verdict", "barrier", "critic.js", "licensed",
     "WRITES_NOTHING", "ZERO_WIDTH", "_EVERY_CHARACTER", "_ahead_of", "_ahead_of_any", "_ahead_of_gate",
     "_caller_continuation", "_does_scan_read", "_entering_guards", "_narrowed_ahead", "_spans_meeting",
     "bound-exclusions", "check_determinize", "check_determinize.py", "check_provisional", "check_provisional.py",
@@ -596,19 +715,20 @@ _NAMES_THE_TREE_NO_LONGER_HOLDS = frozenset({
 
 def _defined_in_the_tree() -> set[str]:
     """
-    The names `generator/` and `scripts/` define at their top level, and the files the tree holds.
+    The names `generator/` and `scripts/` define at their top level, the identifiers the C writes, and the files the
+    tree holds.
 
     A caller asks this instead of `_named_in_the_tree` where the question is whether something *exists* rather than
     whether the tree writes it anywhere. `_named_in_the_tree` counts a name written in a string or a comment. That is
     right for a citation, where the tree writes the name. It is wrong here. `_NAMES_THE_TREE_NO_LONGER_HOLDS` is itself
-    a list of names written as strings. The permissive checker answers that the tree still holds a name that list
+    a list of names written as strings. `_named_in_the_tree` would answer that the tree still holds a name that list
     declares gone.
 
     This reads the C too, and reads it differently. The C gives the identifiers its code writes, with the comments and
     the strings taken out. A C name has no top level to walk the way a module's does. The question is whether the tree
-    still holds the name at all. The code writing it answers that. The C may go on defining a symbol the list declares
-    gone. Without the C, no check reports that declaration stale. The same name in `DESIGN.md` resolves against `src/`
-    perfectly well.
+    still holds the name at all. The C code writing the name answers that question. The C may go on defining a symbol
+    the list declares gone. Without the C, no check reports that declaration stale. The same name in `DESIGN.md`
+    resolves against `src/` perfectly well.
     """
     return set(_file_names()) | _named_by_the_c() | gate.names_defined_in_modules()
 
@@ -630,12 +750,13 @@ def _named_by_the_c() -> set[str]:
 @functools.cache
 def _named_by_the_code() -> frozenset[str]:
     """
-    The names the tree's code writes, with the prose beside that code left out. Those are the Python's `NAME` tokens,
-    the C's identifiers, and the files the tree holds.
+    The names the tree's code writes, with the prose beside that code left out. Those are the Python's `NAME` tokens and
+    its strings shaped like a name, the C's identifiers, and the files the tree holds. The message codes count too. So
+    do the variables and the targets the `Makefile` declares. So do the names in the code of `CMakeLists.txt`.
 
-    These answer a citation written beside the code. `_named_in_the_tree` cannot answer it. That checker counts a name
-    written in a comment. A docstring citing a name is then its own witness that the name exists. A rename leaving a
-    name behind reads exactly like a rename that left none.
+    These are the names a citation beside the code may name. `_named_in_the_tree` is the wrong list for such a citation.
+    That checker counts a name written in a comment. A docstring citing a name is then its own witness that the name
+    exists. A rename leaving a name behind reads exactly like a rename that left none.
 
     `_defined_in_the_tree` is too narrow the other way. Prose beside the code cites a parameter, a method and an
     attribute as readily as a top-level definition. A module binds no such name. This function admits such a name and
@@ -644,10 +765,14 @@ def _named_by_the_code() -> frozenset[str]:
     # A name a declaration says names nothing. Each is written as a string in the declaration itself. The harvest below
     # would take that string as the answer, and this check would go blind to the name everywhere.
     declared = set(_NAMES_THE_TREE_NO_LONGER_HOLDS) | set(_NAMES_STILL_OWED)
-    declared |= {one for names in _NAMES_A_FILE_MAY_CITE_UNANSWERED.values() for one in names}
+    declared |= {one for names in _ABSENT_NAMES_A_FILE_MAY_CITE.values() for one in names}
     found = set(_file_names()) | _named_by_the_c() | set(check_messages.codes())
     # The names the `Makefile` declares. A recipe's prose cites a variable there the way it cites a function.
     found |= set(_A_MAKE_DECLARATION.findall(pathlib.Path(gate.TREE, "Makefile").read_text(encoding="utf-8")))
+    # The names `CMakeLists.txt` writes outside its comments. A comment cites a CMake property the way it cites a
+    # function.
+    cmake = pathlib.Path(gate.TREE, "CMakeLists.txt").read_text(encoding="utf-8").splitlines()
+    found |= {name for line in cmake if not _A_HASH_COMMENT.match(line) for name in _A_NAME.findall(line)}
     for path in gate.modules() + gate.hook_modules():
         found |= names_written_by(path.read_text(encoding="utf-8"))
     return frozenset(found)
@@ -660,11 +785,11 @@ def names_written_by(source: str) -> set[str]:
     A declaration writes a gone name as a string. The harvest drops that string. The check then still sees the name as
     gone.
 
-    The harvest keeps a string shaped like a name. `before_mark` is a region a retype names. `text` is a code a token
-    holds.
+    The harvest keeps a string shaped like a name. `before_mark` is a region `interpreter.Emitter._region` names. `text`
+    is a code `wire.CODE_CHAR` names.
     """
     declared = set(_NAMES_THE_TREE_NO_LONGER_HOLDS) | set(_NAMES_STILL_OWED)
-    declared |= {one for names in _NAMES_A_FILE_MAY_CITE_UNANSWERED.values() for one in names}
+    declared |= {one for names in _ABSENT_NAMES_A_FILE_MAY_CITE.values() for one in names}
     found = {
         held.string for held in tokenize.generate_tokens(io.StringIO(source).readline) if held.type == tokenize.NAME
     }
@@ -687,8 +812,8 @@ def _stale_gone_errors(lines: _Lines, named: Container[str]) -> list[str]:
     for _number, line in lines:
         cited |= set(_A_CITED_NAME.findall(line))
         cited |= set(_A_HYPHENATED_NAME.findall(line))
-    # A dotted name is held again where each part of it is, which is the checker its citation is answered by. The first
-    # part alone says the module is there and nothing about the member. A member the tree lost read as held.
+    # A dotted name is checked once more for each part of it. The first part alone says the module is there and nothing
+    # about the member. A member the tree lost read as held.
     faults = [
         f"`NAMES_THE_TREE_NO_LONGER_HOLDS` declares `{name}`, and the tree still holds it"
         for name in sorted(_NAMES_THE_TREE_NO_LONGER_HOLDS)
@@ -708,11 +833,11 @@ def _document_lines(document: str) -> _Lines:
 
 def _code_prose() -> dict[str, _Lines]:
     """
-    The prose beside the code, keyed by the file that holds it. That is the comments and docstrings of `generator/` and
-    `scripts/`. `_c_prose` adds the comments of the C at the end.
+    The prose beside the code, keyed by the file that holds it. That is the comments and docstrings of `generator/`,
+    `scripts/` and `.claude/hooks/`. `_c_prose` adds the comments of the C, and `_marked_prose` then adds those of the
+    shell scripts and the workflows.
 
-    A comment and a docstring are one thing here. Anything outside them is code, where a number is a literal and a
-    hyphenated string reads as grammar text rather than as a citation.
+    A comment and a docstring are one thing here.
 
     This takes the comments from `tokenize` rather than from the lines that start with a `#`. A comment sharing its line
     with code then reads like any other. A trailing comment contributes its own text and not the code in front.
@@ -740,10 +865,10 @@ def _code_prose() -> dict[str, _Lines]:
     return found
 
 
-# The files the rest of the project's prose lives in, by the marker its comments use. `is_prose_of_the_project` names
-# the suffixes of these files, and the write-time hooks read those files.
+# A comment line opened by `#`, with the text after the marker captured. `_marked_prose` reads the comments of the shell
+# scripts by it. `_named_by_the_code` skips the comments of `CMakeLists.txt` by it.
 _A_HASH_COMMENT = re.compile(r"^\s*#\s?(.*)$")
-_A_SLASH_COMMENT = re.compile(r"^\s*//\s?(.*)$")  # The marker C and the workflows use.
+_A_SLASH_COMMENT = re.compile(r"^\s*//\s?(.*)$")  # The marker the workflows use.
 
 
 def _marked_prose() -> dict[str, _Lines]:
@@ -767,11 +892,12 @@ _A_C_COMMENT = re.compile(r"//(?P<line>[^\n]*)|/\*(?P<block>.*?)\*/", re.DOTALL)
 
 def _strings_blanked(source: str) -> str:
     """
-    `source` with the string literals blanked to spaces of their own length. Offsets and lines are unmoved.
+    `_strings_blanked` replaces double-quoted spans in `source` by spaces of equal length. Offsets stay put. A newline
+    inside a match becomes a space.
 
-    A literal's contents are data rather than code or prose. A `//` in a literal is no comment. An identifier in a
-    literal is a name the C mentions rather than a name it writes. Blanking is enough here and cheaper than a C lexer. A
-    blanked literal leaves neither behind.
+    A literal holds data rather than code or prose. A `//` in a literal is no comment. An identifier in a literal is a
+    name the C mentions rather than writes. Blanking costs less than a C lexer and is enough here. A blanked literal
+    holds no comment and no name.
     """
     return re.sub(r'"(?:\\.|[^"\\])*"', lambda found: " " * len(found.group(0)), source)
 
@@ -803,22 +929,18 @@ def _c_prose() -> dict[str, _Lines]:
 # The names a file's prose may cite that name nothing in the tree, keyed by the file writing them. An entry says why
 # below.
 #
-# The scope is the file rather than the name. Elsewhere the name is exactly what this hunts. Exempting `speculate-folds`
-# outright would blind the check to a docstring citing it as a stage of the pipeline. This check reports such a
-# docstring as a fault. A document may cite none of these. `DESIGN` and `PLAN` describe the tree the project holds.
-_NAMES_A_FILE_MAY_CITE_UNANSWERED = {
-    # Names this file cites as gone. Such a name outlived the code holding it. Naming such a name is how the prose
-    # beside a check says what the check is about. `zero-width` names a guard rather than a step.
+# The scope is the file rather than the name. In any other file the check hunts exactly that name. Exempting
+# `speculate-folds` outright would blind the check to a docstring citing it as a stage of the pipeline. This check
+# reports such a docstring as a fault. A document may cite none of these.
+_ABSENT_NAMES_A_FILE_MAY_CITE = {
+    # Names this file cites as gone. The comment above this list cites `speculate-folds` as its example.
     "check_documents.py": frozenset({
-        "speculate-folds", "YS_CODE_UNPARSED", "zero-width",
+        "speculate-folds",
     }),  # fmt: skip
-    # Names a worked example invents for the shape it shows. `Namer` shows what minting a helper for `foo` comes to, and
-    # `_set_name` shows what that transformation makes of a set's name.
+    # Names a worked example invents for the shape it shows. `_Namer` shows what minting a helper for `foo` comes to,
+    # and `_set_name` shows what that transformation makes of a set's name.
     "normalize.py": frozenset({"foo_1", "foo_2", "foo_3", "foo_4", "foo_3_1"}),
     "grammar2decoder.py": frozenset({"NS_PLAIN_SAFE_IN"}),
-    # The header the state dispatcher goes into. `PLAN.md` owes that header, and the generator writes it the day the
-    # dispatcher lands.
-    "parser.h": frozenset({"parser_tables.h"}),
     # A name a worked example invents for the suffixes a monomorphic copy and a minted helper take.
     "check_grammar_coverage.py": frozenset({"foo_c_flow-in_1"}),
 }
@@ -826,8 +948,9 @@ _NAMES_A_FILE_MAY_CITE_UNANSWERED = {
 
 # A numeral, written in digits or in words. `_AS_DIGITS` gives the words.
 #
-# `_NOT_A_NUMBER_OF_THE_TREE` lists what may pass, and this refuses a numeral outside that list. A determiner reads as a
-# numeral here. `one way of a choice` and `both halves` go in the list with their reason.
+# `_NOT_A_NUMBER_OF_THE_TREE` lists what may pass. `_numbers_of_the_tree` blanks what that list matches, and this
+# pattern then finds the numerals left. A determiner reads as a numeral here. `one of` and `the one` go in the list with
+# their reason.
 _A_NUMBER = re.compile(r"\b(?:[0-9]+|" + "|".join(_AS_DIGITS) + r")\b", re.IGNORECASE)
 
 
@@ -835,10 +958,11 @@ def is_prose_of_the_project(path: str) -> bool:
     """
     Whether the rules on prose hold for `path`.
 
-    A path outside the tree holds prose of somebody else. `gate.NOT_OURS` names the data of this tree, and `gate.UNREAD`
-    names the file the checkers leave alone. Any other path is prose of the project.
+    An absolute path outside the tree holds prose of somebody else. `gate.NOT_OURS` names the paths in this tree holding
+    no prose of the project, and `gate.UNREAD` names the base names of the files the checkers leave alone. Any other
+    path is prose of the project.
 
-    A path nobody has added yet answers yes.
+    The code opens no file. A path nobody has added yet gets the answer an added path would get.
     """
     if os.path.isabs(path) and os.path.commonpath([os.path.abspath(path), gate.TREE]) != gate.TREE:
         return False
@@ -847,26 +971,11 @@ def is_prose_of_the_project(path: str) -> bool:
     return os.path.basename(path) not in gate.UNREAD
 
 
-_A_FENCE = re.compile(r"^\s*```")  # The marker a document opens and closes a code block with.
-
 # A code span. The contents are code, and the words inside belong to no sentence.
 _A_CODE_SPAN = re.compile(r"`[^`]*`")
 
 # A Doxygen code block holds a program. A number a program writes counts nothing in the tree.
 _A_CODE_BLOCK = re.compile(r"@code\b.*?@endcode\b", re.DOTALL)
-
-# A member named the way Doxygen references one. The pair of colons belongs to the name rather than to the sentence.
-# `@ref` takes the name bare. A comment cannot write this one inside a code span.
-_A_MEMBER_NAME = re.compile(r"\b\w+::\w+")
-
-# The tokens a comment writes as syntax rather than as a sentence. A tool's pragma names the rule it turns off. The
-# marker `failure-is-reported:` opens a declared exemption. `check_failures` reads that exemption off the source itself.
-# The checker drops the token. It reads the prose sharing the line, and checks a claim in that prose like any other.
-_A_DIRECTIVE = re.compile(r"\b(?:noqa|pylint|type|fmt|isort|mypy|yapf|nopep8)\s*:\s*\S*|\bfailure-is-reported:")
-
-# A web address. The scheme ends in a colon, and the path holds full stops. A checker that takes an address for prose
-# finds an appositive where a link is, and cuts a sentence at the dots.
-_A_URL = re.compile(r"https?://\S+")
 
 
 def _numbers_of_the_tree(said: str) -> list[re.Match[str]]:
@@ -893,27 +1002,9 @@ def numbers_in_prose(prose: str) -> list[str]:
     The numerals of the tree `prose` holds. `_joined` blanks a table row. A step number written in a table reaches
     nothing here.
 
-    Public. The `no_tree_numbers` hook asks this of a fragment, and the gate asks the same of the tree.
+    Public. The `no_tree_numbers` checker asks this of a text.
     """
     return sorted({found.group(0).strip() for found in _numbers_of_the_tree(_joined(prose)[0])})
-
-
-def _numbers_in_code_errors(prose: Mapping[str, _Lines]) -> list[str]:
-    """
-    The places the prose beside the code states a number that depends on the tree.
-
-    `_code_prose` hands over the generator's comments and docstrings together with the C's comments. This joins that
-    prose into a single line before reading it, the way `_joined` treats a document. A comment block wraps at the column
-    limit, and a number may straddle a wrap.
-    """
-    faults = []
-    for name, lines in prose.items():
-        held = dict(lines)
-        said, starts = _joined("\n".join(held.get(at, "") for at in range(1, max(held, default=0) + 1)))
-        for found in _numbers_of_the_tree(said):
-            at = _line_of(starts, found.start())
-            faults.append(f"{name}:{at} states {found.group(0).strip()!r}. that number depends on the tree.")
-    return faults
 
 
 # The form the checkers above give a text's citation.
@@ -928,26 +1019,29 @@ def _cited_by(fault: str) -> str:
     return found.group(1)
 
 
-# The documents the citation rules read. A file outside this tuple and outside `_code_prose` gets no citation rule.
+# The documents the citation rules read. A file outside this tuple and outside `_A_SOURCE_SITS_UNDER` gets no citation
+# rule.
 _DOCUMENTS_CITED = ("DESIGN.md", "PLAN.md", "CHANGELOG.md")
 
 
 # The directories holding the code whose prose the citation rule reads. `_code_prose` hands over the comments and the
-# docstrings of a file under one of these. `_named_by_the_code` gathers names from the same directories. A file outside
-# them cites a name no harvest holds.
+# docstrings of a file under one of these. `_named_by_the_code` gathers names from these directories.
+# `_named_by_the_code` reads the `Makefile` and `CMakeLists.txt` as well. `_citations` reads a file outside these
+# directories only where `_DOCUMENTS_CITED` names that file.
 _A_SOURCE_SITS_UNDER = ("generator/", "scripts/", ".claude/hooks/", "src/", "include/")
 
 
 def _citations(path: str, lines: _Lines, minted: Collection[str] = frozenset()) -> list[str]:
     """
-    The names `lines` cite that name nothing, with the declared excuses left in.
+    A fault per name that `lines` cites where the name names nothing, with the declared excuses left in.
 
     A document and the prose beside the code take different name sets. `DESIGN.md` cites a production, and a bare word
     there is a citation. A docstring cites what the code writes, and a bare word there is prose. A file outside both
     lists gets no citation rule.
 
-    `minted` holds the names a text writes that the tree lacks. A write-time caller fills it from the source the edit
-    leaves. A gate over the tree leaves it empty, the tree on disk already holding those names.
+    `minted` holds the names a text writes, and the tree may lack some of them. A write-time caller fills it through
+    `minted_by`, from the source the edit leaves. A gate over the tree leaves `minted` empty. The tree on disk already
+    holds those names.
     """
     name = os.path.basename(path)
     known = frozenset(_named_in_the_tree()) | frozenset(minted)
@@ -965,11 +1059,11 @@ def _citations(path: str, lines: _Lines, minted: Collection[str] = frozenset()) 
 
 def _citation_errors(path: str, lines: _Lines, minted: Collection[str] = frozenset()) -> list[str]:
     """
-    The names `lines` cite that name nothing and that no declared excuse covers.
+    A fault per name that `lines` cites where the name points at nothing and lacks a declared excuse.
 
-    `_NAMES_A_FILE_MAY_CITE_UNANSWERED` excuses a name for a file, and this reads that list.
+    `_ABSENT_NAMES_A_FILE_MAY_CITE` excuses a name for a file, and this reads that list.
     """
-    excused = _NAMES_A_FILE_MAY_CITE_UNANSWERED.get(os.path.basename(path), frozenset())
+    excused = _ABSENT_NAMES_A_FILE_MAY_CITE.get(os.path.basename(path), frozenset())
     return [fault for fault in _citations(path, lines, minted) if _cited_by(fault) not in excused]
 
 
@@ -977,8 +1071,7 @@ def citation_refusal(path: str, lines: _Lines, minted: Collection[str] = frozens
     """
     The refusal the citation rule gives the prose beside the code at `path`, or None where the citations pass.
 
-    A write-time hook asks here, and `_cited_in_code_errors` asks here for the gate. Both readers therefore refuse the
-    same citation.
+    Public. The `prose_citations` checker asks here.
 
     `minted` holds the names the edit itself writes. A hook fills it. A docstring may then cite a name the same edit
     adds.
@@ -996,28 +1089,49 @@ def citation_refusal(path: str, lines: _Lines, minted: Collection[str] = frozens
     )
 
 
-def _cited_in_code_errors(prose: Mapping[str, _Lines]) -> list[str]:
+def _stale_excuse_errors(prose: Mapping[str, _Lines]) -> list[str]:
     """
-    The places the prose beside the code cites a name that names nothing. `_code_prose` hands over that prose from the
-    generator's comments and docstrings and from the C's comments.
+    Find the names `_ABSENT_NAMES_A_FILE_MAY_CITE` excuses where no citation of `prose` needs the excuse. `_check` hands
+    over that prose from `_code_prose`.
 
-    This asks of the prose beside the code what the other checks ask of the documents. A name outliving its definition
-    reads as a thing that exists.
-
-    `_NAMES_A_FILE_MAY_CITE_UNANSWERED` declares the names this checker excuses. `_citations` reads the prose with
-    nothing excused. A declaration takes a fault out, and a declaration that takes none out reads as stale.
+    `_citations` reads the prose with nothing excused. A declaration takes a fault out, and a declaration that takes
+    none out reads as stale.
     """
     by_file: dict[str, list[str]] = {}
     for name, lines in prose.items():
         by_file.setdefault(os.path.basename(name), []).extend(_citations(name, lines))
-    faults = [fault for name, lines in prose.items() for fault in _citation_errors(name, lines)]
-    for name, gone in sorted(_NAMES_A_FILE_MAY_CITE_UNANSWERED.items()):
+    faults = []
+    for name, gone in sorted(_ABSENT_NAMES_A_FILE_MAY_CITE.items()):
         cited = {_cited_by(fault) for fault in by_file.get(name, [])}
         faults += [
-            f"`NAMES_A_FILE_MAY_CITE_UNANSWERED` declares `{one}` for {name}. nothing there wants the excuse."
+            f"`ABSENT_NAMES_A_FILE_MAY_CITE` declares `{one}` for {name}. nothing there wants the excuse."
             for one in sorted(gone - cited)
         ]
     return faults
+
+
+def _stale_elsewhere_errors(texts: Mapping[str, _Lines]) -> list[str]:
+    """
+    The errors naming the names `_NAMES_FROM_ELSEWHERE` declares that no line of `texts` cites. A key of `texts` is a
+    path. Its value is the lines of the documents or of the prose beside the code. This skips the comment directly above
+    that list.
+    """
+    own = os.path.relpath(__file__, gate.TREE)
+    source = pathlib.Path(__file__).read_text(encoding="utf-8").split("\n")
+    ends = next(at for at, line in enumerate(source, start=1) if line.startswith("_NAMES_FROM_ELSEWHERE = "))
+    opens = ends
+    while opens > 1 and source[opens - 2].startswith("#"):
+        opens -= 1
+    cited: set[str] = set()
+    for where, lines in texts.items():
+        for number, line in lines:
+            if where == own and opens <= number < ends:
+                continue
+            cited |= set(_A_CITED_NAME.findall(line)) | set(_A_HYPHENATED_NAME.findall(line))
+    return [
+        f"`NAMES_FROM_ELSEWHERE` declares `{name}`, and no text cites it"
+        for name in sorted(_NAMES_FROM_ELSEWHERE - cited)
+    ]
 
 
 # The words a document may not say, by the tense they keep. `PLAN.md` states the work owed. `DESIGN.md` describes the
@@ -1036,7 +1150,8 @@ _OUT_OF_ITS_DOMAIN_IN = {
 }  # fmt: skip
 
 
-# The documents that keep a tense. `_OUT_OF_ITS_DOMAIN_IN` says which tense a document keeps.
+# The documents that keep a tense. `_OUT_OF_ITS_DOMAIN_IN` holds the words `DESIGN.md` and `CHANGELOG.md` may not say.
+# It holds no entry for `PLAN.md`.
 _TENSED = ("DESIGN.md", "PLAN.md", "CHANGELOG.md")
 
 
@@ -1044,7 +1159,7 @@ def domain_errors(document: str, text: str) -> list[str]:
     """
     The places `text` writes in a tense another document owns. `text` is the text of `document`.
 
-    Public. The `document_rules` checker reads an edit through here, and this gate reads a document through here.
+    Public. The `document_rules` checker reads a text through here.
     """
     held = _OUT_OF_ITS_DOMAIN_IN.get(document)
     if held is None:
@@ -1062,7 +1177,7 @@ def history_errors(document: str, text: str) -> list[str]:
     The places `text` narrates its own history rather than describing the tree. `text` is the text of `document`. A
     document outside `_TENSED` takes no such reading.
 
-    Public. The `document_rules` checker reads an edit through here, and this gate reads a document through here.
+    Public. The `document_rules` checker reads a text through here.
     """
     if document not in _TENSED:
         return []
@@ -1074,33 +1189,20 @@ def history_errors(document: str, text: str) -> list[str]:
     ]
 
 
-def _number_errors(document: str) -> list[str]:
-    """
-    The places `document` states a number that depends on the tree.
-
-    A single rule covers the markdown `gate.documents` names and the prose beside the code. This cuts a code span
-    entire, and the ticks go with it. A code span holds a literal the grammar or the C writes.
-    """
-    with open(os.path.join(gate.TREE, document), encoding="utf-8") as handle:
-        said, starts = _joined(handle.read())
-    return [
-        f"{document}:{_line_of(starts, found.start())} states {found.group(0)!r}. that number depends on the tree."
-        for found in _numbers_of_the_tree(said)
-    ]
-
-
 # The targets whose rosters `README.md` gives. The `Makefile` decides what a target runs, and `README.md` follows that
 # decision rather than the other way about.
 _ROSTERS = ("verify", "vet", "vet-format")
 
 # The gates `README.md` lists under a roster whose target does not name them. A gate the target names runs the gates
-# this list declares. `verify-grammar` runs the pair of gates `README.md` lists before it. `vet` names `vet-format`, and
-# `vet-format` runs the formatters. This list is a declaration, like the other exemptions here. README may grow a list
-# that nothing runs. Without the declaration, that list would read exactly like this one.
+# this list declares. `verify` names `verify-grammar`, and `verify-grammar` runs the pair of gates `README.md` lists
+# under `verify`. `vet` names `vet-format`, and `vet-format` runs the formatters. This list is a declaration, like the
+# other exemptions here. README may grow a list that nothing runs. Without the declaration, that list would read exactly
+# like this one.
 _GATES_UNDER_ANOTHER = {
     "verify": frozenset({"verify-grammar-base", "verify-grammar-base-coverage"}),
     "vet": frozenset({
-        "vet-format-c", "vet-format-md", "vet-format-py", "vet-format-cmake", "vet-format-sh", "vet-format-make",
+        "vet-format-c", "vet-format-md", "vet-format-py", "vet-format-cmake", "vet-format-sh", "vet-format-js",
+        "vet-format-make",
     }),  # fmt: skip
     "vet-format": frozenset(),
 }
@@ -1109,9 +1211,9 @@ _GATES_UNDER_ANOTHER = {
 def readme_roster_errors(document: str, text: str) -> list[str]:
     """
     The disagreements between the rosters `README.md` lists and the `Makefile`, where `document` is either file and
-    holds `text`. Any other document takes no such reading.
+    holds `text`.
 
-    Public. The `document_rules` checker reads an edit through here, and this gate reads the tree through here.
+    Public. The `document_rules` checker reads an edit through here.
     """
     if document not in ("README.md", "Makefile"):
         return []
@@ -1124,12 +1226,10 @@ def _readme_gate_errors(makefile: str, readme: str) -> list[str]:
     """
     The disagreements between `README.md`'s list of the gates a roster target runs and the `Makefile`'s target.
 
-    A list of the gates is a roster. A roster kept by hand goes stale the first time somebody adds a gate. This roster
-    went stale, and `vet-format` went stale after it. Kept mechanically, a roster is a list a reader can trust. Kept by
-    hand, a roster says the target runs less than the target does.
+    A list of the gates is a roster.
 
-    Both sides write a roster out in full, a name at a time. README wrote the formatters as a line of suffixes,
-    `vet-format-c` then `-md` then `-py`. That reads perfectly well. A checker cannot answer such a line.
+    Both sides write a roster out in full, a name at a time. A checker cannot answer a line of suffixes such as
+    `vet-format-c` then `-md` then `-py`.
     """
     faults = []
     for target in _ROSTERS:
@@ -1150,61 +1250,27 @@ def _readme_gate_errors(makefile: str, readme: str) -> list[str]:
 
 
 def _check() -> None:
-    """Report the faults this module found, tagged by the rule they break."""
+    """Report the faults this module found. The report tags a fault `[cites]`."""
     stages = normalize.stages(annotated2ir.load())
     final = stages[-1][1]
-    # No document states a number the tree decides. The gate measures what it needs and prints it, and a copy written
-    # into prose is a copy nobody re-measures.
-    counts = [fault for path in gate.documents() for fault in _number_errors(str(path.relative_to(gate.TREE)))]
-    errors = [f"[count] {fault}" for fault in counts]
-    for document in _TENSED:
-        text = pathlib.Path(gate.TREE, document).read_text(encoding="utf-8")
-        errors += [f"[says-what-is] {fault}" for fault in history_errors(document, text)]
-        errors += [f"[domain] {fault}" for fault in domain_errors(document, text)]
-    # Asked of `DESIGN.md` and `CHANGELOG.md`. A checker's name says which question it asks, and that question is the
-    # whole meaning of the checker.
+    # The declarations this module holds. `checkers` asks the rules of a text, and this gate asks whether a declaration
+    # still has a text that needs it.
     named_anywhere = _named_in_the_tree()
     named_by_a_stage = _cited_names()
-    for fault in _stale_cited_names_errors(stages):
-        errors.append(f"[cites] {fault}")
-    for document in ("DESIGN.md", "PLAN.md"):
-        lines = _document_lines(document)
-        for fault in _dangling_name_errors(document, lines, named_anywhere) + _dangling_step_errors(
-            document, lines, named_by_a_stage, named_anywhere
-        ):
-            errors.append(f"[cites] {fault}")
-    # Altitude. `DESIGN.md` describes the architecture, and a private name belongs to its module.
-    for fault in private_citation_errors("DESIGN.md", _document_lines("DESIGN.md")):
-        errors.append(f"[altitude] {fault}")
-    # The same names cover `CHANGELOG.md`, less what that file declares gone. An entry naming what a change took away is
-    # the entry doing its job.
-    lines = _document_lines("CHANGELOG.md")
-    for fault in _dangling_name_errors(
-        "CHANGELOG.md", lines, named_anywhere, _NAMES_THE_TREE_NO_LONGER_HOLDS
-    ) + _dangling_step_errors("CHANGELOG.md", lines, named_by_a_stage, named_anywhere, _NAMES_THE_TREE_NO_LONGER_HOLDS):
-        errors.append(f"[cites] {fault}")
-    for fault in _stale_gone_errors(lines, named_by_a_stage):
-        errors.append(f"[cites] {fault}")
-    for fault in _stale_owed_errors(named_by_a_stage, named_anywhere):
-        errors.append(f"[cites] {fault}")
-    # The prose beside the code, read once and asked both questions. It goes stale the way a document does, and is
-    # corrected by even fewer people.
-    prose = _code_prose()
-    for fault in _numbers_in_code_errors(prose):
-        errors.append(f"[count] {fault}")
-    for fault in _cited_in_code_errors(prose):
-        errors.append(f"[cites] {fault}")
-    readme = pathlib.Path(gate.TREE, "README.md").read_text(encoding="utf-8")
-    errors += [f"[lists] {fault}" for fault in readme_roster_errors("README.md", readme)]
+    errors = [f"[cites] {fault}" for fault in _stale_cited_names_errors(stages)]
+    errors += [f"[cites] {fault}" for fault in _stale_gone_errors(_document_lines("CHANGELOG.md"), named_by_a_stage)]
+    errors += [f"[cites] {fault}" for fault in _stale_owed_errors(named_by_a_stage, named_anywhere)]
+    errors += [f"[cites] {fault}" for fault in _unplanned_owed_errors(_document_lines("PLAN.md"))]
+    errors += [f"[cites] {fault}" for fault in _stale_excuse_errors(_code_prose())]
+    texts = {**_code_prose(), **{document: _document_lines(document) for document in _DOCUMENTS_CITED}}
+    errors += [f"[cites] {fault}" for fault in _stale_elsewhere_errors(texts)]
     # The live figures, printed and written down nowhere. A reader wanting a figure runs the gate.
     for name, count in sorted(_measured_for_the_report(stages, final).items()):
         print(f"  {count} {name}")
     gate.report(
         errors,
-        "document fault(s). a number depends on the tree, a document narrates its own history, or a cited name names "
-        "nothing",
-        "documents: a document and a comment state no number the tree decides and narrate no history of their own. "
-        "The names they cite are names the tree holds, bar what the declared exemptions allow",
+        "document fault(s). a declaration excuses nothing",
+        "documents: a declared excuse covers a citation the tree writes",
     )
 
 

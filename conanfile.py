@@ -2,8 +2,8 @@
 """
 The Conan recipe for the `yeast` package.
 
-Conan calls a method below by name. Conan reads the version from `CMakeLists.txt`. The recipe states no version of its
-own.
+Conan calls a method below by name. https://docs.conan.io/2/reference/conanfile/methods.html lists those methods. Conan
+reads the version from `CMakeLists.txt`. The recipe states no version of its own.
 """
 
 import os
@@ -42,13 +42,16 @@ class YeastConan(ConanFile):
     )
 
     def config_options(self):
-        """Drop `fPIC` on Windows. Windows has no such option."""
+        """Drop `fPIC` on Windows."""
         # Conan replaces the `settings` tuple above with an object of its own before calling this.
         if self.settings.os == "Windows":  # pylint: disable=no-member
             self.options.rm_safe("fPIC")
 
     def layout(self):
-        """Take the source and build layout CMake sets."""
+        """
+        Use the folder layout `cmake_layout` gives a CMake project, as
+        https://docs.conan.io/2/reference/tools/cmake/cmake_layout.html says.
+        """
         cmake_layout(self)
 
     def generate(self):

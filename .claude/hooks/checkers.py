@@ -7,22 +7,22 @@ The checkers that read prose, and the refusals they give.
 reaches the checkers through that function. `prose_gate` calls `refusals_for_edit` on an edit a writer makes, and
 `.claude/settings.json` registers `prose_gate` on an edit. `check_prose` calls that function on an edit that
 `collect_fragments.whole` makes of a file of the tree. `apply_prose` calls that function on a settling write before the
-write lands. `record_run` calls that function on a proposal bound for the pending proposals file. A checker added to
-`_CHECKERS` reaches those callers at once.
+write lands. `record_run` reaches that function through `apply_prose.text_refusals` on a proposal bound for the pending
+proposals file. A checker added to `_CHECKERS` reaches those callers at once.
 
 A checker left out of `_CHECKERS` reaches none of those callers.
 
-A checker reads what the edit touched. A prose checker reads prose with the line wrapping taken out, and
+A `_PROSE` checker reads what the edit touched. A prose checker reads prose with the line wrapping taken out, and
 `collect_fragments.flattened` takes it out. `collect_fragments.prose_digest` flattens through the same function.
-Rewrapping a file then moves no refusal and no digest. A checker asking about the file reads `_Measured`, and
-`_measured` fills that by reading the file the edit would leave against the file before it.
+Rewrapping a file then moves no `_PROSE` or `_DOCUMENT` refusal and no digest. A checker asking about the file reads
+`_Measured`, and `_measured` fills that from the file the edit would leave.
 
 An entry says which text its checker reads. `_PROSE` names the prose of a fragment the edit touches. `_DOCUMENT` names
-the prose of the file whole. `_FILE` names the readings in `_Measured`, and a checker there reads no text. `_ANY` names
-the whole new text of a file the prose rules leave alone.
+the whole text of a markdown file, and the touched prose and literals of a source. `_FILE` names the readings in
+`_Measured`, and a checker there reads no text. `_ANY` names the whole new text of any file.
 
-A literal takes a separate pass through the `_PROSE` checkers. The shape rules read a literal more narrowly than a
-comment.
+A literal takes a separate pass through the `_PROSE` checkers. The shape rules read a literal through
+`literal_shape_faults`, more narrowly than `prose_faults` reads a comment.
 
 The pending proposals file holds a bullet that `settling_state.WHY` opens. That bullet states a reason, and the WHY
 rules pass it. The WHY rules read the other prose of the tree in full.
@@ -39,26 +39,34 @@ import altitude
 import ascii_only
 import check_documents
 import collect_fragments
+import design_copies
 import document_rules
 import gate
+import kind_dispatches
 import nested_docstrings
 import no_tree_numbers
+import plan_pointers
 import prose_citations
 import prose_rewrite
 import prose_words
+import public_citations
 import settling_state
 import short_comments
+import step_arguments
+import unread_files
 
-# The prose of a fragment the edit touches. `prose_words` reads that prose.
+# The prose of a fragment the edit touches, or a literal of that edit. `prose_words` and `prose_rewrite` read that text.
 _PROSE = "prose"
 
-# The prose of a document whole. `no_tree_numbers` reads a document that way. A count in a heading counts too.
+# The text of a markdown file whole, or the touched fragments and literals of a source joined. `no_tree_numbers` reads a
+# document that way. A count in a heading counts too.
 _DOCUMENT = "document"
 
 # The readings of the file that `_Measured` holds. `short_comments` asks how many lines a comment run takes.
 _FILE = "file"
 
-# The whole new text of a file that `is_prose_of_the_project` turns down. `ascii_only` reads that file.
+# The whole new text of a file, whether or not `is_prose_of_the_project` takes the file. `ascii_only`, `plan_pointers`
+# and `unread_files` read that text.
 _ANY = "any"
 
 # The pending proposals file, as a caller names it.
@@ -72,36 +80,38 @@ class _Measured:
 
     `short_comments.runs_of` fills `comment_runs`. `nested_docstrings.long_ones_of` fills `nested_docstrings`.
     `prose_citations.minted_by` fills `minted`. `document_rules.roster_faults_of` fills `roster_faults`.
+    `design_copies.copies_of` fills `copied`. `kind_dispatches.dispatches_of` fills `dispatches`.
+    `step_arguments.unargued_of` fills `unargued`.
     """
 
     comment_runs: tuple[tuple[str, int], ...] = ()
     nested_docstrings: tuple[tuple[int, str, int], ...] = ()
     minted: frozenset[str] = frozenset()
     roster_faults: tuple[str, ...] = ()
+    copied: tuple[str, ...] = ()
+    dispatches: tuple[str, ...] = ()
+    unargued: tuple[str, ...] = ()
 
 
-def _measured(source: str, path: str, was: str | None = None) -> _Measured:
+def _measured(source: str, path: str) -> _Measured:
     """
     The readings `_CHECKERS` takes of the file the edit would leave.
 
     A checker reads these rather than the lines of a text. A question about a comment run is a question about the file.
-    Unwrapping a source would take the code apart.
-
-    `was` is the file before the edit. A reading the file already held drops out, the way `fragments_touched` drops a
-    fragment the edit left alone. A checker then refuses no fault the edit did not write. `minted` keeps the whole file.
-    A docstring may cite a name written elsewhere in that file.
+    Unwrapping a source would take the code apart. A reading covers the whole file. A checker such as
+    `short_comments.refusal_for` therefore refuses a fault the file held before the edit.
     """
     roster = document_rules.roster_faults_of(source, path)
     if not path.endswith(".py"):
-        return _Measured(roster_faults=roster)
-    held = short_comments.runs_of(source)
-    nested = nested_docstrings.long_ones_of(source)
-    if was is not None:
-        before = set(short_comments.runs_of(was))
-        held = tuple(one for one in held if one not in before)
-        named = {(function, length) for _line, function, length in nested_docstrings.long_ones_of(was)}
-        nested = tuple(one for one in nested if (one[1], one[2]) not in named)
-    return _Measured(held, nested, prose_citations.minted_by(source), roster)
+        return _Measured(roster_faults=roster, copied=design_copies.copies_of(source, path))
+    return _Measured(
+        short_comments.runs_of(source),
+        nested_docstrings.long_ones_of(source),
+        prose_citations.minted_by(source),
+        roster,
+        dispatches=kind_dispatches.dispatches_of(source, path),
+        unargued=step_arguments.unargued_of(source, path),
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -109,10 +119,12 @@ class _Prose:
     """
     A text as a checker reads it.
 
-    `said` is the text with the wrapping taken out. `path` is the file holding it. `is_literal` marks a string literal.
-    A literal takes a narrower shape rule than a comment takes.
+    `said` is the text a checker reads. The `_PROSE` and `_DOCUMENT` checkers get it with the wrapping taken out. `path`
+    is the file holding it. `is_literal` marks a string literal. A literal takes `literal_shape_faults`, a narrower
+    shape rule than a comment takes.
 
-    `is_stating_why` marks the `why` bullet of a pending proposal. The WHY rules pass that bullet.
+    `is_stating_why` marks the `why` bullet of a pending proposal. `prose_rewrite.refusal_for` passes that bullet under
+    the WHY rules.
 
     `measured` holds the readings a checker would otherwise take of the file.
     """
@@ -123,14 +135,6 @@ class _Prose:
     is_stating_why: bool = False
     measured: _Measured = _Measured()
 
-
-# A key names a hook registered on an edit. `refusals_for_edit` cannot run that hook. The value is the reason.
-NO_CALLABLE = {
-    "question-rule.sh": "a shell hook. it reads an isinstance chain rather than prose.",
-    "step-rules.sh": "a shell hook. it reads a step name rather than prose.",
-    "tense-check.sh": "a shell hook. it warns rather than refuses, and the path comes from a tool call.",
-    "unread_files.py": "a path rule. it reads the file name rather than prose.",
-}
 
 # The prose checkers. A row names the module of the checker. A row holds the call that gives the refusal. The last field
 # names the text the checker reads. A module naming a checker reads this list rather than writing its own.
@@ -148,12 +152,14 @@ _CHECKERS = (
         _DOCUMENT,
     ),
     ("altitude.py", lambda one: altitude.refusal_for(one.said, one.path), _DOCUMENT),
+    ("public_citations.py", lambda one: public_citations.refusal_for(one.said, one.path), _DOCUMENT),
     (
         "document_rules.py",
         lambda one: document_rules.refusal_for(one.said, one.path, one.measured.roster_faults),
         _DOCUMENT,
     ),
     ("ascii_only.py", lambda one: ascii_only.refusal_for(one.said, one.path), _ANY),
+    ("plan_pointers.py", lambda one: plan_pointers.refusal_for(one.said, one.path), _ANY),
     (
         "short_comments.py",
         lambda one: short_comments.refusal_for(one.said, one.path, one.measured.comment_runs),
@@ -164,13 +170,26 @@ _CHECKERS = (
         lambda one: nested_docstrings.refusal_for(one.said, one.path, one.measured.nested_docstrings),
         _FILE,
     ),
+    ("design_copies.py", lambda one: design_copies.refusal_for(one.said, one.path, one.measured.copied), _FILE),
+    (
+        "kind_dispatches.py",
+        lambda one: kind_dispatches.refusal_for(one.said, one.path, one.measured.dispatches),
+        _FILE,
+    ),
+    ("step_arguments.py", lambda one: step_arguments.refusal_for(one.said, one.path, one.measured.unargued), _FILE),
+    ("unread_files.py", lambda one: unread_files.refusal_for(one.said, one.path), _ANY),
 )
 
-# The hook registered on an edit. A checker runs through this hook. `check_hooks` fires a checker's pair at it.
+# `.claude/settings.json` registers this hook on an edit. A checker runs through this hook. `check_hooks` fires the
+# fixture pair of a checker at this hook.
 THE_HOOK = "prose_gate.py"
 
 # The modules `refusals_for_edit` runs. `check_hooks` reads these modules beside the roster.
 CALLED = tuple(name for name, _call, _reads in _CHECKERS)
+
+# The modules of the `_FILE` entries. `check_hooks` wants `tests/hooks.json` to hold a pair for such a module. The pair
+# probes a fault the file held before the edit.
+READS_THE_FILE = tuple(name for name, _call, reads in _CHECKERS if reads == _FILE)
 
 
 def _refusals(one: _Prose, reads: str) -> list[str]:
@@ -203,16 +222,18 @@ def refusals_for_edit(edit: Any, path: str) -> list[str]:
     """
     The refusals `_CHECKERS` gives for an edit. `path` names the file relative to the tree.
 
-    A fragment the edit touches takes a separate pass through the `_PROSE` checkers. So does a literal of that edit. The
-    prose of the file goes to the `_DOCUMENT` checkers whole. `is_prose_of_the_project` decides whether a file reaches
-    the prose checkers at all. The `_ANY` checkers read the file either way.
+    A fragment the edit touches takes a separate pass through the `_PROSE` checkers where its prose is not blank. So
+    does a literal of that edit. A markdown file goes to the `_DOCUMENT` checkers whole. A source hands the `_DOCUMENT`
+    checkers the touched fragments and literals joined together. `is_prose_of_the_project` decides whether a file
+    reaches the prose checkers at all. The `_ANY` checkers read the file either way.
 
-    A prose checker reads the text with the wrapping taken out. A `_FILE` checker reads `_measured` and no text.
+    A `_PROSE` checker and a `_DOCUMENT` checker read the text with the wrapping taken out. A `_FILE` checker reads
+    `_measured` and no text.
     """
     found = _refusals(_Prose(edit.now, path), _ANY)
     if not check_documents.is_prose_of_the_project(path):
         return found
-    taken = _measured(edit.now, path, edit.was)
+    taken = _measured(edit.now, path)
     touched = [one.prose.content for one in collect_fragments.fragments_touched(edit)]
     for prose in touched:
         if prose.strip():

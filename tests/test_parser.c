@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-// The parser's tests cover the window, the queue and the stack. These tests reach private headers the library's public
-// tests cannot reach.
+// The parser's tests cover the window, the queue and the stack. These tests also cover the memory cap.
 
 #include "acutest.h"
 #include "messages.h"
@@ -9,8 +8,8 @@
 #include <errno.h>
 #include <string.h>
 
-// `test_allocate` hands a block of memory to a caller. A request to grow a block fails. A test then reaches the
-// `ys_memory_grow` failure path without exhausting the machine.
+// `test_allocate` hands a block of memory to a caller. `test_refuse_to_grow` refuses a request to grow a block. A test
+// then reaches the `ys_memory_grow` failure path without exhausting the machine.
 static void *test_allocate(void *context, size_t size) {
     (void)context;
     return malloc(size);
@@ -24,7 +23,8 @@ static void *test_refuse_to_grow(void *context, void *pointer, size_t size) {
     return NULL;
 }
 
-// A plain free. The close still releases the memory the refusing allocator handed out.
+// The deallocate callback is a plain free. `ys_delete_token_source` still releases the memory the refusing allocator
+// handed out.
 static void test_deallocate(void *context, void *pointer) {
     (void)context;
     free(pointer);
@@ -42,9 +42,9 @@ static ys_mark mark_of(size_t byte_offset, size_t column) {
     return mark;
 }
 
-// The cap counts what an object allocates for itself. The cap refuses an allocation that would go past that count. A
-// cap too small to build the object refuses the build outright. The build does not go on to fail at the first
-// allocation.
+// The cap counts what an object allocates for itself. The cap refuses an allocation that would take that count past
+// `max_bytes`. A cap too small to build the object refuses the build outright. The build does not go on to fail at the
+// first allocation.
 static void test_memory_cap(void) {
     ys_memory memory = {{0}, 100, 0};
     TEST_CHECK(ys_memory_reserve(&memory, 60) == YS_OK);
@@ -67,8 +67,8 @@ static void test_memory_cap(void) {
     free(object);
 }
 
-// Growing doubles the array and charges the cap. The array stays at the first block or above, and a refusal leaves it
-// untouched.
+// Growing at least doubles the array and charges the cap. The array stays at the first block or above, and a refusal
+// leaves it untouched.
 static void test_memory_grow(void) {
     ys_memory memory = {{0}, 0, 0};
     size_t capacity = 0;
@@ -155,7 +155,7 @@ typedef struct drip {
     bool is_failing;
 } drip;
 
-// A read that hands over a byte per call, and fails outright once the caller marks the source failing.
+// Hand over at most a byte per call. Fail outright once the caller marks the source failing.
 static ptrdiff_t drip_read(void *context, char *buffer, size_t size) {
     drip *source = context;
     if (source->is_failing) {
@@ -197,7 +197,7 @@ static void test_stream_window(void) {
     ys_delete_token_source(src);
 }
 
-// The window discards the bytes no token points at any more. It keeps the bytes the queue still points at.
+// A fill that reads discards the bytes no token points at any more. It keeps the bytes the queue still points at.
 static void test_window_compacts_to_the_queue(void) {
     drip source = {"hello", 5, 0, false};
     ys_token_source *src = ys_new_yaml_stream_parser(drip_reader(&source), NULL);
@@ -231,7 +231,7 @@ static void test_reader_failure_ends_the_source(void) {
     ys_parser *parser = &src->as.parser;
 
     TEST_CHECK(ys_parser_fill(parser, 1) == YS_FAILED_STREAM);
-    TEST_CHECK(parser->fault == YS_FAILED_STREAM); // recorded, not yet reported, and the source not yet done
+    TEST_CHECK(parser->fault == YS_FAILED_STREAM); // recorded and unreported, and the source still open
     TEST_CHECK(!parser->is_done);
 
     ys_token token;
@@ -307,9 +307,7 @@ static void test_queue_order(void) {
     ys_delete_token_source(src);
 }
 
-// An open run is undecided. The queue holds the run's tokens back. The parser rewrites the codes once the run
-// settles. It injects a marker ahead of the run. That is how a block scalar's chomped-away empty lines get their
-// end-scalar.
+// An open run is undecided. The queue holds the run's tokens back. `ys_queue_inject` puts a marker ahead of the run.
 static void test_queue_run(void) {
     ys_token_source *src = ys_new_yaml_memory_parser("\n\n", 2, NULL);
     TEST_ASSERT(src != NULL);
@@ -416,7 +414,8 @@ static void test_stack(void) {
 }
 
 // An error consumes nothing. Its text is the message rather than the input. The error comes back behind the tokens
-// the queue holds. Handing it back leaves the parser running.
+// the queue holds. The parser keeps running after the error. Once the parser hands the error back, the parser holds no
+// error.
 static void test_error_behind_the_queue(void) {
     ys_token_source *src = ys_new_yaml_memory_parser("ab", 2, NULL);
     TEST_ASSERT(src != NULL);
@@ -458,7 +457,7 @@ static void test_end_stream_ends_the_source(void) {
     ys_delete_token_source(src);
 }
 
-// The tree holds no parser. A pull yields the same error at the first character.
+// The tree holds no generated parser automaton. A pull yields the same error at the first character.
 static void test_not_implemented(void) {
     ys_token_source *src = ys_new_yaml_memory_parser("hello: world\n", 13, NULL);
     TEST_ASSERT(src != NULL);
@@ -474,7 +473,8 @@ static void test_not_implemented(void) {
     ys_delete_token_source(src);
 }
 
-// An input of no bytes at all is a window pointing at nothing. That differs from a window pointing at no address.
+// An input of no bytes at all is a window pointing at nothing. The test builds that window from a NULL address of
+// length `0`. The window holds no readable byte, and the next character is the end of file.
 static void test_empty_input(void) {
     ys_token_source *src = ys_new_yaml_memory_parser(NULL, 0, NULL);
     TEST_ASSERT(src != NULL);
