@@ -2,14 +2,15 @@
 // with the claims it confirmed. The `conventions` reader also answers with the conventions it would propose. A proposal
 // goes to `.claude/proposals-pending.md`, and `check_proposals` refuses while that file holds a proposal.
 //
-// `review_input.py` writes a manifest. A caller runs that script first and hands the manifest in as `args.manifest`.
-// The review does not run `review_input.py` itself, and it throws where `args.manifest` is missing. `record_run` takes
-// what comes back and writes the proposals.
+// `review_input.py` writes the arguments of the review. The arguments are a manifest, the HEAD and the staged tree. A
+// caller runs that script first and hands the arguments in. The review throws where an argument is missing. The review
+// returns the HEAD and the tree beside its findings. The next run of `review_input.py` reads that answer. `record_run`
+// writes the proposals of the answer.
 
 export const meta = {
   name: 'pre-commit-review',
   description: 'The questions a review asks of a change, with a reviewer per question',
-  whenToUse: 'After `make pc` passes and before asking to commit. Run `review_input.py`, then pass the manifest it wrote beside a sentence saying what the change is about.',
+  whenToUse: 'After `make pc` passes and before asking to commit. Run `review_input.py`, then pass the arguments it wrote beside a sentence saying what the change is about.',
   phases: [
     { title: 'Review', detail: 'a reviewer per question, run over the prepared input' },
   ],
@@ -208,6 +209,14 @@ if (!prepared.length) {
   throw new Error('the review takes the manifest `review_input.py` wrote, as `args.manifest`.')
 }
 
+// The commit and the staged tree the prepared files show, as `generator/review_input.py` wrote them. The answer returns
+// both, and the next review of the same commit diffs from that tree.
+const HEAD = SAID.head
+const TREE = SAID.tree
+if (typeof HEAD !== 'string' || !HEAD || typeof TREE !== 'string' || !TREE) {
+  throw new Error('the review takes `args.head` and `args.tree` from the arguments `review_input.py` wrote.')
+}
+
 // A description of the contents of a prepared part, keyed by the part's name. A reviewer asking for a part gets that
 // description beside the part's paths rather than a bare path.
 const PREPARED = {
@@ -342,9 +351,8 @@ const answered = await parallel(
 const findings = QUESTIONS.flatMap((question, at) =>
   ((answered[at] && answered[at].findings) || []).map((one) => ({ question: question.key, ...one })),
 )
-// The workflow keeps a proposal apart from a finding the whole way out. `generator/record_run.py` writes the findings
-// to `review_input.REVIEWED`, and `_reviewed` reads them for the next review. A proposal that arrives mixed in with the
-// findings reads there as a finding.
+// The workflow keeps a proposal apart from a finding the whole way out. The next run of `review_input.py` reads the
+// findings of this answer. A proposal mixed in with the findings would read there as a finding.
 const proposals = QUESTIONS.flatMap((question, at) =>
   ((answered[at] && answered[at].proposals) || []).map((one) => ({ question: question.key, ...one })),
 )
@@ -363,11 +371,11 @@ for (const question of QUESTIONS) {
   )
 }
 
-// The workflow returns a proposal in its result. `record_run` writes the proposal into `.claude/proposals-pending.md`.
+// The workflow returns a list of proposals. `record_run` writes the proposal into `.claude/proposals-pending.md`.
 // `check_proposals` refuses while that file holds a proposal. A ruling clears the gate. The proposal moves into
 // `.claude/conventions.md` or `.claude/rejected.md` and comes out of the pending file.
 if (proposals.length) {
   log(`${proposals.length} proposal(s) came back. \`record_run\` writes them down. The gate stays red until you rule on them.`)
 }
 
-return { note: NOTE, findings, proposals, confirmed }
+return { note: NOTE, head: HEAD, tree: TREE, findings, proposals, confirmed }

@@ -5,12 +5,17 @@ directory. `code`, `docs` and `fixtures` show staged changes. `previous` holds f
 and `references` hold the lookups. A prepared file longer than `_MOST_LINES` lines splits into numbered parts. The
 script prints the length of a prepared file beside its path.
 
-The file `_MANIFEST` maps a name to the paths of its prepared files, as `{name: [path, ...]}`.
+The file `_ARGUMENTS` holds the arguments of the review. `manifest` maps a name to the paths of its prepared files, as
+`{name: [path, ...]}`. `head` and `tree` name the commit and the staged tree the review reads.
+
+The script finds the answer of the last review of HEAD among the task output files of the harness. The diff runs from
+the tree that review read, and `previous` holds its findings. A first review of HEAD diffs from HEAD.
 
 Usage: `python3 generator/review_input.py <directory>`. The directory defaults to the working directory.
 """
 
 import ast
+import builtins
 import collections
 import functools
 import json
@@ -23,21 +28,16 @@ from typing import Any
 
 import gate
 
-# The file that holds the paths. It sits beside the prepared files themselves.
-_MANIFEST = "manifest.json"
+_USAGE = "usage: review_input.py [<directory>]"  # a bad call gets it.
+
+# The file that holds the arguments of the review. It sits beside the prepared files themselves.
+_ARGUMENTS = "arguments.json"
 
 # The length past which a prepared file is split into numbered parts.
 _MOST_LINES = 800
 
 # The report lists at most this many mentions of a word. It counts the mentions past that cap.
 _MOST_MENTIONS = 200
-
-# The file into which `main` writes the id of the staged tree and the id of HEAD. `record_run` writes the contents of
-# this file to `REVIEWED` with the findings of the review added, then deletes this file.
-PREPARED = os.path.join(gate.TREE, ".git", "critic", "review-prepared.json")
-
-# The tree the last review read, beside the HEAD it sat on. `_reviewed` reads this file.
-REVIEWED = os.path.join(gate.TREE, ".git", "critic", "reviewed.json")
 
 # The record of a change inside a function shows this many lines on both sides of a changed line.
 _AROUND = 3
@@ -88,17 +88,42 @@ def _head() -> str:
     return _ran("git", "rev-parse", "HEAD").strip()
 
 
+def answer_in(path: str) -> dict[str, Any] | None:
+    """
+    The review answer the task output file `path` holds, or None where the file holds the output of another task. The
+    harness writes the answer of a workflow under `result`. A review answer holds `findings` there.
+
+    Public. `record_run` reads the answer of a review through here.
+    """
+    with open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    try:
+        held = json.loads(text)
+    except json.JSONDecodeError:  # not-a-failure: a shell task writes plain text, and plain text holds no answer
+        return None
+    answer = held.get("result") if isinstance(held, dict) else None
+    return answer if isinstance(answer, dict) and "findings" in answer else None
+
+
 @functools.cache
 def _reviewed() -> dict[str, Any]:
     """
-    The record `REVIEWED` holds. The record names the tree the last review read and the findings of that review. The
-    answer is empty where the file is missing or where the commit the record names differs from HEAD.
+    The answer of the last review of HEAD. The answer names the tree the review read and holds its findings. A task
+    output file may hold a review answer that names HEAD. The newest such file supplies the answer. The answer is empty
+    where no review of HEAD ran.
+
+    A diff cannot start from an answer that names no head or no tree. `_reviewed` prints the path of such an answer.
     """
-    if not os.path.exists(REVIEWED):
-        return {}
-    with open(REVIEWED, encoding="utf-8") as handle:
-        held: dict[str, Any] = json.load(handle)
-    return held if held["head"] == _head() else {}
+    for path in gate.task_outputs():
+        answer = answer_in(str(path))
+        if answer is None:
+            continue
+        if not answer.get("tree") or not answer.get("head"):
+            print(f"  {path}: a review answer naming no head or no tree. The diff cannot start there.")
+            continue
+        if answer["head"] == _head():
+            return answer
+    return {}
 
 
 def _base() -> str:
@@ -263,7 +288,8 @@ def _references() -> str:
     """
     `_references` lists names a change took out of a file. A plain word joins that list unless the change took it out of
     a single file. `_references` drops a name that a module of `generator/` or `scripts/` still defines at its top
-    level. The list keeps a word only where something outside `gate.NOT_OURS` still mentions it.
+    level. `_references` drops a Python builtin too. The list keeps a word only where something outside `gate.NOT_OURS`
+    still mentions it. A second list names the words that `git grep` finds in no file.
     """
     # How many files each word went out of. A word taken from a single file is somebody rewriting a sentence, and the
     # same word taken from several is a sweep.
@@ -271,16 +297,19 @@ def _references() -> str:
     for path in _staged_paths():
         if not path.startswith((*gate.NOT_OURS, *gate.TOOL_STORES)):
             left.update(_took_out(path))
-    # A name the tree still binds went nowhere. It moved between files, or a line holding it was rewritten.
-    bound = gate.names_defined_in_modules()
+    # A name the tree still binds went nowhere. It moved between files, or a line holding it was rewritten. A Python
+    # builtin needs no import.
+    bound = gate.names_defined_in_modules() | set(dir(builtins))
     gone = {word for word, times in left.items() if (_is_a_name(word) or times > 1) and word not in bound}
-    written, held_back = [], []
+    written, held_back, unmentioned = [], [], []
     for word in sorted(gone):
         # The status `git grep` answers where the pattern is nowhere in the tree, which is an answer not a failure.
         said = _searched("git", "grep", "-nI", "--", rf"\b{re.escape(word)}\b", status_for_no_match=1).splitlines()
         found = [one for one in said if not one.startswith(gate.NOT_OURS)]
         if said and not found:
             held_back.append(word)
+        if not said:
+            unmentioned.append(word)
         if not found:
             continue
         opening = f"### `{word}`\nThe change took that name out of its place. {len(found)} mention(s) remain."
@@ -300,9 +329,12 @@ def _references() -> str:
         "The identifiers and swept words this change took out of a file, with what still mentions them. A mention in\n"
         "code is a caller a change may break. A mention in a comment or a document is prose describing what is not\n"
         "there. A word the tree still binds at a module's top level in `generator/` or `scripts/` stays out of this\n"
-        "list. The list takes no word out of a file under `gate.NOT_OURS`. It also leaves out a word mentioned only\n"
-        "inside those paths. Those words:\n"
+        "list. A Python builtin stays out too. The list takes no word out of a file under `gate.NOT_OURS`. It also\n"
+        "leaves out a word mentioned only inside those paths. Those words:\n"
         f"{', '.join(held_back) or '(none)'}.\n"
+        "\n"
+        "The change took out these names, and `git grep` finds them in no file. Those names:\n"
+        f"{', '.join(unmentioned) or '(none)'}.\n"
     )
     return head + "\n" + ("\n".join(written) or "(the change removed nothing that anything else mentions)")
 
@@ -421,8 +453,8 @@ def _uncovered() -> list[str]:
     """
     The staged paths that no prepared file shows. That set should come back empty.
 
-    A slice takes the paths it names. A path the slices leave out reaches no reviewer, and `main` refuses the tree
-    holding it. A vendored path and a path of `gate.TOOL_STORES` reach nobody on purpose.
+    A slice takes the paths it names. `main` passes the paths `_uncovered` returns to `report`. `report` exits with a
+    failure. A vendored path and a path of `gate.TOOL_STORES` reach nobody on purpose.
     """
     covered = (*_THE_CODE, *_THE_DOCUMENTS, *_THE_FIXTURES)
     unread = (*_VENDORED, *gate.TOOL_STORES)
@@ -432,11 +464,15 @@ def _uncovered() -> list[str]:
 def main() -> None:
     """
     Write the prepared files into the directory the command line names. The default is the current directory. Print the
-    paths of the prepared files and of the manifest.
+    paths of the prepared files and of the arguments file.
 
-    Refuses a tree with anything unstaged. Refuses a tree holding a staged path that no prepared file would show. A
-    staged path inside the vendored tree passes. A run deletes the files of an earlier run before it checks the tree.
+    Refuses a second argument. Refuses a tree with anything unstaged. Refuses a tree holding a staged path that no
+    prepared file would show. A staged path inside the vendored tree passes. A run deletes the files of an earlier run
+    before it checks the tree.
     """
+    if len(sys.argv) > 2:
+        print(_USAGE, file=sys.stderr)
+        sys.exit(2)
     into = sys.argv[1] if len(sys.argv) > 1 else "."
     prepared_by_name = (
         ("code", _code),
@@ -448,9 +484,9 @@ def main() -> None:
     )
     # What a previous run left goes first, and goes whether this run prepares anything or refuses. Only what this module
     # writes, matched by name rather than taken by suffix.
-    stale_manifest = os.path.join(into, _MANIFEST)
-    if os.path.exists(stale_manifest):
-        os.remove(stale_manifest)
+    stale_arguments = os.path.join(into, _ARGUMENTS)
+    if os.path.exists(stale_arguments):
+        os.remove(stale_arguments)
     for name, _prepare in prepared_by_name:
         whole = os.path.join(into, f"{name}.txt")
         if os.path.exists(whole):
@@ -475,13 +511,11 @@ def main() -> None:
         for path in manifest[name]:
             with open(path, encoding="utf-8") as handle:
                 print(f"  {path}: {len(handle.readlines())} lines")
-    with open(os.path.join(into, _MANIFEST), "w", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=2)
+    arguments = {"manifest": manifest, "head": _head(), "tree": _ran("git", "write-tree").strip()}
+    with open(os.path.join(into, _ARGUMENTS), "w", encoding="utf-8") as handle:
+        json.dump(arguments, handle, indent=2)
         handle.write("\n")
-    print(f"  {os.path.join(into, _MANIFEST)}: the file a name went to")
-    os.makedirs(os.path.dirname(PREPARED), exist_ok=True)
-    with open(PREPARED, "w", encoding="utf-8") as handle:
-        json.dump({"head": _head(), "tree": _ran("git", "write-tree").strip()}, handle)
+    print(f"  {os.path.join(into, _ARGUMENTS)}: the arguments of the review")
     print(f"  the diff starts from {_base()}")
 
 

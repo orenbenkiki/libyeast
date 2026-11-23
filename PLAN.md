@@ -27,6 +27,15 @@ through.
   the tokens held with it and the depth the production stack reaches. The option is a single cap over those bounds
   rather than a depth cap of its own. The threat model owes the argument for a single cap. It owes the cases behind that
   argument too.
+- **A selection is no kind test.** `ir._as_a` answers `None` for the kinds it does not name. A caller that branches on
+  that `None` decides a property outside any `ir.Question`. The `ir.AS_A_*` selections go. A branch on a kind becomes a
+  property `ir.Question`. A place expecting a single kind asks an `ir.Question` whose table names that kind and no
+  family. Such a question raises on any other kind. `kind_dispatches` then refuses `_as_a`. It refuses a
+  `kinds_other_than` arm answering `None`. It refuses a `getattr` naming a field of an `ir` kind. It refuses a match
+  statement on a node and a call to Python's hasattr.
+- **The word rules reach a comment inside a function body.** `collect_fragments` makes no fragment of such a comment.
+  The word rules read fragments, at write time and in `check_prose`. A universal or a banned word in a body comment
+  passes unread. The rules then read those comments, and a writer fixes the body comments they refuse.
 
 ## section 4 - Implementation milestones
 
@@ -483,22 +492,10 @@ implicit key land after, and they spend the same shared consume.
    A move is a language identity, or has a single mechanically-checked side condition. An intermediate grammar is
    corpus-green.
 
-   - *Indent refinement* is the enabling move. The pipeline step applies wherever a check proves its side condition. An
-     exact count of spaces followed by a non-space is a maximal consume judged after the fact, and the grammar writes
-     the count that way. `s-indent-le` already has that shape. `s-indent(k)-X` becomes
-     `OpenMatch-ConsumeSpan(space)-[Len(Match)==k, as the Le pair]-CloseMatch-X`. The rewrite holds wherever space is
-     not in FIRST(X) and X cannot match empty. Maximal munch then has nothing to steal.
-
-     The measure is the `(match)` scope of the consume. The rewrite is position-independent, and reads the production's
-     nodes and the FIRST table and no more. The `<n` and `<=n` variants already have this shape. The rewrite is
-     stream-faithful. Paths consuming the same spaces under the same code accept, and the token count matches.
-
-     The gain is a shared prefix. Indent consumes of different `k` share no literal prefix. The refinement makes them
-     the identical consume. The differing counts become residual guards.
-
    - *Aggressive common-prefix extraction*. The pipeline does none of it. The step that extracts an identical prefix
-     from the ways of a choice is still to come. The refinement above makes indentation identical. The extraction runs
-     until the ways share no factorable prefix. The stop is a named blocker below rather than a shrug.
+     from the ways of a choice is still to come. `refine-counted-runs` writes an indent as a maximal run where the
+     follower proves the rewrite. The extraction runs until the ways share no factorable prefix. The stop is a named
+     blocker below rather than a shrug.
 
      A pair of admissions grow the shared prefix. An identical maximal consume joins the prefix where the grammar knows
      a leftover's accepted space. That space must not match empty, and it must exclude the scanned characters. A shorter

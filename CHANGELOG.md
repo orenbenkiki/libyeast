@@ -1990,7 +1990,8 @@
   - A number the documents state, beside the names the gate can measure.
 
   The diff runs from the tree the last review of the commit read, and from `HEAD` where no review of the commit ran.
-  `record_run` keeps that tree and the findings of the review. A reader checks the previous findings against the tree.
+  `review_input` reads that tree and the findings from the answer of the last review. A reader checks the previous
+  findings against the tree.
 
   `.claude/workflows/pre-commit-review.js` asks the review questions of a change. `.claude/agents/reader.md` answers
   those questions. That reader has `Read`, `Grep` and `Glob`, and no shell. A reviewer that reaches for a shell has
@@ -2012,6 +2013,7 @@
   - The shell writes no file.
   - A question about the grammar is a total dispatch.
   - The tense says what the tree holds.
+  - A workflow this tree holds runs from its file.
 
   The pre-commit review and the gates of `make pc` check the parts of a change that a per-edit hook does not see. A
   check that reads a whole diff belongs to a reader that holds the diff. Such a check may also belong to a gate that
@@ -2027,6 +2029,15 @@
   `_productions_decided_from_outside` names such conflicts. That function runs to a fixpoint. A lowered conflict can
   make another conflict. The transform has to tell a copy from its original. `_is_alike_up_to_where_it_continues` raises
   where a pair of ways perform the same actions in a different order. The pair is not alike.
+
+- `refine-counted-runs` is a phase of the pipeline. It settles `every-counted-run-can-be-followed-by-its-character`. A
+  counted run takes up to its count of a character. The step writes such a run as a maximal run of the character. A pair
+  of guards then asks that the run's length is the count. A call site gets a refined copy of the callee where the site's
+  follower takes none of the run's characters. Indents of different counts then share a prefix.
+
+  `_is_refinable` holds the step to sites where both forms take the same input. A commit before the follower takes a
+  character would turn the refined failure into an error. A run inside a `(max)` window could cross the window's
+  ceiling. A site where either can happen keeps the counted run.
 
 ### Changed
 

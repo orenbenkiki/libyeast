@@ -231,12 +231,12 @@ def _is_only_the_mark(node: ir.Node, grammar: Mapping[str, ir.Prod]) -> bool:
     return ir.kept_for(_ONLY_THE_MARK, node, is_only_the_mark)
 
 
-# `ASKED` holds the reads of a global that a run made and that no single value for the parse could answer. In such a
-# read, the global's stack holds something other than the global's slot.
+# `ASKED` counts under `flattened` the reads of a global that a run made and that no single value for the parse could
+# answer. In such a read, the top of the global's stack differs from the global's slot.
 #
 # The stack answers correctly either way. The interpreter counts such a read rather than refusing it.
-# `check_normalize._check` reports a fault where `ASKED` holds any read. The slot equals the stack while `ASKED` holds
-# no read.
+# `check_normalize._check` reports a fault where `ASKED` holds any read. While `ASKED` holds no read, no read found the
+# slot apart from the stack.
 #
 # A grammar whose productions still declare the parameters holds no globals and adds nothing here. `ASKED` counts reads
 # in the tail of the pipeline where the globals appear. The `read-global-f` and `read-global-m` steps of `normalize`
@@ -2123,10 +2123,8 @@ def _try_look_behind(
     """
     Whether the item matches the character behind the parse and the continuation `k` then succeeds.
 
-    The grammar's look-behind asks whether an `ns-char` is behind. That is a single character. This reads the character
-    behind rather than searching backwards for a start the item could reach here from. This refuses an item of more than
-    a single character. Searching for where such an item began would re-match input the parse has already read, and cost
-    the length of that input.
+    This reads the character behind rather than searching backwards for a start the item could reach here from. This
+    refuses an item that does not match a single character.
     """
     if not ir.is_one_char(node.item, grammar):
         raise ValueError(f"a look-behind asks about {node.item}. That is not a single character.")

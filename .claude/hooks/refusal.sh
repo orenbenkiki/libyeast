@@ -2,7 +2,8 @@
 # The way a shell hook answers a tool call.
 #
 # A PreToolUse hook answers the tool with a JSON payload, as https://code.claude.com/docs/en/hooks says. This file holds
-# the payloads. `.claude/hooks/no-shell-file-writes.sh` and `.claude/hooks/one-at-a-time.sh` source it.
+# the payloads. `.claude/hooks/no-shell-file-writes.sh`, `.claude/hooks/one-at-a-time.sh` and
+# `.claude/hooks/workflow-from-the-tree.sh` source it.
 #
 # `refuse` turns the call back with a reason the model reads. `deny` turns it back as a permission decision. The pair
 # differ in the shape the tool wants, and a hook picks the shape its event takes. https://code.claude.com/docs/en/hooks

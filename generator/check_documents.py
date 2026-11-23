@@ -559,9 +559,10 @@ _A_PLAN_NAME = re.compile(r"\bPLAN(?:\.md)?\b")
 # `.claude/prose-dependencies.json`. `tests/hooks.json` holds the edits a probe of the plan checker writes.
 # `generator/claim_state.py` keeps the plan out of the claim pass. `generator/review_input.py` hands a reviewer the diff
 # of the plan. `.claude/conventions.md` and `.claude/workflows/pre-commit-review.js` state the rules the plan keeps to.
-# So do the agent definitions, where `write_agent_prompts` copies the conventions. `no-prose-points-at-the-plan` is such
-# a rule. `document_rules`, this module and `prose_rules` check the plan. The `Makefile` names the plan among its
-# `DOCUMENTS`. A path ending in `/` names the files under it.
+# So do the agent definitions, where `write_agent_prompts` copies the conventions. `.claude/conventions.md` states
+# `no-prose-points-at-the-plan`. `check_conventions.mechanised_rules` names that rule, and `write_agent_prompts` leaves
+# it out of the agent definitions. `document_rules`, `history_errors` in this module and `prose_rules` check the plan.
+# The `Makefile` names the plan among its `DOCUMENTS`. A path ending in `/` names the files under it.
 _MAY_NAME_THE_PLAN = (
     "README.md",
     "CHANGELOG.md",

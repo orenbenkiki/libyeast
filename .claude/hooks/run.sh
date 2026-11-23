@@ -2,13 +2,13 @@
 # The command `.claude/settings.json` registers for a hook. The arguments name the hook this runs.
 #
 # A hook that dies turns the tool call back. https://code.claude.com/docs/en/hooks says how the tool reads the status
-# and the output of a hook. A dead hook otherwise writes nothing and leaves with a status the tool ignores.
+# and the output of a hook. Without this script, a dead hook writes nothing and leaves with a status the tool ignores.
 #
 # A hook that succeeds decides the call. The tool reads what that hook wrote. Silence is how a hook passes.
 #
-# A hook that fails gets the status the tool reads as a refusal, as https://code.claude.com/docs/en/hooks says. The tool
-# hands the text below to the model. The model then answers again. A failure before this script runs the hook takes that
-# status too.
+# A hook that fails gets the status the tool reads as a refusal, as https://code.claude.com/docs/en/hooks says. This
+# script writes an error message. https://code.claude.com/docs/en/hooks says the tool hands that message to the model,
+# and the model then answers again. A failure before this script runs the hook takes that status too.
 #
 # A non-interactive bash sources the startup file `BASH_ENV` names, as
 # https://www.gnu.org/software/bash/manual/html_node/Bash-Startup-Files.html says. A startup file may reorder where a

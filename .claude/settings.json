@@ -60,6 +60,17 @@
         ]
       },
       {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/run.sh\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/workflow-from-the-tree.sh\"",
+            "timeout": 10,
+            "statusMessage": "checking the workflow runs from its file"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {

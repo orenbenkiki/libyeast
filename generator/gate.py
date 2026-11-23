@@ -233,6 +233,21 @@ def prose_files() -> list[pathlib.Path]:
     return sorted(pathlib.Path(TREE, path) for path in held if os.path.basename(path) not in UNREAD)
 
 
+# The directory holding the sessions of this tree. `task_outputs` reads the task output files under a session there. The
+# directory sits under `/tmp`, in a directory named for the user id. Its own name is the path of the tree with `os.sep`
+# replaced by a dash.
+_SESSIONS = pathlib.Path("/tmp", f"claude-{os.getuid()}", TREE.replace(os.sep, "-"))
+
+
+def task_outputs() -> list[pathlib.Path]:
+    """
+    The task output files of the sessions of this tree, from the newest write to the oldest.
+
+    Public. `review_input` finds the answer of the last review here.
+    """
+    return sorted(_SESSIONS.glob("*/tasks/*.output"), key=lambda held: held.stat().st_mtime, reverse=True)
+
+
 def named_in(directory: str, suffix: str) -> list[pathlib.Path]:
     """The entries of `directory` whose name ends in `suffix`."""
     return sorted(path for path in pathlib.Path(directory).glob(f"*{suffix}"))

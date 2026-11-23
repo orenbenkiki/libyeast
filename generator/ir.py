@@ -4,25 +4,24 @@ The typed IR for the YAML grammar.
 
 `annotated2ir.py` reads the grammar into these nodes. `grammar2decoder.py` and the gate checks read them back out.
 
-Over the operator vocabulary libyeast writes, this is a faithful mirror. The match is node for node. An operator maps to
-a single node. A `GatePart` sorts its guards, and the reader builds no `GatePart`. The round-trip through
-`ir2annotated.py` therefore stays exact, and `generator/check_annotated_roundtrip.py` holds it there.
+Over the operator vocabulary libyeast writes, the IR is a faithful mirror. An operator maps to a single node. A
+`GatePart` sorts its guards, and the reader builds no `GatePart`. The round-trip through `ir2annotated.py` therefore
+stays exact, and `generator/check_annotated_roundtrip.py` holds it there.
 
 The reader also takes the vendored grammar's forms, and there the mirror is not exact. `(ord)` lands on the same
-`AtoiValue` as `(atoi)`. The pair agree at the digit `(ord)` applies to. `(<<<)` becomes the node it wraps. That is a
-repetition already possessive here. libyeast's grammar writes neither, and neither round-trips. Flattening and
-simplification belong to the reader of the IR. `ir2spec.py` does its own, to compare against the official grammar.
+`AtoiValue` as `(atoi)`. The pair agree at the digit `(ord)` applies to. `(<<<)` becomes the node it wraps. The IR's
+repetition is possessive already. Neither form round-trips. `ir2spec.py` flattens and simplifies the IR it reads.
 
 A node is a dataclass. A grammar node inside a node is a field of its own, or an item of a tuple. A walker can therefore
-recurse over the IR without knowing which node it holds. `BranchPart` is a node for that reason. A `(case)` branch is a
-node rather than a bare pair, and no reader has to special-case a branch.
+recurse over the IR without knowing which node it holds. A `(case)` branch is a `BranchPart` node rather than a bare
+pair.
 
-A node also answers `references()`. Those are the productions the subtree names directly, and the answer does not follow
-into their bodies. A class writes its own fields out. A class lists the fields that can hold a production. It leaves out
-the fields that are codes or message keys. The nodes themselves say what is reachable.
+A node also answers `references()` with the productions its subtree names directly. The answer does not follow into the
+bodies of those productions. A class lists its own fields that can hold a production. It leaves out the fields that are
+codes or message keys.
 
 A question about a node is a `Question`. A `Question` raises on a kind its table does not name. This mechanises
-`a-kind-dispatch-raises`. `check_normalize` reports the handlers a corpus run reached nothing through.
+`a-kind-dispatch-raises`. `check_normalize` reports a handler that a corpus run left unreached.
 """
 
 import time
@@ -898,13 +897,12 @@ class ConsumeNoCharAction(Node):
 @dataclass(frozen=True)
 class ConsumeCharAction(Node):
     """
-    The run consumes the character the gate peeked. A `ConsumeCharAction` that finds nothing is a gate that did not do
-    its job, and the interpreter says so rather than matching nothing.
+    A `ConsumeCharAction` consumes the character a gate peeked. An action that finds no character shows a failed gate.
+    The interpreter reports that failure rather than matching nothing.
 
-    `set` holds the characters the action consumes. The action keeps `set` although the gate asks the same question.
-    `normalize._hoist_guards_to_callers` hoists a gate to a caller. The split mints the consume with a set, and that set
-    does not move. That set rides here, and a reader takes it off the consume wherever the consume has got to. A way's
-    consumption then does not come from the guard sitting in front of it.
+    `set` holds the characters the action consumes. The gate tests the same characters.
+    `normalize._split_consumes_into_gates` puts `set` on the action. `normalize._hoist_guards_to_callers` can move the
+    gate into a caller. A reader takes a way's consumption from `set` rather than from a guard.
     """
 
     set: Node
@@ -1334,8 +1332,8 @@ class Wrapper(Node):
 @dataclass(frozen=True)
 class EmitAction(Node):
     """
-    `(emit)` emits a zero-width token at its own position in the grammar. The interpreter's `marker` also cuts the open
-    run of characters ahead of that token.
+    `(emit)` emits a zero-width token at its own position in the grammar. The interpreter's `marker` calls `cut` before
+    it emits the token. `cut` ends the open run of characters.
     """
 
     code: str
@@ -1938,9 +1936,10 @@ _LOOKS_AHEAD = (EndOfStreamGuard, LookGuard, NegLookGuard)
 # tuple lists the kinds in alphabetical order.
 _ALWAYS_ONE_CHAR = (CharSet, InvalidSet, OneCharSet, RangeSet)
 
-# A kind in this set repeats a match. The parse enters the same state again, as many times as the input allows or as a
-# count fixes. A run that a parser makes as a consume stays out of this set. The lowering turns such a repetition *into*
-# the consume. In alphabetical order.
+# A kind in this set repeats a match. `interpreter._try_longest_run` matches the item as many times as the input allows.
+# `interpreter._try_counted_run` matches the item as many times as a count fixes. A run that a parser makes as a consume
+# stays out of this set. `normalize._spanned_run` turns a run of a single character into such a consume. The source
+# lists the kinds in alphabetical order.
 REPETITIONS = (PlusTree, RepTree, StarTree)
 
 # A repetition the input ends rather than a count. `interpreter._try_repeat` takes turns until what it repeats declines
@@ -2386,6 +2385,20 @@ AS_A_LITERAL_VALUE = _as_a(LitValue, "a node as a literal value")
 REGIONS_OPENED: Question[int] = Question(
     "the change a node makes to the count of open message regions",
     {PushMessageAction: 1, PopMessageAction: -1, kinds_other_than(PushMessageAction, PopMessageAction): 0},
+)
+
+# The change a node makes to the depth of open `(max)` windows.
+WINDOWS_OPENED: Question[int] = Question(
+    "the change a node makes to the depth of open `(max)` windows",
+    {
+        OpenWindowAction: 1,
+        CloseWindowAction: -1,
+        (
+            *(kind for kind in ACTIONS if kind not in (OpenWindowAction, CloseWindowAction)),
+            *CONSUMING,
+            *GUARDS,
+        ): 0,
+    },
 )
 
 # A node as a `LookGuard`.

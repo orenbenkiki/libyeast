@@ -11,19 +11,20 @@ pairs. The roster comes from `.claude/settings.json`. A hook registered there wi
 naming no hook.
 
 A hook on an edit gets an entry per kind in `_KINDS`. An entry holds a pair. A `skips` entry holds a reason instead. A
-hook that reads a comment and skips a string literal passes the comment's pair, and it reads as complete. This refuses
-that silence.
+hook that reads a comment and skips a string literal passes the comment's pair, and the hook reads as complete. This
+refuses that silence.
 
-`.claude/settings.json` registers the command, and this runs the command as written. A checker that `checkers.CALLED`
-names runs under the command registered for `checkers.THE_HOOK`.
+`.claude/settings.json` registers the command, and this runs that command with `$CLAUDE_PROJECT_DIR` replaced by the
+root of the tree. A checker that `checkers.CALLED` names runs under the command registered for `checkers.THE_HOOK`.
 
 This module holds `a-prose-checker-reads-flattened-prose` of `.claude/conventions.md`. `_flattening_faults` re-wraps the
 prose of the tree and asks whether `collect_fragments.flattened` gives the same text back. `_raw_prose_faults` reads the
 calls of `checkers` and asks whether a prose checker takes a flattened text.
 
 This module holds `a-hook-answers-through-the-runner` of `.claude/conventions.md`. A registered command opens with
-`run.sh`. A hook that dies otherwise writes nothing and leaves with a status the tool ignores, and that reads as a hook
-that passed. https://code.claude.com/docs/en/hooks says which statuses the tool reads.
+`run.sh`. A hook without that runner writes nothing when it dies. Such a hook leaves with a status Claude Code ignores.
+Claude Code then reads such a hook as a hook that passed. https://code.claude.com/docs/en/hooks says which statuses
+Claude Code reads.
 
 This module holds `a-write-time-hook-reads-the-edit-in-place` of `.claude/conventions.md`. This module writes a pair's
 `file` text into a scratch file inside the tree. The hook then gets an Edit into that scratch file. A hook decides about

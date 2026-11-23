@@ -2543,45 +2543,45 @@
       "read": {}
     },
     "JS:pre-commit-review.js": {
-      "own": "ba8f2b91cd9ed94c:c27f162c35d8f217",
+      "own": "81bd8f1fdd9ceef4:6be1cd5037d22677",
       "rounds": 1,
       "read": {
-        "Python:check_proposals.py:_A_HEADING": "0c8566598a64037d",
-        "Python:check_proposals.py:_A_PROPOSAL": "dd85b42b381dd1ee",
-        "Python:check_proposals.py:_PENDING": "85a4aa7f507a81d8",
         "Python:check_proposals.py:_check": "f2df5c90f05ad34f",
         "Python:check_proposals.py:_pending": "b1fa4274ae462ec3",
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
+        "Python:record_run.py:main": "15990788e609a19f",
         "Python:record_run.py:proposals_appended": "b40922274c829da5",
-        "Python:review_input.py:main": "e50b189477d05d39"
+        "Python:review_input.py:_base": "a434f713d9602426",
+        "Python:review_input.py:_reviewed": "5810eb25ff85e2b1",
+        "Python:review_input.py:answer_in": "f94582c3946d2bcd",
+        "Python:review_input.py:main": "33fac3293baa9a7b"
       }
     },
     "JS:pre-commit-review.js:#01aed198": {
       "own": "01aed198b1015636:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Python:review_input.py:_written": "619a65452897daca",
-        "Python:review_input.py:main": "e50b189477d05d39"
+        "Python:review_input.py:main": "33fac3293baa9a7b"
       }
     },
     "JS:pre-commit-review.js:#067d14d3": {
       "own": "067d14d30b124c4f:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Python:review_input.py:_code": "45fd2db3dee80738",
         "Python:review_input.py:_docs": "95875f6aac928eca",
         "Python:review_input.py:_fixtures": "5677b02165b50da4",
         "Python:review_input.py:_written": "619a65452897daca",
-        "Python:review_input.py:main": "e50b189477d05d39"
+        "Python:review_input.py:main": "33fac3293baa9a7b"
       }
     },
     "JS:pre-commit-review.js:#0edfd217": {
       "own": "0edfd2172e1a658e:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Python:check_proposals.py:_check": "f2df5c90f05ad34f",
         "Python:check_proposals.py:_pending": "b1fa4274ae462ec3"
       }
@@ -2590,71 +2590,69 @@
       "own": "0f4deb5129cfc79f:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
       }
     },
     "JS:pre-commit-review.js:#1004c7f3": {
       "own": "1004c7f3ea5e7959:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
-      }
-    },
-    "JS:pre-commit-review.js:#1b0d5f60": {
-      "own": "1b0d5f608e0216db:e3b0c44298fc1c14",
-      "rounds": 1,
-      "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
-        "Python:check_proposals.py:_check": "f2df5c90f05ad34f",
-        "Python:check_proposals.py:_pending": "b1fa4274ae462ec3",
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
-        "Python:record_run.py:proposals_appended": "b40922274c829da5"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
       }
     },
     "JS:pre-commit-review.js:#2160a2ab": {
       "own": "2160a2abe231aa97:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
+      }
+    },
+    "JS:pre-commit-review.js:#21b11292": {
+      "own": "21b112920b8f80f3:e3b0c44298fc1c14",
+      "rounds": 1,
+      "read": {
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
+        "Python:review_input.py:_previous": "cc2a94bfeeb6e728",
+        "Python:review_input.py:_reviewed": "5810eb25ff85e2b1",
+        "Python:review_input.py:answer_in": "f94582c3946d2bcd"
       }
     },
     "JS:pre-commit-review.js:#24669a7e": {
       "own": "24669a7eee919cdb:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
+      }
+    },
+    "JS:pre-commit-review.js:#3cb8f507": {
+      "own": "3cb8f5078c53651a:e3b0c44298fc1c14",
+      "rounds": 1,
+      "read": {
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
+        "Python:review_input.py:_base": "a434f713d9602426",
+        "Python:review_input.py:_reviewed": "5810eb25ff85e2b1",
+        "Python:review_input.py:main": "33fac3293baa9a7b"
       }
     },
     "JS:pre-commit-review.js:#4e51d447": {
       "own": "4e51d447e6a75ba5:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
       }
     },
     "JS:pre-commit-review.js:#4fb8a0f5": {
       "own": "4fb8a0f55a5181b3:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
-      }
-    },
-    "JS:pre-commit-review.js:#592ee96c": {
-      "own": "592ee96c2c45e897:e3b0c44298fc1c14",
-      "rounds": 1,
-      "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
-        "Python:review_input.py:_previous": "cc2a94bfeeb6e728",
-        "Python:review_input.py:_reviewed": "8ee23b639bb06583",
-        "callers:_reviewed": "d534046f5818e7c4"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
       }
     },
     "JS:pre-commit-review.js:#827dc496": {
       "own": "827dc4962d105a09:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Markdown:reader.md": "3f573c816b1dcddb"
       }
     },
@@ -2662,47 +2660,58 @@
       "own": "8bd05aa4ac91a380:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Python:check_documents.py:numbers_in_prose": "16e629de9fdc1a5a",
         "Python:no_tree_numbers.py:refusal_for": "10135bdec485d89a",
-        "callers:check_documents.numbers_in_prose": "d457ff56d6d2a3b5"
+        "mentions:numbers_in_prose": "d457ff56d6d2a3b5"
       }
     },
     "JS:pre-commit-review.js:#95081592": {
       "own": "95081592963b0642:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
       }
     },
     "JS:pre-commit-review.js:#a6935f54": {
       "own": "a6935f5454c00b07:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Python:gate.py:report": "0f65c8c7ca5f0d83",
-        "Python:review_input.py:main": "e50b189477d05d39"
+        "Python:review_input.py:main": "33fac3293baa9a7b"
       }
     },
     "JS:pre-commit-review.js:#a6fe9cb8": {
       "own": "a6fe9cb84068c1dc:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
       }
     },
     "JS:pre-commit-review.js:#ca044e1a": {
       "own": "ca044e1a5a65877c:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
       }
     },
     "JS:pre-commit-review.js:#e8c179f4": {
       "own": "e8c179f472ff4e96:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
+      }
+    },
+    "JS:pre-commit-review.js:#ed480529": {
+      "own": "ed480529203e34cb:e3b0c44298fc1c14",
+      "rounds": 1,
+      "read": {
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
+        "Python:check_proposals.py:_check": "f2df5c90f05ad34f",
+        "Python:check_proposals.py:_pending": "b1fa4274ae462ec3",
+        "Python:record_run.py:main": "15990788e609a19f",
+        "Python:record_run.py:proposals_appended": "b40922274c829da5"
       }
     },
     "JSON:hooks.json:#1ef0d407": {
@@ -2734,9 +2743,8 @@
       "own": "830b8d2c2bbd6990:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JSON:hooks.json": "5cb7ad5c017fa924",
+        "JSON:hooks.json": "2f4b2b154e9e815b",
         "Python:prose_answer.py": "7d5c79ffb7fe1376",
-        "Python:record_run.py:_pending_with": "abad75a9504616de",
         "Python:record_run.py:_said": "c105ddd768dfb205",
         "Python:record_run.py:proposal_refusals": "8f0b4472a58a8e3f"
       }
@@ -4121,14 +4129,14 @@
         "Python:update_ledger_and_queue.py:updated": "0c8725e8f8438e44"
       }
     },
-    "Markdown:DESIGN.md:Checking the claims #64901b3e": {
-      "own": "64901b3e379bbf90:e3b0c44298fc1c14",
+    "Markdown:DESIGN.md:Checking the claims #bd9d6548": {
+      "own": "bd9d654803943bca:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
         "Python:claim_state.py:refined": "d7a05a39bb1d66a4",
         "Python:claim_state.py:stale_claims": "d8eb5f4a42f841db",
-        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b",
-        "callers:claim_state.refined": "dbb7a7b2d3df9bbe"
+        "Python:collect_fragments.py:owners_of": "905bd1addf1902f9",
+        "Python:converge_claims.py:settlement_of": "54b8b7fd7eade38b"
       }
     },
     "Markdown:DESIGN.md:Checking the claims #cf70b488": {
@@ -4659,15 +4667,16 @@
         "Python:record_run.py:proposal_refusals": "8f0b4472a58a8e3f"
       }
     },
-    "Markdown:DESIGN.md:The checkers #23568fee": {
-      "own": "23568fee3bb5e59d:e3b0c44298fc1c14",
+    "Markdown:DESIGN.md:The checkers #1f87918d": {
+      "own": "1f87918dc9c2664b:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
         "Markdown:prose-critic.md": "0784a15acc442ddf",
         "Markdown:reader.md": "3f573c816b1dcddb",
         "Python:converge_prose.py:_read_critic": "db5057e28252e195",
         "Python:converge_prose.py:_written_into_tree": "ef50683419bc509d",
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff"
+        "Python:record_run.py:main": "15990788e609a19f",
+        "Python:record_run.py:proposals_appended": "b40922274c829da5"
       }
     },
     "Markdown:DESIGN.md:The checkers #5a02232d": {
@@ -4688,11 +4697,10 @@
       "own": "5e44520401b0f784:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "Python:checkers.py:_Prose": "de0f2ac2172097c9",
         "Python:checkers.py:_prose_refusals": "bc896d1e2423364f",
+        "Python:prose_rules.py:_over": "9e16e40aed4c3e50",
         "Python:settling_state.py:WHY": "9506d9fae37b8fde",
-        "mentions:WHY": "3fb2acde77eeb973",
-        "mentions:_Prose": "76e162b87dc6f18d"
+        "mentions:WHY": "1f59fb8f39ea4760"
       }
     },
     "Markdown:DESIGN.md:The checkers #62748789": {
@@ -4726,9 +4734,9 @@
       "own": "8b65bd83c0153871:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
-        "Python:prose_gate.py": "3a7c20313980f253",
-        "Python:check_prose.py:_faults": "1570e035b4825bc5"
+        "JSON:settings.json": "e9658b90680367e1",
+        "Python:check_prose.py:_faults": "1570e035b4825bc5",
+        "Python:prose_gate.py": "3a7c20313980f253"
       }
     },
     "Markdown:DESIGN.md:The checkers #8f5f4e10": {
@@ -4736,6 +4744,20 @@
       "rounds": 1,
       "read": {
         "Markdown:prose-compare.md": "cf55c222bf9237f3"
+      }
+    },
+    "Markdown:DESIGN.md:The checkers #94061416": {
+      "own": "9406141697b46b65:e3b0c44298fc1c14",
+      "rounds": 1,
+      "read": {
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
+        "Python:prose_answer.py": "7d5c79ffb7fe1376",
+        "Python:record_run.py:main": "15990788e609a19f",
+        "Python:record_run.py:proposal_refusals": "8f0b4472a58a8e3f",
+        "Python:record_run.py:proposals_appended": "b40922274c829da5",
+        "Python:review_input.py:_previous": "cc2a94bfeeb6e728",
+        "Python:review_input.py:_reviewed": "5810eb25ff85e2b1",
+        "Python:review_input.py:answer_in": "f94582c3946d2bcd"
       }
     },
     "Markdown:DESIGN.md:The checkers #aaf8d1ad": {
@@ -4775,24 +4797,6 @@
         "Python:converge_prose.py:_is_refused": "a87d3fc142814b6e",
         "Python:converge_prose.py:_stop": "07034d779edff2d3",
         "Python:converge_prose.py:main": "175675dd51ea0bc4"
-      }
-    },
-    "Markdown:DESIGN.md:The checkers #dda85793": {
-      "own": "dda8579366ba0f5c:e3b0c44298fc1c14",
-      "rounds": 1,
-      "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
-        "Python:prose_answer.py": "7d5c79ffb7fe1376",
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
-        "Python:record_run.py:proposals_appended": "b40922274c829da5"
-      }
-    },
-    "Markdown:DESIGN.md:The checkers #ef5927ed": {
-      "own": "ef5927ed6c8e3117:e3b0c44298fc1c14",
-      "rounds": 1,
-      "read": {
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
-        "Python:record_run.py:proposal_refusals": "8f0b4472a58a8e3f"
       }
     },
     "Markdown:DESIGN.md:The checkers #fda43cba": {
@@ -5235,7 +5239,7 @@
       "own": "08f465e2ac943370:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217"
+        "JS:pre-commit-review.js": "6be1cd5037d22677"
       }
     },
     "Markdown:DESIGN.md:Vetting the project #0bdb0d7a": {
@@ -5272,7 +5276,7 @@
       "own": "c2957d3eac3e4e72:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Make:Makefile:pc": "48ab50636fd091c9"
       }
     },
@@ -5936,7 +5940,7 @@
       "own": "3cb430baba27d650:8db30022ad7ee0a6",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:check_documents.py:_A_CITED_NAME": "3fae36560c1898a5",
         "Python:check_documents.py:private_citation_errors": "9e18be1695254adf",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
@@ -7308,7 +7312,8 @@
       "own": "d4fe11ae1b07c09c:5a285ba0154bf7c9",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
+        "Make:Makefile:.stamps/verify-dead-code, verify-dead-code": "d31e40509ae3af00",
         "Python:gate.py:modules": "c4668dda3e9c9293"
       }
     },
@@ -7645,15 +7650,16 @@
       "read": {}
     },
     "Python:check_documents.py:_MAY_NAME_THE_PLAN": {
-      "own": "2516fef70a8ee9b1:94ad1dc7661c1c76",
+      "own": "0141d23a43c07297:94ad1dc7661c1c76",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
-        "JSON:hooks.json": "5cb7ad5c017fa924",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
+        "JSON:hooks.json": "2f4b2b154e9e815b",
         "Make:Makefile:DOCUMENTS": "749eb0e585163ed6",
         "Markdown:README.md:libyeast #e8da5edd": "e3b0c44298fc1c14",
-        "Markdown:conventions.md:no-prose-points-at-the-plan": "e3b0c44298fc1c14",
+        "Python:check_conventions.py:mechanised_rules": "99d5d650514bf778",
         "Python:check_documents.py:_may_name_the_plan": "1ab70a03c0b8328b",
+        "Python:check_documents.py:history_errors": "e7462b31813ce645",
         "Python:claim_state.py:_STORE": "d4bdf16769d39b34",
         "Python:claim_state.py:_UNCLAIMED": "1101a5bbac6e31f9",
         "Python:claim_state.py:_is_unclaimed": "ca9746cd7e6d7124",
@@ -7669,8 +7675,10 @@
         "Python:review_input.py:_docs": "95875f6aac928eca",
         "Python:write_agent_prompts.py:_AGENTS": "f086d137154e8436",
         "Python:write_agent_prompts.py:_SOURCES": "a5b63de7c8386a27",
+        "Python:write_agent_prompts.py:_judged_rules": "03aba5f48c9d3673",
         "Python:write_agent_prompts.py:_rendered": "e0c521da35a813af",
         "Python:write_agent_prompts.py:_said_by": "5035534e44924c9a",
+        "callers:claim_state.claims_written": "47d326c314fc60ee",
         "mentions:_MAY_NAME_THE_PLAN": "a831ba87bf0d8f12"
       }
     },
@@ -7982,8 +7990,7 @@
       "own": "f62ded7ae6ea605e:8f28f9d2f085dcaf",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
-        "Python:check_conventions.py:_A_SIGNED_RULE": "24a6a5db68a48e57",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Python:check_conventions.py:_uncited_convention_faults": "fc38fa8786d5d664",
         "Python:check_conventions.py:_uncredited_hook_faults": "efaeecbcea0fad8d",
         "Python:gate.py:conventions": "28ccd7b2850989f4",
@@ -8507,7 +8514,7 @@
         "Python:check_grammar_coverage.py:_MONOMORPHIC_SUFFIX": "e86d4346207a47aa",
         "Python:check_grammar_coverage.py:gaps": "334091ba2dab3987",
         "Python:ir.py:FINITE_PARAMS": "1dfead8a0c3adfa9",
-        "callers:_base": "1c3927d6e7ab9a21"
+        "callers:_base": "748169cdf149174e"
       }
     },
     "Python:check_grammar_coverage.py:_decided_by_callers": {
@@ -8628,10 +8635,9 @@
       }
     },
     "Python:check_hooks.py": {
-      "own": "cbed2a589c02df6e:d0ad4df35c1a9efd",
+      "own": "c188751760f9ea5b:d0ad4df35c1a9efd",
       "rounds": 1,
       "read": {
-        "JSON:hooks.json": "5cb7ad5c017fa924",
         "Python:check_failures.py:_python_faults": "27639f2406f189fc",
         "Python:check_failures.py:_shell_faults": "2cdb7decca2c3203",
         "Python:check_hooks.py:_KINDS": "22cf7a5cb94a6b83",
@@ -8644,6 +8650,7 @@
         "Python:gate.py:hooks": "a5bcf27bc678d643",
         "Python:gate.py:is_in_the_tree": "d07bd488a9cfde96",
         "Python:gate.py:mcp_modules": "3dbf302dc004049d",
+        "Python:gate.py:shell_scripts": "97c969bc9afd8d72",
         "Python:prose_gate.py": "3a7c20313980f253"
       }
     },
@@ -8651,7 +8658,7 @@
       "own": "ece5edb8ae2359bf:32af5efa2585d940",
       "rounds": 1,
       "read": {
-        "JSON:hooks.json": "5cb7ad5c017fa924",
+        "JSON:hooks.json": "2f4b2b154e9e815b",
         "Python:check_hooks.py:_kind_faults": "7d69c14d94867051",
         "Python:check_hooks.py:_landed": "b7242111fd93f14c",
         "Python:check_hooks.py:_pair_faults": "577b9849a0778e27",
@@ -8910,7 +8917,7 @@
       "own": "fb84eb717f0f6813:065276190b10bdee",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:check_hooks.py:_registered": "8ea134283072ea82",
         "Python:checkers.py:CALLED": "47acc8fb2c9ec7f0",
         "Python:checkers.py:THE_HOOK": "131d6ef454e5ba26",
@@ -9253,13 +9260,14 @@
       "own": "b779cc1b286ddf01:56ae8d8dddf1a0ba",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Python:converge_prose.py:_condensed": "b2e62181c5e47079",
         "Python:gate.py:report": "0f65c8c7ca5f0d83",
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
+        "Python:record_run.py:_pending_with": "abad75a9504616de",
+        "Python:record_run.py:main": "15990788e609a19f",
         "Python:record_run.py:proposals_appended": "b40922274c829da5",
         "Python:settling_state.py:PENDING": "8c91601a27c1f08e",
-        "callers:proposals_appended": "0c5008d5817a9f06"
+        "callers:record_run.proposals_appended": "9790e2b789274dd6"
       }
     },
     "Python:check_proposals.py:_A_HEADING": {
@@ -9334,7 +9342,7 @@
       "rounds": 1,
       "read": {
         "Python:check_prose.py:main": "5321485a91776103",
-        "mentions:_USAGE": "e97c92c70d7b2230"
+        "mentions:_USAGE": "f7f6888080c1108d"
       }
     },
     "Python:check_prose.py:_faults": {
@@ -9677,7 +9685,7 @@
       "own": "af954f96d22df483:bee73fb5035cadd8",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:apply_prose.py:draft_refusals": "4ad5e3fae3458a9f",
         "Python:apply_prose.py:text_refusals": "dedf9c81ece87435",
         "Python:check_prose.py:_faults": "1570e035b4825bc5",
@@ -9685,6 +9693,7 @@
         "Python:collect_fragments.py:prose_digest": "214bb6ca59426777",
         "Python:collect_fragments.py:whole": "9e7e15cc73e889d7",
         "Python:prose_gate.py": "3a7c20313980f253",
+        "Python:prose_rewrite.py:_is_faulty": "08d5efcd3de3853a",
         "Python:prose_rewrite.py:refusal_for": "0098ef231947b63a",
         "Python:prose_rules.py:literal_shape_faults": "849255c7b19b437a",
         "Python:prose_rules.py:prose_faults": "d4007879edceb348",
@@ -9719,7 +9728,7 @@
       "own": "8b072daaf3fef40b:131d6ef454e5ba26",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:check_hooks.py:_pair_faults": "577b9849a0778e27",
         "Python:check_hooks.py:_runners": "065276190b10bdee",
         "Python:check_hooks.py:_silent_hook_faults": "95e4ac42c60a3f60",
@@ -10560,12 +10569,12 @@
       "own": "c2f0e01466f1ad0b:eab3fce7ea2fde75",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
         "Make:Makefile:.stamps/vet-format-make, vet-format-make": "adbe1b37d2eeda32",
-        "Make:Makefile:.stamps/vet-mypy, vet-mypy": "2e1bf72ac0ccc45c",
         "Python:collect_fragments.py:_does_read_as_prose": "d3d2ce1affe1e11a",
         "Python:grammar2decoder.py:emit": "878bd407bf579c0a",
         "Shell:check-deps.sh": "972e86d1f70d3d8b",
+        "callers:_HOLDS_SOURCE": "e3b0c44298fc1c14",
         "mentions:_HOLDS_SOURCE": "568af19d71e30c21"
       }
     },
@@ -10573,9 +10582,9 @@
       "own": "3a5a43f8011848f1:46741a6b0e7da660",
       "rounds": 1,
       "read": {
-        "JSON:hooks.json": "5cb7ad5c017fa924",
-        "Python:collect_fragments.py:_A_JSON_NOTE": "bf165df7684d056e",
+        "JSON:hooks.json": "2f4b2b154e9e815b",
         "Python:collect_fragments.py:_json_fragments": "e1c4482d3722f0f8",
+        "Python:collect_fragments.py:does_hold_hook_payloads": "8ddb1bc18c3c81c3",
         "mentions:_HOOK_PAYLOADS": "077b1db617266a2b"
       }
     },
@@ -11102,7 +11111,7 @@
       "own": "febbdaf903632a99:e1c4482d3722f0f8",
       "rounds": 1,
       "read": {
-        "JSON:hooks.json": "5cb7ad5c017fa924",
+        "JSON:hooks.json": "2f4b2b154e9e815b",
         "Python:collect_fragments.py:_A_JSON_NOTE": "bf165df7684d056e"
       }
     },
@@ -12054,7 +12063,7 @@
       "read": {
         "Python:converge_claims.py:_keys_named": "3ba59f37d583755a",
         "Python:converge_claims.py:main": "20a2de6e4b8784d3",
-        "mentions:_USAGE": "e97c92c70d7b2230"
+        "mentions:_USAGE": "f7f6888080c1108d"
       }
     },
     "Python:converge_claims.py:_answered": {
@@ -12532,7 +12541,7 @@
       "rounds": 1,
       "read": {
         "Python:converge_prose.py:main": "175675dd51ea0bc4",
-        "mentions:_USAGE": "e97c92c70d7b2230"
+        "mentions:_USAGE": "f7f6888080c1108d"
       }
     },
     "Python:converge_prose.py:_a_change": {
@@ -13025,13 +13034,14 @@
       "own": "42502a4f539cabeb:1b4c8409619a2e5c",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Markdown:conventions.md:a-design-paragraph-copies-no-cited-prose": "e3b0c44298fc1c14",
         "Markdown:conventions.md:each-document-keeps-to-its-domain": "e3b0c44298fc1c14",
         "Python:check_documents.py:copied_prose_errors": "79ab5c91655920a9",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
-        "Python:collect_fragments.py:_fragments_of": "d272b9ceac4da5aa",
-        "Python:collect_fragments.py:fragments": "c4887f25a72daffc"
+        "Python:collect_fragments.py:fragments": "c4887f25a72daffc",
+        "Python:design_copies.py:_cited_prose": "a80f8715b64ebf6c",
+        "Python:design_copies.py:copies_of": "da562fad31142041"
       }
     },
     "Python:design_copies.py:_cited_prose": {
@@ -13111,9 +13121,10 @@
       "own": "aa69bb68a8f4684a:215e16902470cef2",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:collect_fragments.py:written": "eb7df4337f441680",
-        "Python:prose_gate.py": "3a7c20313980f253"
+        "Python:prose_gate.py": "3a7c20313980f253",
+        "mentions:predicted_at": "a708943df0930e58"
       }
     },
     "Python:edit_landed.py:_PREDICTIONS": {
@@ -13330,11 +13341,11 @@
       "read": {}
     },
     "Python:gate.py": {
-      "own": "519c51fe10653e13:3e9af0b0accc3bb6",
+      "own": "519c51fe10653e13:4485a18f208cabf2",
       "rounds": 1,
       "read": {
         "Python:gate.py:report": "0f65c8c7ca5f0d83",
-        "callers:report": "3971b3471bdfbafc"
+        "callers:report": "bef54606a2765f11"
       }
     },
     "Python:gate.py:NOT_OURS": {
@@ -13375,14 +13386,14 @@
     },
     "Python:gate.py:TOOL_STORES": {
       "own": "f7a58f7d208e5532:459d5a2e1dfd0b93",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
         "Python:claim_state.py:_STORE": "d4bdf16769d39b34",
         "Python:claim_state.py:claims_written": "2f4923eae6ffab17",
         "Python:record_run.py:_RULE_USE": "30dc2d0fc5f310eb",
         "Python:record_run.py:rule_use_counted": "ff6be797b15f9a65",
         "Python:review_input.py:_code": "45fd2db3dee80738",
-        "Python:review_input.py:_references": "c4f1f80b474ca7b5",
+        "Python:review_input.py:_references": "1e300f749dcac0a9",
         "Python:review_input.py:_uncovered": "58985b0eb764f38b",
         "Python:settling_state.py:LEDGER": "046cf030b585ddd4",
         "Python:settling_state.py:SUGGESTED": "3a8e2cc3e80934a4"
@@ -13464,6 +13475,14 @@
       "rounds": 1,
       "read": {
         "Python:gate.py:run_deep": "33232c39ee877762"
+      }
+    },
+    "Python:gate.py:_SESSIONS": {
+      "own": "904ae37724c5af2d:014e3af756561a44",
+      "rounds": 2,
+      "read": {
+        "Python:gate.py:TREE": "941fd8747d4a14fb",
+        "Python:gate.py:task_outputs": "46a7fe252cc1dc77"
       }
     },
     "Python:gate.py:_SPREAD": {
@@ -13659,9 +13678,9 @@
         "Python:check_documents.py:_stale_gone_errors": "a8d156fadc0affb0",
         "Python:gate.py:defined_names": "e7d89d46388c6915",
         "Python:gate.py:modules": "c4668dda3e9c9293",
-        "Python:review_input.py:_references": "c4f1f80b474ca7b5",
+        "Python:review_input.py:_references": "1e300f749dcac0a9",
         "callers:_defined_in_the_tree": "771bca97f02dba5a",
-        "callers:names_defined_in_modules": "cb2e4a520ee2e4b8"
+        "callers:names_defined_in_modules": "efcd571b5efeb250"
       }
     },
     "Python:gate.py:prose_files": {
@@ -13707,6 +13726,15 @@
       "read": {
         "Python:gate.py:_one": "190976451838b535",
         "Python:ir.py:also_reached": "fc7198c67513c007"
+      }
+    },
+    "Python:gate.py:task_outputs": {
+      "own": "0480d833a2af9317:46a7fe252cc1dc77",
+      "rounds": 1,
+      "read": {
+        "Python:gate.py:_SESSIONS": "014e3af756561a44",
+        "Python:review_input.py:_reviewed": "5810eb25ff85e2b1",
+        "callers:task_outputs": "76007f9b083dd964"
       }
     },
     "Python:gate.py:test_sources": {
@@ -13928,10 +13956,10 @@
       "own": "1f047546c7287364:67d983a3abfa5d1d",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:checkers.py:refusals_for_edit": "1dda7868b748380a",
         "Python:prose_gate.py": "3a7c20313980f253",
-        "callers:refusal_for": "6979d44594fd63d4"
+        "callers:hook_health.refusal_for": "954e9524780f7a5c"
       }
     },
     "Python:hook_health.py:_IMPORTED_FROM": {
@@ -14053,14 +14081,14 @@
       }
     },
     "Python:interpreter.py:ASKED": {
-      "own": "89771df1012ceb83:15c8d213f795a034",
+      "own": "cedb56825f617e91:15c8d213f795a034",
       "rounds": 1,
       "read": {
         "Python:check_normalize.py:_check": "b1009c070acb7aa4",
         "Python:interpreter.py:_evaluated_global": "1256fb0827a1abc9",
         "Python:normalize.py:_DROP_F": "653ae620cb98bfbc",
         "Python:normalize.py:_DROP_M": "cbe1b6331e10ba35",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
+        "Python:normalize.py:_read_off": "d0070f9ffd83083a",
         "callers:_read_off": "f0f2456ebd2fc209",
         "mentions:ASKED": "ad1378b484dc26e6"
       }
@@ -14160,9 +14188,7 @@
       "own": "94daeb0350f175eb:0d8018f0d5010366",
       "rounds": 1,
       "read": {
-        "Python:interpreter.py:Emitter": "052e754b33f5f3fd",
-        "Python:interpreter.py:_try_close_settled": "fab77b24bca6523e",
-        "mentions:PopBackTrackAction": "701ef8242bb1e089"
+        "Python:interpreter.py:Emitter": "052e754b33f5f3fd"
       }
     },
     "Python:interpreter.py:Emitter.mark_provisional": {
@@ -14836,13 +14862,12 @@
     },
     "Python:interpreter.py:_try_limited_span": {
       "own": "edb312a611c139dd:81221f0c6c2349e0",
-      "rounds": 3,
+      "rounds": 1,
       "read": {
         "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
         "Python:interpreter.py:_try_counted_run": "5ea16565473dff8b",
         "Python:interpreter.py:_try_did_fill_span": "ced3daed59d4fc7b",
-        "Python:ir.py:DidMatchFullSpanGuard": "3482583ecec2c902",
-        "mentions:DidMatchFullSpanGuard": "af5e33c2a2eb68ec"
+        "mentions:DidMatchFullSpanGuard": "f7f7d8fb3ddf53c1"
       }
     },
     "Python:interpreter.py:_try_longest_run": {
@@ -14856,16 +14881,9 @@
       }
     },
     "Python:interpreter.py:_try_look_behind": {
-      "own": "0b7e97d8cdbfc451:070de21de73c628c",
-      "rounds": 1,
-      "read": {
-        "Grammar:yeast-spec-1.2.yaml:ns-char": "d686248b72710d53",
-        "Grammar:yeast-spec-1.2.yaml:ns-plain-char": "3e8d814fbe94a121",
-        "Python:ir.py:is_one_char": "dcf239023b339031",
-        "Python:normalize.py:_behind_admits": "f0e1e0977067e4ea",
-        "mentions:LookBehindGuard": "9979471246d691f6",
-        "mentions:ns-char": "4c59922848f196a9"
-      }
+      "own": "dd5da7231545b4b2:070de21de73c628c",
+      "rounds": 2,
+      "read": {}
     },
     "Python:interpreter.py:_try_mark_provisional": {
       "own": "cff450dfa437ca98:85d57454d78b01a9",
@@ -14907,7 +14925,7 @@
         "Python:interpreter.py:_try_close_committed": "95d022a500db5884",
         "Python:ir.py:PopMessageAction": "d20e316057353bca",
         "Python:normalize.py:_lowered_commit": "6dee751cc2e4a23d",
-        "mentions:PopMessageAction": "1730486d92c02025"
+        "mentions:PopMessageAction": "1069bc32051cf92f"
       }
     },
     "Python:interpreter.py:_try_open_provisional": {
@@ -14939,7 +14957,8 @@
       "rounds": 1,
       "read": {
         "Python:interpreter.py:_try_did_consume_since_open": "8f7dfdf520fff958",
-        "mentions:StartMustConsumeAction": "d570151dac5696d2"
+        "Python:interpreter.py:_try_longest_run": "fad2628a7ed5d91f",
+        "mentions:StartMustConsumeAction": "643097a2b6cab3b1"
       }
     },
     "Python:interpreter.py:_try_open_window": {
@@ -15129,25 +15148,24 @@
       }
     },
     "Python:ir.py": {
-      "own": "ac7971694171d2e6:928b13f0a6b3ead8",
+      "own": "b41486b3fc9e2f72:bebf38deea2ec50f",
       "rounds": 1,
       "read": {
-        "Markdown:conventions.md:a-kind-dispatch-raises": "e3b0c44298fc1c14",
-        "Python:check_annotated_roundtrip.py": "20da238c85c74e4a",
-        "Python:grammar2decoder.py": "ef14fbf7264c0df1",
-        "Python:annotated2ir.py:_production": "2e47e36de1e08583",
         "Python:annotated2ir.py:_expr": "81c2665c7b92a31a",
-        "Python:annotated2ir.py:translate": "cc535964dd30f718",
-        "Python:annotated2ir.py:load": "0cbb8ee0c8ed44dc",
         "Python:annotated2ir.py:_node": "871d95b5518467c6",
+        "Python:annotated2ir.py:_production": "2e47e36de1e08583",
+        "Python:annotated2ir.py:load": "0cbb8ee0c8ed44dc",
+        "Python:annotated2ir.py:translate": "cc535964dd30f718",
+        "Python:check_annotated_roundtrip.py": "20da238c85c74e4a",
         "Python:check_normalize.py:_check": "b1009c070acb7aa4",
-        "Python:ir2annotated.py:_EXPR_YAML": "decaf80618085e90",
-        "Python:ir2spec.py:_normalize": "cb3b3b2bef6e1e6f",
+        "Python:grammar2decoder.py": "ef14fbf7264c0df1",
+        "Python:ir.py:BranchPart": "1325e1cf81ad911c",
+        "Python:ir.py:Question": "a348ac3fca7f1f52",
         "Python:ir2spec.py:_NORMALIZED": "871738038c69820c",
-        "Python:ir2spec.py:official": "4f6e32440fb20a7b",
-        "Python:ir2spec.py:_normalized_case": "83dafb0a9459b08c",
         "Python:ir2spec.py:_flatten": "50e2e3ae3e9567e3",
+        "Python:ir2spec.py:_normalize": "cb3b3b2bef6e1e6f",
         "Python:ir2spec.py:_normalized_alternation": "997955e2da59d224",
+        "Python:ir2spec.py:_normalized_case": "83dafb0a9459b08c",
         "Python:ir2spec.py:_normalized_sequence": "3f73b7ac4aa5a236"
       }
     },
@@ -15155,7 +15173,7 @@
       "own": "2c5db696d59ba340:ba768b331fd86cec",
       "rounds": 1,
       "read": {
-        "Python:ir.py": "928b13f0a6b3ead8",
+        "Python:ir.py": "bebf38deea2ec50f",
         "Python:ir.py:_refuse_a_family_said_twice": "0bd8e43c67d30292",
         "Python:ir.py:_refuse_a_kind_outside_the_partition": "88b1d98e379d9578"
       }
@@ -15219,9 +15237,10 @@
       "own": "a2939db20d7790a4:0d867e5bcbe59107",
       "rounds": 1,
       "read": {
+        "Python:ir.py:CONSUMES_NOTHING": "46b2534781ccb52b",
         "Python:ir.py:ConsumeNoCharAction": "aeccad34c6dd60f9",
         "Python:ir.py:ErrorAction": "e9dd652399416be9",
-        "mentions:ACTIONS": "749ebb093418ee89"
+        "mentions:ACTIONS": "1503049e5b4fb0f5"
       }
     },
     "Python:ir.py:ASKED_NOT_TAKEN_NODES": {
@@ -15520,7 +15539,7 @@
       "read": {
         "Python:interpreter.py:_try_recovering": "13b2a06d20beae08",
         "Python:interpreter.py:_try_way": "d0767a126da28c11",
-        "mentions:AlternativeState": "b9b61d2402e7626c",
+        "mentions:AlternativeState": "00ea28b41708d144",
         "mentions:RecoverWrapper": "7df3fbb33b8d02bb"
       }
     },
@@ -15624,7 +15643,7 @@
         "Python:chars.py:_denoted_set": "183f1023c258f6fa",
         "Python:chars.py:spans": "319eb0f501d942c4",
         "Python:normalize.py:_spans_node": "47352bb8954e4379",
-        "mentions:CharSet": "1404b0fc790b1321"
+        "mentions:CharSet": "f3f59bed4811a2ce"
       }
     },
     "Python:ir.py:ChoiceState": {
@@ -15634,7 +15653,7 @@
         "Python:interpreter.py:_try_choice": "c0ffa8d51bf9071d",
         "Python:ir.py:AltTree": "e4043f1d9f87d353",
         "Python:normalize.py:_AS_A_MACHINE_BODY": "0dbe5b05b71a67ff",
-        "mentions:ChoiceState": "10a22ac39cbc03a6"
+        "mentions:ChoiceState": "e4a28e7a885210a4"
       }
     },
     "Python:ir.py:ClearVarAction": {
@@ -15644,7 +15663,7 @@
         "Python:interpreter.py:_evaluated_parameter": "b0b308dd85ce8779",
         "Python:interpreter.py:_try_clear": "be088b2448bb4584",
         "Python:ir.py:ACTIONS": "0d867e5bcbe59107",
-        "mentions:ClearVarAction": "5fd77b057cd8a92c"
+        "mentions:ClearVarAction": "0a1318ec8b9bcd1f"
       }
     },
     "Python:ir.py:CloseWindowAction": {
@@ -15656,7 +15675,8 @@
         "Python:interpreter.py:_try_open_window": "2764e015ea1db7a4",
         "Python:ir.py:OpenWindowAction": "e6111685afb6a310",
         "Python:normalize.py:_lowered_window": "ae6f9295a6705fe8",
-        "mentions:CloseWindowAction": "956f0aa9c5083d6f"
+        "mentions:CloseWindowAction": "7f9619c0cf03326e",
+        "mentions:OpenWindowAction": "4b4d13f0e975f6ae"
       }
     },
     "Python:ir.py:ColumnValue": {
@@ -15696,15 +15716,15 @@
       }
     },
     "Python:ir.py:ConsumeCharAction": {
-      "own": "5d6cf6994992a860:6ff4362c1cce36cd",
+      "own": "738aaf0a41314856:6ff4362c1cce36cd",
       "rounds": 1,
       "read": {
         "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
         "Python:interpreter.py:_try_gated_char": "4ecd5f0db10ebfc7",
         "Python:normalize.py:_hoist_guards_to_callers": "d7aaf9dfd3395a20",
-        "Python:normalize.py:_hoisted_once": "4c132f644f28b5da",
         "Python:normalize.py:_split_consumes_into_gates": "72772eb31da39c31",
-        "mentions:ConsumeCharAction": "93f9e3ac1417cd8b"
+        "Python:normalize.py:_taking": "5441bdc0663e1f1a",
+        "mentions:ConsumeCharAction": "97784b3e90695b37"
       }
     },
     "Python:ir.py:ConsumeLimitedSpanAction": {
@@ -15714,7 +15734,7 @@
         "Python:interpreter.py:_try_limited_span": "81221f0c6c2349e0",
         "Python:ir.py:DidMatchFullSpanGuard": "3482583ecec2c902",
         "Python:normalize.py:_CAN_BE_REFUSED": "8f3e2a49a6e9ee25",
-        "mentions:ConsumeLimitedSpanAction": "061557f388735d81"
+        "mentions:ConsumeLimitedSpanAction": "9c5995dda9229f2f"
       }
     },
     "Python:ir.py:ConsumeNoCharAction": {
@@ -15736,9 +15756,8 @@
         "Python:interpreter.py:_try_span": "37be51e547b28180",
         "Python:normalize.py:_spanned_run": "981ed98f9279b741",
         "Python:normalize.py:_spanned_star": "d7d7e1703f0b973f",
-        "Python:normalize.py:_took_a_run": "23b81f8010f0df62",
         "callers:_spanned_run": "93ffaf20fca2af2b",
-        "mentions:ConsumeSpanAction": "ce45bb8caeb1fbfa"
+        "mentions:ConsumeSpanAction": "91711d78e65f90a8"
       }
     },
     "Python:ir.py:ConsumeTrimmedSpanAction": {
@@ -15753,11 +15772,11 @@
     },
     "Python:ir.py:CutAction": {
       "own": "124afcb069b40e6e:93608b0c36a71ca7",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
         "Python:check_messages.py": "7974035f5749f5ee",
         "Python:interpreter.py:_try_cut": "df6532fa87a23255",
-        "mentions:CutAction": "b2f9b35ba4ce3352"
+        "mentions:CutAction": "ce3f2b2efa988fce"
       }
     },
     "Python:ir.py:DidConsumeSinceOpenGuard": {
@@ -15766,9 +15785,7 @@
       "read": {
         "Python:interpreter.py:_try_did_consume_since_open": "8f7dfdf520fff958",
         "Python:ir.py:EndMustConsumeAction": "2e09985fae5ffeb9",
-        "Python:ir.py:GUARDS": "68c4d8d50472146a",
-        "Python:ir.py:StartMustConsumeAction": "719187c46746f4b1",
-        "mentions:DidConsumeSinceOpenGuard": "ceee1e542a267356"
+        "mentions:DidConsumeSinceOpenGuard": "84251741afa7eeb9"
       }
     },
     "Python:ir.py:DidMatchFullSpanGuard": {
@@ -15776,12 +15793,11 @@
       "rounds": 1,
       "read": {
         "Python:interpreter.py:_DOES_TAKE_THE_ANSWER_AWAY": "41964ace8172f45a",
-        "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
         "Python:interpreter.py:_try_did_fill_span": "ced3daed59d4fc7b",
         "Python:interpreter.py:_try_limited_span": "81221f0c6c2349e0",
         "Python:interpreter.py:_try_match": "ffe2e0adb5b59d97",
-        "Python:normalize.py:GUARD_CROSSES_ACTION": "9fbe478796dd938b",
-        "mentions:DidMatchFullSpanGuard": "af5e33c2a2eb68ec"
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
+        "mentions:DidMatchFullSpanGuard": "f7f7d8fb3ddf53c1"
       }
     },
     "Python:ir.py:DiffSet": {
@@ -15795,12 +15811,13 @@
       }
     },
     "Python:ir.py:EmitAction": {
-      "own": "fba97e86e2b2fb1c:2ef3392df214f026",
+      "own": "c33f06ceff0c67f9:2ef3392df214f026",
       "rounds": 2,
       "read": {
+        "Python:interpreter.py:Emitter.cut": "29c88054842de08b",
         "Python:interpreter.py:Emitter.marker": "6507c6005f22e241",
         "Python:interpreter.py:_try_marker": "8d140a376946d4f4",
-        "mentions:EmitAction": "800e93ea41dcc34d"
+        "callers:Emitter.marker": "d17c0ed4241c10eb"
       }
     },
     "Python:ir.py:EmptyTree": {
@@ -15819,8 +15836,7 @@
         "Python:interpreter.py:_popped": "d707e2b9cd3a6dd0",
         "Python:interpreter.py:_try_close_turn": "ccd6878e8dcb3b26",
         "Python:interpreter.py:_try_did_consume_since_open": "8f7dfdf520fff958",
-        "Python:normalize.py:_lower_runs": "b22d92069d2f4cb9",
-        "mentions:DidConsumeSinceOpenGuard": "ceee1e542a267356",
+        "Python:ir.py:DidConsumeSinceOpenGuard": "dc711816d3223d1a",
         "mentions:EndMustConsumeAction": "c99ebe8bb606300f"
       }
     },
@@ -15831,7 +15847,7 @@
         "Python:annotated2ir.py:_SPECIALS": "3f7f1766e4773661",
         "Python:chars.py:_TAKES_NONE": "6286746026bcaa57",
         "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
-        "mentions:EndOfStreamGuard": "72eab230f5ea5a43"
+        "mentions:EndOfStreamGuard": "2451c872b34d4435"
       }
     },
     "Python:ir.py:ErrorAction": {
@@ -16056,7 +16072,7 @@
       "rounds": 1,
       "read": {
         "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
-        "mentions:IsLessEqualGuard": "7e2fe1e75ad139e7"
+        "mentions:IsLessEqualGuard": "dca468994f9a6395"
       }
     },
     "Python:ir.py:IsLessThanGuard": {
@@ -16064,7 +16080,7 @@
       "rounds": 1,
       "read": {
         "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
-        "mentions:IsLessThanGuard": "0698caaff3c67789"
+        "mentions:IsLessThanGuard": "c8d129b7a19a6d58"
       }
     },
     "Python:ir.py:KINDS": {
@@ -16140,7 +16156,9 @@
       "read": {
         "Python:annotated2ir.py:_node": "871d95b5518467c6",
         "Python:chars.py:_TAKES_NONE": "6286746026bcaa57",
-        "mentions:LookGuard": "2492e6735739d788"
+        "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
+        "Python:interpreter.py:_try_probe": "e80dd792b7794d0d",
+        "mentions:LookGuard": "0ecea368ea0e2e65"
       }
     },
     "Python:ir.py:MarkProvisionalAction": {
@@ -16159,7 +16177,7 @@
         "Python:interpreter.py:_EVALUATE": "039bea578aebfa6c",
         "Python:interpreter.py:_evaluated_length": "2aff50a5bb24d6c8",
         "Python:interpreter.py:_evaluated_match": "cdf1aa9b71ed84f0",
-        "mentions:MatchValue": "09df6e321de6a277"
+        "mentions:MatchValue": "97e6af4db5ec125e"
       }
     },
     "Python:ir.py:MaxWrapper": {
@@ -16176,10 +16194,9 @@
       "own": "cb21319f4deb7203:2df946eb5c4e0cbf",
       "rounds": 1,
       "read": {
+        "Python:annotated2ir.py:_node": "871d95b5518467c6",
         "Python:chars.py:_TAKES_NONE": "6286746026bcaa57",
-        "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
-        "Python:ir2annotated.py:_NODE_YAML": "e4d8b2384abeefcb",
-        "mentions:NegLookGuard": "eea360ff7e5572a4"
+        "mentions:NegLookGuard": "550d364c5e34f4da"
       }
     },
     "Python:ir.py:Node": {
@@ -16231,7 +16248,7 @@
       "read": {
         "Python:interpreter.py:Emitter": "052e754b33f5f3fd",
         "Python:interpreter.py:_try_open_window": "2764e015ea1db7a4",
-        "mentions:OpenWindowAction": "f7b9650a446bd291"
+        "mentions:OpenWindowAction": "4b4d13f0e975f6ae"
       }
     },
     "Python:ir.py:OptTree": {
@@ -16304,7 +16321,7 @@
         "Python:interpreter.py:_popped": "d707e2b9cd3a6dd0",
         "Python:interpreter.py:_try_close_settled": "fab77b24bca6523e",
         "Python:ir.py:PushBackTrackAction": "4bd71064f5d13d55",
-        "mentions:PopBackTrackAction": "701ef8242bb1e089"
+        "mentions:PopBackTrackAction": "2adaa6302a278046"
       }
     },
     "Python:ir.py:PopCodeAction": {
@@ -16313,10 +16330,9 @@
       "read": {
         "Python:interpreter.py:_popped": "d707e2b9cd3a6dd0",
         "Python:interpreter.py:_try_pop_code": "6915096122260f08",
-        "Python:interpreter.py:_try_push_code": "4196632ea32204be",
+        "Python:ir.py:PushCodeAction": "c2ee956f790dec60",
         "Python:normalize.py:_lowered_token": "78c5ed3efb1491dd",
-        "mentions:PopCodeAction": "2d1e47626aa5540d",
-        "mentions:PushCodeAction": "dd2a39ee3302f5b0"
+        "mentions:PopCodeAction": "992791be0d6b65ea"
       }
     },
     "Python:ir.py:PopIndentAction": {
@@ -16338,10 +16354,9 @@
         "Python:interpreter.py:_popped": "d707e2b9cd3a6dd0",
         "Python:interpreter.py:_try_close_committed": "95d022a500db5884",
         "Python:interpreter.py:_try_open_committed": "ded778cb9fd84567",
-        "Python:ir.py:REGIONS_OPENED": "c0fad9eed0d8686e",
+        "Python:interpreter.py:_try_pop_code": "6915096122260f08",
         "Python:normalize.py:_lowered_commit": "6dee751cc2e4a23d",
-        "mentions:PopMessageAction": "1730486d92c02025",
-        "mentions:PushMessageAction": "860e3f15f849ef2a"
+        "mentions:PopMessageAction": "1069bc32051cf92f"
       }
     },
     "Python:ir.py:PopRecoveryAction": {
@@ -16377,8 +16392,8 @@
         "Python:interpreter.py:_try_pop_code": "6915096122260f08",
         "Python:interpreter.py:_try_push_code": "4196632ea32204be",
         "Python:normalize.py:_lowered_token": "78c5ed3efb1491dd",
-        "mentions:PopCodeAction": "2d1e47626aa5540d",
-        "mentions:PushCodeAction": "dd2a39ee3302f5b0"
+        "mentions:PopCodeAction": "992791be0d6b65ea",
+        "mentions:PushCodeAction": "b40926ae6343ba77"
       }
     },
     "Python:ir.py:PushIndentAction": {
@@ -16387,7 +16402,7 @@
       "read": {
         "Python:interpreter.py:_try_push_indent": "c39b4328bd69efe7",
         "Python:normalize.py:_push_indents": "47efb1f0abe216d9",
-        "mentions:PushIndentAction": "301ed9606b5225a9"
+        "mentions:PushIndentAction": "4d4aa725115904b2"
       }
     },
     "Python:ir.py:PushMessageAction": {
@@ -16395,9 +16410,9 @@
       "rounds": 1,
       "read": {
         "Python:interpreter.py:_try_open_committed": "ded778cb9fd84567",
-        "Python:normalize.py:GUARD_CROSSES_ACTION": "9fbe478796dd938b",
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
         "Python:normalize.py:_lowered_commit": "6dee751cc2e4a23d",
-        "mentions:PushMessageAction": "860e3f15f849ef2a"
+        "mentions:PushMessageAction": "43382972e6854e48"
       }
     },
     "Python:ir.py:PushRecoveryAction": {
@@ -16470,16 +16485,12 @@
       "read": {}
     },
     "Python:ir.py:REPETITIONS": {
-      "own": "3e7cf9b4900f357d:c5f974ddcd43411c",
+      "own": "bfb08e5792afd795:c5f974ddcd43411c",
       "rounds": 1,
       "read": {
-        "Python:ir.py:CONSUMING": "473f134788332a69",
-        "Python:ir.py:RepTree": "b882ac557be7c830",
-        "Python:ir.py:StarTree": "d1c721307d475c7c",
-        "Python:ir.py:_REPEATED": "fdd2b071fca137ce",
-        "Python:normalize.py:_spanned_run": "981ed98f9279b741",
-        "mentions:ConsumeSpanAction": "ce45bb8caeb1fbfa",
-        "mentions:REPETITIONS": "59a25ebf108dd5b5"
+        "Python:interpreter.py:_try_counted_run": "5ea16565473dff8b",
+        "Python:interpreter.py:_try_longest_run": "fad2628a7ed5d91f",
+        "Python:normalize.py:_spanned_run": "981ed98f9279b741"
       }
     },
     "Python:ir.py:ROOT": {
@@ -16569,8 +16580,9 @@
       "read": {
         "Python:ir.py:AlternativeState": "d0fd04d960b24316",
         "Python:ir.py:ChoiceState": "ee86807f2940435c",
+        "Python:ir.py:TREES": "2ca40e0de0d3aa58",
         "Python:normalize.py:_AS_A_MACHINE_BODY": "0dbe5b05b71a67ff",
-        "mentions:ChoiceState": "10a22ac39cbc03a6",
+        "mentions:ChoiceState": "e4a28e7a885210a4",
         "mentions:STATES": "db3a43e280a0f50f"
       }
     },
@@ -16579,9 +16591,7 @@
       "rounds": 1,
       "read": {
         "Python:annotated2ir.py:_node": "871d95b5518467c6",
-        "Python:interpreter.py:_try_sequence": "c2888f9acfc807ef",
-        "Python:ir2annotated.py:_NODE_YAML": "e4d8b2384abeefcb",
-        "mentions:SeqTree": "8b0352d9d0341d8a"
+        "mentions:SeqTree": "85383eb48887c819"
       }
     },
     "Python:ir.py:SetForbiddenAction": {
@@ -16589,13 +16599,11 @@
       "rounds": 1,
       "read": {
         "Grammar:yeast-spec-1.2.yaml:l-bare-document": "8c6bf6d9a91eecdc",
-        "Grammar:yeast-spec-1.2.yaml:l-recover-entry": "b30fd94ffc5049b6",
         "Grammar:yeast-spec-1.2.yaml:l-unparsed": "2f142c9b53833fa1",
         "Python:interpreter.py:_is_forbidden_here": "44cd9bd032a08497",
         "Python:interpreter.py:_try_forbidding": "7c2a0e6e4d793e0f",
         "Python:normalize.py:_excluded_sequence": "a4a56ea2b9cf1fae",
-        "callers:l-unparsed": "0905259a0b6b1762",
-        "mentions:SetForbiddenAction": "0dc94d39d56cded9"
+        "mentions:SetForbiddenAction": "f0fab0e134c91025"
       }
     },
     "Python:ir.py:SetVarAction": {
@@ -16605,7 +16613,7 @@
         "Python:annotated2ir.py:_node": "871d95b5518467c6",
         "Python:chars.py:_TAKES_NONE": "6286746026bcaa57",
         "Python:interpreter.py:_try_write": "084806da0d3fbb2a",
-        "mentions:SetVarAction": "4d098af7355f2b07"
+        "mentions:SetVarAction": "028ecb97eda4ebbe"
       }
     },
     "Python:ir.py:StarTree": {
@@ -16621,12 +16629,10 @@
       "own": "b2079c335dd24b90:719187c46746f4b1",
       "rounds": 1,
       "read": {
-        "Python:interpreter.py:_try_did_consume_since_open": "8f7dfdf520fff958",
         "Python:interpreter.py:_try_open_turn": "c8f61134edf1605f",
         "Python:ir.py:DidConsumeSinceOpenGuard": "dc711816d3223d1a",
         "Python:normalize.py:_lower_runs": "b22d92069d2f4cb9",
-        "mentions:DidConsumeSinceOpenGuard": "ceee1e542a267356",
-        "mentions:StartMustConsumeAction": "d570151dac5696d2"
+        "mentions:StartMustConsumeAction": "643097a2b6cab3b1"
       }
     },
     "Python:ir.py:StartOfLineGuard": {
@@ -16635,7 +16641,8 @@
       "read": {
         "Python:annotated2ir.py:_SPECIALS": "3f7f1766e4773661",
         "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
-        "mentions:StartOfLineGuard": "ed3669fe9f163183"
+        "Python:ir.py:GUARDS": "68c4d8d50472146a",
+        "mentions:StartOfLineGuard": "50273073611cba64"
       }
     },
     "Python:ir.py:SubValue": {
@@ -16697,6 +16704,11 @@
         "Python:ir.py:RepTree": "b882ac557be7c830",
         "Python:ir.py:Wrapper": "1d04d5f70b527952"
       }
+    },
+    "Python:ir.py:WINDOWS_OPENED": {
+      "own": "7b28d71b49675995:33a956a1fc3d58e2",
+      "rounds": 1,
+      "read": {}
     },
     "Python:ir.py:WRAPPERS": {
       "own": "14dacb818f853892:32d85a1774684731",
@@ -17376,12 +17388,13 @@
       "own": "5fbd0471b53309f3:9e88ad51dcde7f82",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
+        "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
         "Python:gate.py:hook_modules": "2a2fdc6effb94609",
         "Python:gate.py:modules": "c4668dda3e9c9293",
         "Python:ir.py:KINDS": "958f72880bdc795b",
         "Python:ir.py:Question": "a348ac3fca7f1f52",
-        "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870"
+        "Python:ir.py:_NOT_ONE_CHAR": "bb9dbc6313c4f360"
       }
     },
     "Python:kind_dispatches.py:_KIND_NAMES": {
@@ -17491,15 +17504,14 @@
       "own": "f121bcdf22cf6b6c:b8a8d350e0b22c82",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:check_documents.py:_NOT_A_NUMBER_OF_THE_TREE": "5b3fa26035249efd",
         "Python:check_documents.py:_numbers_of_the_tree": "f8dd630b890adcf0",
         "Python:check_documents.py:numbers_in_prose": "16e629de9fdc1a5a",
+        "Python:check_prose.py:_faults": "1570e035b4825bc5",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
         "Python:checkers.py:refusals_for_edit": "1dda7868b748380a",
-        "Python:collect_fragments.py:fragments_touched": "c56f8d7e7ef548ee",
-        "Python:prose_gate.py": "3a7c20313980f253",
-        "Python:check_prose.py:_faults": "1570e035b4825bc5"
+        "Python:prose_gate.py": "3a7c20313980f253"
       }
     },
     "Python:no_tree_numbers.py:refusal_for": {
@@ -17513,21 +17525,22 @@
       }
     },
     "Python:normalize.py": {
-      "own": "d552f4abe5638063:863379b87dfcd9b0",
-      "rounds": 2,
+      "own": "d552f4abe5638063:31428625a84b6823",
+      "rounds": 1,
       "read": {
         "Python:check_normalize.py:_check": "b1009c070acb7aa4",
         "Python:ir.py:Question": "a348ac3fca7f1f52",
         "Python:ir.py:kinds_other_than": "086d985415aec167",
+        "Python:normalize.py:STEPS": "ffe8f4373d6b8622",
         "Python:normalize.py:_ALTERNATIVES": "c81b7e7998959bb2",
         "Python:normalize.py:_CHOICE_WAYS": "3b665b05784a6166",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
-        "Python:normalize.py:_accepted_way": "fee5280326a8d824",
-        "Python:normalize.py:_entered_unconsumed": "3506617312c596e4",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
+        "Python:normalize.py:_accepted_way": "cf7b7ca7b70b0d7f",
         "Python:normalize.py:_entry_and_exit_spaces": "f4cba16bffa42bc3",
         "Python:normalize.py:_gated_by": "bbbb366de278712d",
         "Python:normalize.py:_is_nullable": "5a0c43c0d9bd6fed",
-        "Python:normalize.py:_shortest_match": "dd435b610860cf7c",
+        "Python:normalize.py:_items_of_way": "d234e6f87b490330",
+        "Python:normalize.py:_parts_of_way": "764712995f2fa591",
         "Python:normalize.py:_spaces_paths_enter_ways_in": "21f40eb78f7b1a66",
         "Python:normalize.py:_split": "33f38d5d659e2340",
         "Python:normalize.py:after_action": "7b89d49062e752ff",
@@ -17539,12 +17552,13 @@
       }
     },
     "Python:normalize.py:GUARD_CROSSES_ACTION": {
-      "own": "0575ee3fce62dd7e:9fbe478796dd938b",
-      "rounds": 2,
+      "own": "9dbceeb2a262bf3b:fcfc2c28676a14cc",
+      "rounds": 1,
       "read": {
         "Python:interpreter.py:_try_probe": "e80dd792b7794d0d",
         "Python:ir.py:CutAction": "93608b0c36a71ca7",
         "Python:ir.py:PopBackTrackAction": "45c59f8d9735d75b",
+        "Python:ir.py:PushMessageAction": "4677e9781ac950f1",
         "Python:normalize.py:_Crossing": "022e03c84532989d",
         "Python:normalize.py:_does_read_none_of_the_forbidden": "027ade3d259fe457",
         "Python:normalize.py:_does_read_nothing_the_write_writes": "a58a7e83bf0f8e48"
@@ -17565,7 +17579,7 @@
       "rounds": 1,
       "read": {
         "Python:check_documents.py:named_by_the_pipeline": "014185d736b5fae8",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
         "mentions:PHASE_NAMES": "d0c1de6173e4071a"
       }
     },
@@ -17575,9 +17589,12 @@
       "read": {
         "Python:check_dead_code.py:_KEPT_THOUGH_DEAD": "72d4e0179f1579ea",
         "Python:normalize.py:OWED": "69f054ae68e808c5",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
+        "Python:normalize.py:_conflicted_productions": "9beaebe863baa31f",
         "Python:normalize.py:_every_conflict_is_a_tail_call, _EVERY_CONFLICT_IS_A_TAIL_CALL": "04b2cc717ed74b91",
-        "Python:normalize.py:_lower_continuations_into_conflicts": "f513a7cb6f18b98d",
+        "Python:normalize.py:_lowered_once": "e4bb8023e8e38e2a",
+        "Python:normalize.py:unsettled_invariants": "5cf1c58138fa721b",
+        "mentions:OWED": "1abb04e20e3ae0b7",
         "mentions:_lower_continuations_into_conflicts": "2da7597c08ccbcef"
       }
     },
@@ -17612,16 +17629,25 @@
         "Python:normalize.py:_as_alternative": "99d335773a57df18"
       }
     },
+    "Python:normalize.py:_AS_THE_COUNTED_RUN": {
+      "own": "dca1c4e12d2f5746:70c3776a5820458f",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:ConsumeLimitedSpanAction": "4112c0c28f689b4e"
+      }
+    },
     "Python:normalize.py:_AT_THE_START": {
       "own": "5764e7928c44e772:19c203f49a7b946b",
       "rounds": 1,
       "read": {
         "Python:normalize.py:_AS_A_MACHINE_BODY": "0dbe5b05b71a67ff",
-        "Python:normalize.py:_BUILD_ALTERNATIVES": "6bce5fc51235599f",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
         "Python:normalize.py:_Phase": "25814de570901ccf",
         "Python:normalize.py:_as_alternative": "99d335773a57df18",
         "Python:normalize.py:_build_alternatives": "38986315b5928b76",
-        "mentions:_AT_THE_START": "1ac0d5a70e9590d8"
+        "Python:normalize.py:_decided_ways": "ec54d87314bcdbd9",
+        "Python:normalize.py:_ungated_ways": "346f826966c21337",
+        "mentions:_AT_THE_START": "6e142b2eb68f2ee5"
       }
     },
     "Python:normalize.py:_AsAGroup": {
@@ -17674,6 +17700,15 @@
         "Python:normalize.py:_no_char_set_is_an_item, _NO_CHAR_SET_IS_AN_ITEM": "415fb9cd14b7ba4e"
       }
     },
+    "Python:normalize.py:_CAN_COMMIT_FIRST": {
+      "own": "537fff247526e40f:4779ef3b03152d66",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:PushMessageAction": "4677e9781ac950f1",
+        "Python:normalize.py:_can_commit_first_in": "735af428e7e09b6e",
+        "mentions:_CAN_COMMIT_FIRST": "68bafaf2ce582f76"
+      }
+    },
     "Python:normalize.py:_CHARACTER_QUESTIONS": {
       "own": "a2e289af05f33de8:5b19ef19492ceb98",
       "rounds": 1,
@@ -17688,18 +17723,20 @@
     },
     "Python:normalize.py:_CHARACTER_SETS": {
       "own": "2a9d3a35af59a950:05f9965526ab9e6a",
-      "rounds": 3,
+      "rounds": 1,
       "read": {
         "Python:ir.py:CharSet": "5861ca1098dcf888",
         "Python:normalize.py:_EVERY_CHARACTER_QUESTION_IS_A_CHARACTER_SET": "21b3e38a6be27dae",
         "Python:normalize.py:_LOWERED_CHAR_SETS": "029114f81b0245a7",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
         "Python:normalize.py:_SPECIALIZE": "1f029a57de5f1289",
         "Python:normalize.py:_as_char_set": "6e195461ec7131e1",
+        "Python:normalize.py:_denoted_peek_spans, _PEEK_SPANS": "02c856eea3508c7d",
         "Python:normalize.py:_distribute_differences": "2bb3a91af7e06012",
         "Python:normalize.py:_lower_char_sets": "868381b6e70eccea",
         "Python:normalize.py:_lowered_char_set": "64a954e6e06f871c",
-        "mentions:_CHARACTER_SETS": "1ac0d5a70e9590d8"
+        "Python:normalize.py:_taken": "b8d0f9d7eefbab09",
+        "mentions:_CHARACTER_SETS": "6e142b2eb68f2ee5"
       }
     },
     "Python:normalize.py:_CHOICE_WAYS": {
@@ -17717,17 +17754,36 @@
       }
     },
     "Python:normalize.py:_CONSUMES_BEHIND_GATES": {
-      "own": "51f8d89e090560e7:7cf15ad1e3c6e5a4",
-      "rounds": 2,
+      "own": "8b7969efb27e55ab:7cf15ad1e3c6e5a4",
+      "rounds": 1,
       "read": {
+        "Python:ir.py:CharSet": "5861ca1098dcf888",
+        "Python:ir.py:ConsumeCharAction": "6ff4362c1cce36cd",
+        "Python:ir.py:LookGuard": "c40e6780a0e1e066",
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
         "Python:normalize.py:_GATE_THE_WAYS": "57d0306d7df2798c",
         "Python:normalize.py:_GUARDS_INTO_GATES": "114ac31935cd71e4",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
-        "Python:normalize.py:_may_cross_every": "a529445fabd12eca",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
+        "Python:normalize.py:_every_way_takes_at_most_once, _EVERY_WAY_TAKES_AT_MOST_ONCE": "2a6b05a574a2406c",
         "Python:normalize.py:_mint_consume_states": "2fbd2f7003ce0864",
+        "Python:normalize.py:_minted_consume_states": "63bdf35606e511a8",
         "Python:normalize.py:_no_char_set_is_an_item, _NO_CHAR_SET_IS_AN_ITEM": "415fb9cd14b7ba4e",
         "Python:normalize.py:_split_consumes_into_gates": "72772eb31da39c31",
-        "mentions:_CONSUMES_BEHIND_GATES": "1ac0d5a70e9590d8"
+        "mentions:_CONSUMES_BEHIND_GATES": "6e142b2eb68f2ee5"
+      }
+    },
+    "Python:normalize.py:_COUNTED_RUNS": {
+      "own": "236e5ef6e033dc0a:8e84491c060f3e47",
+      "rounds": 1,
+      "read": {}
+    },
+    "Python:normalize.py:_CallSite": {
+      "own": "5fdc26b671c98c1f:86079f64e0b8ad2f",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_call_sites": "abad6debc71d6300",
+        "Python:normalize.py:_calls_of_way": "1fd6d87b3f098454",
+        "mentions:_CallSite": "b347f8b158d716ea"
       }
     },
     "Python:normalize.py:_Crossing": {
@@ -17766,6 +17822,11 @@
         "Python:ir.py:Question": "a348ac3fca7f1f52"
       }
     },
+    "Python:normalize.py:_DOES_ASK_IF_THE_RUN_FILLED": {
+      "own": "76eb45d50513ae60:d80468a43ff66f51",
+      "rounds": 1,
+      "read": {}
+    },
     "Python:normalize.py:_DOES_NAME_THE_SLOT": {
       "own": "6a6ce785ce774244:61e82a417318ded7",
       "rounds": 1,
@@ -17801,7 +17862,7 @@
         "Python:normalize.py:_NO_M_PARAMETER": "3640e2ba7160260f",
         "Python:normalize.py:_clear_reads": "5b09e04eff620682",
         "Python:normalize.py:_read_off": "d0070f9ffd83083a",
-        "mentions:_DROP_M": "1ac0d5a70e9590d8"
+        "mentions:_clear_reads": "52541e1253723b79"
       }
     },
     "Python:normalize.py:_DROP_N": {
@@ -17815,6 +17876,15 @@
         "Python:normalize.py:_pushed_level": "abc32643a7f0e417",
         "Python:normalize.py:_read_off": "d0070f9ffd83083a",
         "mentions:_read_off": "f0f2456ebd2fc209"
+      }
+    },
+    "Python:normalize.py:_Depths": {
+      "own": "cca9e5a711f134f5:8a57a050ef4f5ee9",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_window_depths_at_call": "0e5a4c01ba0daa13",
+        "Python:normalize.py:_window_depths_entered": "18f044dab3dcd411",
+        "mentions:_Depths": "7cab004279278d16"
       }
     },
     "Python:normalize.py:_EFFECTS": {
@@ -17903,12 +17973,14 @@
       "rounds": 1,
       "read": {
         "Python:normalize.py:_BUILD_ALTERNATIVES": "6bce5fc51235599f",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
+        "Python:normalize.py:_MINT_CONTINUATIONS": "0bd8ee4f1b49745c",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
         "Python:normalize.py:_flatten_called_alternations": "4639032714e6644c",
         "Python:normalize.py:_flatten_called_sequences": "3cff8f59a1d03523",
         "Python:normalize.py:_flattened_once": "0c945c4fd24b0210",
         "Python:normalize.py:_no_choice_of_choices, _NO_CHOICE_OF_CHOICES": "78e35b052b32ef42",
-        "mentions:_FLATTEN_CALLS": "1ac0d5a70e9590d8"
+        "Python:normalize.py:_no_sequence_of_sequences, _NO_SEQUENCE_OF_SEQUENCES": "24e70de8d3fc869b",
+        "mentions:_FLATTEN_CALLS": "6e142b2eb68f2ee5"
       }
     },
     "Python:normalize.py:_FORBIDDEN_NAMES": {
@@ -17925,13 +17997,12 @@
       "read": {
         "Python:interpreter.py:_is_forbidden_here": "44cd9bd032a08497",
         "Python:interpreter.py:_try_probe": "e80dd792b7794d0d",
-        "Python:normalize.py:_FORBIDS_A_COPY": "2e1cbb4f13e01b23",
         "Python:normalize.py:_LOWER_SCOPES": "838ebf206459c8c1",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
-        "Python:normalize.py:_UNTOKENED": "0832b7443ee367ed",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
+        "Python:normalize.py:_every_forbidden_only_matches_and_asks, _EVERY_FORBIDDEN_ONLY_MATCHES_AND_ASKS": "670047a0b12488e9",
         "Python:normalize.py:_forbidden_productions": "bbafc47dece40a5a",
         "Python:normalize.py:_mint_forbidden_probes": "a106ab12afe09e62",
-        "mentions:_FORBIDDEN_PROBES": "1ac0d5a70e9590d8"
+        "mentions:_FORBIDDEN_PROBES": "6e142b2eb68f2ee5"
       }
     },
     "Python:normalize.py:_FORBIDS_A_COPY": {
@@ -17945,12 +18016,13 @@
     },
     "Python:normalize.py:_GATE_THE_WAYS": {
       "own": "818ad90c2e6daf3d:57d0306d7df2798c",
-      "rounds": 3,
+      "rounds": 1,
       "read": {
-        "Python:normalize.py:GUARD_CROSSES_ACTION": "9fbe478796dd938b",
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
         "Python:normalize.py:_Phase": "25814de570901ccf",
         "Python:normalize.py:_accepted_and_gated_charsets_are_equal, _ACCEPTED_AND_GATED_CHARSETS_ARE_EQUAL": "3ae3f4a734741b77",
         "Python:normalize.py:_asked_where_entered": "2d7340c1cef5bd58",
+        "Python:normalize.py:_every_conditional_way_is_gated, _EVERY_CONDITIONAL_WAY_IS_GATED": "667c5b159bfdfb0a",
         "Python:normalize.py:_every_consume_is_protected_by_a_gate, _EVERY_CONSUME_IS_PROTECTED_BY_A_GATE": "303e6d1164873535",
         "Python:normalize.py:_every_path_reaches_a_leaf_way, _EVERY_PATH_REACHES_A_LEAF_WAY": "5243dcc5e10b4f99",
         "Python:normalize.py:_flatten_ungated_call_trees": "af086e170ff38c29",
@@ -18048,10 +18120,10 @@
       "read": {
         "Python:ir.py:Prod": "b4d38ce9e78d874c",
         "Python:normalize.py:_Step": "a6570a593eb4aeef",
-        "Python:normalize.py:_absent": "6dc4a0124a5472db",
+        "Python:normalize.py:_counted": "4810f313d5d4897a",
         "Python:normalize.py:_counted_over": "1e956a04a5bfc902",
-        "callers:_Invariant": "ba1aeea1b13b428e",
-        "mentions:_Invariant": "14d522f59b2505c7"
+        "Python:normalize.py:_one_count": "d9833fd1ccdadc26",
+        "mentions:_Invariant": "e13648ef6f0d77b6"
       }
     },
     "Python:normalize.py:_Invariant.__call__": {
@@ -18176,6 +18248,15 @@
         "mentions:_LoweredUnder": "1173a041a2240b66"
       }
     },
+    "Python:normalize.py:_MANY_WINDOWS": {
+      "own": "a8256f68a1cbdc1e:ea3794b08310a815",
+      "rounds": 3,
+      "read": {
+        "Python:ir.py:WINDOWS_OPENED": "33a956a1fc3d58e2",
+        "Python:normalize.py:_window_depths_shifted": "2ae696f74d8c765e",
+        "mentions:_MANY_WINDOWS": "2e3cf1e4e0b374ed"
+      }
+    },
     "Python:normalize.py:_MINT_CONTINUATIONS": {
       "own": "29d0700c5711e776:0bd8ee4f1b49745c",
       "rounds": 3,
@@ -18247,10 +18328,11 @@
       "own": "615d6ee7092acf85:f58f5779b3d646ed",
       "rounds": 1,
       "read": {
+        "Python:ir.py:ExcludeAtAction": "c81e7530c812e92d",
+        "Python:ir.py:SetForbiddenAction": "94ca0db15476d356",
         "Python:normalize.py:_absent": "6dc4a0124a5472db",
         "Python:normalize.py:_excluded_sequence": "a4a56ea2b9cf1fae",
-        "mentions:ExcludeAtAction": "709c2bfca0683287",
-        "mentions:SetForbiddenAction": "0dc94d39d56cded9"
+        "mentions:ExcludeAtAction": "709c2bfca0683287"
       }
     },
     "Python:normalize.py:_NO_FAILS": {
@@ -18436,13 +18518,15 @@
       }
     },
     "Python:normalize.py:_PHASES": {
-      "own": "a2da1bb9afe56922:1268488e8a32ab2a",
-      "rounds": 1,
+      "own": "ac778fa2cd5b5a73:20fdc4e4a1189ef1",
+      "rounds": 3,
       "read": {
         "Python:normalize.py:STEPS": "ffe8f4373d6b8622",
         "Python:normalize.py:_Phase": "25814de570901ccf",
         "Python:normalize.py:_SPECIALIZE": "1f029a57de5f1289",
+        "Python:normalize.py:_Step": "a6570a593eb4aeef",
         "Python:normalize.py:stages": "9b4f54da0676e50f",
+        "callers:STEPS": "e3b0c44298fc1c14",
         "mentions:STEPS": "607dc9c3b6f6a732",
         "mentions:_PHASES": "dc9d4b9f2772d288"
       }
@@ -18459,11 +18543,11 @@
       "rounds": 1,
       "read": {
         "Python:normalize.py:_NO_FAILS": "e30d9a3cc0845698",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
-        "Python:normalize.py:_monomorphize": "f7f81d400e1d4123",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
+        "Python:normalize.py:_SPECIALIZE": "1f029a57de5f1289",
         "Python:normalize.py:_prune_failures": "380b052f78634514",
         "Python:normalize.py:_pruned": "fd5a7a762717debd",
-        "mentions:_PRUNE_FAILURES": "1ac0d5a70e9590d8"
+        "mentions:_PRUNE_FAILURES": "6e142b2eb68f2ee5"
       }
     },
     "Python:normalize.py:_Paths": {
@@ -18520,6 +18604,19 @@
         "Python:normalize.py:_call_read_off": "8ea1518bc34e3389"
       }
     },
+    "Python:normalize.py:_REFINE_COUNTED_RUNS": {
+      "own": "33def1fc22331264:71bea73a484562f1",
+      "rounds": 1,
+      "read": {
+        "Python:interpreter.py:Emitter": "052e754b33f5f3fd",
+        "Python:normalize.py:_every_counted_run_can_be_followed_by_its_character, _EVERY_COUNTED_RUN_CAN_BE_FOLLOWED_BY_ITS_CHARACTER": "5071d8faf3828a3f",
+        "Python:normalize.py:_is_refinable": "faf670451ed17031",
+        "Python:normalize.py:_refine_counted_runs": "9114c6e10b760ea3",
+        "Python:normalize.py:_refined_copy": "d6d30dedbdfcb461",
+        "Python:normalize.py:_refined_way": "62534faf605ec445",
+        "Python:normalize.py:_unfollowed_runs": "e9a2032da12eca33"
+      }
+    },
     "Python:normalize.py:_REPEATED": {
       "own": "59afe9f97cb0b80f:8ca98aa570ee4530",
       "rounds": 1,
@@ -18540,6 +18637,16 @@
       "read": {
         "Python:ir.py:FlipValue": "1694da10b973fe77",
         "Python:ir.py:rebuilt": "8c37e1628dc12862"
+      }
+    },
+    "Python:normalize.py:_RunAt": {
+      "own": "ade03a01ce1641d1:5bb5c9ea23c90db9",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_refine_counted_runs": "9114c6e10b760ea3",
+        "Python:normalize.py:_refined_copy": "d6d30dedbdfcb461",
+        "Python:normalize.py:_refined_way": "62534faf605ec445",
+        "mentions:_RunAt": "482c78839b8a8890"
       }
     },
     "Python:normalize.py:_SHORTEST_CAP": {
@@ -18609,12 +18716,13 @@
       "own": "b643a1c129118df1:d8f8e9dafa9f0362",
       "rounds": 1,
       "read": {
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
+        "Python:normalize.py:_PHASES": "20fdc4e4a1189ef1",
         "Python:normalize.py:_entered_in": "3d31ce13df7db6e1",
+        "Python:normalize.py:_gated_by": "bbbb366de278712d",
         "Python:normalize.py:_merge_gate_peeks": "4f092c4a83b024ab",
         "Python:normalize.py:_no_choice_ways_partially_overlap, _NO_CHOICE_WAYS_PARTIALLY_OVERLAP": "af9fa58b6df868fc",
         "Python:normalize.py:_split_overlapping_ways": "7eb680e89436575c",
-        "mentions:_SPLIT_OVERLAPS": "1ac0d5a70e9590d8"
+        "mentions:_SPLIT_OVERLAPS": "6e142b2eb68f2ee5"
       }
     },
     "Python:normalize.py:_Specializing": {
@@ -18730,6 +18838,16 @@
         "mentions:_UNTOKENED": "c0b388263b6edefe"
       }
     },
+    "Python:normalize.py:_UnfollowedRun": {
+      "own": "a6c754966b917f9f:e803ed4325873ff4",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_follow_seeds": "6a246f72ba664b7d",
+        "Python:normalize.py:_unfollowed_fault": "0306736b8820292b",
+        "Python:normalize.py:_unfollowed_runs": "e9a2032da12eca33",
+        "mentions:_UnfollowedRun": "7bb7ae90d7b97d0f"
+      }
+    },
     "Python:normalize.py:_WAYS_OR_ITEMS": {
       "own": "2de85730716d03c2:39e679b0ec6f0613",
       "rounds": 1,
@@ -18778,6 +18896,13 @@
         "Python:spaces.py:after": "ac090957d6b9b5db"
       }
     },
+    "Python:normalize.py:_WINDOW_DEPTH_CHANGES_OF_BODY": {
+      "own": "9386d537961b4abf:576a6f899afde0f5",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_window_depth_changes_of_way": "e4581eced098d2bf"
+      }
+    },
     "Python:normalize.py:_WITH_INNER_WAYS": {
       "own": "3f14ef243a1133b9:a026e79076e6d1ad",
       "rounds": 1,
@@ -18793,7 +18918,7 @@
       "read": {
         "Python:normalize.py:_Split": "3a84bcc266595fec",
         "Python:normalize.py:_split_ways": "a15f2f770b94a75a",
-        "mentions:_Ways": "846b534ca3542416"
+        "mentions:_Ways": "0381c6b437ecadc0"
       }
     },
     "Python:normalize.py:_a_message": {
@@ -18853,7 +18978,6 @@
       "rounds": 1,
       "read": {
         "Python:ir.py:Question": "a348ac3fca7f1f52",
-        "Python:normalize.py:_accepted_way": "fee5280326a8d824",
         "Python:normalize.py:_denoted_peek_spans, _PEEK_SPANS": "02c856eea3508c7d",
         "Python:normalize.py:_peek_spans": "9cea556449249745"
       }
@@ -18874,6 +18998,26 @@
         "Python:spaces.py:NOWHERE": "087f48d4b49daa0c"
       }
     },
+    "Python:normalize.py:_accepted_parts": {
+      "own": "7aa5938d60f43afd:f9a341d6509b52ec",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_accepted_part": "9881a4bc6e55fc1f",
+        "Python:normalize.py:_is_nullable": "5a0c43c0d9bd6fed",
+        "Python:spaces.py:SubSpace": "85679b12431753d7"
+      }
+    },
+    "Python:normalize.py:_accepted_past": {
+      "own": "c138172f8519b4fa:1503e7c25ccfcad1",
+      "rounds": 2,
+      "read": {
+        "Python:normalize.py:_accepted_parts": "f9a341d6509b52ec",
+        "Python:normalize.py:_are_nullable": "497e52cbf142ee0b",
+        "Python:normalize.py:_follows": "130d902f7801b486",
+        "Python:normalize.py:_unfollowed_runs": "e9a2032da12eca33",
+        "callers:_accepted_past": "3b61afa8a6a7a250"
+      }
+    },
     "Python:normalize.py:_accepted_spaces": {
       "own": "40fa7359261ebf24:dd52b3c5bf9655e9",
       "rounds": 1,
@@ -18885,12 +19029,12 @@
       }
     },
     "Python:normalize.py:_accepted_way": {
-      "own": "43d9acd11e34d12c:fee5280326a8d824",
-      "rounds": 2,
+      "own": "3578a5cb00f25f42:cf7b7ca7b70b0d7f",
+      "rounds": 1,
       "read": {
-        "Python:normalize.py:_accepted_part": "9881a4bc6e55fc1f",
+        "Python:normalize.py:_ACCEPTED_PART": "43f7ef7596ce20d3",
+        "Python:normalize.py:_accepted_parts": "f9a341d6509b52ec",
         "Python:normalize.py:_admits": "a5002eb1d3346138",
-        "Python:normalize.py:_is_nullable": "5a0c43c0d9bd6fed",
         "Python:normalize.py:_split_ways": "a15f2f770b94a75a"
       }
     },
@@ -18947,6 +19091,13 @@
       "read": {
         "Python:ir.py:rebuilt": "8c37e1628dc12862",
         "Python:normalize.py:_is_bounded_question": "64a13951b63615b2"
+      }
+    },
+    "Python:normalize.py:_are_nullable": {
+      "own": "216b76126b6cabeb:497e52cbf142ee0b",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_is_nullable": "5a0c43c0d9bd6fed"
       }
     },
     "Python:normalize.py:_as_alternative": {
@@ -19073,6 +19224,11 @@
       "rounds": 1,
       "read": {}
     },
+    "Python:normalize.py:_call_sites": {
+      "own": "0e39996235d2bb92:abad6debc71d6300",
+      "rounds": 1,
+      "read": {}
+    },
     "Python:normalize.py:_called_first": {
       "own": "9cf679964ef8381c:54e5c6407c11d0fc",
       "rounds": 1,
@@ -19111,6 +19267,21 @@
         "Python:normalize.py:_CAN_BE_REFUSED": "8f3e2a49a6e9ee25",
         "Python:normalize.py:_every_option_is_reachable, _EVERY_OPTION_IS_REACHABLE": "9ccb5d66ac1efacd",
         "callers:_can_be_refused": "e11a4a1c0eb8c1ff"
+      }
+    },
+    "Python:normalize.py:_can_commit_first_in": {
+      "own": "b6b23e771685207c:735af428e7e09b6e",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_CAN_COMMIT_FIRST": "4779ef3b03152d66"
+      }
+    },
+    "Python:normalize.py:_can_commit_past": {
+      "own": "3bb8fcd6ea517aa1:ba13e9034398bb11",
+      "rounds": 3,
+      "read": {
+        "Python:normalize.py:_are_nullable": "497e52cbf142ee0b",
+        "Python:normalize.py:_can_commit_first_in": "735af428e7e09b6e"
       }
     },
     "Python:normalize.py:_changed_nothing": {
@@ -19163,6 +19334,22 @@
       "read": {
         "Python:interpreter.py:_try_open_turn": "c8f61134edf1605f",
         "Python:normalize.py:_bits_with_consumed_since_open": "fe2e945ce19fa0d4"
+      }
+    },
+    "Python:normalize.py:_commit_follows": {
+      "own": "151e00d8db1e16f7:726a6bd03ee58027",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:fixed_point": "c40325cc69040c3a",
+        "Python:normalize.py:_callers": "badbef5acbee1c95",
+        "Python:normalize.py:_inverted": "7194fea046a7e2bb"
+      }
+    },
+    "Python:normalize.py:_commits_first": {
+      "own": "07aee6b77f1e9ecd:59be81e6c20c3008",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:fixed_point": "c40325cc69040c3a"
       }
     },
     "Python:normalize.py:_compared_admits": {
@@ -19467,10 +19654,12 @@
         "C:yeast.h:ys_options": "45e32a5b0fe820e3",
         "Python:annotated2ir.py:RESUMES": "8299002c575b4ba8",
         "Python:ir.py:RECOVER": "2a09947e40de4325",
+        "Python:ir.py:ROOT": "dbede7881f48a6d2",
         "Python:ir.py:entry": "679d218093b209ee",
         "Python:normalize.py:_cleaned": "652f26463e17ba9c",
+        "Python:normalize.py:_merged": "5d569fff3a40d459",
         "Python:normalize.py:_spliced": "eb7736010b413008",
-        "callers:_entered_by_name": "d6b5f6bfa93bf368"
+        "callers:_entered_by_name": "424962af95be5859"
       }
     },
     "Python:normalize.py:_entered_by_parts": {
@@ -19582,6 +19771,13 @@
         "Python:normalize.py:_parts_of_way": "764712995f2fa591"
       }
     },
+    "Python:normalize.py:_every_counted_run_can_be_followed_by_its_character, _EVERY_COUNTED_RUN_CAN_BE_FOLLOWED_BY_ITS_CHARACTER": {
+      "own": "0c62790557118ebf:5071d8faf3828a3f",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_unfollowed_runs": "e9a2032da12eca33"
+      }
+    },
     "Python:normalize.py:_every_difference_is_between_character_sets, _EVERY_DIFFERENCE_IS_BETWEEN_CHARACTER_SETS": {
       "own": "c333fbb7679bf3f0:b98097a329f42cd9",
       "rounds": 1,
@@ -19682,11 +19878,12 @@
       }
     },
     "Python:normalize.py:_every_ungated_way_has_actions_or_a_call, _EVERY_UNGATED_WAY_HAS_ACTIONS_OR_A_CALL": {
-      "own": "63371107b40d26dc:a60934fd8f3f6e9b",
+      "own": "2c74eef6f91b6521:a60934fd8f3f6e9b",
       "rounds": 2,
       "read": {
+        "Python:interpreter.py:_try_way": "d0767a126da28c11",
         "Python:ir.py:AlternativeState": "d0fd04d960b24316",
-        "Python:normalize.py:GUARD_CROSSES_ACTION": "9fbe478796dd938b",
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
         "Python:normalize.py:_every_conditional_way_is_gated, _EVERY_CONDITIONAL_WAY_IS_GATED": "667c5b159bfdfb0a",
         "Python:normalize.py:_ungated_ways": "346f826966c21337"
       }
@@ -19786,11 +19983,10 @@
       "own": "ec20c453c7c5dce9:af086e170ff38c29",
       "rounds": 1,
       "read": {
-        "Python:normalize.py:GUARD_CROSSES_ACTION": "9fbe478796dd938b",
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
         "Python:normalize.py:_WAYS_SPLIT": "3e38dbe0fd9643d9",
         "Python:normalize.py:_does_ask_after_an_empty_turn": "eec2c4bd040f765c",
-        "Python:normalize.py:_may_cross_every": "a529445fabd12eca",
-        "Python:normalize.py:_ungated_ways": "346f826966c21337"
+        "Python:normalize.py:_may_cross_every": "a529445fabd12eca"
       }
     },
     "Python:normalize.py:_flattened": {
@@ -19838,6 +20034,28 @@
       "rounds": 1,
       "read": {
         "Python:ir.py:AS_AN_EMPTY": "411eca58953de315"
+      }
+    },
+    "Python:normalize.py:_follow_seeds": {
+      "own": "2bac78bd1bf47c87:6a246f72ba664b7d",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_entered_by_matching": "98920496985ed51c",
+        "Python:normalize.py:_entered_by_name": "e28a53cb98dc7057",
+        "Python:spaces.py:COMPLETE": "6dde597145770392",
+        "Python:spaces.py:NOWHERE": "087f48d4b49daa0c",
+        "Python:spaces.py:characters": "be25eee1a53474e3"
+      }
+    },
+    "Python:normalize.py:_follows": {
+      "own": "b2498b5615960c8a:130d902f7801b486",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:fixed_point": "c40325cc69040c3a",
+        "Python:normalize.py:_accepted_past": "1503e7c25ccfcad1",
+        "Python:normalize.py:_callers": "badbef5acbee1c95",
+        "Python:normalize.py:_follow_seeds": "6a246f72ba664b7d",
+        "Python:normalize.py:_inverted": "7194fea046a7e2bb"
       }
     },
     "Python:normalize.py:_forbidden_along_a_run": {
@@ -19958,10 +20176,12 @@
       }
     },
     "Python:normalize.py:_hoist_guards_to_callers": {
-      "own": "12755aabc63caa54:d7aaf9dfd3395a20",
-      "rounds": 1,
+      "own": "13b74a9d7a34e4a2:d7aaf9dfd3395a20",
+      "rounds": 2,
       "read": {
-        "Python:normalize.py:GUARD_CROSSES_ACTION": "9fbe478796dd938b",
+        "Python:ir.py:CONSUMING": "473f134788332a69",
+        "Python:ir.py:GUARDS": "68c4d8d50472146a",
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
         "Python:normalize.py:_asked_by_every_way": "a6929b92e2b5cdf3",
         "Python:normalize.py:_hoisted_once": "4c132f644f28b5da",
         "Python:normalize.py:_may_cross_every": "a529445fabd12eca"
@@ -20098,6 +20318,17 @@
         "Python:normalize.py:_held": "4a24e5fcb73cf9d6"
       }
     },
+    "Python:normalize.py:_is_refinable": {
+      "own": "ad0fa88bc527f879:faf670451ed17031",
+      "rounds": 2,
+      "read": {
+        "Python:ir.py:WINDOWS_OPENED": "33a956a1fc3d58e2",
+        "Python:normalize.py:_can_commit_first_in": "735af428e7e09b6e",
+        "Python:normalize.py:_can_commit_past": "ba13e9034398bb11",
+        "Python:normalize.py:_refined_way": "62534faf605ec445",
+        "Python:normalize.py:_window_depth_change_through": "234221198b9b811e"
+      }
+    },
     "Python:normalize.py:_is_using": {
       "own": "32c6e984216d928f:e3f0bd4be245f87f",
       "rounds": 2,
@@ -20108,9 +20339,12 @@
       }
     },
     "Python:normalize.py:_is_way_nullable": {
-      "own": "ed84bc545b5c453d:e50f8a830e8d3b62",
+      "own": "ed84bc545b5c453d:c0b8e9aea7fd361a",
       "rounds": 1,
-      "read": {}
+      "read": {
+        "Python:normalize.py:_are_nullable": "497e52cbf142ee0b",
+        "Python:normalize.py:_parts_of_way": "764712995f2fa591"
+      }
     },
     "Python:normalize.py:_items_of_way": {
       "own": "f7573566c1b47918:d234e6f87b490330",
@@ -20191,15 +20425,18 @@
       }
     },
     "Python:normalize.py:_lower_commits": {
-      "own": "ce1b645b29d64eaa:6732ca3cade59085",
-      "rounds": 1,
+      "own": "3eb62541801ec892:6732ca3cade59085",
+      "rounds": 3,
       "read": {
+        "Python:interpreter.py:_MATCHED": "d742152accff3d5a",
         "Python:interpreter.py:_try_close_committed": "95d022a500db5884",
         "Python:interpreter.py:_try_committed": "fc9e521f2bedb7df",
         "Python:interpreter.py:_try_open_committed": "ded778cb9fd84567",
+        "Python:normalize.py:_LOWERED_COMMIT": "bf7083857650df43",
         "Python:normalize.py:_Namer.pair": "ff4a048b01c3e18c",
         "Python:normalize.py:_lowered_commit": "6dee751cc2e4a23d",
-        "mentions:PushMessageAction": "860e3f15f849ef2a"
+        "mentions:CommitWrapper": "81c43d4a2e9f15c5",
+        "mentions:PushMessageAction": "43382972e6854e48"
       }
     },
     "Python:normalize.py:_lower_continuations_into_conflicts": {
@@ -20247,15 +20484,14 @@
       }
     },
     "Python:normalize.py:_lower_tokens": {
-      "own": "8ae6eab22cd0367f:8deb0952070ace31",
-      "rounds": 1,
+      "own": "142022f611dde6a4:8deb0952070ace31",
+      "rounds": 2,
       "read": {
         "Python:interpreter.py:_popped": "d707e2b9cd3a6dd0",
         "Python:interpreter.py:_try_pop_code": "6915096122260f08",
         "Python:interpreter.py:_try_push_code": "4196632ea32204be",
         "Python:normalize.py:_LOWERED_TOKEN": "a6cb1025d3d1f816",
-        "Python:normalize.py:_lowered_token": "78c5ed3efb1491dd",
-        "mentions:PopCodeAction": "2d1e47626aa5540d"
+        "Python:normalize.py:_lowered_token": "78c5ed3efb1491dd"
       }
     },
     "Python:normalize.py:_lower_windows": {
@@ -20353,24 +20589,24 @@
       }
     },
     "Python:normalize.py:_mint_consume_states": {
-      "own": "7754c1f9412b4aed:2fbd2f7003ce0864",
+      "own": "969c5c05f0e11f79:2fbd2f7003ce0864",
       "rounds": 2,
       "read": {
-        "Python:normalize.py:GUARD_CROSSES_ACTION": "9fbe478796dd938b",
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
         "Python:normalize.py:_minted_consume_states": "63bdf35606e511a8",
         "Python:normalize.py:_split_consumes_into_gates": "72772eb31da39c31"
       }
     },
     "Python:normalize.py:_mint_continuations": {
-      "own": "9b2735de1e30f50a:7f278aed09dad125",
-      "rounds": 1,
+      "own": "b3057862c22ecf47:7f278aed09dad125",
+      "rounds": 2,
       "read": {
+        "Python:interpreter.py:_popped": "d707e2b9cd3a6dd0",
+        "Python:interpreter.py:_try_pop_code": "6915096122260f08",
         "Python:ir.py:PopCodeAction": "97c03aae01b959a9",
         "Python:ir.py:PushCodeAction": "c2ee956f790dec60",
         "Python:normalize.py:_LOWER_SCOPES": "838ebf206459c8c1",
-        "Python:normalize.py:_PHASES": "1268488e8a32ab2a",
-        "callers:_mint_continuations": "e3b0c44298fc1c14",
-        "mentions:_LOWER_SCOPES": "1ac0d5a70e9590d8"
+        "callers:_popped": "528d9e33f281ebe6"
       }
     },
     "Python:normalize.py:_mint_forbidden_probes": {
@@ -20456,11 +20692,10 @@
       "own": "7a734ee939d7deae:415fb9cd14b7ba4e",
       "rounds": 1,
       "read": {
-        "Python:ir.py:CharSet": "5861ca1098dcf888",
         "Python:ir.py:ConsumeCharAction": "6ff4362c1cce36cd",
         "Python:ir.py:LookGuard": "c40e6780a0e1e066",
-        "Python:normalize.py:_split_consumes_into_gates": "72772eb31da39c31",
-        "mentions:ConsumeCharAction": "93f9e3ac1417cd8b"
+        "Python:normalize.py:_items_of_way": "d234e6f87b490330",
+        "Python:normalize.py:_split_consumes_into_gates": "72772eb31da39c31"
       }
     },
     "Python:normalize.py:_no_choice_of_choices, _NO_CHOICE_OF_CHOICES": {
@@ -20778,6 +21013,13 @@
       "rounds": 1,
       "read": {}
     },
+    "Python:normalize.py:_redirected": {
+      "own": "bc93f086c7168278:bfa11f8ec9dc7a1c",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_WAYS_RETOLD": "53cc79df6051dc37"
+      }
+    },
     "Python:normalize.py:_referenced_from": {
       "own": "53688036fce4e400:e4f0905327d49bf7",
       "rounds": 2,
@@ -20786,6 +21028,32 @@
         "Python:check_dead_code.py:_dead_code_errors": "40da51d4f4f01b0c",
         "Python:check_dead_code.py:_unrun_module_errors": "ea379ca6fc2e29b6",
         "Python:check_dead_code.py:_reached_from": "8785ef847a12bde0"
+      }
+    },
+    "Python:normalize.py:_refine_counted_runs": {
+      "own": "6bed70c4698c2126:9114c6e10b760ea3",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_is_refinable": "faf670451ed17031",
+        "Python:normalize.py:_refined_copy": "d6d30dedbdfcb461",
+        "Python:normalize.py:_refined_way": "62534faf605ec445"
+      }
+    },
+    "Python:normalize.py:_refined_copy": {
+      "own": "5d388645681d9de0:d6d30dedbdfcb461",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_refined_way": "62534faf605ec445"
+      }
+    },
+    "Python:normalize.py:_refined_way": {
+      "own": "3111480beb455ffa:62534faf605ec445",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:ConsumeSpanAction": "464f4e11404ffad1",
+        "Python:normalize.py:_spanned_count": "1890792a0528c672",
+        "callers:_refined_way": "d75e8d6280b91fe5",
+        "mentions:DidMatchFullSpanGuard": "f7f7d8fb3ddf53c1"
       }
     },
     "Python:normalize.py:_refused_admits": {
@@ -20966,8 +21234,11 @@
         "Python:chars.py:merged_spans": "2214d30e981bb4b0",
         "Python:ir.py:CharSet": "5861ca1098dcf888",
         "Python:normalize.py:_CHARACTER_QUESTIONS": "5b19ef19492ceb98",
-        "Python:normalize.py:_asked_by_a_peek": "407c7b589996b0a9",
-        "mentions:CharSet": "1404b0fc790b1321"
+        "Python:normalize.py:_gate_for": "22101a24716857a1",
+        "Python:normalize.py:_merge_gate_peeks": "4f092c4a83b024ab",
+        "Python:normalize.py:_taking": "5441bdc0663e1f1a",
+        "callers:_spans_node": "ba6f78d532425092",
+        "mentions:CharSet": "f3f59bed4811a2ce"
       }
     },
     "Python:normalize.py:_specialized": {
@@ -21016,12 +21287,11 @@
     },
     "Python:normalize.py:_split_consumes_into_gates": {
       "own": "3601e231375a7f3e:72772eb31da39c31",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
         "Grammar:yeast-spec-1.2.yaml:b-break": "048927c571b63a41",
         "Grammar:yeast-spec-1.2.yaml:b-line-feed": "1fcf6a8fa1e7fdf9",
-        "Python:ir.py:ConsumeCharAction": "6ff4362c1cce36cd",
-        "Python:normalize.py:GUARD_CROSSES_ACTION": "9fbe478796dd938b",
+        "Python:normalize.py:GUARD_CROSSES_ACTION": "fcfc2c28676a14cc",
         "Python:normalize.py:_may_cross_every": "a529445fabd12eca"
       }
     },
@@ -21183,6 +21453,20 @@
         "mentions:_took_one_character": "feb2a907f2d7c37e"
       }
     },
+    "Python:normalize.py:_unfollowed_fault": {
+      "own": "e13b33683aea0c59:0306736b8820292b",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_every_counted_run_can_be_followed_by_its_character, _EVERY_COUNTED_RUN_CAN_BE_FOLLOWED_BY_ITS_CHARACTER": "5071d8faf3828a3f"
+      }
+    },
+    "Python:normalize.py:_unfollowed_runs": {
+      "own": "6bd9373bd7c4f593:e9a2032da12eca33",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_UnfollowedRun": "e803ed4325873ff4"
+      }
+    },
     "Python:normalize.py:_ungated_ways": {
       "own": "cfc30d57bb743d0d:346f826966c21337",
       "rounds": 1,
@@ -21242,6 +21526,53 @@
         "Python:normalize.py:_WAYS_OR_ITEMS": "39e679b0ec6f0613",
         "Python:normalize.py:_has_empty_ways_that_end_the_input": "6b49a4e7d2c763a3",
         "callers:_ways_or_items": "4ffe6c72eca18c7e"
+      }
+    },
+    "Python:normalize.py:_window_depth_change_through": {
+      "own": "db410cb3c76dfee5:234221198b9b811e",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:WINDOWS_OPENED": "33a956a1fc3d58e2"
+      }
+    },
+    "Python:normalize.py:_window_depth_changes": {
+      "own": "fada7205959e3637:9fb6233c43a8dc2a",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:fixed_point": "c40325cc69040c3a",
+        "Python:normalize.py:_callers": "badbef5acbee1c95"
+      }
+    },
+    "Python:normalize.py:_window_depth_changes_of_way": {
+      "own": "914735f35a52b565:e4581eced098d2bf",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_calls_of_way": "1fd6d87b3f098454",
+        "Python:normalize.py:_window_depth_change_through": "234221198b9b811e"
+      }
+    },
+    "Python:normalize.py:_window_depths_at_call": {
+      "own": "69dd6f86b56ef5b7:0e5a4c01ba0daa13",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_CallSite": "86079f64e0b8ad2f",
+        "Python:normalize.py:_window_depths_shifted": "2ae696f74d8c765e"
+      }
+    },
+    "Python:normalize.py:_window_depths_entered": {
+      "own": "d31cac942d272dd0:18f044dab3dcd411",
+      "rounds": 1,
+      "read": {
+        "Python:ir.py:fixed_point": "c40325cc69040c3a",
+        "Python:normalize.py:_callers": "badbef5acbee1c95",
+        "Python:normalize.py:_inverted": "7194fea046a7e2bb"
+      }
+    },
+    "Python:normalize.py:_window_depths_shifted": {
+      "own": "4a60007786366e0f:2ae696f74d8c765e",
+      "rounds": 1,
+      "read": {
+        "Python:normalize.py:_MANY_WINDOWS": "ea3794b08310a815"
       }
     },
     "Python:normalize.py:_with_call": {
@@ -21345,12 +21676,12 @@
       "own": "152cdbbda0638d68:2dc3d975269dee47",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:check_documents.py:_A_PLAN_NAME": "b5db6eddd999af5e",
         "Python:check_documents.py:plan_pointer_errors": "b8fcfbdeaf4633a3",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
-        "callers:refusal_for": "6979d44594fd63d4",
-        "Python:checkers.py:refusals_for_edit": "1dda7868b748380a"
+        "Python:checkers.py:refusals_for_edit": "1dda7868b748380a",
+        "callers:refusal_for": "6979d44594fd63d4"
       }
     },
     "Python:plan_pointers.py:refusal_for": {
@@ -21367,12 +21698,11 @@
       "own": "75c37931fb1bd561:7d5c79ffb7fe1376",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Markdown:prose-critic.md": "0784a15acc442ddf",
         "Python:agent_calls.py:_called": "29d3ed86368baa0c",
         "Python:apply_prose.py:draft_refusals": "4ad5e3fae3458a9f",
-        "Python:collect_fragments.py:CRITIC_BATCH": "39f9c84120f62b28",
-        "Python:record_run.py:proposal_refusals": "8f0b4472a58a8e3f"
+        "Python:collect_fragments.py:CRITIC_BATCH": "39f9c84120f62b28"
       }
     },
     "Python:prose_answer.py:_BESIDES": {
@@ -21735,8 +22065,7 @@
       "own": "03f2fae54768719a:0e51bc2cc5d885c5",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
-        "Markdown:conventions.md:every-cited-name-exists": "e3b0c44298fc1c14",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:check_documents.py:_citations": "07e6a03ff6968fbf",
         "Python:check_documents.py:_named_in_the_tree": "77ade077131b14fb",
         "Python:check_documents.py:citation_refusal": "849564ca2ca14225",
@@ -21772,25 +22101,26 @@
       "own": "3802a4be5cbaedd6:3a7c20313980f253",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
         "Python:checkers.py:refusals_for_edit": "1dda7868b748380a",
-        "Python:edit_landed.py": "215e16902470cef2"
+        "Python:edit_landed.py": "215e16902470cef2",
+        "Python:hook_health.py:refusal_for": "57153d56e0f3f8a1"
       }
     },
     "Python:prose_rewrite.py": {
       "own": "7d8b0808b0c2baf7:d14f9b182a22db84",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
+        "Python:check_prose.py:_faults": "1570e035b4825bc5",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
         "Python:checkers.py:refusals_for_edit": "1dda7868b748380a",
         "Python:collect_fragments.py:fragments_touched": "c56f8d7e7ef548ee",
         "Python:prose_gate.py": "3a7c20313980f253",
         "Python:prose_rules.py:literal_shape_faults": "849255c7b19b437a",
         "Python:prose_rules.py:word_refusal": "408a2ae7511bc208",
-        "Python:refusal.py:refuse": "eaf024607a33bb11",
-        "Python:check_prose.py:_faults": "1570e035b4825bc5"
+        "Python:refusal.py:refuse": "eaf024607a33bb11"
       }
     },
     "Python:prose_rewrite.py:_QUOTED": {
@@ -22125,7 +22455,6 @@
       "own": "1d8a57792662e5fb:dce53005be0876bf",
       "rounds": 1,
       "read": {
-        "Python:converge_prose.py:_is_refused": "a87d3fc142814b6e",
         "Python:prose_answer.py:_proposed": "c8d1393dbeb0256f",
         "Python:prose_rules.py:_A_RULE_MAY_SAY": "cf883a465f7d9493",
         "Python:prose_rules.py:_does_state_a_rule": "443abbb6dfeea72a",
@@ -22137,7 +22466,7 @@
         "Python:write_agent_prompts.py:_rendered": "e0c521da35a813af",
         "Python:write_agent_prompts.py:_said_by": "5035534e44924c9a",
         "callers:_does_state_a_rule": "c1b7d078c15ad92d",
-        "callers:proposal_refusals": "9f0cc9605825d152",
+        "callers:proposal_refusals": "88a2078981642956",
         "mentions:_A_RULE_IS_STATED_IN": "bdc39fdb641fe3ba"
       }
     },
@@ -22672,7 +23001,7 @@
       "own": "95563a984af2fd88:eb67a7a51be779ae",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:check_prose.py:_faults": "1570e035b4825bc5",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
         "Python:collect_fragments.py:fragments_touched": "c56f8d7e7ef548ee",
@@ -22681,9 +23010,7 @@
         "Python:prose_rewrite.py:_refusal": "40fb702dc907a08b",
         "Python:prose_rewrite.py:refusal_for": "0098ef231947b63a",
         "Python:prose_rules.py:_A_WORD_RULE": "d7439f6fca0beed3",
-        "Python:prose_rules.py:_NOT_OUR_WORD": "3aafe82c2e878a9c",
         "Python:prose_rules.py:_POINTS_AT_A_PLAN": "51194d8e5447d92f",
-        "Python:prose_rules.py:_UNIVERSAL": "d4a770cc0f815dde",
         "Python:prose_rules.py:word_refusal": "408a2ae7511bc208",
         "Python:prose_rules.py:words_found": "5d19b281750b6bf7"
       }
@@ -22711,10 +23038,11 @@
       "read": {
         "C:token_source.h:ys_token_source": "08bcba604661d854",
         "C:yeast.h:ys_token_source": "9a706dc60e231ca6",
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
+        "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
+        "Python:checkers.py:_refusals": "50eb3d460c3cd95a",
         "Python:collect_fragments.py:resolved": "b082a5562b52624d",
-        "mentions:refusal_for": "6979d44594fd63d4",
-        "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870"
+        "callers:refusal_for": "6979d44594fd63d4"
       }
     },
     "Python:public_citations.py:_is_public_c": {
@@ -22729,26 +23057,27 @@
       "own": "5c9605ca186fe7a4:d21b7ad162bd4a40",
       "rounds": 1,
       "read": {
-        "JSON:hooks.json": "5cb7ad5c017fa924",
+        "JSON:hooks.json": "2f4b2b154e9e815b",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
         "Python:checkers.py:refusals_for_edit": "1dda7868b748380a",
-        "callers:refusal_for": "6979d44594fd63d4"
+        "mentions:refusal_for": "6979d44594fd63d4"
       }
     },
     "Python:record_run.py": {
-      "own": "5b25e23c54d0301c:dbe582ab889182f0",
+      "own": "9ecd0b6f45c8572e:28799d36f089fff5",
       "rounds": 1,
       "read": {
-        "JS:pre-commit-review.js": "c27f162c35d8f217",
-        "Python:record_run.py:rule_use_counted": "ff6be797b15f9a65"
+        "JS:pre-commit-review.js": "6be1cd5037d22677",
+        "Python:record_run.py:rule_use_counted": "ff6be797b15f9a65",
+        "Python:review_input.py:answer_in": "f94582c3946d2bcd"
       }
     },
     "Python:record_run.py:_REVIEW": {
       "own": "0349026573e6c5a3:339947135b91b9fd",
       "rounds": 1,
       "read": {
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
-        "mentions:_REVIEW": "b9a554b127b3bc8e"
+        "Python:record_run.py:main": "15990788e609a19f",
+        "mentions:_REVIEW": "0604c2108cabea54"
       }
     },
     "Python:record_run.py:_RULE_USE": {
@@ -22768,11 +23097,11 @@
       }
     },
     "Python:record_run.py:_USAGE": {
-      "own": "287b507d95a16358:54097ea3cbce6aba",
+      "own": "287b507d95a16358:cd9f7408946aab03",
       "rounds": 1,
       "read": {
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
-        "mentions:_USAGE": "e97c92c70d7b2230"
+        "Python:record_run.py:main": "15990788e609a19f",
+        "mentions:_USAGE": "f7f6888080c1108d"
       }
     },
     "Python:record_run.py:_counted": {
@@ -22782,11 +23111,6 @@
         "Python:record_run.py:rule_use_counted": "ff6be797b15f9a65",
         "callers:_counted": "e565ab4037f96628"
       }
-    },
-    "Python:record_run.py:_loaded": {
-      "own": "a9b3e936363de340:573739b72c5293bd",
-      "rounds": 1,
-      "read": {}
     },
     "Python:record_run.py:_overlapped": {
       "own": "905807023f4cbb74:54ba80bdd696fda5",
@@ -22812,15 +23136,11 @@
       }
     },
     "Python:record_run.py:main": {
-      "own": "3566d0222a750bf2:2fcbf1bbba1c76ff",
+      "own": "6e8bc50a35b466c0:15990788e609a19f",
       "rounds": 1,
       "read": {
-        "Python:review_input.py:PREPARED": "466832f267d56eaf",
-        "Python:review_input.py:REVIEWED": "1572ea12c9585bd2",
-        "Python:review_input.py:_base": "a434f713d9602426",
-        "Python:review_input.py:_previous": "cc2a94bfeeb6e728",
-        "Python:review_input.py:_reviewed": "8ee23b639bb06583",
-        "callers:review_input._reviewed": "d534046f5818e7c4"
+        "Python:record_run.py:proposal_refusals": "8f0b4472a58a8e3f",
+        "Python:record_run.py:proposals_appended": "b40922274c829da5"
       }
     },
     "Python:record_run.py:proposal_refusals": {
@@ -22830,11 +23150,10 @@
         "Python:converge_prose.py:_condensed": "b2e62181c5e47079",
         "Python:converge_prose.py:_is_refused": "a87d3fc142814b6e",
         "Python:prose_answer.py:_proposed": "c8d1393dbeb0256f",
-        "Python:record_run.py:_pending_with": "abad75a9504616de",
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
+        "Python:record_run.py:main": "15990788e609a19f",
         "Python:record_run.py:proposals_appended": "b40922274c829da5",
         "Python:update_ledger_and_queue.py:updated": "0c8725e8f8438e44",
-        "callers:proposal_refusals": "9f0cc9605825d152"
+        "callers:proposal_refusals": "88a2078981642956"
       }
     },
     "Python:record_run.py:proposals_appended": {
@@ -22843,7 +23162,7 @@
       "read": {
         "Python:converge_prose.py:_condensed": "b2e62181c5e47079",
         "Python:record_run.py:_pending_with": "abad75a9504616de",
-        "callers:proposals_appended": "0c5008d5817a9f06"
+        "callers:proposals_appended": "9790e2b789274dd6"
       }
     },
     "Python:record_run.py:rule_use_counted": {
@@ -22859,11 +23178,10 @@
       "own": "40884d1a4793aeb5:1cf95a128f7034e4",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:prose_answer.py": "7d5c79ffb7fe1376",
         "Python:refusal.py:amend": "7ca139b9374fa36e",
-        "Python:refusal.py:refuse": "eaf024607a33bb11",
-        "callers:amend": "fab3e73c7f693a82"
+        "Python:refusal.py:refuse": "eaf024607a33bb11"
       }
     },
     "Python:refusal.py:amend": {
@@ -22926,30 +23244,20 @@
       }
     },
     "Python:review_input.py": {
-      "own": "e3aae21358cad57f:9070f7b8103b6cff",
+      "own": "c564695a296d3d8b:030a1737d1d5244f",
       "rounds": 1,
       "read": {
-        "Python:review_input.py:_MANIFEST": "16c8bdb7bec81ae3",
+        "Python:gate.py:task_outputs": "46a7fe252cc1dc77",
+        "Python:review_input.py:_ARGUMENTS": "c0050b98116cf396",
         "Python:review_input.py:_MOST_LINES": "000f9931895e475c"
       }
     },
-    "Python:review_input.py:PREPARED": {
-      "own": "d9de92a634cf369b:466832f267d56eaf",
+    "Python:review_input.py:_ARGUMENTS": {
+      "own": "8365d69efcf51019:c0050b98116cf396",
       "rounds": 1,
       "read": {
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
-        "Python:review_input.py:REVIEWED": "1572ea12c9585bd2",
-        "Python:review_input.py:main": "e50b189477d05d39",
-        "mentions:PREPARED": "c5b0e0ede4b31ced"
-      }
-    },
-    "Python:review_input.py:REVIEWED": {
-      "own": "5760a7bf9a9aa3a9:1572ea12c9585bd2",
-      "rounds": 2,
-      "read": {
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
-        "Python:review_input.py:_reviewed": "8ee23b639bb06583",
-        "mentions:REVIEWED": "88accc8fd58d3fda"
+        "Python:review_input.py:main": "33fac3293baa9a7b",
+        "mentions:_ARGUMENTS": "3a6b73b0a2af6106"
       }
     },
     "Python:review_input.py:_AROUND": {
@@ -22974,17 +23282,8 @@
       "own": "d18802904ae11754:0110c9a345dfdac0",
       "rounds": 1,
       "read": {
-        "Python:review_input.py:_references": "c4f1f80b474ca7b5",
-        "mentions:_FEW_MENTIONS": "d2e9bd23525cd7b3"
-      }
-    },
-    "Python:review_input.py:_MANIFEST": {
-      "own": "2f7a9b6f1ad30b89:16c8bdb7bec81ae3",
-      "rounds": 1,
-      "read": {
-        "Python:review_input.py:_written": "619a65452897daca",
-        "Python:review_input.py:main": "e50b189477d05d39",
-        "mentions:_MANIFEST": "8f13d3d3977a7ba6"
+        "Python:review_input.py:_references": "1e300f749dcac0a9",
+        "mentions:_FEW_MENTIONS": "37856b2f2e320342"
       }
     },
     "Python:review_input.py:_MOST_LINES": {
@@ -22999,8 +23298,8 @@
       "own": "285d4953fe2b1cbf:ca331047f42a5087",
       "rounds": 1,
       "read": {
-        "Python:review_input.py:_references": "c4f1f80b474ca7b5",
-        "mentions:_MOST_MENTIONS": "d2e9bd23525cd7b3"
+        "Python:review_input.py:_references": "1e300f749dcac0a9",
+        "mentions:_MOST_MENTIONS": "37856b2f2e320342"
       }
     },
     "Python:review_input.py:_STAGED_PATHS": {
@@ -23008,25 +23307,27 @@
       "rounds": 1,
       "read": {
         "Python:review_input.py:_hunks": "c02b1a4fffbc01b8",
-        "Python:review_input.py:_references": "c4f1f80b474ca7b5",
+        "Python:review_input.py:_references": "1e300f749dcac0a9",
         "Python:review_input.py:_staged_paths": "1ed7100abc97bab7",
         "Python:review_input.py:_uncovered": "58985b0eb764f38b",
-        "callers:_staged_paths": "746c1a48915068b8"
+        "callers:_staged_paths": "abdf4def545e389e"
       }
     },
     "Python:review_input.py:_STARTS_A_RECORD": {
       "own": "5e7cbc7a834bcc1b:1515d66e85c15da2",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
         "Python:review_input.py:_code": "45fd2db3dee80738",
         "Python:review_input.py:_docs": "95875f6aac928eca",
         "Python:review_input.py:_hunks": "c02b1a4fffbc01b8",
-        "Python:review_input.py:_references": "c4f1f80b474ca7b5"
+        "Python:review_input.py:_references": "1e300f749dcac0a9",
+        "Python:review_input.py:_written": "619a65452897daca",
+        "mentions:_STARTS_A_RECORD": "f9c96d86f410fe4f"
       }
     },
     "Python:review_input.py:_THE_CODE": {
       "own": "45d6c29bc797f75e:20a624b4f82c9240",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
         "Python:gate.py:TOOL_STORES": "459d5a2e1dfd0b93",
         "Python:gate.py:report": "0f65c8c7ca5f0d83",
@@ -23034,7 +23335,7 @@
         "Python:review_input.py:_THE_FIXTURES": "0742745d58bd3308",
         "Python:review_input.py:_code": "45fd2db3dee80738",
         "Python:review_input.py:_uncovered": "58985b0eb764f38b",
-        "Python:review_input.py:main": "e50b189477d05d39"
+        "Python:review_input.py:main": "33fac3293baa9a7b"
       }
     },
     "Python:review_input.py:_THE_DOCUMENTS": {
@@ -23056,19 +23357,28 @@
       "read": {
         "Python:check_star.py:_DECLARED": "3ecddedf8c780a67",
         "Python:check_star.py:_one_case": "2693fca17647a23d",
+        "Python:check_star.py:disagreements": "9b8612648a396ad1",
         "Python:review_input.py:_fixtures": "5677b02165b50da4",
         "Python:spec_tests.py:Fixture": "cf0492ff1c2f4f7b",
-        "mentions:_THE_FIXTURES": "c1b3ac5ed791bb8f"
+        "mentions:_THE_FIXTURES": "7564e965cfa2004e"
       }
     },
     "Python:review_input.py:_TOO_COMMON_TO_SEARCH": {
       "own": "42a0b7cc8a55d42d:3577468298a86a9f",
       "rounds": 1,
       "read": {
-        "Python:review_input.py:_references": "c4f1f80b474ca7b5",
+        "Python:review_input.py:_references": "1e300f749dcac0a9",
         "Python:review_input.py:_took_out": "e3b00c0fffac4529",
-        "callers:_took_out": "d2e9bd23525cd7b3",
+        "callers:_took_out": "37856b2f2e320342",
         "mentions:_TOO_COMMON_TO_SEARCH": "3d94fb72499cd7a7"
+      }
+    },
+    "Python:review_input.py:_USAGE": {
+      "own": "287b507d95a16358:166ff632540b2c93",
+      "rounds": 1,
+      "read": {
+        "Python:review_input.py:main": "33fac3293baa9a7b",
+        "mentions:_USAGE": "f7f6888080c1108d"
       }
     },
     "Python:review_input.py:_VENDORED": {
@@ -23093,9 +23403,9 @@
       "rounds": 1,
       "read": {
         "Python:review_input.py:_code": "45fd2db3dee80738",
-        "Python:review_input.py:_reviewed": "8ee23b639bb06583",
-        "Python:review_input.py:main": "e50b189477d05d39",
-        "callers:_base": "1c3927d6e7ab9a21"
+        "Python:review_input.py:_reviewed": "5810eb25ff85e2b1",
+        "Python:review_input.py:main": "33fac3293baa9a7b",
+        "callers:_base": "748169cdf149174e"
       }
     },
     "Python:review_input.py:_changed_lines": {
@@ -23159,7 +23469,7 @@
       "rounds": 1,
       "read": {
         "Python:review_input.py:_base": "a434f713d9602426",
-        "Python:review_input.py:_reviewed": "8ee23b639bb06583"
+        "Python:review_input.py:_reviewed": "5810eb25ff85e2b1"
       }
     },
     "Python:review_input.py:_ran": {
@@ -23170,7 +23480,7 @@
       }
     },
     "Python:review_input.py:_references": {
-      "own": "e11b308f0ab732da:c4f1f80b474ca7b5",
+      "own": "965c62545a177f4a:1e300f749dcac0a9",
       "rounds": 1,
       "read": {
         "Python:gate.py:NOT_OURS": "8d20fb5ef6bdcbc0",
@@ -23179,13 +23489,11 @@
       }
     },
     "Python:review_input.py:_reviewed": {
-      "own": "0f2e2038439583b5:8ee23b639bb06583",
+      "own": "79385e62ae756dde:5810eb25ff85e2b1",
       "rounds": 1,
       "read": {
-        "Python:review_input.py:_base": "a434f713d9602426",
-        "Python:review_input.py:_previous": "cc2a94bfeeb6e728",
-        "callers:_reviewed": "d534046f5818e7c4",
-        "mentions:REVIEWED": "88accc8fd58d3fda"
+        "Python:gate.py:task_outputs": "46a7fe252cc1dc77",
+        "Python:review_input.py:answer_in": "f94582c3946d2bcd"
       }
     },
     "Python:review_input.py:_searched": {
@@ -23210,13 +23518,15 @@
       }
     },
     "Python:review_input.py:_uncovered": {
-      "own": "3c2f1aeaf9d5195e:58985b0eb764f38b",
-      "rounds": 1,
+      "own": "e4922093e97cb183:58985b0eb764f38b",
+      "rounds": 2,
       "read": {
         "Python:gate.py:TOOL_STORES": "459d5a2e1dfd0b93",
-        "Python:review_input.py:_staged_paths": "1ed7100abc97bab7",
-        "Python:review_input.py:main": "e50b189477d05d39",
-        "callers:_uncovered": "8f13d3d3977a7ba6"
+        "Python:gate.py:report": "0f65c8c7ca5f0d83",
+        "Python:review_input.py:_THE_CODE": "20a624b4f82c9240",
+        "Python:review_input.py:_VENDORED": "580931cf5abf0e1b",
+        "Python:review_input.py:main": "33fac3293baa9a7b",
+        "callers:_uncovered": "3a6b73b0a2af6106"
       }
     },
     "Python:review_input.py:_unstaged": {
@@ -23224,9 +23534,7 @@
       "rounds": 1,
       "read": {
         "Python:review_input.py:_changed_lines": "842c5af2b01fcc54",
-        "Python:review_input.py:_hunks": "c02b1a4fffbc01b8",
-        "Python:review_input.py:main": "e50b189477d05d39",
-        "callers:_unstaged": "8f13d3d3977a7ba6"
+        "Python:review_input.py:_hunks": "c02b1a4fffbc01b8"
       }
     },
     "Python:review_input.py:_written": {
@@ -23236,8 +23544,16 @@
         "Python:review_input.py:_MOST_LINES": "000f9931895e475c"
       }
     },
+    "Python:review_input.py:answer_in": {
+      "own": "6cb905ceae64770f:f94582c3946d2bcd",
+      "rounds": 1,
+      "read": {
+        "Python:record_run.py:main": "15990788e609a19f",
+        "callers:answer_in": "6f0fb4e93f612b42"
+      }
+    },
     "Python:review_input.py:main": {
-      "own": "33824e121b99acf8:e50b189477d05d39",
+      "own": "bcf32edaf6bb459a:33fac3293baa9a7b",
       "rounds": 1,
       "read": {
         "Python:gate.py:report": "0f65c8c7ca5f0d83",
@@ -23356,7 +23672,8 @@
         "Python:checkers.py:_prose_refusals": "bc896d1e2423364f",
         "Python:prose_rules.py:_over": "9e16e40aed4c3e50",
         "Python:record_run.py:_said": "c105ddd768dfb205",
-        "mentions:WHY": "3fb2acde77eeb973"
+        "mentions:WHY": "1f59fb8f39ea4760",
+        "mentions:_Prose": "76e162b87dc6f18d"
       }
     },
     "Python:settling_state.py:_A_DIGEST": {
@@ -23583,9 +23900,9 @@
     },
     "Python:short_comments.py": {
       "own": "eb9d2ba1709519de:65d8aaca7fcd9220",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:check_conventions.py:long_comment_runs": "a58812201b3bc02d",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870",
         "Python:checkers.py:_measured": "6b8e2cc8de0aa1f4"
@@ -24358,7 +24675,8 @@
       "own": "41e2cf1d943733c6:5d96a1473d491561",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
+        "Markdown:conventions.md:a-step-opens-its-argument": "e3b0c44298fc1c14",
         "Python:checkers.py:_CHECKERS": "a6eeab7e2d64d870"
       }
     },
@@ -24451,7 +24769,7 @@
       "rounds": 1,
       "read": {
         "Python:update_ledger_and_queue.py:main": "d1f5d92514266fa1",
-        "mentions:_USAGE": "e97c92c70d7b2230"
+        "mentions:_USAGE": "f7f6888080c1108d"
       }
     },
     "Python:update_ledger_and_queue.py:_is_sound": {
@@ -24536,9 +24854,10 @@
         "Grammar:yeast-spec-1.2.yaml:c-reserved": "6cb87554267ba954",
         "Grammar:yeast-spec-1.2.yaml:c-sequence-entry": "845946b7a487cbfa",
         "Python:ir.py:ROOT": "dbede7881f48a6d2",
-        "Python:ir2spec.py:INDICATORS": "a4d1c0859dc454f4",
-        "mentions:c-reserved": "00a13172ef2a0a75",
-        "mentions:c-sequence-entry": "8b85afbcf7d5a71d"
+        "Python:validate_grammar.py:_validate": "4ed9636bf4a4d7a0",
+        "mentions:_UNREFERENCED": "2016bb07cb2a1ef1",
+        "mentions:c-reserved": "17483fff23156cd8",
+        "mentions:c-sequence-entry": "f8f7ad4bb5d0a4aa"
       }
     },
     "Python:validate_grammar.py:_check_annotated": {
@@ -25025,7 +25344,7 @@
       "rounds": 1,
       "read": {
         "Python:write_agent_prompts.py:main": "db6a9d705cc1f2c4",
-        "mentions:_USAGE": "e97c92c70d7b2230"
+        "mentions:_USAGE": "f7f6888080c1108d"
       }
     },
     "Python:write_agent_prompts.py:_judged_rules": {
@@ -25319,9 +25638,9 @@
     },
     "Shell:no-shell-file-writes.sh": {
       "own": "12f4c0bdf11f908a:0635ac05662e2147",
-      "rounds": 3,
+      "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed"
+        "JSON:settings.json": "e9658b90680367e1"
       }
     },
     "Shell:no-shell-file-writes.sh:#0941071e": {
@@ -25449,7 +25768,7 @@
         "Python:review_input.py:_docs": "95875f6aac928eca",
         "Python:review_input.py:_fixtures": "5677b02165b50da4",
         "Python:review_input.py:_written": "619a65452897daca",
-        "Python:review_input.py:main": "e50b189477d05d39",
+        "Python:review_input.py:main": "33fac3293baa9a7b",
         "Shell:no-shell-file-writes.sh": "0635ac05662e2147"
       }
     },
@@ -25531,15 +25850,15 @@
       "own": "fd5b66147c9860fb:e3b0c44298fc1c14",
       "rounds": 1,
       "read": {
-        "Python:record_run.py:main": "2fcbf1bbba1c76ff",
+        "Python:record_run.py:main": "15990788e609a19f",
         "Python:record_run.py:proposals_appended": "b40922274c829da5"
       }
     },
     "Shell:one-at-a-time.sh": {
       "own": "8fddbb35c4277d55:837df4b46f2e5de7",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Shell:clear-one-at-a-time.sh": "a9f3194bf6e5c9f0"
       }
     },
@@ -25551,21 +25870,22 @@
       }
     },
     "Shell:refusal.sh": {
-      "own": "3fab7dfdc6a7a8ee:5f1bd9b03604f2df",
-      "rounds": 1,
+      "own": "ee6130690e58f4b6:5f1bd9b03604f2df",
+      "rounds": 2,
       "read": {
-        "JSON:settings.json": "c037893076423fed",
+        "JSON:settings.json": "e9658b90680367e1",
         "Python:refusal.py:refuse": "eaf024607a33bb11",
         "Shell:no-shell-file-writes.sh": "0635ac05662e2147",
         "Shell:one-at-a-time.sh": "837df4b46f2e5de7",
-        "mentions:refusal.sh": "57f47d9524c4813b"
+        "Shell:workflow-from-the-tree.sh": "b4c920c365aa53ac",
+        "mentions:refusal.sh": "41d60c5fb3dd54d5"
       }
     },
     "Shell:run.sh": {
-      "own": "70214b1b6d703899:bef019f6150cf002",
+      "own": "b88ff36b06e619f5:bef019f6150cf002",
       "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed"
+        "JSON:settings.json": "e9658b90680367e1"
       }
     },
     "Shell:run.sh:#4b2fa66f": {
@@ -25577,9 +25897,9 @@
     },
     "Shell:standing-rules.sh": {
       "own": "d614042c46891f85:8e96461808a00466",
-      "rounds": 2,
+      "rounds": 1,
       "read": {
-        "JSON:settings.json": "c037893076423fed"
+        "JSON:settings.json": "e9658b90680367e1"
       }
     },
     "Shell:standing-rules.sh:#d12655bb": {
@@ -25591,6 +25911,13 @@
         "Python:gate.py:rule_use": "e0c728a0cd5da839",
         "Shell:standing-rules.sh": "8e96461808a00466",
         "callers:agent_answers.rules_by_use": "c7f7be174d9bbe86"
+      }
+    },
+    "Shell:workflow-from-the-tree.sh": {
+      "own": "c985024f4405c082:b4c920c365aa53ac",
+      "rounds": 1,
+      "read": {
+        "JSON:settings.json": "e9658b90680367e1"
       }
     },
     "YAML:codeql.yml": {

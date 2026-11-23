@@ -29,6 +29,21 @@
       "skips": "this decides from the session rather than from the edit. a pair fires a payload and reads the answer, and the answer here says what the turn already launched. the first call of a pair creates the marker the second call reads, so a pair reports the reverse of what the hook does."
     }
   ],
+  "workflow-from-the-tree.sh": [
+    {
+      "probes": "a workflow launch",
+      "answers": {
+        "tool_input": {
+          "name": "pre-commit-review"
+        }
+      },
+      "passes": {
+        "tool_input": {
+          "scriptPath": "TREE/.claude/workflows/pre-commit-review.js"
+        }
+      }
+    }
+  ],
 
   "kind_dispatches.py": [
     {

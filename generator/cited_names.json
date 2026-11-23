@@ -671,6 +671,7 @@
   "every-conditional-way-is-gated",
   "every-conflict-is-a-tail-call",
   "every-consume-is-protected-by-a-gate",
+  "every-counted-run-can-be-followed-by-its-character",
   "every-difference-is-between-character-sets",
   "every-end-of-stream-sits-in-a-gate",
   "every-exclusion-is-bounded",
@@ -1913,6 +1914,7 @@
   "read-global-f",
   "read-global-m",
   "read-indents",
+  "refine-counted-runs",
   "refusal",
   "run",
   "s-b-comment",
@@ -2048,6 +2050,8 @@
   "s-indent_1",
   "s-indent_3",
   "s-indent_4",
+  "s-indent_5",
+  "s-indent_6",
   "s-l+block-collection",
   "s-l+block-collection_c_block-in",
   "s-l+block-collection_c_block-in_1",
@@ -2291,6 +2295,7 @@
   "unread_files",
   "use-the-words-this-project-uses",
   "white",
+  "workflow-from-the-tree",
   "wrapped-at-120-columns",
   "written_by"
 ]

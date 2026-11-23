@@ -2306,11 +2306,12 @@ def _lower_commits(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.P
     Write a `(commit)` as the message pair. `CommitWrapper(message, x)` becomes `PushMessageAction(message, pair) x
     PopMessageAction(pair)`, and the push and the pop share a `pair` from the namer.
 
-    The parser raises a commit error when the guarded item does not reach its own end. A continuation that fails past a
-    matched item backtracks like any other match. The commitment does not reach past that item, and the pair enforces
-    the same bound. The push records a region and the pop marks it reached. The parse may unwind to a push while the
-    region of that push stays open. Such an unwind is the error. The interpreter says so where it implements the push.
-    The pop goes where the `(commit)` scope ends.
+    The parser sets `emitter.failing` to the commit's message when the guarded item does not reach its own end and no
+    earlier message holds `emitter.failing`. A continuation that fails past a matched item backtracks like any other
+    match. The commitment does not reach past that item, and the pair enforces the same bound. The push records a region
+    and the pop marks it reached. The parse may unwind to a push while the region of that push stays open. Such an
+    unwind is the error. The interpreter says so where it implements the push. The pop goes where the `(commit)` scope
+    ends.
 
     The pair changes where the pushed region's record lives. The wrapper keeps that record in a Python local. The pair
     keeps it on `emitter.stack`. The stack survives a split of the pair across a call.
@@ -2424,11 +2425,11 @@ def _lower_tokens(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Pr
     Write a `(token)` as the code pair. `TokenWrapper(code, x)` becomes `PushCodeAction(code, pair) x
     PopCodeAction(pair)`.
 
-    An annotation says what code the characters consumed within it take. The annotation cuts the run at both edges. The
-    characters before and after fall into tokens of their own. The push sets the code, and the pop takes back the code
-    the push displaced.
+    An annotation says what code the characters consumed within it take. `_try_push_code` and `_try_pop_code` cut the
+    run at both edges. The characters before and after fall into tokens of their own. The push sets the code, and the
+    pop takes back the code the push displaced.
 
-    The push puts the displaced code on the stack the parse holds. A pop takes back the entry on top. A pop refuses a
+    The push puts the displaced code on the stack the parse holds. `_popped` takes back the entry on top. It refuses a
     top entry that another pair put there.
     """
 
@@ -3425,18 +3426,25 @@ def _accepted_way(
     The states `way` consumes a character in, as a `spaces.SubSpace`.
 
     Read off what the way consumes and no more. **A guard says nothing here.** `_admits` answers what admits a way. A
-    consume names the set the grammar wrote it to take. The pair therefore comes off different halves of the way, and
-    either can hold the other to account.
+    consume names the set the grammar wrote it to take.
+
+    This is empty where a way consumes nothing at all. Whether a way can do so is `_split_ways`' answer already.
+    """
+    return _accepted_parts(_parts_of_way(way), grammar, known, ways)
+
+
+def _accepted_parts(
+    parts: Iterable[ir.Node], grammar: dict[str, ir.Prod], known: Mapping[str, spaces.SubSpace], ways: _Ways
+) -> spaces.SubSpace:
+    """
+    The states a run of a way's parts consumes a character in, as a `spaces.SubSpace`.
 
     A part contributes the states it consumes a character in. A part that must consume a character ends the walk. A part
-    that may consume nothing leaves the walk going, and what sits behind it comes in too.
-
-    This is empty where a way consumes nothing at all. A way that succeeds without consuming succeeds at any position.
-    Whether a way can do so is `_split_ways`' answer already. This walk reads `ways` only to decide whether to walk past
-    a part. A way reaching a part that may consume nothing walks past that part and adds what sits behind it.
+    that may consume nothing leaves the walk going, and what sits behind it comes in too. The walk reads `ways` only to
+    decide whether to walk past a part.
     """
     consumes = spaces.NOWHERE
-    for part in _parts_of_way(way):
+    for part in parts:
         if ir.IS_A_GUARD(part):
             continue
         consumes = consumes | _accepted_part(part, grammar, known)
@@ -3651,9 +3659,9 @@ def _mint_continuations(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str,
     call.
 
     A scope opened before the call and closed after it comes apart here. `lower-scopes` already split that scope apart.
-    A Push and Pop pair sits on the stack the parse holds, rather than in the frame of the running match. The
-    `PushCodeAction` stays in the way, and its `PopCodeAction` moves into the continuation. The pair still finds one
-    another.
+    A Push and Pop pair sits on the stack the parse holds, rather than in the frame of the running match.
+    `interpreter._popped` takes the pop's entry off that stack. The `PushCodeAction` stays in the way, and its
+    `PopCodeAction` moves into the continuation. The pair still finds one another.
     """
     minted = {}
 
@@ -3739,19 +3747,18 @@ _AS_A_MACHINE_BODY: ir.Question[ir.Node] = ir.Question(
 
 def _every_ungated_way_has_actions_or_a_call(grammar: dict[str, ir.Prod]) -> list[str]:
     """
-    Check that a way with no gate does not both act and make a call.
+    Check that no ungated way both acts and calls through `first`. `_ungated_ways` picks the ungated ways.
 
-    A way with no gate is a way still waiting for one. A guard crosses an action, or it provably stays put.
-    `GUARD_CROSSES_ACTION` says which. An action that sits in front of a guard can refuse it, and such a guard is a
-    guard nothing can bring up. Such a way is a way nothing can gate.
+    A guard crosses an action, or it stays put. `GUARD_CROSSES_ACTION` says which. An action in front of a guard can
+    refuse that guard.
 
-    This check asks nothing of a way that has a gate. The parse enters such a way on the questions that way asks. An
-    `AlternativeState` performs its actions, and then calls. `every-conditional-way-is-gated` at none leaves no ungated
-    way, and this check then has no way to judge.
+    This check asks nothing of a way that has a gate. The parse enters such a way on the questions that way asks.
+    `interpreter._try_way` performs the actions of a way, and then makes its calls. `every-conditional-way-is-gated` at
+    none leaves no ungated way, and this check then has no way to judge.
 
-    A continuation is not a call. In an `AlternativeState`, `first` is the call and `second` the continuation. The parse
-    enters a continuation where the callee left off, rather than where the way began. A way that acts and then hands
-    control on to a continuation therefore passes.
+    This check counts only `first` as a call. In an `AlternativeState`, `first` is the call and `second` the
+    continuation. A `second` with no `first` is a tail call. A way that acts and then makes a tail call through `second`
+    passes.
     """
     return [
         f"{name}: an ungated way acts before it calls. A guard of the callee cannot reach those actions."
@@ -5278,6 +5285,8 @@ GUARD_CROSSES_ACTION = _Crossing(
         # The guard behind a run of a limited span asks what that run took. In front of the run it would read an earlier
         # run.
         ("DidMatchFullSpanGuard", "ConsumeLimitedSpanAction"): False,
+        # A comparison behind a run can read the run's length. In front of the run it would read an earlier length.
+        ("IsLessEqualGuard", "ConsumeSpanAction"): False,
         # A committed region is a scope. A guard crossing either end, or a `CutAction`, lands on the other side of the
         # line where a refusal changes into the error the region names.
         ("LookGuard", "CutAction"): False,
@@ -5356,8 +5365,8 @@ def _mint_consume_states(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str
     becomes `A = |g ... take ... ->A'|` with `A' = |- CharSet rest|`.
 
     The way's gate cannot ask about a set behind a take. `GUARD_CROSSES_ACTION` refuses a look across a
-    `ConsumeCharAction`. The way holds a pair of entries and has a single gate. A state of its own gives the remaining
-    parts a position where that state's gate can answer. `split-consumes-into-gates` puts the question there.
+    `ConsumeCharAction`. The way holds more than a single take and has a single gate. A state of its own gives the
+    remaining parts a position where that state's gate can answer. `split-consumes-into-gates` puts the question there.
 
     This runs until nothing moves. The minted state starts at the second take. A longer run puts a third take in that
     state too. The state minted for a cut is therefore a way to cut again, a take at a time, until a way holds a single
@@ -5558,6 +5567,471 @@ def _every_span_question_follows_its_run(grammar: dict[str, ir.Prod]) -> list[st
 _EVERY_SPAN_QUESTION_FOLLOWS_ITS_RUN = _Invariant(
     "every-span-question-follows-its-run", _every_span_question_follows_its_run
 )
+
+
+@dataclasses.dataclass(frozen=True)
+class _CallSite:
+    """A call a way of `caller` makes. `rest` holds the calls of `way` past `call`."""
+
+    caller: str
+    way: ir.AlternativeState
+    call: ir.RefCall
+    rest: tuple[ir.Node, ...]
+
+
+def _call_sites(grammar: dict[str, ir.Prod]) -> dict[str, list[_CallSite]]:
+    """`{callee: the call sites of the callee}`. The map holds the callees `grammar` defines that a way calls."""
+    sites: dict[str, list[_CallSite]] = {}
+    for caller, production in grammar.items():
+        for way in _ALTERNATIVES(production.body):
+            calls = _calls_of_way(way)
+            for at, call in enumerate(calls):
+                if call.name in grammar:
+                    sites.setdefault(call.name, []).append(_CallSite(caller, way, call, calls[at + 1 :]))
+    return sites
+
+
+def _are_nullable(parts: Iterable[ir.Node], grammar: dict[str, ir.Prod], ways: _Ways) -> bool:
+    """Whether a run of a way's parts can take no character."""
+    return all(_is_nullable(part, grammar, ways) for part in parts)
+
+
+def _accepted_past(
+    parts: tuple[ir.Node, ...],
+    after: spaces.SubSpace,
+    grammar: dict[str, ir.Prod],
+    known: Mapping[str, spaces.SubSpace],
+    ways: _Ways,
+) -> spaces.SubSpace:
+    """
+    The states the parse can take a character in past a point of a way. `parts` are the parts of the way past that
+    point. `after` holds the states past the way. The answer adds `after` where `_are_nullable` finds that `parts` may
+    consume nothing.
+    """
+    space = _accepted_parts(parts, grammar, known, ways)
+    return space | after if _are_nullable(parts, grammar, ways) else space
+
+
+def _follow_seeds(grammar: dict[str, ir.Prod]) -> dict[str, spaces.SubSpace]:
+    """
+    `{name: spaces.SubSpace}`, what follows a production the parse enters without a call. A production the parse enters
+    by name ends the parse, and the end of the stream follows it. A production the parse enters by matching can be
+    followed by anything. A production the parse enters only by a call gets `NOWHERE`.
+    """
+    seeds = {name: spaces.NOWHERE for name in grammar}
+    for name in _entered_by_name(grammar):
+        seeds[name] = spaces.characters(is_at_end=True)
+    for name in _entered_by_matching(grammar):
+        seeds[name] = spaces.COMPLETE
+    return seeds
+
+
+def _follows(
+    grammar: dict[str, ir.Prod], known: Mapping[str, spaces.SubSpace], ways: _Ways
+) -> dict[str, spaces.SubSpace]:
+    """
+    `{name: spaces.SubSpace}`, the states the parse can take a character in where a production has matched.
+
+    A call site contributes what its way does past the call. The map is a least fixed point seeded from `_follow_seeds`.
+    A caller whose answer grows puts its callees back on the worklist.
+    """
+    sites = _call_sites(grammar)
+    seeds = _follow_seeds(grammar)
+
+    def answer(name: str, follows: Mapping[str, spaces.SubSpace]) -> spaces.SubSpace:
+        space = seeds[name]
+        for site in sites.get(name, ()):
+            space = space | _accepted_past(site.rest, follows[site.caller], grammar, known, ways)
+        return space
+
+    return ir.fixed_point(
+        "the states the parse can take a character in where a production has matched",
+        seeds,
+        answer,
+        _inverted(_callers(grammar)),
+    )
+
+
+# The counted runs a part of a way makes.
+_COUNTED_RUNS: ir.Question[tuple[ir.ConsumeLimitedSpanAction, ...]] = ir.Question(
+    "the counted runs a part of a way makes",
+    {
+        ir.ConsumeLimitedSpanAction: lambda node: (node,),
+        (
+            *(kind for kind in ir.CONSUMING if kind is not ir.ConsumeLimitedSpanAction),
+            *ir.ACTIONS,
+            *ir.GUARDS,
+            ir.RefCall,
+        ): (),
+    },
+)
+
+# A part of a way as the counted run a rewrite of that part expects.
+_AS_THE_COUNTED_RUN: ir.Question[ir.ConsumeLimitedSpanAction] = ir.Question(
+    "a part of a way as the counted run a rewrite of that part expects",
+    {ir.ConsumeLimitedSpanAction: lambda node: node},
+)
+
+# Whether a part of a way asks whether the run in front of it filled.
+_DOES_ASK_IF_THE_RUN_FILLED: ir.Question[bool] = ir.Question(
+    "whether a part of a way asks whether the run in front of it filled",
+    {
+        ir.DidMatchFullSpanGuard: True,
+        (
+            *(kind for kind in ir.GUARDS if kind is not ir.DidMatchFullSpanGuard),
+            *ir.ACTIONS,
+            *ir.CONSUMING,
+            ir.RefCall,
+        ): False,
+    },
+)
+
+
+@dataclasses.dataclass(frozen=True)
+class _UnfollowedRun:
+    """
+    A counted run in `owner` whose follower takes none of the run's characters. The run is the part at `at` among the
+    parts of `way`. `site` names the call site of `owner` that holds the follower. `is_entry` marks a follower that
+    comes after the parse enters `owner` without a call. The run's own way holds the follower where `site` is None and
+    `is_entry` is false.
+    """
+
+    owner: str
+    way: ir.AlternativeState
+    at: int
+    site: _CallSite | None = None
+    is_entry: bool = False
+
+
+def _unfollowed_runs(grammar: dict[str, ir.Prod]) -> list[_UnfollowedRun]:
+    """
+    The counted runs whose follower takes none of the run's characters. A run can end its production. A call site of the
+    production then says what follows the run. This function reads a call site as a place of its own.
+    """
+    known = _accepted_spaces(grammar)
+    ways = _split_ways(grammar)
+    follows = _follows(grammar, known, ways)
+    sites = _call_sites(grammar)
+    seeds = _follow_seeds(grammar)
+    unfollowed = []
+    for name, production in grammar.items():
+        for way in _ALTERNATIVES(production.body):
+            parts = _parts_of_way(way)
+            for at, run in ((at, run) for at, part in enumerate(parts) for run in _COUNTED_RUNS(part)):
+                taken = _accepted_part(run, grammar, known)
+                rest = parts[at + 1 :]
+                if not _are_nullable(rest, grammar, ways):
+                    if not _accepted_parts(rest, grammar, known, ways) & taken:
+                        unfollowed.append(_UnfollowedRun(name, way, at))
+                    continue
+                if seeds[name] and not _accepted_past(rest, seeds[name], grammar, known, ways) & taken:
+                    unfollowed.append(_UnfollowedRun(name, way, at, is_entry=True))
+                for site in sites.get(name, ()):
+                    after = _accepted_past(site.rest, follows[site.caller], grammar, known, ways)
+                    if not _accepted_past(rest, after, grammar, known, ways) & taken:
+                        unfollowed.append(_UnfollowedRun(name, way, at, site))
+    return unfollowed
+
+
+def _unfollowed_fault(run: _UnfollowedRun) -> str:
+    """The fault `_every_counted_run_can_be_followed_by_its_character` reports for `run`."""
+    if run.site is not None:
+        return f"{run.site.caller}: the way past the call of {run.owner} takes none of its run's characters"
+    if run.is_entry:
+        return f"{run.owner}: an entry's follow takes none of its run's characters"
+    return f"{run.owner}: the way past a counted run takes none of its characters"
+
+
+def _every_counted_run_can_be_followed_by_its_character(grammar: dict[str, ir.Prod]) -> list[str]:
+    """Check that what follows a counted run can begin with a character of the run."""
+    return [_unfollowed_fault(run) for run in _unfollowed_runs(grammar)]
+
+
+_EVERY_COUNTED_RUN_CAN_BE_FOLLOWED_BY_ITS_CHARACTER = _Invariant(
+    "every-counted-run-can-be-followed-by-its-character", _every_counted_run_can_be_followed_by_its_character
+)
+
+
+# Whether a part of a way can commit the parse before the part takes a character. `commits` answers that question of a
+# production.
+_CAN_COMMIT_FIRST: ir.Question[bool] = ir.Question(
+    "whether a part of a way can commit the parse before it takes a character",
+    {
+        # A `(cut)` commits. The open of a committed region commits too.
+        (ir.CutAction, ir.PushMessageAction): True,
+        ir.RefCall: lambda node, commits: commits[node.name],
+        (
+            *(kind for kind in ir.ACTIONS if kind not in (ir.CutAction, ir.PushMessageAction)),
+            *ir.CONSUMING,
+            *ir.GUARDS,
+        ): False,
+    },
+)
+
+
+def _can_commit_first_in(
+    parts: Iterable[ir.Node], grammar: dict[str, ir.Prod], ways: _Ways, commits: Mapping[str, bool]
+) -> bool:
+    """
+    Whether a run of a way's parts can commit the parse before the run takes a character. `commits` answers that
+    question of a production.
+    """
+    for part in parts:
+        if _CAN_COMMIT_FIRST(part, commits):
+            return True
+        if not _is_nullable(part, grammar, ways):
+            return False
+    return False
+
+
+def _commits_first(grammar: dict[str, ir.Prod], ways: _Ways) -> dict[str, bool]:
+    """
+    The function answers a `{name: bool}` map and computes it as a least fixed point. The map says whether a production
+    can commit the parse before the production takes a character.
+    """
+    return ir.fixed_point(
+        "whether a production can commit the parse before it takes a character",
+        {name: False for name in grammar},
+        lambda name, commits: any(
+            _can_commit_first_in(_parts_of_way(way), grammar, ways, commits)
+            for way in _ALTERNATIVES(grammar[name].body)
+        ),
+        _callers(grammar),
+    )
+
+
+def _can_commit_past(
+    parts: tuple[ir.Node, ...],
+    owner: str,
+    grammar: dict[str, ir.Prod],
+    ways: _Ways,
+    commits: Mapping[str, bool],
+    commit_follows: Mapping[str, bool],
+) -> bool:
+    """
+    Whether the parse can commit before it takes a character, past a point of a way of `owner`. `parts` are the parts of
+    the way past that point. A part that can commit first makes the answer true where only nullable parts come before
+    it. Otherwise nullable `parts` defer to `commit_follows` of `owner`.
+    """
+    if _can_commit_first_in(parts, grammar, ways, commits):
+        return True
+    return _are_nullable(parts, grammar, ways) and commit_follows[owner]
+
+
+def _commit_follows(grammar: dict[str, ir.Prod], ways: _Ways, commits: Mapping[str, bool]) -> dict[str, bool]:
+    """
+    `{name: bool}`, whether the parse can commit before it takes a character where a production has matched. The answer
+    is a least fixed point over the call sites. A caller whose answer grows puts its callees back on the worklist.
+    """
+    sites = _call_sites(grammar)
+    return ir.fixed_point(
+        "whether the parse can commit before it takes a character where a production has matched",
+        {name: False for name in grammar},
+        lambda name, follows: any(
+            _can_commit_past(site.rest, site.caller, grammar, ways, commits, follows) for site in sites.get(name, ())
+        ),
+        _inverted(_callers(grammar)),
+    )
+
+
+# `WINDOWS_OPENED` gives the change a node makes to the depth of open `(max)` windows. A depth of `_MANY_WINDOWS` means
+# itself or a deeper depth.
+_MANY_WINDOWS = 2
+
+# A set of depths of open windows. The parse may be at any of them.
+_Depths = frozenset[int]
+
+
+def _window_depth_change_through(actions: Iterable[ir.Node]) -> int:
+    """The change `actions` make to the depth of open windows."""
+    return sum(ir.WINDOWS_OPENED(action) for action in actions)
+
+
+def _window_depths_shifted(depths: _Depths, shifts: Iterable[int]) -> _Depths:
+    """
+    The depths of open windows past a shift by any of `shifts`. A shift that closes more windows than are open gives no
+    depth. `_MANY_WINDOWS` means that depth or any deeper one.
+    """
+    shifted = set()
+    for depth in depths:
+        for shift in shifts:
+            if depth < _MANY_WINDOWS:
+                lowest = highest = depth + shift
+            else:
+                lowest, highest = _MANY_WINDOWS + min(shift, 0), _MANY_WINDOWS
+            shifted |= {min(past, _MANY_WINDOWS) for past in range(max(lowest, 0), highest + 1)}
+    return frozenset(shifted)
+
+
+def _window_depth_changes_of_way(way: ir.AlternativeState, changes: Mapping[str, frozenset[int]]) -> frozenset[int]:
+    """The changes `way` can make to the depth of open windows. `changes` gives the changes of a production."""
+    changed = frozenset({_window_depth_change_through(way.actions)})
+    for call in _calls_of_way(way):
+        changed = frozenset(before + after for before in changed for after in changes[call.name])
+    return changed
+
+
+def _window_depth_changes(grammar: dict[str, ir.Prod]) -> dict[str, frozenset[int]]:
+    """
+    `{name: changes}`, the changes a production can make to the depth of open windows. A least fixed point. A callee
+    whose changes grow puts its callers back on the worklist.
+    """
+    return ir.fixed_point(
+        "the changes a production makes to the depth of open windows",
+        {name: frozenset() for name in grammar},
+        lambda name, changes: _WINDOW_DEPTH_CHANGES_OF_BODY(grammar[name].body, changes),
+        _callers(grammar),
+    )
+
+
+# The changes a body can make to the depth of open windows. `changes` gives the changes of a production.
+_WINDOW_DEPTH_CHANGES_OF_BODY: ir.Question[frozenset[int]] = ir.Question(
+    "the changes a body can make to the depth of open windows",
+    {
+        ir.ChoiceState: lambda node, changes: frozenset().union(
+            *(_window_depth_changes_of_way(way, changes) for way in node.alternatives)
+        ),
+        # A set takes a character and opens or closes no window.
+        ir.CharSet: frozenset({0}),
+    },
+)
+
+
+def _window_depths_at_call(
+    site: _CallSite, entered: Mapping[str, _Depths], changes: Mapping[str, frozenset[int]]
+) -> _Depths:
+    """The depths of open windows where the parse makes the call `site` names."""
+    depths = _window_depths_shifted(entered[site.caller], {_window_depth_change_through(site.way.actions)})
+    if site.call is site.way.second and site.way.first is not None:
+        depths = _window_depths_shifted(depths, changes[site.way.first.name])
+    return depths
+
+
+def _window_depths_entered(grammar: dict[str, ir.Prod], changes: Mapping[str, frozenset[int]]) -> dict[str, _Depths]:
+    """
+    `{name: depths}`, the depths of open windows on entering a production. The map is a least fixed point. The parse can
+    enter a production by name or by matching. The parse then holds no window open. A caller whose depths grow puts its
+    callees back on the worklist.
+    """
+    sites = _call_sites(grammar)
+    seeds: dict[str, _Depths] = {name: frozenset() for name in grammar}
+    for name in _entered_by_name(grammar) | _entered_by_matching(grammar):
+        seeds[name] = frozenset({0})
+
+    def answer(name: str, entered: Mapping[str, _Depths]) -> _Depths:
+        depths = seeds[name]
+        for site in sites.get(name, ()):
+            depths = depths | _window_depths_at_call(site, entered, changes)
+        return depths
+
+    return ir.fixed_point(
+        "the depths of open windows on entering a production",
+        seeds,
+        answer,
+        _inverted(_callers(grammar)),
+    )
+
+
+def _is_refinable(
+    run: _UnfollowedRun,
+    grammar: dict[str, ir.Prod],
+    ways: _Ways,
+    commits: Mapping[str, bool],
+    commit_follows: Mapping[str, bool],
+    changes: Mapping[str, frozenset[int]],
+    entered: Mapping[str, _Depths],
+) -> bool:
+    """
+    Whether `_refined_way` keeps the parse of `run` at its call site. The conditions are these. A question whether the
+    run filled comes right past the run. The follower cannot commit the parse before it takes a character. The parse
+    holds no `(max)` window open where the run takes, as `WINDOWS_OPENED` counts them.
+    """
+    site = run.site
+    if site is None:
+        return False
+    parts = _parts_of_way(run.way)
+    if run.at + 1 >= len(parts) or not _DOES_ASK_IF_THE_RUN_FILLED(parts[run.at + 1]):
+        return False
+    if _can_commit_first_in(parts[run.at + 1 :], grammar, ways, commits):
+        return False
+    if _can_commit_past(site.rest, site.caller, grammar, ways, commits, commit_follows):
+        return False
+    depths = _window_depths_at_call(site, entered, changes)
+    depths = _window_depths_shifted(depths, {_window_depth_change_through(parts[: run.at])})
+    return depths <= frozenset({0})
+
+
+def _refined_way(way: ir.AlternativeState, at: int) -> ir.AlternativeState:
+    """
+    The answer copies `way` and writes the counted run at part `at` as a maximal run. A pair of guards past the run asks
+    that its length is the count. The pair takes the place of the question whether the run filled.
+    """
+    index = at - len(way.gate.guards)
+    run = _AS_THE_COUNTED_RUN(way.actions[index])
+    length = ir.LenValue(arg=ir.MatchValue())
+    taking = (
+        ir.ConsumeSpanAction(set=run.set),
+        ir.IsLessEqualGuard(a=length, b=run.limit),
+        ir.IsLessEqualGuard(a=run.limit, b=length),
+    )
+    return dataclasses.replace(way, actions=(*way.actions[:index], *taking, *way.actions[index + 2 :]))
+
+
+def _refine_counted_runs(grammar: dict[str, ir.Prod], namer: _Namer) -> dict[str, ir.Prod]:
+    """
+    Point a call site at a refined copy of the production it calls. The copy writes a counted run as a maximal run and a
+    pair of guards on its length. A site gets the copy where `_is_refinable` holds for the runs the copy refines.
+    """
+    ways = _split_ways(grammar)
+    commits = _commits_first(grammar, ways)
+    commit_follows = _commit_follows(grammar, ways, commits)
+    changes = _window_depth_changes(grammar)
+    entered = _window_depths_entered(grammar, changes)
+    refined: dict[_CallSite, set[_RunAt]] = {}
+    for run in _unfollowed_runs(grammar):
+        if _is_refinable(run, grammar, ways, commits, commit_follows, changes, entered):
+            assert run.site is not None, "`_is_refinable` holds for a run with no call site"
+            refined.setdefault(run.site, set()).add((run.way, run.at))
+    result = dict(grammar)
+    copies: dict[tuple[str, frozenset[_RunAt]], str] = {}
+    redirected: dict[str, dict[ir.AlternativeState, ir.AlternativeState]] = {}
+    for site, runs in refined.items():
+        owner = site.call.name
+        key = (owner, frozenset(runs))
+        if key not in copies:
+            copies[key] = namer.fresh(owner)
+            result[copies[key]] = _refined_copy(grammar[owner], key[1])
+        redirects = redirected.setdefault(site.caller, {})
+        caller_way = redirects.get(site.way, site.way)
+        call = dataclasses.replace(site.call, name=copies[key])
+        if site.call is site.way.first:
+            redirects[site.way] = dataclasses.replace(caller_way, first=call)
+        else:
+            redirects[site.way] = dataclasses.replace(caller_way, second=call)
+    for caller, redirects in redirected.items():
+        result[caller] = _redirected(grammar[caller], redirects)
+    return result
+
+
+# The way holding a counted run, and the place of the run among the parts of that way.
+_RunAt = tuple[ir.AlternativeState, int]
+
+
+def _refined_copy(production: ir.Prod, runs: frozenset[_RunAt]) -> ir.Prod:
+    """A copy of `production`. `_refined_way` rewrites the counted runs that `runs` names."""
+
+    def refined(way: ir.AlternativeState) -> ir.AlternativeState:
+        # A way can hold several runs. Refining the last first leaves the positions of the earlier ones.
+        for at in sorted((at for held, at in runs if held == way), reverse=True):
+            way = _refined_way(way, at)
+        return way
+
+    return dataclasses.replace(production, body=_WAYS_RETOLD(production.body, refined))
+
+
+def _redirected(production: ir.Prod, redirects: Mapping[ir.AlternativeState, ir.AlternativeState]) -> ir.Prod:
+    """A copy of `production`. `redirects` maps a way to the way the copy holds in its place."""
+    return dataclasses.replace(production, body=_WAYS_RETOLD(production.body, lambda way: redirects.get(way, way)))
 
 
 def _every_consume_is_protected_by_a_gate(grammar: dict[str, ir.Prod]) -> list[str]:
@@ -5810,10 +6284,10 @@ def _hoist_guards_to_callers(grammar: dict[str, ir.Prod], namer: _Namer) -> dict
     Ask a callee's guards where the parse enters its caller, rather than at the call. `A = |gA actA ->B|` with `B = |gB
     actB ...|` becomes `A = |gA gB actA ->B'|`. `B'` is `B` without the guards that moved.
 
-    A guard takes nothing. A guard's position therefore changes what the parse decides and not what it matches. Anything
-    between the call and the entry could change the answer, and `actA` sits between. `GUARD_CROSSES_ACTION` says whether
-    a guard may come in front of an action rather than behind it. A guard moves where the actions between admit it. A
-    guard the actions refuse stays put.
+    A guard takes nothing, and no kind in `GUARDS` sits in `CONSUMING`. A guard's position therefore changes what the
+    parse decides and not what it matches. Anything between the call and the entry could change the answer, and `actA`
+    sits between. `GUARD_CROSSES_ACTION` says whether a guard may come in front of an action rather than behind it. A
+    guard moves where the actions between admit it. A guard the actions refuse stays put.
 
     `_asked_by_every_way` says what moves. A callee offering a single way gives its gate. A callee offering more gives
     the guards its ways share. The parse asks those before choosing any way. A guard in a way its siblings lack stays.
@@ -5824,8 +6298,8 @@ def _hoist_guards_to_callers(grammar: dict[str, ir.Prod], namer: _Namer) -> dict
     those guards call `B'`. A site that took nothing goes on calling `B`.
 
     This runs until nothing moves. A caller that has taken a guard is a callee its own callers can take that guard from.
-    The questions therefore climb until they reach a way that performs something no guard may cross, or a choice whose
-    ways ask different things.
+    The questions therefore climb until they reach a way that performs something the guard may not cross, or a choice
+    whose ways ask different things.
     """
     for _round in ir.rounds("hoist-guards-to-callers"):
         settled = _cleaned(_hoisted_once(grammar, namer))
@@ -6641,7 +7115,7 @@ def _is_way_nullable(node: ir.Node, grammar: dict[str, ir.Prod], ways: _Ways) ->
     """
     Whether a way consumes no character. That holds where the parts of the way consume none.
     """
-    return all(_is_nullable(item, grammar, ways) for item in _parts_of_way(node))
+    return _are_nullable(_parts_of_way(node), grammar, ways)
 
 
 _IS_NULLABLE: ir.Question[bool] = ir.Question(
@@ -7597,6 +8071,29 @@ _BUILD_ALTERNATIVES = _Phase(
     ),
 )
 
+# The phase takes `_EVERY_COUNTED_RUN_CAN_BE_FOLLOWED_BY_ITS_CHARACTER` to none.
+_REFINE_COUNTED_RUNS = _Phase(
+    "refine-counted-runs",
+    settles=_EVERY_COUNTED_RUN_CAN_BE_FOLLOWED_BY_ITS_CHARACTER,
+    steps=(
+        # The step settles `_EVERY_COUNTED_RUN_CAN_BE_FOLLOWED_BY_ITS_CHARACTER`. A call site whose follower takes none
+        # of a run's characters calls a minted copy. The copy takes a maximal run and asks that its length is the count.
+        # A site keeps the original where `_is_refinable` does not hold. The rewrite is local and mechanical. The step
+        # redirects a call site and mints a copy per callee and set of runs. The tables that decide where the rewrite
+        # applies read the whole grammar. The length the guards read is the count of characters the last consume took.
+        # The interpreter keeps that count in a field of `Emitter`.
+        _Step(
+            "refine-counted-runs",
+            _refine_counted_runs,
+            settles=_EVERY_COUNTED_RUN_CAN_BE_FOLLOWED_BY_ITS_CHARACTER,
+            lapses={
+                "every-conditional-way-is-gated": "the copy a site calls holds the ungated ways of its original. "
+                "`flatten-ungated-call-trees` settles those ways with the rest of the debt."
+            },
+        ),
+    ),
+)
+
 # The phase takes `_EVERY_UNGATED_WAY_HAS_ACTIONS_OR_A_CALL` to none. A way with no gate is a way still awaiting one. A
 # call past the way's actions puts the callee's guards out of reach of where the parse enters the way. A call with a
 # state of its own puts the callee's guards and the call's entry at the same position.
@@ -7646,12 +8143,12 @@ _GUARDS_INTO_GATES = _Phase(
     ),
 )
 
-# The phase takes `_NO_CHAR_SET_IS_AN_ITEM` to none. A gate asks the question where a caller can see it. The consume
-# then takes the character on the gate's word. The phase is where the gates asking for a consumed character come from.
-# `_GUARDS_INTO_GATES` gates the other guards earlier. A hoist moves a question that already exists. This phase runs
-# before hoisting could produce such a question. A pair of steps does the work. The phase cuts a way that takes a
-# character on the strength of an earlier one. The phase repeats the cut until a way takes a single character. A way
-# then holds a single set. The question sits where the parse enters the way.
+# The phase takes `_NO_CHAR_SET_IS_AN_ITEM` to none. A gate asks for a character where a caller can see the gate. A
+# `ConsumeCharAction` then takes the character on the gate's word. The phase makes the gates that ask for a consumed
+# character. `_GUARDS_INTO_GATES` gates the other guards earlier. A hoist moves a question that already exists. This
+# phase runs before hoisting could produce such a question. A pair of steps does the work. The phase cuts a way that
+# takes a character on the strength of an earlier one. The phase repeats the cut until a way takes a single character. A
+# way then takes at most once. The question sits where the parse enters the way.
 _CONSUMES_BEHIND_GATES = _Phase(
     "consumes-behind-gates",
     settles=_NO_CHAR_SET_IS_AN_ITEM,
@@ -7729,8 +8226,8 @@ _SPLIT_OVERLAPS = _Phase(
     ),
 )
 
-# The phases appear in the order the pipeline runs them. A phase holds the steps that serve it. A step below keeps its
-# place. The step's rules sit beside the step.
+# The phases appear in the order the pipeline runs them. A phase holds the steps that serve it. A step declares its
+# invariants. A step with none may name a reason under `untestable` instead.
 _PHASES = (
     _AT_THE_START,
     _SPECIALIZE,
@@ -7746,6 +8243,7 @@ _PHASES = (
     _FLATTEN_CALLS,
     _MINT_CONTINUATIONS,
     _BUILD_ALTERNATIVES,
+    _REFINE_COUNTED_RUNS,
     _CALL_STATES,
     _GUARDS_INTO_GATES,
     _CONSUMES_BEHIND_GATES,

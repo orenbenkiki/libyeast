@@ -270,18 +270,16 @@ A convention with no mechanical checker stays with the reviewers. `a-piece-of-pr
 1. `.claude/workflows/pre-commit-review.js` runs the readers. A reader answers with findings and confirmed claims. The
    `conventions` reader also answers with proposals. `prose_answer` passes the proposals through the checkers inside the
    agent call. A claim-check finding quotes the faulty sentence. A finding goes to the author. `generator/record_run.py`
-   writes the proposals into `.claude/proposals-pending.md`. It writes the findings into a separate file.
-
-1. `record_run` writes the answer of a workflow. The proposals pass through the checkers first, and a refusal there
-   writes nothing.
+   writes the proposals into `.claude/proposals-pending.md`. A proposal the checkers refuse stops `record_run` before it
+   writes anything. The next run of `generator/review_input.py` reads the findings from the answer.
 
 The comparator `prose-compare.md` generates no prose. A comparator answers with verdicts.
 
 An agent answers through the StructuredOutput tool, and `prose_answer` reads that call. `check_hooks` refuses an agent
 definition whose tools leave that tool out. `check_hooks` also refuses a module that runs a checker outside `checkers`.
 
-Neither `.claude/agents/reader.md` nor `.claude/agents/prose-critic.md` lists a tool that writes a file. The answer of
-`pre-commit-review.js` reaches the tree through `record_run`. A settling run writes its accepted changes through
+Neither `.claude/agents/reader.md` nor `.claude/agents/prose-critic.md` lists a tool that writes a file. The proposals
+of `pre-commit-review.js` reach the tree through `record_run`. A settling run writes its accepted changes through
 `converge_prose`. That module checks the critic's answer.
 
 `.claude/hooks/no-shell-file-writes.sh` declares the scripts that write a file. `check_hooks` holds such a script to the
@@ -487,8 +485,9 @@ reader fetched. `relied_on` keeps the fetches a run cites and the questions `is_
 
 A citation of a file names a range of its lines. `claim_state.refined` narrows the read of the file to the declarations
 holding those lines. An edit elsewhere in the file then restales no reader of those declarations in `stale_claims`. A
-cited line no declaration holds keeps the read of the whole file. `generator/converge_claims.py` has `unpointed_reads`
-check the reads before the narrowing.
+cited line that is not blank and that no declaration holds keeps the read of the whole file, as
+`collect_fragments.owners_of` decides. `converge_claims.settlement_of` has `unpointed_reads` check the reads before the
+narrowing.
 
 ### The store
 

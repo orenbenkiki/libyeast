@@ -5,7 +5,7 @@ Write down what a review run answered.
 The answer of a workflow comes back as JSON, and this module writes down the proposals the answer holds. The proposals
 go under a heading naming the run. `rule_use_counted` writes the rule counts into `.claude/rule-use.json`.
 
-**Usage:** `python3 generator/record_run.py <run.json>`. The run file holds the answer of `pre-commit-review.js`.
+**Usage:** `python3 generator/record_run.py <output>`. The task output file holds the answer of `pre-commit-review.js`.
 """
 
 import json
@@ -20,7 +20,7 @@ import gate
 import review_input
 import settling_state
 
-_USAGE = "usage: record_run.py <run.json>"  # a bad call gets it.
+_USAGE = "usage: record_run.py <output>"  # a bad call gets it.
 
 # The name the proposals of a review go under.
 _REVIEW = "review"
@@ -34,13 +34,6 @@ _RULE_USE_SAYS = (
     "`accepted` counts the changes the comparator let through. `overlaps` pairs a rule with a second rule. A later "
     "change applied that second rule to the same run of text. `record_run` writes this file."
 )
-
-
-def _loaded(path: str) -> Any:
-    """The run `path` names. A workflow answer nests under `result` where the task file wraps it."""
-    with open(path, encoding="utf-8") as handle:
-        held = json.load(handle)
-    return held["result"] if isinstance(held, dict) and "result" in held else held
 
 
 def _counted(changes: list[dict[str, Any]], was: dict[str, Any]) -> dict[str, Any]:
@@ -179,28 +172,19 @@ def proposals_appended(held: list[dict[str, Any]], who: str) -> int:
 def main() -> None:
     """
     Write the proposals of a review run. A proposal the checkers refuse stops the run before anything lands.
-
-    The run then moves `review_input.PREPARED` to `review_input.REVIEWED`, beside the findings of the run. The next
-    review reads the change since that tree, and the findings beside it.
     """
     if len(sys.argv) != 2:
         print(_USAGE, file=sys.stderr)
         sys.exit(2)
-    held = _loaded(sys.argv[1])
-    if "findings" not in held:
-        raise ValueError(f"the answer holds no findings. it holds {sorted(held)}")
+    held = review_input.answer_in(sys.argv[1])
+    if held is None:
+        raise ValueError(f"{sys.argv[1]} holds no review answer")
     refused = [found for one in held.get("proposals") or [] for found in proposal_refusals(one, _REVIEW)]
     if refused:
         print("the checkers refused a proposal of this run. nothing was written.\n\n" + "\n\n".join(refused))
         sys.exit(1)
     count = proposals_appended(held.get("proposals") or [], _REVIEW)
     print(f"{count} proposal(s) appended to `.claude/proposals-pending.md` under `From {_REVIEW}`")
-    with open(review_input.PREPARED, encoding="utf-8") as handle:
-        reviewed = {**json.load(handle), "findings": held["findings"]}
-    with open(review_input.REVIEWED, "w", encoding="utf-8") as handle:
-        json.dump(reviewed, handle, indent=2)
-    os.remove(review_input.PREPARED)
-    print(f"reviewed: tree {reviewed['tree']}, {len(held['findings'])} finding(s)")
 
 
 if __name__ == "__main__":
