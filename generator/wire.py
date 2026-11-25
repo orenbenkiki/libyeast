@@ -20,7 +20,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-ERROR = "!"  # the wire's error code. A malformed document takes it.
+ERROR = "!"  # the wire's error code. An error token takes it.
 
 # The wire character that writes a token code. The `YS_WIRE` table in `src/wire.c` gives the character. `check_wire.py`
 # gates this copy against that table, and the pair cannot drift. `_CHAR_CODE` reads a wire back.
@@ -132,7 +132,7 @@ def serialize(tokens: Iterable[Token]) -> str:
     out = []
     for token in tokens:
         mark = token.start
-        # not-prose: the record header of a wire token stream, as `tests/spec/*.output` holds it
+        # not-prose: The string is a token record of the wire.
         out.append(f"# B: {mark.byte}, C: {mark.char}, L: {mark.line}, c: {mark.column}\n{token.code}{token.text}\n")
     return "".join(out)
 

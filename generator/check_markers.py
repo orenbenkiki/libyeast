@@ -188,8 +188,7 @@ def _settle(grammar: Mapping[str, ir.Prod], values: Mapping[str, str]) -> tuple[
     A pass takes an answer at least a call further. A grammar of `n` productions settles in at most `n` passes, and a
     grammar that has not settled by then is not settling.
 
-    The walk then raises rather than returning. The answers say what a rule does with its markers. A partial answer
-    would report a rule as balanced where the walk stopped rather than where the rule settles.
+    The walk raises on such a grammar rather than returning.
     """
     known: dict[str, _Effect] = {name: _BALANCED for name in grammar}
     errors: dict[str, str] = {}
@@ -198,7 +197,7 @@ def _settle(grammar: Mapping[str, ir.Prod], values: Mapping[str, str]) -> tuple[
         for name, production in grammar.items():
             try:
                 settled = _effect(production.body, values, known)
-            except _Unbalanced as complaint:  # failure-is-reported: as `errors[name]`, which this function returns
+            except _Unbalanced as complaint:  # failure-is-reported: The reason goes into `errors`.
                 errors[name] = complaint.reason
                 continue
             errors.pop(name, None)

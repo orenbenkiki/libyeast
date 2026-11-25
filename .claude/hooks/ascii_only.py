@@ -21,8 +21,8 @@ def refusal_for(text: str, path: str) -> str | None:
     Return the refusal the ASCII rule gives for `text` at `path`. Return None where the characters of `text` pass.
 
     A caller holding the text of an edit asks here, before that text lands in its file. `check_ascii` finds a character
-    past ASCII. `check_ascii.declaring` names a file holding a character past ASCII as content, and `refusal_for` passes
-    that file.
+    past ASCII. `check_ascii.declaring` gives the patterns of `_MAY_HOLD_ANY_BYTE` that `path` matches, and
+    `refusal_for` passes a path matching any of them.
     """
     if check_ascii.declaring(path):
         return None

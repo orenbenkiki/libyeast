@@ -144,9 +144,10 @@ request.
     - **`make vet-format-c`:** clang-format
     - **`make vet-format-md`:** mdformat
     - **`make vet-format-py`:** black and format-docstring, then `wrap_long_comments` and ruff
-    - **`make vet-format-cmake`:** gersemi
+    - **`make vet-format-cmake`:** gersemi, then `wrap_long_comments` over the CMake comments
     - **`make vet-format-sh`:** shfmt
     - **`make vet-format-js`:** `wrap_long_comments` over the JavaScript comments
+    - **`make vet-format-yaml`:** `wrap_long_comments` over the YAML comments
     - **`make vet-format-make`:** the column limit over the lines no formatter reflows
   - **`make vet-comments`:** the `/* */`-only-when-inline comment rule
   - **`make vet-lint`:** clang-tidy and cppcheck
@@ -171,7 +172,8 @@ Goals outside the gate.
   `generator/cited_names.json`.
 - **`make reformat`:** apply the formatters in place. A single language goes through `reformat-c` or `reformat-md`. A
   Python file goes through `reformat-py`, a CMake file through `reformat-cmake` and a shell file through `reformat-sh`.
-  A JavaScript file goes through `reformat-js`. The `Makefile` goes through `reformat-make`.
+  A JavaScript file goes through `reformat-js`, and a YAML file through `reformat-yaml`. The `Makefile` goes through
+  `reformat-make`.
 - **`make check-build-deps` and `make check-dev-deps`:** report whether the required tools are there.
 - **`make clean`:** remove the build directories and stamps.
 

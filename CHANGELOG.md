@@ -161,6 +161,19 @@
   members do not support. A reader can answer either question through the other. A second such pair makes `ir` raise at
   import. The raise reports the pair as a fault rather than as a pair of things the module knows about.
 
+- A comment inside a function body is prose of the function's fragment, in a Python file and in a C file. The write-time
+  hook, the critic and the claims pass read it. The hook passed such a comment unread, and no pass reached it.
+  `check_hooks` holds an edit hook to a pair for a comment in a function body, as it holds the hook to a pair per kind
+  in `_KINDS`.
+
+  A site names its role: a `docstring`, a `comment` or a `note`. A docstring and a comment touching it are sites apart.
+  The critic reads a note beside the code it sits on. `apply_prose` fills a comment to the width `make reformat` uses,
+  and `short_comments` counts the lines a draft's note will hold.
+
+  A `failure-is-reported:` or `not-a-failure:` marker takes a sentence stating its reason, and the checkers read that
+  sentence. A claims reader fetches the official grammar under `third_party/` a production at a time. Such a production
+  takes the name `yaml-spec-1.2.yaml.<production>`, and a bare production name still reaches libyeast's grammar.
+
 - The prose of the tree says nothing a write-time hook would refuse, and the settling loop sets nothing aside.
   `check_prose` reported faults across the tree, and a checker answered on text that holds no fault. `_A_BARE_PATH` read
   a bare `//` as a path, and read the `/` of a closing markup tag the same way. `_A_SO_CLAUSE` read the pro-verb in
@@ -188,14 +201,18 @@
   - `step_arguments` refuses a pipeline step with no argument in the comment above it.
   - `design_copies` refuses a `DESIGN.md` text that copies the prose of a name it cites.
   - `written_by` follows a script into the modules of the tree it writes through.
-  - `hook_health` refuses an edit that leaves the hooks unable to import. `edit_landed` compares the landed file against
+  - `hook_health` refuses an edit that leaves the hooks unable to run. `edit_landed` compares the landed file against
     the text the hooks read.
   - `check_spaces` checks that a counted run takes no line break.
   - `ruff` rule D301 refuses a backslash in a docstring that is not raw.
   - `nested_docstrings` refuses a nested docstring that `make reformat` would rewrap past the limit.
-  - `prose_rules` refuses a spaced hyphen, star or plus used as punctuation. Flattening keeps a bullet's nesting.
+  - `prose_rules` refuses a spaced hyphen, star or plus used as punctuation.
   - `make reformat` moves an over-width inline comment above its line, and refills an over-width docstring bullet. It
     also rewraps the comment blocks of a JavaScript file, and `make vet-format-js` checks them.
+  - `make reformat-yaml` rewraps the comment blocks of the YAML files, and `make vet-format-yaml` checks them.
+    `make reformat-cmake` and `make vet-format-cmake` do the same for the CMake files.
+  - `marker_lines` refuses a code line past the limit whose trailing comment holds a `failure-is-reported:`,
+    `not-a-failure:` or `not-prose:` mark.
   - `check_grammar_coverage` counts the calls of a body that is no choice as ungated.
 
 - The decoder tests read Markus Kuhn's UTF-8 decoder stress test. `third_party/utf8-stress-test` holds the file, and the
@@ -203,10 +220,10 @@
 
 - The settling loop writes a fragment of any language the tree holds. `apply_prose.does_hold` refused a JSON note
   outright, and `converge_prose` set such a note aside before a critic read it. The prose of that note reached no
-  reader. A note writes a string per line under `_`, and an empty string there ends a paragraph. The reader joined the
-  strings with a space, and the paragraphs of a note came out as a single line. `_said_by_note` keeps the paragraphs,
-  and `_json_note` writes the strings back. A JSON note takes the round trip `does_hold` asks of a comment and of a
-  docstring. `_MARKERS` names `Conf`, and a `.editorconfig` comment keeps its marker through a rewrite.
+  reader. A JSON note holds a string per line under `_`, and an empty string there ends a paragraph. The reader joined
+  the strings with a space, and the paragraphs of a note came out as a single line. `_said_by_note` keeps the
+  paragraphs, and `_json_note` writes the strings back. A JSON note takes the round trip `does_hold` asks of a comment
+  and of a docstring. `MARKERS` names `Conf`, and a `.editorconfig` comment keeps its marker through a rewrite.
 
 - A fragment the loop cannot settle is a fault of the gate rather than a line in a queue. `check_prose` reads the
   unsettled prose queue and reports a fragment sitting there. `converge_prose._stored` raises where an entry holds no

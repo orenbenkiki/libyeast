@@ -1,8 +1,7 @@
 # vcpkg port for libyeast.
 #
-# At first release: set REF to the release tag and replace the SHA512 with the
-# tarball hash. (Build once with SHA512 "0" and vcpkg will print the correct
-# value to paste back.)
+# At first release: set REF to the release tag and replace the SHA512 with the tarball hash. (Build once with SHA512 "0"
+# and vcpkg will print the correct value to paste back.)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO orenbenkiki/libyeast

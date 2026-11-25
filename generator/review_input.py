@@ -99,7 +99,7 @@ def answer_in(path: str) -> dict[str, Any] | None:
         text = handle.read()
     try:
         held = json.loads(text)
-    except json.JSONDecodeError:  # not-a-failure: a shell task writes plain text, and plain text holds no answer
+    except json.JSONDecodeError:  # not-a-failure: A shell task writes plain text. Plain text holds no answer.
         return None
     answer = held.get("result") if isinstance(held, dict) else None
     return answer if isinstance(answer, dict) and "findings" in answer else None
@@ -196,7 +196,7 @@ def _holders(source: str) -> dict[str, tuple[int, int, str]]:
         for child in ast.iter_child_nodes(node):
             if gate.is_a_definition(child):
                 name = prefix + child.name
-                last = child.end_lineno or child.lineno  # a parse gives a definition its end
+                last = child.end_lineno or child.lineno  # A parse gives a definition its end line.
                 found[name] = (child.lineno, last, ast.get_docstring(child) or "")
                 walk(child, name + ".")
             else:
@@ -291,19 +291,19 @@ def _references() -> str:
     level. `_references` drops a Python builtin too. The list keeps a word only where something outside `gate.NOT_OURS`
     still mentions it. A second list names the words that `git grep` finds in no file.
     """
-    # How many files each word went out of. A word taken from a single file is somebody rewriting a sentence, and the
-    # same word taken from several is a sweep.
+    # `left` counts the files a word left. A word taken from a single file is a rewritten sentence. A word taken from
+    # more than a single file is a sweep.
     left: collections.Counter[str] = collections.Counter()
     for path in _staged_paths():
         if not path.startswith((*gate.NOT_OURS, *gate.TOOL_STORES)):
             left.update(_took_out(path))
-    # A name the tree still binds went nowhere. It moved between files, or a line holding it was rewritten. A Python
-    # builtin needs no import.
+    # A name the tree still binds stays out of `gone`. A Python builtin stays out of `gone` too.
     bound = gate.names_defined_in_modules() | set(dir(builtins))
     gone = {word for word, times in left.items() if (_is_a_name(word) or times > 1) and word not in bound}
     written, held_back, unmentioned = [], [], []
     for word in sorted(gone):
-        # The status `git grep` answers where the pattern is nowhere in the tree, which is an answer not a failure.
+        # `status_for_no_match` is the status `git grep` gives a pattern missing from the tree, as
+        # https://git-scm.com/docs/git-grep says.
         said = _searched("git", "grep", "-nI", "--", rf"\b{re.escape(word)}\b", status_for_no_match=1).splitlines()
         found = [one for one in said if not one.startswith(gate.NOT_OURS)]
         if said and not found:
@@ -313,8 +313,8 @@ def _references() -> str:
         if not found:
             continue
         opening = f"### `{word}`\nThe change took that name out of its place. {len(found)} mention(s) remain."
-        # An ordinary word in more than `_FEW_MENTIONS` places is prose rather than a missed sweep. It gets its count
-        # without its lines.
+        # An ordinary word in more than `_FEW_MENTIONS` places is prose rather than a missed sweep. The report gives
+        # such a word its count and no lines.
         if not _is_a_name(word) and len(found) > _FEW_MENTIONS:
             written.append(f"{opening} That is too many for a sweep to have missed.\n")
             continue
@@ -347,12 +347,12 @@ _STARTS_A_RECORD = ("### ", "diff --git ")
 
 def _written(into: str, name: str, prepared: str) -> list[str]:
     """
-    Write `prepared` under `name` and return the paths. A text longer than `_MOST_LINES` lines goes into numbered parts.
-    Text with no record start breaks at `_MOST_LINES` lines.
+    `_written` writes `prepared` under `name` and returns the paths. A text of at most `_MOST_LINES` lines goes into a
+    single file. A longer text goes into numbered parts.
 
-    Text with records breaks at the first record start past `_MOST_LINES`. A part runs past `_MOST_LINES` to finish its
-    last record. A record stays in a single part. A later part opens on a record start. The first part opens on the
-    first line of `prepared`.
+    A part file opens with a header line naming the part. The first part opens on the first line of `prepared`. With
+    record starts, a part breaks at the first record start past `_MOST_LINES` lines. A record then stays whole inside a
+    single part. A later part then opens on a record start.
     """
     lines = prepared.splitlines()
     if len(lines) <= _MOST_LINES:
@@ -361,7 +361,7 @@ def _written(into: str, name: str, prepared: str) -> list[str]:
             handle.write(prepared + "\n")
         return [path]
     written = []
-    # Where there are no records to break on, the count is the boundary.
+    # Without record starts, a full part holds exactly `_MOST_LINES` lines below its header.
     has_records = any(line.startswith(_STARTS_A_RECORD) for line in lines)
     part: list[str] = []
     held: list[list[str]] = []
@@ -398,6 +398,7 @@ _THE_CODE = (
     "Makefile",
     "CMakeLists.txt",
     "cmake",
+    "ports",
     "conanfile.py",
     "Doxyfile",
     ".pylintrc",
@@ -454,7 +455,7 @@ def _uncovered() -> list[str]:
     The staged paths that no prepared file shows. That set should come back empty.
 
     A slice takes the paths it names. `main` passes the paths `_uncovered` returns to `report`. `report` exits with a
-    failure. A vendored path and a path of `gate.TOOL_STORES` reach nobody on purpose.
+    failure where that list holds a path. A vendored path and a path of `gate.TOOL_STORES` reach nobody on purpose.
     """
     covered = (*_THE_CODE, *_THE_DOCUMENTS, *_THE_FIXTURES)
     unread = (*_VENDORED, *gate.TOOL_STORES)
@@ -482,8 +483,7 @@ def main() -> None:
         ("hunks", _hunks),
         ("references", _references),
     )
-    # What a previous run left goes first, and goes whether this run prepares anything or refuses. Only what this module
-    # writes, matched by name rather than taken by suffix.
+    # Delete the arguments file and the files named in `prepared_by_name`.
     stale_arguments = os.path.join(into, _ARGUMENTS)
     if os.path.exists(stale_arguments):
         os.remove(stale_arguments)

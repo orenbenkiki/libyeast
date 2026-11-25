@@ -3,10 +3,10 @@
 """
 A checker of `checkers`. This checker holds a written path to `a-file-of-the-tree-has-a-reader`.
 
-A checker asks `collect_fragments.fragments_touched` for the fragments whose prose an edit changes. `collect_fragments`
-yields no fragment for a file in a language no reader knows. The prose checkers then pass in silence, and the prose in
-that file lands unread. This checker asks whether a reader knows the language of the path. The written file need not
-exist.
+`checkers.refusals_for_edit` asks `collect_fragments.fragments_touched` for the fragments whose prose an edit changes.
+`collect_fragments` yields no fragment for a file in a language no reader knows. The prose checkers then pass in
+silence, and the prose in that file lands unread. This checker asks whether a reader knows the language of the path. The
+written file need not exist.
 
 The checker skips a path `git` ignores.
 """
@@ -14,7 +14,6 @@ The checker skips a path `git` ignores.
 import os
 import subprocess
 
-import check_documents
 import collect_fragments
 import gate
 
@@ -39,12 +38,12 @@ def _refusal_for(path: str) -> str | None:
     `gate.NOT_OURS` names the paths in this tree holding no prose of the project. `gate.UNREAD` names the base names of
     the files the checkers leave alone.
     """
-    if not check_documents.is_prose_of_the_project(path) or collect_fragments.language_of(path) is not None:
+    if not gate.is_prose_of_the_project(path) or collect_fragments.language_of(path) is not None:
         return None
     return (
         f"This edit writes {path}. The readers here know no such language, and the prose in that file would land "
         f"unread.\n\n"
-        "Give `collect_fragments._LANGUAGES` an entry for the language, and `collect_fragments._MARKERS` the marker "
+        "Give `collect_fragments._LANGUAGES` an entry for the language, and `collect_fragments.MARKERS` the marker "
         "its comments use. A file holding no prose of ours goes in `gate.UNREAD` instead. The comment above that list "
         "says why.\n\n"
         "Rule: a-file-of-the-tree-has-a-reader."

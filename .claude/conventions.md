@@ -366,8 +366,9 @@ The prose checkers read a comment beside code and a document alike.
 - **a-comment-inside-a-body-is-a-note** - a comment inside a function body runs to the length `short_comments` allows. A
   passage there restates the code in prose, or defends a decision nobody questioned. A field's trailing comment and the
   run wrapped below it count as a single comment. A blank line ends a wrap. A block documenting the next field sits
-  below that blank line. A field wanting more than a note says the detail in the class docstring, where the prose rules
-  reach. *Mechanised by `short_comments`. `check_conventions.long_comment_runs` reads the syntax tree.*
+  below that blank line. A field wanting more than a note says the detail in the class docstring. A note is prose of the
+  function's fragment, and the prose rules read it. *Mechanised by `short_comments`.
+  `check_conventions.long_comment_runs` reads the syntax tree.*
 - **a-nested-docstring-is-a-note** - a function nested inside another keeps its docstring to the length of a note.
   Docstring syntax works there. `collect_fragments` folds such a docstring into the enclosing function's fragment. A
   reader who opens only the nested function sees nothing of that docstring. A passage worth more than a note belongs to
@@ -431,6 +432,9 @@ The prose checkers read a comment beside code and a document alike.
   that file. A file holding no prose of ours goes in `gate.UNREAD`, and the comment above that list says why. A checker
   finds no fragment in a file without a reader. The prose in such a file goes unread. *Mechanised by `unread_files`. The
   `unread_files` checker refuses such a path as an edit names it.*
+- **a-marker-fits-its-line** - a code line whose comment holds a `failure-is-reported:`, `not-a-failure:` or
+  `not-prose:` mark fits in 120 columns. `wrap_long_comments` leaves such a comment on its line. The formatter splits
+  the code of a longer line, and the mark leaves the line it speaks for. *Mechanised by `marker_lines`.*
 - **formatting-is-make-reformat** - a writer runs no formatter by hand and reflows no text by hand. *Mechanised by
   `vet-format-*`.*
 

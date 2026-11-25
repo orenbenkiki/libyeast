@@ -9,8 +9,8 @@ Over the operator vocabulary libyeast writes, the IR is a faithful mirror. An op
 stays exact, and `generator/check_annotated_roundtrip.py` holds it there.
 
 The reader also takes the vendored grammar's forms, and there the mirror is not exact. `(ord)` lands on the same
-`AtoiValue` as `(atoi)`. The pair agree at the digit `(ord)` applies to. `(<<<)` becomes the node it wraps. The IR's
-repetition is possessive already. Neither form round-trips. `ir2spec.py` flattens and simplifies the IR it reads.
+`AtoiValue` as `(atoi)`. `(<<<)` becomes the node it wraps. Neither form round-trips. `ir2spec.py` flattens and
+simplifies the IR it reads.
 
 A node is a dataclass. A grammar node inside a node is a field of its own, or an item of a tuple. A walker can therefore
 recurse over the IR without knowing which node it holds. A `(case)` branch is a `BranchPart` node rather than a bare
@@ -120,12 +120,12 @@ def is_one_char(node: "Node", grammar: Mapping[str, "Prod"], seen: frozenset[str
     A `DiffSet`, an `AltTree` and a `RefCall` match a single character where what they hold does. A `DiffSet` does where
     its base does, and the exclusions only narrow the base. An empty `AltTree` matches no character. A non-empty
     `AltTree` matches a single character where its branches do. Its set is then a union of char sets. A lowered optional
-    `x | <empty>` therefore matches more. A `RefCall` does where the body of its production does. A `RefCall` to a
-    production already on the path through `seen` counts as a single character.
+    `x | <empty>` answers `False`. A `RefCall` does where the body of its production does. A `RefCall` to a production
+    already on the path through `seen` counts as a single character.
 
     The table names the other kinds it holds as no such node, and a kind the table does not name raises. `_IS_ONE_CHAR`
-    is a `Question`. It covers what somebody wrote into the table, and the corpus reaches the answers. A silent `False`
-    here would turn a consume into a way, and the run would gain an empty fallback nobody wrote.
+    is a `Question`. A silent `False` here would turn a consume into a way, and the run would gain an empty fallback
+    nobody wrote.
     """
     return _IS_ONE_CHAR(node, grammar, seen)
 
@@ -136,49 +136,46 @@ _Answer = TypeVar("_Answer")
 
 class Question(Generic[_Answer]):
     """
-    A total dispatch over node kinds. It says what to do per kind. A default plays no part.
+    A question is a total dispatch over node kinds. It says what to do per kind. A default plays no part.
 
     A caller asks a question about a node through this. The alternative is a chain of `isinstance` tests ending in a
-    fallthrough. That answers permissively for a form its author did not think of, and reports that blindness as a fact
-    about the grammar. These rules hold a question to its own claim.
+    fallthrough. Such a fallthrough answers permissively for a form its author did not think of. The chain then reports
+    its author's oversight as a fact about the grammar. These rules hold a question to its own claim.
 
     - **It raises on a kind the table does not name.** The message says which question and which kind. There is no
-      default and no way to write a default. Covering a kind nobody named is the failure this replaces.
-    - **Something reaches a handler.** A kind whose handler nothing reaches is a guess about the grammar.
-      `unexercised` reports it once the whole corpus has run, and not before. An input that reaches a kind exercises
-      that kind. A partial run says nothing about a kind no input reached.
+      default and no way to write a default.
+    - **`unexercised` reports a handler no input reaches.** A kind whose handler nothing reaches is a guess about the
+      grammar. `unexercised` reports it once the whole corpus has run, and not before. An input that reaches a kind
+      exercises that kind. A partial run says nothing about a kind no input reached.
 
     Those rules pin the table to the kinds that occur. A missing kind raises, and the run reports a spare handler. A
-    question then says nothing about kinds it cannot see. A question raises on a kind added to the IR on the day an
-    input brings that kind to the question.
+    question then says nothing about kinds it cannot see. A question raises on a new kind of the IR once an input brings
+    that kind to the question.
 
-    A pair of lists say what has not arrived, and the pair differ in whether the kind has an answer. A question names
-    the family of kinds it means, and a real property of the kinds decides that family. The question then says which
-    part of that family has not turned up.
+    A pair of lists name kinds that have not arrived. The lists differ in whether a family answers such a kind. A
+    question names the family of kinds it means, and a real property of the kinds decides that family. The question then
+    says which part of that family has not turned up.
 
-    - `untested` names a kind a family covers, and nobody has tested that answer.
-      The family answers a kind that arrives, and the family's word is a reasonable word to take. The run records the
-      arrival, reports the kind and fails. Somebody then makes the decision rather than passing over it. Either the
-      family's answer is right for that kind and the kind comes off the list, or the answer is wrong. Then the family
-      was the wrong word, and the question wants a finer family that tells the pair apart.
-    - `unknown` names a kind nothing here covers, and a family says nothing for it either.
-      A kind that arrives raises where it appears, and the question gives nothing back.
+    - `untested` names a kind a family covers, and nobody has tested that answer. The family answers a kind that
+      arrives. The run records the arrival, reports the kind and fails. Either the family's answer is right for that
+      kind and the kind comes off the list, or the answer is wrong. Then the question wants a finer family that sets
+      that kind apart from the family's other kinds.
+    - `unknown` names a kind nothing here covers, and a family says nothing for it either. A kind that arrives raises
+      where it appears, and the question gives nothing back.
 
-    Both are measurements rather than claims. They say what has happened rather than what cannot.
+    Both lists say what has happened rather than what cannot happen.
 
-    - **The table names no kind twice.** Named groups overlap. `CONSUMES_NOTHING` holds the members of `ACTIONS`.
-      A chain of tests resolves that silently by its order. The author's intent goes unsaid. Here it is an error until
-      somebody writes the answer down.
+    - **The table names no kind twice.** Named groups overlap. `CONSUMES_NOTHING` holds the members of `ACTIONS`. A
+      chain of tests resolves that silently by its order. The author's intent goes unsaid. A question raises on such an
+      overlap until somebody writes the answer down.
 
     Handlers take the node and the values the caller threads through, and a caller calls a question the same way.
     `question(node, grammar, ways)` reaches `handler(node, grammar, ways)`. A handler that is not callable is the answer
-    itself, `EmptyTree: True` rather than a lambda ignoring what a call hands it. A call gets that value back. Keep it
-    immutable.
+    itself. The table writes `EmptyTree: True` rather than a lambda that ignores its arguments. A call gets that value
+    back. Keep it immutable.
     """
 
-    asked: ClassVar[list["Question"]] = (
-        []
-    )  # `asked` holds the questions made, and the order is the order somebody made them in.
+    asked: ClassVar[list["Question"]] = []  # `asked` holds the questions in the order somebody made them.
 
     def __init__(
         self,
@@ -199,22 +196,20 @@ class Question(Generic[_Answer]):
         both = sorted(kind.__name__ for kind in self._untested & self._unknown)
         if both:
             raise TypeError(f"the question of {what} calls {', '.join(both)} both untested and unknown")
-        # An untested kind is a kind a family covers. There has to be a family that names it. Without a family nothing
-        # calls the kind untested, and what is meant is that nothing is known of it.
+        # The question refuses an untested kind no family names.
         idle = sorted(kind.__name__ for kind in self._untested if kind not in self._by_kind)
         if idle:
             raise TypeError(
                 f"the question of {what} calls {', '.join(idle)} untested. no group of that question names the kind."
             )
+        # The question drops an unknown kind from the families.
         for kind in self._unknown:
-            self._by_kind.pop(
-                kind, None
-            )  # this question knows nothing of the kind, and a family says nothing for it either
+            self._by_kind.pop(kind, None)
         stray = sorted(kind.__name__ for kind in (*self._by_kind, *self._untested, *self._unknown) if kind not in KINDS)
         if stray:
             raise TypeError(f"the question of {what} names {', '.join(stray)}. those are no kinds of node.")
         self._used: set[type] = set()
-        self._arrived: set[type] = set()  # the untested kinds that have turned up, each a decision now owed
+        self._arrived: set[type] = set()  # `_arrived` holds the untested kinds the question has seen.
         Question.asked.append(self)
 
     def __call__(self, node: object, *given: object) -> _Answer:
@@ -226,7 +221,7 @@ class Question(Generic[_Answer]):
             raise TypeError(f"the question of {self.what} names no handler for {kind.__name__}")
         handler = self._by_kind[kind]
         if kind in self._untested:
-            self._arrived.add(kind)  # answered by its family, and the family's fitness for it is still owed
+            self._arrived.add(kind)  # A family answered the kind. Nobody has tested that answer.
         else:
             self._used.add(kind)
         return handler(node, *given) if callable(handler) else handler
@@ -280,7 +275,6 @@ _WORKING = ""
 
 def working(what: str) -> None:
     """Say what this process is working on. A line `say` prints then names that work."""
-    # There is one of these per process, which is the point of it.
     global _WORKING  # noqa: PLW0603  # pylint: disable=global-statement
     _WORKING = what
 
@@ -305,7 +299,7 @@ def rounds(what: str) -> Iterator[int]:
     """
     for at in range(ROUNDS):
         _DEEPEST[what] = max(_DEEPEST.get(what, 0), at + 1)
-        # The first, and each tenth after it. A settling fixpoint says so once and a stuck fixpoint goes on saying it.
+        # A fixpoint says its first round. A stuck fixpoint goes on saying its current round at a steady interval.
         if at % 10 == 0:
             say(f"        {what}: round {at + 1}")
         yield at
@@ -443,8 +437,8 @@ def _renamed(names: Mapping[str, str], *values: *_Values) -> tuple[*_Values]:
     catches it. `_check_renaming` holds the pair together, and no shared declaration does. A rename must change exactly
     the names `references` reports.
     """
-    # Each value comes back as what it went in as. A walk over a tuple cannot say that. It is asserted here, rather than
-    # at each `renamed` that unpacks the result.
+    # A value comes back as what it went in as. A walk over a tuple cannot say that. The `cast` here claims it to the
+    # type checker, rather than in the `renamed` methods that unpack the result.
     return cast(
         tuple[*_Values],
         tuple(
@@ -959,8 +953,8 @@ class GatePart(Node):
 class AlternativeState(Node):
     """
     A way a production may go. It is a `GatePart` to enter on, the `actions` performed, and up to a pair of productions
-    the way hands control to. `first` is the call and `second` is where the path continues past it. That makes an edge a
-    single push. `second` with no `first` is a tail call. `second` has nothing behind it.
+    the way hands control to. `first` is the call and `second` is where the path continues past it. `second` with no
+    `first` is a tail call. `second` has nothing behind it.
 
     `recover` rides the member of the pair holding the call it protects. That is `first` where a call sits there, and
     `second` where the way is a tail call.
@@ -982,14 +976,12 @@ class AlternativeState(Node):
         Refuse a way the machine has no edge for. That is a call with nothing behind it. It is also a recovery riding no
         call.
         """
-        # A call with nothing behind it is a push whose return goes nowhere, which no edge of the machine means. A tail
-        # call sets `second` and no `first`.
+        # The constructor refuses a way with a call and nothing behind it.
         if self.first is not None and self.second is None:
             raise ValueError(
                 f"a way calling {self.first} with nothing behind it - a tail call is `second` with no " f"`first`"
             )
-        # A recovery catches a cut unwinding out of the call it rides. A way with a recovery and making no call rides
-        # nothing. It is refused where it is built, the question having no call to ask it of.
+        # The constructor refuses a way with a recovery and no call.
         if self.recover is not None and self.first is None and self.second is None:
             raise ValueError(f"a way with the recovery {self.recover} and making no call for it to ride")
 
@@ -1164,7 +1156,7 @@ class MaxWrapper(Node):
     item: Node | None = None
 
     def references(self) -> list[str]:
-        return _refs(self.limit, self.item)  # `message` is a message key, not a production
+        return _refs(self.limit, self.item)
 
     def renamed(self, names: Mapping[str, str]) -> Self:
         limit, item = _renamed(names, self.limit, self.item)
@@ -1255,7 +1247,8 @@ class SetVarAction(Node):
 class ClearVarAction(Node):
     """
     A zero-width action says `param` stops applying here. Past this action the environment holds no value for `param`. A
-    read of `param` there is a fault rather than the value the last write left behind.
+    read of the parameter there faults, unless the emitter is passing arguments. A global's stack gives up only its top
+    value. A read of the global there finds the value beneath, and faults only where the stack is empty.
 
     A construct that measures `param` ends on this action.
     """
@@ -1530,7 +1523,7 @@ class OpenWindowAction(Node):
     pair: frozenset[int]
 
     def references(self) -> list[str]:
-        return _refs(self.limit)  # `message` is a message key, not a production
+        return _refs(self.limit)
 
     def renamed(self, names: Mapping[str, str]) -> Self:
         (limit,) = _renamed(names, self.limit)
@@ -1615,8 +1608,8 @@ class PushBackTrackAction(Node):
 class PopBackTrackAction(Node):
     """
     A zero-width action that closes the region the innermost `PushBackTrackAction` opened. It settles the ways taken
-    inside that region. The pop and `PushBackTrackAction` go together. The halves pair up on the stack of the parse
-    rather than where a step wrote them.
+    inside that region. The pop and `PushBackTrackAction` go together. `_popped` refuses a stack top that shares no pair
+    with the pop.
     """
 
     pair: frozenset[int]
@@ -2293,7 +2286,8 @@ _Kind = TypeVar("_Kind", bound="Node")
 
 def _as_a(kind: type[_Kind], what: str) -> Question[_Kind | None]:
     """
-    The question giving a node as `kind`, and `None` for a node of another kind. `what` says the question in words.
+    The question giving a node as `kind`, and `None` for a node of any other kind that a family of `_PARTITION` holds.
+    `what` says the question in words.
 
     The question names `kind` and the other kinds of `_PARTITION`. The question answers `None` for a kind a family takes
     in later.

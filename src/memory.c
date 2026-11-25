@@ -25,21 +25,18 @@ void *ys_memory_new(ys_memory *memory, const ys_options *options, size_t size) {
     memory->max_bytes = resolved.max_bytes;
     memory->allocated_bytes = 0;
     if (ys_memory_reserve(memory, size) != YS_OK) {
-        errno = ENOMEM; // the cap is smaller than the object; there is nowhere to build it. This one is ours to name.
+        errno = ENOMEM; // The cap is smaller than the object. The function names this failure itself.
         return NULL;
     }
 
-    // The allocator's failure is the allocator's to name. It must set errno, and this passes that through rather than
-    // overriding it. errno is cleared first so a debug build can catch an allocator that returns NULL without setting
-    // it. A release build still yields something sensible where that happens. On success errno is left as it was. A
-    // function
-    // that succeeds has no business changing it.
+    // The function clears errno and passes on the errno a failing allocator sets. A success restores the caller's
+    // errno.
     int saved_errno = errno;
     errno = 0;
     void *object = ys_allocate(&memory->allocator, size);
     if (object == NULL) {
         assert(errno != 0 && "a `ys_allocator` that returns NULL must set errno");
-        errno = errno != 0 ? errno : ENOMEM; // a broken allocator in a release build still yields something sensible
+        errno = errno != 0 ? errno : ENOMEM; // A broken allocator in a release build yields ENOMEM.
         return NULL;
     }
     errno = saved_errno;

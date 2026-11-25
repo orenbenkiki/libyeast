@@ -39,6 +39,7 @@ def refusal_for(prose: str, path: str) -> str | None:
     The `prose_words.py` row of `checkers._CHECKERS` asks here with the prose and the path of an edit. `prose_answer`
     gives the critic's rewrite this same refusal through `apply_prose.draft_refusals`.
 
-    `prose_rules` names the files whose text states a rule. The rule refusing a universal passes those files.
+    `prose_rules` names the files whose text states a rule. The rules refusing a universal, a vague quantifier and a
+    question word for a noun pass those files.
     """
     return prose_rules.word_refusal(prose, path)

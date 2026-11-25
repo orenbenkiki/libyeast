@@ -8,10 +8,10 @@ then free of it. A reader judges what no gate decides.
 The rules held here are `a-repository-question-with-two-callers-is-asked-once` and
 `a-literal-list-spells-each-word-once`. This gate also holds `a-private-name-carries-an-underscore`,
 `an-enumeration-of-the-tree-lives-in-gate` and `a-parsed-source-is-split-on-the-newline`. A rule here asks about the
-whole tree. A per-file linter asks no such question.
+whole tree.
 
-This gate holds `a-boolean-name-is-a-question` as well. It reads the answer off the type, in C and in Python alike.
-`a-boolean-is-a-pure-question` gets the same reading. Whether the question is pure stays with the reader.
+This gate holds `a-boolean-name-is-a-question` as well. It reads the answer off the type, in C and in Python alike. This
+gate leaves `a-boolean-is-a-pure-question` to the reader. The `bool` checks here read only the name.
 
 `a-name-uses-the-words-this-project-uses` holds a bound name to the word list the prose obeys.
 
@@ -19,7 +19,7 @@ This gate holds `a-boolean-name-is-a-question` as well. It reads the answer off 
 `long_nested_docstrings` read it, and the `short_comments` and `nested_docstrings` checkers refuse the shape.
 
 `a-make-assignment-carries-no-trailing-comment`. `make` keeps the whitespace before a `#` inside the value, as
-https://www.gnu.org/software/make/manual/html_node/Simple-Assignment.html says. The comment then lands in the path.
+https://www.gnu.org/software/make/manual/html_node/Simple-Assignment.html says. The spaces then land in the path.
 
 `a-mechanised-rule-names-its-convention`. A convention `.claude/conventions.md` marks mechanised names the module that
 decides it, and that module's docstring names the convention back. `convention_note_faults` reads the notes, and the
@@ -41,13 +41,12 @@ names across the tree. This gate skips a list holding a name too short for `_A_M
 """
 
 import ast
-import io
 import re
-import textwrap
 import tokenize
 
 from collections.abc import Iterable
 
+import collect_fragments
 import gate
 import prose_rules
 
@@ -196,19 +195,17 @@ def _bare_private_faults() -> list[tuple[str, str]]:
     leading underscore and is not `main`. A module, hook or MCP server reads a name as `module.name`. A shell script
     that writes `module.name` also reads it.
     """
-    # A hook holds module-level names of its own, and a name only its own hook reads is as private as one in a module.
-    # An MCP server holds them the same way, and reads the names of the modules the same way.
+    # A hook and an MCP server hold module-level names of their own. A name its own module reads counts as private.
     outside = gate.hook_modules() + gate.mcp_modules()
     trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in gate.modules() + outside}
-    # `(the module that reads, the module read, the name read)`, from each `module.name` in the tree.
+    # `read` holds `(the module that reads, the module read, the name read)` for a `module.name` in the tree.
     read = {
         (path.stem, node.value.id, node.attr)
         for path, tree in trees.items()
         for node in ast.walk(tree)
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
     }
-    # A shell script names a module and a name inside a `python3 -c` string. `ast` reads no shell, and a name the shell
-    # alone reads would otherwise report as private.
+    # `shell` holds the text of the shell scripts. A `module.name` in that text counts as a read.
     shell = "\n".join(path.read_text(encoding="utf-8") for path in gate.shell_scripts())
     held = []
     for path, tree in trees.items():
@@ -350,13 +347,9 @@ def _comment_runs(source: str) -> list[tuple[int, int]]:
     """
     The runs of consecutive comment lines, as `(the line it opens on, how many lines it runs)`.
 
-    A comment sharing its line with code opens no run. `tokenize` tells a marker in a string from a comment.
+    A comment sharing its line with code opens no run. `collect_fragments.python_comments` reads the comments.
     """
-    lines = source.split("\n")
-    alone = set()
-    for token in tokenize.generate_tokens(io.StringIO(source).readline):
-        if token.type == tokenize.COMMENT and not lines[token.start[0] - 1][: token.start[1]].strip():
-            alone.add(token.start[0])
+    alone = {at for at, (before, _said) in collect_fragments.python_comments(source).items() if not before.strip()}
     runs: list[tuple[int, int]] = []
     for at in sorted(alone):
         if runs and at == runs[-1][0] + runs[-1][1]:
@@ -380,7 +373,7 @@ def long_comment_runs(source: str) -> list[tuple[int, int]]:
     try:
         tree = ast.parse(source)
         runs = _comment_runs(source)
-    except (SyntaxError, tokenize.TokenError, IndentationError):  # not-a-failure: a source nobody can read yet
+    except (SyntaxError, tokenize.TokenError, IndentationError):  # not-a-failure: A half-written source holds no fault.
         return []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -406,13 +399,12 @@ def long_nested_docstrings(source: str) -> list[tuple[int, str, int]]:
     Public. The `nested_docstrings` checker reads an edit through here. A source the parser refuses answers with
     nothing.
 
-    A docstring on a single line that runs past `gate.WIDEST` counts as the block format-docstring rewraps it to. That
-    block puts the opening quotes and the closing quotes on lines of their own, and the text wraps at the docstring's
-    indent.
+    A docstring on a single line that runs past `gate.WIDEST` counts as a block. The quotes add a line above the text
+    and a line below it. `collect_fragments.filled` wraps the text at the docstring's indent.
     """
     try:
         tree = ast.parse(source)
-    except SyntaxError:  # not-a-failure: a source nobody can read yet
+    except SyntaxError:  # not-a-failure: A half-written source holds no fault.
         return []
     outer = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
     nested = {id(one) for top in outer for one in ast.walk(top) if one is not top}
@@ -425,7 +417,8 @@ def long_nested_docstrings(source: str) -> list[tuple[int, str, int]]:
         said = node.body[0]
         length = (said.end_lineno or said.lineno) - said.lineno + 1
         if length == 1 and (said.end_col_offset or 0) > gate.WIDEST:
-            length = 2 + len(textwrap.wrap(ast.get_docstring(node) or "", gate.WIDEST - said.col_offset))
+            docstring = ast.get_docstring(node) or ""
+            length = 2 + len(collect_fragments.filled(docstring, "", width=gate.WIDEST - said.col_offset))
         if length > MOST_COMMENT_LINES:
             held.add((node.lineno, node.name, length))
     return sorted(held)

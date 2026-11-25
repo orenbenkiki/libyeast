@@ -27,7 +27,7 @@ def minted_by(source: str) -> frozenset[str]:
     """
     try:
         return frozenset(check_documents.names_written_by(source))
-    except (SyntaxError, tokenize.TokenError, IndentationError, ValueError):  # not-a-failure: a half-written source
+    except (SyntaxError, tokenize.TokenError, IndentationError, ValueError):  # not-a-failure: The source names nothing.
         return frozenset()
 
 

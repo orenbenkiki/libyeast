@@ -450,7 +450,7 @@ def reached_by(
         for quantities in _holding(guard_answers):
             for bits, moved in move(guard_answers, quantities):
                 landed = _guard_answers_at(bits, moved)
-                # Some of the bits are not free of the rest. A move may name answers no parse gets, which dropped would
+                # The bits depend on one another. A move naming answers no parse gets raises here. A silent drop would
                 # read as a state the action cannot reach.
                 if landed not in _AT:
                     raise ValueError(f"a move reaching {landed}. no parse gets those answers.")

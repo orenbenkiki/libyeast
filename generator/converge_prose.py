@@ -881,7 +881,7 @@ async def _calling(  # pylint: disable=broad-exception-caught
     try:
         counts = (len(task.items), prose)
         said, reply = await agent_calls.spoken(state.caller, task.kind, message, counts, environment, is_kept=True)
-    except Exception as caught:  # failure-is-reported: the result this appends, and the log
+    except Exception as caught:  # failure-is-reported: The error reply below holds the exception.
         said = None
         reply = {"is_error": True, "result": f"the call raised {type(caught).__name__}: {caught}"}
     if state.caller.is_killing:
@@ -1124,7 +1124,7 @@ def _awaiting(coroutine: Any) -> str:
 _MOST_ENDING = 10.0
 
 
-def main() -> None:  # pylint: disable=broad-exception-caught
+def main() -> None:
     """
     Settle the prose under the run lock, and print what the run did.
 
@@ -1168,9 +1168,10 @@ def main() -> None:  # pylint: disable=broad-exception-caught
             fresh=int(argv[1]) if len(argv) == 2 else len(queue),
             by_key={one.key: one for one in fragments + collect_fragments.code_only()},
         )
+        # pylint: disable=broad-exception-caught
         try:
             asyncio.run(_run(state))
-        except Exception as caught:  # failure-is-reported: the stop reason; pylint: disable=broad-exception-caught
+        except Exception as caught:  # failure-is-reported: `_stop` logs the reason.
             agent_calls.killed(state.caller)
             _stop(state, f"the run ended on {type(caught).__name__}: {caught}", False)
         finally:

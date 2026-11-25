@@ -104,9 +104,10 @@ def runnable_fault(fixture: Fixture, grammar: dict[str, ir.Prod]) -> str | None:
     """
     Return None if `grammar` can run `fixture`, else a single-line reason it cannot.
 
-    Runnable means a pair of things. The grammar has the production and declares the parameters the filename supplies,
-    bar the `_ENTERED` parameters a run enters under. The filename supplies the parameters the grammar declares. That
-    holds bar the parameters `_DEFAULTS` supplies, and bar the `_DETECTED` parameters a production binds for itself.
+    Runnable means the conditions below hold. The grammar has the production `ir.entry` resolves the fixture to. That
+    production declares the parameters the filename supplies, bar the `_ENTERED` parameters a run enters under and bar
+    the finite parameters its name fixes. The filename supplies the parameters the grammar declares. That holds bar the
+    parameters `_DEFAULTS` supplies, and bar the `_DETECTED` parameters a production binds for itself.
 
     This is the structural test `check_normalize` filters fixtures on before the interpreter runs them. A separate
     function, `bad_value`, tests the form of a supplied value. `check_spec_tests` calls both.
@@ -115,7 +116,9 @@ def runnable_fault(fixture: Fixture, grammar: dict[str, ir.Prod]) -> str | None:
     production = grammar.get(name)
     if production is None:
         return "not a production of the grammar"
-    given = set(runtime)  # the finite parameters a monomorphized copy fixes are in its name, not its arguments
+    given = set(
+        runtime
+    )  # The name of a monomorphic copy fixes its finite parameters. `ir.entry` drops them from the arguments.
     wanted = set(production.params)
     if given - wanted - set(_ENTERED):
         listed = ", ".join(sorted(given - wanted - set(_ENTERED)))

@@ -35,7 +35,9 @@ def reproduced(grammar: dict[str, ir.Prod], fixtures: list[spec_tests.Fixture] |
     return [error for error in held if error is not None]
 
 
-def _run_one(held: tuple[dict[str, ir.Prod]], fixture: spec_tests.Fixture) -> str | None:
+def _run_one(  # pylint: disable=broad-exception-caught
+    held: tuple[dict[str, ir.Prod]], fixture: spec_tests.Fixture
+) -> str | None:
     """
     A line naming the input file of `fixture`, where the interpreter's stream differs from the stream `fixture` expects.
     The line holds the crash where the try block raised. The line holds `output differs from the fixture` otherwise.
@@ -46,7 +48,7 @@ def _run_one(held: tuple[dict[str, ir.Prod]], fixture: spec_tests.Fixture) -> st
         arguments = spec_tests.arguments(fixture, grammar)
         tokens = interpreter.run(grammar, fixture.production, fixture.input, arguments)
         actual = wire.serialize(tokens)
-    except Exception as error:  # noqa: BLE001  failure-is-reported: as `actual` below  # pylint: disable=W0718
+    except Exception as error:  # failure-is-reported: The comparison below reports the crash.
         actual = f"(crash: {type(error).__name__}: {error})"
     if actual == fixture.expected:
         return None

@@ -123,15 +123,15 @@ def _expr(x: object) -> ir.Node:
             return ir.SubValue(_expr(value[0]), _expr(value[1]))
         if op == "(atoi)":
             return ir.AtoiValue(_expr(value))
-        # The vendored grammar's own form. `(ord)` is a single character there and `(atoi)` a whole string here. The two
-        # agree at the one digit it is applied to.
+        # `yaml-spec-1.2.yaml.c-indentation-indicator` applies `(ord)` to a single digit. `(atoi)` gives the same number
+        # for that digit.
         if op == "(ord)":
             return ir.AtoiValue(_expr(value))
         if op == "(len)":
             return ir.LenValue(_expr(value))
         if op == "(flip)":
             return ir.FlipValue(value["var"], _branches(value, _expr))
-        return ir.RefCall(op, _args(value))  # a function call, e.g. {in-flow: c}
+        return ir.RefCall(op, _args(value))
     if x is None:
         return ir.LitValue(None)
     if isinstance(x, int):
@@ -149,7 +149,7 @@ def _expr(x: object) -> ir.Node:
     marker = _special(x)
     if marker is not None:
         return marker
-    return ir.LitValue(x)  # a value string, e.g. "block-in", "auto-detect"
+    return ir.LitValue(x)
 
 
 def _node(x: object) -> ir.Node:
@@ -179,8 +179,8 @@ def _node(x: object) -> ir.Node:
             return ir.NegLookGuard(_node(value))
         if op == "(<==)":
             return ir.LookBehindGuard(_node(value))
-        # The vendored form. Match `value`, giving nothing back if a predicate within it then fails. Its two uses wrap a
-        # repetition, which matches possessively here and so hands back nothing already.
+        # `yaml-spec-1.2.yaml.s-indent-lt` and `yaml-spec-1.2.yaml.s-indent-le` wrap a repetition in `(<<<)`. A
+        # repetition here matches possessively. A possessive repetition gives back nothing for `(<<<)` to undo.
         if op == "(<<<)":
             return _node(value)
         if op == "(---)":
@@ -192,7 +192,7 @@ def _node(x: object) -> ir.Node:
         if op == "(increase)":
             return ir.IncreaseAction(value)
         if op == "(max)":
-            if isinstance(value, list):  # libyeast wraps a production, the vendored grammar precedes it
+            if isinstance(value, list):  # libyeast writes a list. `yaml-spec-1.2.yaml` writes `(max)` before the rule.
                 return ir.MaxWrapper(_expr(value[0]), value[1], _node(value[2]))
             return ir.MaxWrapper(_expr(value))
         if op == "(<)":
@@ -223,14 +223,14 @@ def _node(x: object) -> ir.Node:
             return ir.RepTree(_count(rep.group(1)), _node(value))
         if op.startswith("("):
             raise ValueError(f"unhandled grammar operator {op!r}")
-        return ir.RefCall(op, _args(value))  # a single non-operator key, being a parameterized reference
+        return ir.RefCall(op, _args(value))
     marker = _special(x)
     if marker is not None:
         return marker
     if _is_char(x):
         return _char(x)
     if isinstance(x, str):
-        return ir.RefCall(x)  # a bare production name
+        return ir.RefCall(x)
     raise ValueError(f"unexpected grammar scalar: {x!r}")
 
 

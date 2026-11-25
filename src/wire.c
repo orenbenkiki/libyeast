@@ -74,7 +74,7 @@ static const char YS_WIRE[] = {
 
 char ys_code_char(ys_code code) {
     if ((size_t)code >= sizeof(YS_WIRE) / sizeof(YS_WIRE[0])) {
-        return '\0'; // UNTESTED. A code the enum names has a character, and only an out-of-range code reaches this
+        return '\0'; // UNTESTED
     }
     return YS_WIRE[code];
 }
@@ -86,7 +86,7 @@ int ys_code_of_char(char character, ys_code *code) {
             return YS_OK;
         }
     }
-    errno = EINVAL; // the character stands for no code
+    errno = EINVAL; // The character names no code.
     return YS_FAILED_ACTION;
 }
 
@@ -110,7 +110,8 @@ int ys_put(ys_bytes_writer *writer, const char *bytes, size_t size) {
 //
 // `ys_wire_write` calls `ys_codepoint` to escape a token's text by codepoint rather than by byte.
 static unsigned long ys_codepoint(const unsigned char *bytes, size_t size, size_t *length) {
-    static const unsigned char YS_LEAD_MASK[5] = {0, 0x7Fu, 0x1Fu, 0x0Fu, 0x07u}; // the lead byte's payload bits
+    static const unsigned char YS_LEAD_MASK[5] = {0, 0x7Fu, 0x1Fu, 0x0Fu,
+                                                  0x07u}; // The mask keeps a lead byte's payload bits.
     *length = ys_utf8_length(bytes, size);
     if (*length == 0) {
         return 0;
@@ -123,9 +124,7 @@ static unsigned long ys_codepoint(const unsigned char *bytes, size_t size, size_
 }
 
 int ys_wire_write(ys_bytes_writer *writer, ys_token token) {
-    // A code the wire writes nothing for is a bad argument, not a token to write. There is no character to say it
-    // with. A code the enum names has a character, and this answers only an out-of-range code. A test cannot hand such
-    // a code over without undefined behavior, and nothing here covers it.
+    // An out-of-range code has no wire character, and the call refuses it as a bad argument.
     const char code_character = ys_code_char(token.code);
     if (code_character == '\0') {
         errno = EINVAL;          // UNTESTED
@@ -142,24 +141,14 @@ int ys_wire_write(ys_bytes_writer *writer, ys_token token) {
         return YS_FAILED_STREAM; // UNTESTED
     }
 
-    // The text is escaped by codepoint. Printable ASCII other than a backslash stands for itself. Anything else
-    // becomes \xXX, \uXXXX or \UXXXXXXXX with lower-case hex. The convention is fixed, and token streams compare byte
-    // for byte.
-    //
-    // An error's text is its message, which is not in the input and spans none of it. Its length is its own, and the
-    // marks would say `0`.
+    // Printable ASCII other than a backslash writes as itself. Another codepoint writes as a lower-case hex escape. The
+    // text of an error is its message.
     const unsigned char *text = (const unsigned char *)token.text;
     size_t size = token.text == NULL            ? 0
                   : token.code == YS_CODE_ERROR ? strlen(token.text)
                                                 : token.end.byte_offset - token.start.byte_offset;
-    // An escape means a codepoint under any code but one, and a byte under YS_CODE_UNPARSED_INVALID. Each holds the
-    // other's text to being what it is not.
-    //
-    // Writing `\x80` for a raw 0x80 under a code that means codepoints says U+0080, and a reader hands back two bytes
-    // that were not given. So the text of any other code must encode characters throughout.
-    //
-    // A run of bytes that encode none is what YS_CODE_UNPARSED_INVALID exists to hold. Its text must encode none of
-    // them, or the code is a lie about what the escapes in it mean.
+    // An escape means a codepoint under a code other than `YS_CODE_UNPARSED_INVALID`. An escape means a byte under that
+    // code. A text that breaks this rule for its code refuses the write.
     const bool wants_characters = token.code != YS_CODE_UNPARSED_INVALID;
     for (size_t index = 0; index < size;) {
         size_t length = 1;
@@ -169,7 +158,7 @@ int ys_wire_write(ys_bytes_writer *writer, ys_token token) {
             return YS_FAILED_ACTION;
         }
         if (length == 0) {
-            // A byte that begins no character. Write the byte itself. That is what an escape says under this code.
+            // The byte begins no character. The wire writes the byte as a byte escape.
             int escaped = snprintf(buffer, sizeof(buffer), "\\x%02x", text[index]);
             if (escaped < 0 || ys_put(writer, buffer, (size_t)escaped) != YS_OK) {
                 return YS_FAILED_STREAM; // UNTESTED
@@ -210,17 +199,15 @@ int ys_wire_write(ys_bytes_writer *writer, ys_token token) {
 // parser. `wire.h` declares the struct.
 
 void ys_wire_init(ys_wire *wire, ys_memory memory) {
-    // The rest is the zeroed state ys_memory_new left. The caller sets the reader of `ys_wire::source`.
+    // Point the wire at `memory`.
     wire->memory = memory;
 }
 
 // The next line of the wire. The newline drops off. NULL at the end of the stream. NULL too where the reader or the
 // allocator fails, and that sets `ys_wire::fault`.
 //
-// The line stays valid until the next call. A NUL takes the newline's place. A
-// last line without a newline gets a NUL past its end. The wire writes that NUL into the byte the source keeps spare.
-// `ys_wire_read` scans the position line with `strncmp` and `strtoul`, and those read until a NUL rather than until a
-// length.
+// The line stays valid until the next call. A NUL takes the newline's place. A last line without a newline gets a NUL
+// past its end.
 //
 // The search for the newline resumes where the last search gave up rather than starting over. A line arriving in pieces
 // gets a fill per piece. Rescanning those pieces would cost a long line its length squared.
@@ -238,22 +225,22 @@ static char *ys_next_line(ys_wire *reader, size_t *size) {
             reader->wire_line += 1;
             return line;
         }
-        reader->scanned = reader->source.size; // each byte here has been looked at, and none of them is the break
+        reader->scanned = reader->source.size; // The search found no break in these bytes.
         if (reader->source.is_at_end) {
             if (reader->consumed == reader->source.size) {
                 return NULL;
             }
             char *line = bytes + reader->consumed;
             *size = reader->source.size - reader->consumed;
-            bytes[reader->source.size] = '\0'; // the byte the source keeps spare
+            bytes[reader->source.size] = '\0'; // A NUL fills the byte the source keeps spare.
             reader->consumed = reader->source.size;
             reader->scanned = reader->consumed;
             reader->wire_line += 1;
             return line;
         }
 
-        // No whole line to hand back. Drop the lines already handed back, and read more. Compacting slides everything
-        // left by what was dropped, and how far the search has looked slides with it.
+        // The buffer holds no whole line. The fill drops the lines already handed back and reads more. `scanned` moves
+        // left with the bytes.
         ys_fill filled = ys_source_fill(&reader->source, &reader->memory, reader->consumed, 1);
         reader->scanned -= reader->consumed;
         reader->consumed = 0;
@@ -300,7 +287,7 @@ static int ys_append(ys_wire *reader, unsigned long codepoint) {
     char *grown = ys_memory_grow(&reader->memory, reader->text, &reader->text_capacity, reader->text_size + 4,
                                  YS_MEMORY_ITEMS, sizeof(char));
     if (grown == NULL) {
-        reader->fault = YS_FAILED_MEMORY; // a resource fault, told from a malformed wire by ys_wire::fault being set
+        reader->fault = YS_FAILED_MEMORY; // `ys_wire::fault` tells a resource fault from a malformed wire.
         return YS_FAILED_MEMORY;
     }
     reader->text = grown;
@@ -332,7 +319,7 @@ static int ys_append_byte(ys_wire *reader, unsigned char byte) {
     char *grown = ys_memory_grow(&reader->memory, reader->text, &reader->text_capacity, reader->text_size + 1,
                                  YS_MEMORY_ITEMS, sizeof(char));
     if (grown == NULL) {
-        reader->fault = YS_FAILED_MEMORY; // a resource fault, told from a malformed wire by ys_wire::fault being set
+        reader->fault = YS_FAILED_MEMORY; // `ys_wire::fault` tells a resource fault from a malformed wire.
         return YS_FAILED_MEMORY;
     }
     reader->text = grown;
@@ -348,7 +335,7 @@ static int ys_append_byte(ys_wire *reader, unsigned char byte) {
 // from its
 // \xXX escape. That byte must begin no character, and the writer follows the same rule.
 //
-// Hands back the byte past the text it read. NULL on a fault. The `fault_at` parameter gives the
+// Hands back the byte past the text it read, or NULL on a fault. The `fault_at` parameter gives the
 // fault's offset in the `escaped` text. The `why` parameter names the fault. A host failure sets the `ys_wire::fault`
 // field instead. The caller tells the faults apart by `ys_wire::fault`.
 static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size, bool wants_characters, ys_mark *end,
@@ -356,7 +343,8 @@ static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size
     reader->text_size = 0;
     for (size_t index = 0; index < size;) {
         if (!wants_characters) {
-            // An unparsed-invalid token holds raw bytes; the writer writes each as \xXX and it reads back as itself.
+            // The writer writes a byte of an unparsed-invalid token as \xXX. The reader turns that escape back into the
+            // same byte.
             if (escaped[index] != '\\' || index + 4 > size || escaped[index + 1] != 'x') {
                 *fault_at = index;
                 *why = YS_MESSAGE_WIRE_BAD_ESCAPE;
@@ -370,7 +358,7 @@ static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size
                 return NULL;
             }
             if (ys_append_byte(reader, (unsigned char)byte) != YS_OK) {
-                return NULL; // ys_append_byte set ys_wire::fault
+                return NULL; // `ys_append_byte` set `ys_wire::fault`.
             }
             end->char_offset += 1;
             end->column += 1;
@@ -379,12 +367,6 @@ static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size
         }
         unsigned long codepoint;
         if (escaped[index] != '\\') {
-            // The writer emits a byte raw only when it is printable ASCII and not a backslash. Anything else it
-            // escapes. So a raw byte outside that range is not the wire format.
-            //
-            // A high byte is the worst of them. Taken as itself it would be a lone continuation or a truncated lead,
-            // and would put bytes that are not UTF-8 into the reader's own text. The wire is untrusted input, and this
-            // is where it is checked.
             unsigned char raw = (unsigned char)escaped[index];
             if (raw < 0x20u || raw > 0x7Eu) {
                 *fault_at = index;
@@ -400,8 +382,6 @@ static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size
                                                                             : 0;
             const char *past =
                 digits == 0 || index + 2 + digits > size ? NULL : ys_hex(escaped + index + 2, digits, &codepoint);
-            // A codepoint the escape names but Unicode does not is as much a fault as a digit that is not one.
-            // ys_append() would otherwise write bytes that are not UTF-8 into the reader's own text.
             if (past == NULL || codepoint > 0x10FFFFuL || (codepoint >= 0xD800uL && codepoint <= 0xDFFFuL)) {
                 *fault_at = index;
                 *why = YS_MESSAGE_WIRE_BAD_ESCAPE;
@@ -410,7 +390,8 @@ static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size
             index = (size_t)(past - escaped);
         }
         if (ys_append(reader, codepoint) != YS_OK) {
-            return NULL; // ys_append set ys_wire::fault; the caller tells this resource fault from a malformed wire
+            return NULL; // `ys_append` set `ys_wire::fault`. `ys_wire_read` reads that field to tell a resource fault
+                         // from a malformed wire.
         }
         end->char_offset += 1;
         if (codepoint == '\n') {
@@ -420,9 +401,8 @@ static const char *ys_unescape(ys_wire *reader, const char *escaped, size_t size
             end->column += 1;
         }
     }
-    // Each byte of an unparsed-invalid token must begin no character, the same rule the writer follows. A valid
-    // character among them would make the token a lie about what it holds. Each byte is written as one `\xXX`, and a
-    // fault at byte `at` sits at `escaped` offset `at * 4`.
+    // A byte that begins a character faults with `YS_MESSAGE_WIRE_CHAR_IN_INVALID`. The offset of a fault at byte `at`
+    // is `at` times the width of a `\xXX` escape.
     if (!wants_characters) {
         for (size_t at = 0; at < reader->text_size; at += 1) {
             if (ys_utf8_length((const unsigned char *)reader->text + at, reader->text_size - at) != 0) {
@@ -445,13 +425,13 @@ static const char *ys_scan(const char *at, const char *label, size_t *value) {
         return NULL;
     }
     const char *digits = at + size;
+    // `strtoul` skips white space and accepts a sign, as https://en.cppreference.com/w/c/string/byte/strtoul says. A
+    // position on the wire holds neither.
     if (digits[0] < '0' || digits[0] > '9') {
-        return NULL; // strtoul takes a sign and skips white space; a position on the wire is neither
+        return NULL;
     }
-    // `strtoul` reports a range error through `errno` and cannot be asked any other way. It must be cleared first, and
-    // put back after. Reading a token is a function that reports its failures through the token it returns, and leaves
-    // `errno` to whatever callback set one. Clobbering a caller's `errno` on the way to succeeding is the one thing
-    // this must not do.
+    // `strtoul` reports a range error through `errno`, as https://en.cppreference.com/w/c/string/byte/strtoul says.
+    // `ys_scan` restores the caller's `errno` after the call.
     char *after = NULL;
     const int saved = errno;
     errno = 0;
@@ -465,8 +445,7 @@ static const char *ys_scan(const char *at, const char *label, size_t *value) {
     return after;
 }
 
-// The wire is malformed. The call hands back a `YS_CODE_ERROR` token. A malformed document gets the same code. That
-// token spends the wire.
+// The wire is malformed. The call hands back a `YS_CODE_ERROR` token. That token spends the wire.
 //
 // The token's marks locate the fault in the wire. `line` counts from `1` and `column` counts from `0`. The byte and
 // codepoint offsets stay `0`. The fault sits in the wire rather than in something parsed from the wire. The token's
@@ -477,7 +456,7 @@ static int ys_wire_error(ys_wire *reader, ys_token *token, size_t line, size_t c
     token->start = (ys_mark){0, 0, line, column};
     token->end = token->start;
     token->text = ys_message(id);
-    return YS_OK; // a malformed wire is a token like any other. Reading it succeeded
+    return YS_OK; // A malformed wire is a token like any other. The read succeeded.
 }
 
 // `ys_wire_read` calls this on a resource failure. The value is a `ys_read_token` return value rather than a
@@ -493,7 +472,7 @@ static int ys_wire_resource(ys_wire *reader) {
 
 int ys_wire_read(ys_wire *reader, ys_token *token) {
     if (reader->is_done) {
-        errno = ENODATA; // the wire ended, or faulted, and is being read past
+        errno = ENODATA; // A caller reads past the end of the wire or past a fault.
         return YS_FAILED_ACTION;
     }
 
@@ -504,11 +483,11 @@ int ys_wire_read(ys_wire *reader, ys_token *token) {
             return ys_wire_resource(reader);
         }
         reader->is_done = true;
-        return YS_FAILED_ACTION; // the wire simply ended
+        return YS_FAILED_ACTION; // The wire ended without a fault.
     }
 
-    // The first line holds the marks; the second the code character and the escaped text. `at` is left where a
-    // scan gave up, which is the column the fault is reported at.
+    // A token takes a pair of wire lines. The first line holds the marks. The second line holds the code character and
+    // the escaped text. `at` points at the label that `ys_scan` rejected. `ys_wire_error` reports that column.
     ys_mark start = {0, 0, 0, 0};
     const char *labels[] = {"# B: ", ", C: ", ", L: ", ", c: "};
     size_t *marks[] = {&start.byte_offset, &start.char_offset, &start.line, &start.column};
@@ -539,24 +518,23 @@ int ys_wire_read(ys_wire *reader, ys_token *token) {
     bool wants_characters = token->code != YS_CODE_UNPARSED_INVALID;
     if (ys_unescape(reader, line + 1, size - 1, wants_characters, &end, &fault_at, &why) == NULL) {
         if (reader->fault != 0) {
-            return ys_wire_resource(reader); // out of memory unescaping, not a malformed wire
+            return ys_wire_resource(reader); // The reader ran out of memory unescaping the text.
         }
-        // The code character is column 0 of this line. The text, where the fault is, begins at column 1.
+        // The code character is column 0 of this line. The text begins at column 1. `fault_at` counts from the start of
+        // the text.
         return ys_wire_error(reader, token, reader->wire_line, 1 + fault_at, why);
     }
     if (end.byte_offset < start.byte_offset || end.char_offset < start.char_offset || end.line < start.line) {
-        // The position was a number `strtoul` could read but not a number a token can start at. Its own text holds
-        // the end of it past where counting stops and back around.
+        // The position was a number `strtoul` could read but not a number a token can start at. `ys_unescape` adds the
+        // counts of the text to the start, and that sum overflowed `size_t`. The end mark therefore lies before the
+        // start mark.
         //
-        // A caller told the pair of marks would hand out a span of nothing or of everything. So this is the position
-        // line being wrong rather than the text. It is the same fault `ys_scan` reports when the number will not fit
-        // at all, found a step later.
+        // This check reports `YS_MESSAGE_WIRE_BAD_POSITION` against the position line.
         return ys_wire_error(reader, token, reader->wire_line - 1, 0, YS_MESSAGE_WIRE_BAD_POSITION);
     }
 
-    // Leave the text NUL-terminated. A leaf token's text is handed out as a span, but an error's is handed out as a
-    // string, ys_write_token() taking its length with strlen. So the terminator must be there, and the buffer must
-    // exist even when the message is empty. The terminator is past text_size and not counted in it.
+    // Leave the text NUL-terminated. `ys_wire_read` writes the terminator at index `text_size`. `text_size` does not
+    // count the terminator.
     char *terminated = ys_memory_grow(&reader->memory, reader->text, &reader->text_capacity, reader->text_size + 1,
                                       YS_MEMORY_ITEMS, sizeof(char));
     if (terminated == NULL) {
@@ -566,9 +544,9 @@ int ys_wire_read(ys_wire *reader, ys_token *token) {
     reader->text = terminated;
     reader->text[reader->text_size] = '\0';
 
-    // An error's text is its message, which spans none of the input. It ends where it began, however long the message
-    // is. It is not NULL even when empty. Everything else spans exactly the text it holds, and a marker holds
-    // none.
+    // An error's text is its message. The message spans no input. An error's end mark equals its start mark. An error's
+    // text is not NULL even when empty. A token of any other code spans the bytes of its text. A marker has no text,
+    // and its text is NULL.
     token->start = start;
     token->end = token->code == YS_CODE_ERROR ? start : end;
     token->text = token->code == YS_CODE_ERROR ? reader->text : reader->text_size == 0 ? NULL : reader->text;

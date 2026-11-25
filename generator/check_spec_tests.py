@@ -51,7 +51,7 @@ def main() -> None:
             errors.append(f"{name}: {reason}")
             continue
         if not os.path.exists(fixture.output_path):
-            continue  # already reported as unpaired above; there is nothing to read a token stream out of
+            continue  # Skip a fixture the loop above reported as unpaired.
         tokens = wire.parse(fixture.expected)
         fault = wire.chain_fault(tokens) or wire.marker_fault(tokens, fixture.production == ir.ROOT)
         if fault is None and fixture.is_invalid and wire.is_clean(tokens, len(fixture.input)):

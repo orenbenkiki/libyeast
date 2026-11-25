@@ -2,9 +2,9 @@
 """
 Check that libyeast's grammar is still the official grammar.
 
-Erases libyeast's token annotations from `grammar/yeast-spec-1.2.yaml`. Writes a reference to an indicator production
-back as the character it names. Leaves out the rules libyeast adds of its own. Compares what remains against the
-vendored `yaml-spec-1.2.yaml`, a production at a time.
+Erases libyeast's token annotations from `grammar/yeast-spec-1.2.yaml`, the file `DEFAULT_GRAMMAR` names. Writes a
+reference to an indicator production back as the character it names. Leaves out the rules `OWN` names. libyeast adds
+those rules of its own. Compares what remains against the vendored `yaml-spec-1.2.yaml`, a production at a time.
 
 A production that differs is either a mistake or a departure we chose. A departure we chose goes into `_DEVIATIONS` with
 its reason, and the check fails on a differing production `_DEVIATIONS` leaves out. An edit meant to add a rule
@@ -186,8 +186,7 @@ def main() -> None:
         if name not in vendored:
             errors.append(f"{name}: declared as a deviation, but the official grammar has no such production")
         elif recovered.get(name) == vendored[name]:
-            # A deviation that no longer deviates is a stale declaration, and a dangerous one. It exempts the production
-            # from the comparison. Any later drift in it goes unseen. If it matches now, it must not be declared.
+            # Report a declared deviation that matches the official grammar as stale.
             errors.append(f"{name}: declared as a deviation, and it matches the official grammar")
 
     productions = sum(1 for key in vendored if not key.startswith(":"))

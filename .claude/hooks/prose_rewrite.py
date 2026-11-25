@@ -26,8 +26,8 @@ This hook takes the shape rules. `prose_words` takes the word rules. This hook e
 `a-sentence-stays-within-the-limits` and `no-em-dash-and-no-colon`. A word rule refuses a claim.
 `prose_rules.word_refusal` names the word the rule refused. A shape rule refuses a sentence.
 
-`checkers.refusals_for_edit` hands `prose_rules` the prose the edit leaves behind. `prose_rules` reads none of the prose
-the edit replaces.
+`checkers.refusals_for_edit` hands this hook the prose of a fragment the edit changes, as the edit leaves that prose.
+`prose_rules` reads none of the prose the edit replaces.
 
 A refusal names the file the edit writes into. This hook judges a string literal too. The refusal names the file the
 literal appears in. `prose_rules.literal_shape_faults` judges a literal. `check_prose` judges the literals of the tree
@@ -103,8 +103,8 @@ def refusal_for(prose: str, where: str, is_stating_why: bool = False, is_literal
     `collect_fragments.is_about_the_tree` turns `where` down.
 
     `checkers._CHECKERS` asks here with the prose of an edit and the path that edit lands in. `prose_answer` gives the
-    critic's rewrite this same refusal through `apply_prose.draft_refusals`. A proposal's `why` field states a reason,
-    and `is_stating_why` takes the WHY clause off that field.
+    critic's rewrite this same refusal through `apply_prose.draft_refusals`. `is_stating_why` lifts the WHY-clause
+    check.
 
     `is_literal` marks a string literal. `literal_shape_faults` holds the shape rules a literal takes.
     """

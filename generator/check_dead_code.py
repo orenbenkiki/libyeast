@@ -176,18 +176,17 @@ def _dead_code_errors() -> list[str]:
     a kind that nothing builds.
 
     A mention inside a definition that nothing reaches does not make another definition reached. A module's top-level
-    statement reaches a name that module does not bind. A top-level call statement reaches the names it calls. A hook or
-    an MCP server reaches a name it reads off a module. The walk starts from `main` too. That start applies in a module
-    something runs. From there the walk follows what a reached definition reads, such as a call or a dispatch table's
-    value.
+    statement reaches a name that module does not define. A top-level call statement reaches the names it calls. A hook
+    or an MCP server reaches a name it reads off a module. The walk starts from `main` once something runs a module.
+    `defined` keys a definition by its bare name. So the walk also reaches the `main` of a module nothing runs. From
+    there the walk follows what a reached definition reads, such as a call or a dispatch table's value.
 
     A kind counts as built where a reached definition or a module's top-level statement *calls* it. A kind named in a
-    family or a table is a kind somebody covers, and that differs from a kind somebody makes. That is how
-    `ConsumeTrimmedSpanAction` reads as live to the checks around it while nothing has ever produced such a node.
+    family or a table is a kind somebody covers, and that differs from a kind somebody makes.
 
     This also reports a `_KEPT_THOUGH_DEAD` declaration that has stopped being true. Such a declaration names what the
-    tree defines in no file. A stale declaration may instead name something the walk reaches. A declared kind also needs
-    a call that builds it. Such a declaration excuses nothing.
+    tree defines in no file. A stale declaration may instead name something the walk reaches. A declared kind goes stale
+    only where a call builds it as well. Such a declaration excuses nothing.
     """
     defined: dict[str, str] = {}
     reads: dict[str, set[str]] = {}
@@ -195,13 +194,13 @@ def _dead_code_errors() -> list[str]:
     roots: set[str] = set()
     built: set[str] = set()
     runs = _run_by_make()
-    # The hooks define nothing this reports on. `_imports` says why. What they read is gathered below.
+    # The walk parses the modules `gate.modules()` names.
     for path in gate.modules():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         top = set()
         for node in tree.body:
-            # The bindings a module makes, whatever they are called. A binding with a type is read through its
-            # annotation too, a type alias being reached from there and from nowhere else.
+            # `gate.defined_names` gives the names a top-level definition or assignment binds. A binding's reads include
+            # its annotation. The walk reaches a type alias that annotation names.
             for name in gate.defined_names(node):
                 held = (
                     [node]
@@ -216,8 +215,8 @@ def _dead_code_errors() -> list[str]:
                 reads.setdefault(name, set())
                 builds.setdefault(name, set())
                 top.add(name)
-        # What the module reads outside any definition of its own is where the walk starts, and `main` besides where
-        # something runs the module. A top-level statement that is only a call names a root, whatever defines it.
+        # A module's reads outside its definitions are roots, save a name that module defines. `main` is a root once
+        # something runs a module. A bare call statement makes the names it calls roots.
         for node in tree.body:
             if gate.is_a_definition(node):
                 continue
@@ -227,7 +226,7 @@ def _dead_code_errors() -> list[str]:
                 roots |= _called_in(node)
         if path.stem in runs or path.stem in _RUN_FROM_ELSEWHERE:
             roots.add("main")
-    # A hook and an MCP server read names out of the modules. Leaving such a reader out called live code dead.
+    # A name a hook or an MCP server reads off a module is a root.
     named = {path.stem for path in gate.modules()}
     for path in gate.hook_modules() + gate.mcp_modules():
         for read in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
@@ -235,14 +234,12 @@ def _dead_code_errors() -> list[str]:
                 roots.add(read.attr)
     kinds = {kind.__name__ for kind in ir.KINDS}
     reached = _reached_from(roots, reads, defined)
-    # What a definition constructs counts only where something reaches that definition. Counting the site rather than
-    # the reach would let a dead body keep a dead kind alive.
+    # A definition's calls build a kind only once the walk reaches that definition.
     for name in reached:
         built |= builds.get(name, set())
     dead = {name for name in defined if not name.startswith("__")} - reached
     dead |= kinds - built
-    # A helper only what is kept though dead reaches is kept with it. What is declared is the one covering the cluster
-    # under it. Naming them one by one would be the same words written over, and stale in as many places.
+    # A helper reached from a `_KEPT_THOUGH_DEAD` name goes unreported. The declaration names the root of that cluster.
     dead -= _reached_from(_KEPT_THOUGH_DEAD, reads, defined) - set(_KEPT_THOUGH_DEAD)
     faults = [
         f"{defined.get(name, 'ir')} defines `{name}`. nothing reaches that name, and no declaration says why the "

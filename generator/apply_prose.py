@@ -12,9 +12,9 @@ The shape of the replacement comes off the lines it replaces. A line opening on 
 indent. A line holding code and a comment keeps the code. A Python docstring keeps its quotes. A markdown paragraph
 takes no marker.
 
-New prose goes in as the caller wrote it. The exceptions are a comment sharing a line with code and a JSON note. This
-module wraps those at 120 columns. A comment sharing a single line with code stays on that line. A JSON note written as
-a single string stays a single string.
+A docstring and a markdown paragraph take the new prose as the caller wrote it. This module wraps a comment and a JSON
+note at `gate.WIDEST` columns. A comment sharing a single line with code stays on that line. A JSON note written as a
+single string stays a single string.
 
 The new text of a file goes through the checkers before it lands. `checkers.refusals_for_edit` reads it as the
 write-time hook reads a Write call. The `pc` target of the `Makefile` remains the gate.
@@ -32,26 +32,19 @@ from typing import Any
 
 import collect_fragments
 import gate
+import prose_rules
 
 # The quotes a Python docstring opens and closes with.
 _QUOTES = ('"""', "'''")
 
-# The marker a comment opens with, by the language of the file. A `#` in a C file opens a preprocessor directive, as
-# https://en.cppreference.com/w/c/preprocessor says. A reader taking that `#` for a marker would eat the directive.
-_MARKERS = {
-    "C": "//",
-    "JS": "//",
-    "Python": "#",
-    "Shell": "#",
-    "YAML": "#",
-    "Make": "#",
-    "CMake": "#",
-    "Conf": "#",
-}
-
 # The languages whose formatter rewraps a comment sharing a line with code, as
 # https://clang.llvm.org/docs/ClangFormatStyleOptions.html#reflowcomments says of clang-format.
 _REFLOWED = ("C",)
+
+# Languages whose comment blocks `make reformat` reflows through `scripts/wrap_long_comments.py`. The `Makefile` also
+# runs that script on CMake and YAML files, and this list leaves them out. `_shaped` writes such a block through
+# `collect_fragments.comment_reflowed`, as that script does.
+_REFLOWED_BLOCKS = ("Python", "Shell", "JS", "Make")
 
 # The letters a Python string may open with in front of its quotes.
 # https://docs.python.org/3/reference/lexical_analysis.html#string-and-bytes-literals lists those letters.
@@ -75,28 +68,22 @@ def _wrapped(opening: str, said: str, lines: int) -> list[str]:
         return [f"{opening}{said}".rstrip()]
     marker = opening.strip().rsplit(" ", 1)[-1] if " " in opening.strip() else opening.strip()
     under = " " * (len(opening) - len(marker) - 1) + marker + " "
-    held, room = [], gate.WIDEST - len(opening)
-    taken: list[str] = []
-    for word in said.split():
-        if taken and len(" ".join(taken + [word])) > room:
-            held.append(taken)
-            taken, room = [word], gate.WIDEST - len(under)
-        else:
-            taken.append(word)
-    held.append(taken)
-    return [f"{opening if at == 0 else under}{' '.join(run)}".rstrip() for at, run in enumerate(held)]
+    return [line.rstrip() for line in collect_fragments.filled(said, opening, under)] or [opening.rstrip()]
 
 
-def _shared_marker(original: str, path: str) -> str:
+def _shared_prefix(original: str, code: str, path: str) -> str:
     """
-    The text in front of a comment that opens after code on its line. That text holds the marker. An empty string where
-    the line opens on the marker, or holds no marker at all.
+    The text in front of a comment that follows `code` on the line `original`. That text holds the code and the marker.
+    An empty string where `code` is empty. `collect_fragments` reads `code` off the line at collection, and a line with
+    no marker after it raises.
     """
-    marker = _MARKERS.get(collect_fragments.language_of(path) or "")
-    if not marker or re.match(rf"^(\s*{re.escape(marker)}+[!<]?\s?)", original):
+    if not code:
         return ""
-    found = re.match(rf"^(.*\S\s+{re.escape(marker)}+[!<]?\s?)", original)
-    return found.group(1) if found else ""
+    marker = collect_fragments.MARKERS[collect_fragments.language_of(path) or ""]
+    found = re.match(rf"\s*{re.escape(marker)}+[!<]?\s?", original[len(code) :])
+    if found is None or not original.startswith(code):
+        raise ValueError(f"no comment follows the code {code!r} on the line {original!r}")
+    return code + found.group(0)
 
 
 def _json_strings(said: str, room: int) -> list[str]:
@@ -105,15 +92,7 @@ def _json_strings(said: str, room: int) -> list[str]:
 
     A word wider than `room` takes its own line. That line runs past the limit.
     """
-    held: list[str] = []
-    taken: list[str] = []
-    for word in said.split():
-        if taken and len(" ".join(taken + [word])) > room:
-            held.append(" ".join(taken))
-            taken = [word]
-        else:
-            taken.append(word)
-    return held + [" ".join(taken)]
+    return collect_fragments.filled(said, "", width=room) or [""]
 
 
 def _json_note(original: list[str], said: str) -> list[str]:
@@ -132,7 +111,7 @@ def _json_note(original: list[str], said: str) -> list[str]:
     if len(original) == 1 and "[" not in original[0]:
         return [f'{indent}"_": {json.dumps(said)}{ends}']
     body: list[str] = []
-    for at, paragraph in enumerate(said.split("\n\n")):
+    for at, paragraph in enumerate(prose_rules.A_PARAGRAPH_BREAK.split(said)):
         body += [""] if at else []
         body += _json_strings(paragraph, gate.WIDEST - len(indent) - len('  "",'))
     held = [f'{indent}"_": [']
@@ -140,24 +119,33 @@ def _json_note(original: list[str], said: str) -> list[str]:
     return [*held, f"{indent}  {json.dumps(body[-1])}", f"{indent}]{ends}"]
 
 
-def _shaped(original: list[str], said: str, path: str) -> list[str]:
+def _shaped(original: list[str], said: str, path: str, code: str = "") -> list[str]:
     """
     The lines that replace `original`. They hold `said` in the shape the old lines had.
 
-    A comment keeps the marker and the indent it had. A comment sharing a line with code keeps the code in front of it.
-    A Python docstring keeps the quotes and any letter in front of them. `_json_note` shapes a JSON note. Any other line
-    goes back as the lines of `said`, with no indent and no marker.
+    A comment keeps its indent. `collect_fragments.comment_reflowed` shapes a `_REFLOWED_BLOCKS` comment that opens on
+    its marker. Another comment that opens on its marker keeps that marker. `collect_fragments.filled` fills a line of
+    `said` apart from the lines around it. `_wrapped` shapes a comment after code. A Python docstring keeps the quotes
+    and any letter in front of them. `_json_note` shapes a JSON note. Any other line goes back as the lines of `said`,
+    with no indent and no marker.
     """
     if collect_fragments.language_of(path) == "JSON":
         return _json_note(original, said)
     indent, opens = _indent_of(original[0]), original[0].strip()
     body = said.strip("\n").split("\n")
-    marker = _MARKERS.get(collect_fragments.language_of(path) or "")
+    marker = collect_fragments.MARKERS.get(collect_fragments.language_of(path) or "")
     if marker:
         run = re.match(rf"^(\s*{re.escape(marker)}+[!<]?\s?)", original[0])
+        if run and collect_fragments.language_of(path) in _REFLOWED_BLOCKS:
+            block = [f"{indent}{marker} {one}".rstrip() for one in body]
+            return collect_fragments.comment_reflowed(block, len(indent), marker)
         if run:
-            return [f"{run.group(1)}{one}".rstrip() for one in body]
-        shared = _shared_marker(original[0], path)
+            return [
+                line.rstrip()
+                for one in body
+                for line in collect_fragments.filled(one, run.group(1)) or [run.group(1).rstrip()]
+            ]
+        shared = _shared_prefix(original[0], code, path)
         if shared:
             return _wrapped(shared, " ".join(body), len(original))
     found = _A_PREFIX.match(opens)
@@ -197,10 +185,10 @@ def does_hold(fragment: Any, site: Any) -> bool:
     comes back the way the file wrote it.
     """
     original = _original(fragment, site)
-    if collect_fragments.language_of(site.path) in _REFLOWED and _shared_marker(original[0], site.path):
+    if collect_fragments.language_of(site.path) in _REFLOWED and site.code_in_front:
         return True
     now = collect_fragments.located(fragment).sites[fragment.sites.index(site)]
-    return _shaped(original, now.as_wrapped, site.path) == original
+    return _shaped(original, now.as_wrapped, site.path, now.code_in_front) == original
 
 
 def _checkers() -> Any:
@@ -264,25 +252,27 @@ def applied(prose_by_site: list[str], changes: list[dict[str, str]]) -> list[str
     return held
 
 
-def _replaced(lines: list[str], sites: list[tuple[tuple[int, ...], str]], path: str) -> None:
+def _replaced(lines: list[str], sites: list[tuple[tuple[int, ...], str, str]], path: str) -> None:
     """
-    Put the new prose of `sites` into `lines` of `path`. A site reads as `(the line numbers, the new prose)`.
+    Put the new prose of `sites` into `lines` of `path`. A site reads as `(the line numbers, the new prose, the code in
+    front of the comment)`.
 
     A later site goes in first. The line numbers of an earlier site then still hold.
     """
-    for numbers, said in sorted(sites, key=lambda one: -one[0][0]):
+    for numbers, said, code in sorted(sites, key=lambda one: -one[0][0]):
         first, last = numbers[0], numbers[-1]
-        lines[first - 1 : last] = _shaped(lines[first - 1 : last], said, path)
+        lines[first - 1 : last] = _shaped(lines[first - 1 : last], said, path, code)
 
 
 def _placed(fragment: Any, prose_by_site: list[str]) -> dict[str, list[str]]:
     """
     `{a file: its new lines}` for the files the sites of `fragment` move in. A site whose prose holds still stays out.
     """
-    by_path: dict[str, list[tuple[tuple[int, ...], str]]] = {}
+    by_path: dict[str, list[tuple[tuple[int, ...], str, str]]] = {}
     for site, said in zip(fragment.sites, prose_by_site):
         if said != site.prose:
-            by_path.setdefault(site.path, []).append((collect_fragments.site_lines(fragment, site), said))
+            numbers = collect_fragments.site_lines(fragment, site)
+            by_path.setdefault(site.path, []).append((numbers, said, site.code_in_front))
     held = {}
     for path, sites in by_path.items():
         with open(os.path.join(gate.TREE, path), encoding="utf-8") as handle:

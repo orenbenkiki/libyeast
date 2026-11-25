@@ -34,7 +34,7 @@ def main() -> None:
         if in_c != in_python:
             errors.append(f"{code}: `src/wire.c` says {in_c!r}, `wire.py` says {in_python!r}")
         # `ys_code_char` answers '\0' where the wire writes nothing, and a line is NUL-terminated. A printable character
-        # is what keeps the two apart.
+        # tells a written code from the NUL that ends the line.
         if in_c is not None and not 0x21 <= ord(in_c) <= 0x7E:
             errors.append(f"{code}: the wire writes {in_c!r}, and that is no printable character a wire can hold")
 

@@ -15,7 +15,8 @@
 // that allocator to the arm it goes on to build. On failure the call answers NULL with `errno` set. The caller then
 // closes any reader it took in.
 static ys_token_source *ys_new_source(ys_source_kind kind, const ys_options *options, ys_memory *memory) {
-    ys_token_source *source = ys_memory_new(memory, options, sizeof(*source)); // sets errno on failure
+    ys_token_source *source =
+        ys_memory_new(memory, options, sizeof(*source)); // `ys_memory_new` sets errno on a failure.
     if (source != NULL) {
         source->kind = kind;
     }
@@ -24,15 +25,14 @@ static ys_token_source *ys_new_source(ys_source_kind kind, const ys_options *opt
 
 ys_token_source *ys_new_yaml_memory_parser(const char *input, size_t length, const ys_options *options) {
     if (input == NULL && length > 0) {
-        errno = EINVAL; // a NULL buffer of nonzero length is not an empty input, it is a mistake
+        errno = EINVAL; // A NULL buffer of nonzero length is a mistake rather than an empty input.
         return NULL;
     }
     ys_memory memory;
     ys_token_source *source = ys_new_source(YS_SOURCE_PARSER, options, &memory);
     if (source != NULL) {
         ys_parser_init(&source->as.parser, memory, options);
-        // The window is the caller's buffer, whole. No reader to give it more, no buffer of its own to free. That is
-        // what makes a memory parser's tokens stable. Their text is the caller's bytes.
+        // The window is the caller's buffer. The tokens' text points into those bytes, and the tokens stay stable.
         if (input != NULL) {
             source->as.parser.window.bytes = (const uint8_t *)input;
         }
@@ -44,7 +44,7 @@ ys_token_source *ys_new_yaml_memory_parser(const char *input, size_t length, con
 
 ys_token_source *ys_new_yaml_stream_parser(ys_bytes_reader reader, const ys_options *options) {
     if (reader.read == NULL) {
-        errno = EINVAL; // a reader with nothing to read from
+        errno = EINVAL; // The reader has no read callback.
         ys_discard_transport(reader.close, reader.context);
         return NULL;
     }
@@ -61,7 +61,7 @@ ys_token_source *ys_new_yaml_stream_parser(ys_bytes_reader reader, const ys_opti
 
 ys_token_source *ys_new_yeast_stream_reader(ys_bytes_reader reader, const ys_options *options) {
     if (reader.read == NULL) {
-        errno = EINVAL; // a reader with nothing to read from
+        errno = EINVAL; // The reader has no read callback.
         ys_discard_transport(reader.close, reader.context);
         return NULL;
     }
@@ -93,7 +93,7 @@ int ys_delete_token_source(ys_token_source *source) {
     }
     if (source->kind == YS_SOURCE_PARSER) {
         ys_parser *parser = &source->as.parser;
-        // The messages are static and the window may be the caller's; what is the parser's own is what it grew.
+        // The parser owns what it grew.
         void *buffers[] = {parser->window.source.bytes, parser->queue.tokens, parser->stack.frames, source};
         return ys_teardown(parser->window.source.reader.close, parser->window.source.reader.context,
                            parser->memory.allocator, buffers, sizeof(buffers) / sizeof(buffers[0]));

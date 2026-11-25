@@ -129,6 +129,9 @@ CMAKE_FILES := CMakeLists.txt $(shell find . $(FIND_PRUNE) -name '*.cmake' -prin
 SH_FILES := $(shell find . $(FIND_PRUNE) -name '*.sh' -print)
 # The JavaScript files. `wrap_long_comments` reads their comments.
 JS_FILES := $(shell find . $(FIND_PRUNE) -name '*.js' -print)
+# The YAML files whose comments `wrap_long_comments` reads. `ANNOTATED` names `grammar/yeast-spec-1.2.yaml`. That
+# grammar holds productions of the YAML spec in its comments. `YAML_FILES` leaves the grammar out.
+YAML_FILES = $(filter-out ./$(ANNOTATED),$(shell find . $(FIND_PRUNE) \( -name '*.yml' -o -name '*.yaml' \) -print))
 # The scaffolding marker. A subst call builds the marker. This Makefile holds no literal copy.
 TODO_X    := $(subst -,,todo-x)
 # `git ls-files` lists the tracked files, as https://git-scm.com/docs/git-ls-files says. A gate reading those files
@@ -148,7 +151,7 @@ GRAMMAR_SPEC := third_party/yaml-grammar/yaml-spec-1.2.yaml
 # libyeast's grammar. `annotated2ir.load` reads the same file through `DEFAULT_GRAMMAR` where its caller names no
 # `source`.
 ANNOTATED := grammar/yeast-spec-1.2.yaml
-# The table the grammar's cuts and errors report from.
+# The path of `grammar/messages.yaml`, the table the grammar's cuts and errors report from.
 MESSAGES := grammar/messages.yaml
 # The generator and its gates.
 GEN_SRC := $(wildcard generator/*.py)
@@ -188,6 +191,7 @@ DEV_DEP_TOOLS   := python3 python3:yaml python3:conan $(CLANG_FORMAT) $(CLANG_TI
         verify-wire verify-decoder verify-spaces \
         verify-grammar-base verify-grammar-base-coverage \
         vet vet-format vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh vet-format-js \
+        vet-format-yaml reformat-yaml \
         vet-format-make \
         vet-comments vet-lint vet-pylint vet-mypy vet-version vet-packaging vet-$(TODO_X) \
         gh-pages gh-pages-docs gh-pages-coverage \
@@ -320,8 +324,10 @@ vet-format-md: .stamps/vet-format-md
 vet-format-py: .stamps/vet-format-py
 
 # The target vets the format of `CMakeLists.txt` and of the `*.cmake` files that the find in `CMAKE_FILES` reaches.
-.stamps/vet-format-cmake: $(CMAKE_FILES) | .stamps
+# `wrap_long_comments` checks the comment blocks.
+.stamps/vet-format-cmake: $(CMAKE_FILES) scripts/wrap_long_comments.py | .stamps
 	$(GERSEMI) --no-warn-about-unknown-commands --line-length 120 --check $(CMAKE_FILES)
+	python3 scripts/wrap_long_comments.py --check $(CMAKE_FILES)
 	@touch $@
 
 vet-format-cmake: .stamps/vet-format-cmake
@@ -342,8 +348,15 @@ vet-format-sh: .stamps/vet-format-sh
 	@touch $@
 
 vet-format-js: .stamps/vet-format-js
-# The other languages here have a formatter. This check holds the `Makefile` to a limit of `120` columns. The count is
-# in characters rather than bytes.
+
+# `wrap_long_comments` checks the comment blocks of a YAML file against a reflow to the column limit.
+.stamps/vet-format-yaml: $(YAML_FILES) scripts/wrap_long_comments.py | .stamps
+	python3 scripts/wrap_long_comments.py --check $(YAML_FILES)
+	@touch $@
+
+vet-format-yaml: .stamps/vet-format-yaml
+# `make reformat-make` runs only `scripts/wrap_long_comments.py` on the `Makefile`. This check holds the `Makefile` to a
+# limit of `120` columns. The count is in characters rather than bytes.
 .stamps/vet-format-make: Makefile | .stamps
 	@python3 -c 'import sys;                                                                                           \
 	  said = open("Makefile", encoding="utf-8").read().splitlines();                                                   \
@@ -399,8 +412,11 @@ vet-mypy: .stamps/vet-mypy
 vet-lint: .stamps/vet-lint
 
 # The leftover-marker scan fails if the marker appears in a tracked file's name or in the content of a tracked text
-# file. The scan ignores case. This Makefile writes the marker as `$(TODO_X)` rather than literally.
-.stamps/vet-$(TODO_X): $(SCAN_FILES) | .stamps
+# file. The scan ignores case. This Makefile writes the marker as `$(TODO_X)` rather than literally. `verify-fragments`
+# runs `generator/update_ledger_and_queue.py`. Its `update_ledger_and_queue.main` calls `updated`. `updated` rewrites
+# the ledger at `LEDGER`, and its call to `claims_purged` rewrites the claim store through `claims_written`. The scan
+# runs after `verify-fragments`.
+.stamps/vet-$(TODO_X): $(SCAN_FILES) .stamps/verify-fragments | .stamps
 	@if git ls-files | grep -in '$(TODO_X)'; then \
 	    echo "marker found in a file name - rename it"; exit 1; fi
 	@if git ls-files -z | xargs -0 grep -HIni '$(TODO_X)' 2>/dev/null; then \
@@ -592,10 +608,9 @@ verify-conventions: .stamps/verify-conventions
 PROSE_DIR ?= .git/critic
 
 # The gate breaks the project into fragments. A `Fragment` holds prose and a key of its own.
-# `collect_fragments.fragments` reads the files of the roster `prose_files` that
-# `check_documents.is_prose_of_the_project` accepts. The roster draws on `tracked_files`, and a scan of the tracked
-# files covers the roster. `update_ledger_and_queue` keeps the stores keyed by digest in step with the fragments, and
-# drops an entry the tree moved past. The queues sit under `PROSE_DIR`.
+# `collect_fragments.fragments` reads the files of the roster `gate.prose_files`. The roster draws on `tracked_files`,
+# and a scan of the tracked files covers the roster. `update_ledger_and_queue` keeps the stores keyed by digest in step
+# with the fragments, and drops an entry the tree moved past. The queues sit under `PROSE_DIR`.
 .stamps/verify-fragments: $(SCAN_FILES) $(wildcard $(PROSE_DIR)/prose-queue.jsonl $(PROSE_DIR)/unsettled-prose.jsonl) \
 		| .stamps
 	python3 generator/collect_fragments.py
@@ -621,8 +636,9 @@ verify-claims: .stamps/verify-claims
 
 # The gate reads the prose already in the tree. The gate holds that prose to the rules the write-time hooks apply to an
 # edit. The `prose_gate` hook refuses a sentence as the writer types it. Outside a markdown file, `refusals_for_edit`
-# hands the prose checkers only the fragments and literals the edit touches. The gate also reads the unsettled prose
-# queue, and a fragment the settling loop gave up on is a fault. A fragment waiting in the prose queue is a fault too.
+# hands the `_PROSE` and `_DOCUMENT` checkers only the fragments and literals the edit touches. The gate also reads the
+# unsettled prose queue, and a fragment the settling loop gave up on is a fault. A fragment waiting in the prose queue
+# is a fault too.
 .stamps/verify-prose: $(SCAN_FILES) $(wildcard $(PROSE_DIR)/unsettled-prose.jsonl $(PROSE_DIR)/prose-queue.jsonl) \
 		.stamps/verify-fragments | .stamps
 	python3 generator/check_prose.py $(PROSE_DIR)
@@ -666,10 +682,11 @@ examine-claims:
 	python3 generator/converge_claims.py $(PROSE_DIR) $(CLAIM_COUNT) $(if $(PROSE_MODEL),--model $(PROSE_MODEL),) \
 		$(if $(CLAIM_KEYS),--only $(CLAIM_KEYS),) $(if $(CLAIM_AGAIN),--again $(CLAIM_AGAIN),)
 
-# A tracked file holds ASCII. A character past ASCII looks like the ASCII character it replaces. Such a character also
-# makes a column count over a line disagree with the editor. `check_ascii` declares the paths whose content may hold
-# such a character.
-.stamps/verify-ascii: $(SCAN_FILES) generator/check_ascii.py | .stamps
+# `check_ascii` fails where a pattern of `_MAY_HOLD_ANY_BYTE` matches no tracked file holding a character past ASCII.
+# `check_ascii` declares the paths whose content may hold a character past ASCII. `verify-fragments` runs
+# `generator/update_ledger_and_queue.py`. That script's `updated` rewrites the ledger, and its call to `claims_purged`
+# rewrites the claim store. `check_ascii` runs after `verify-fragments`.
+.stamps/verify-ascii: $(SCAN_FILES) generator/check_ascii.py .stamps/verify-fragments | .stamps
 	python3 generator/check_ascii.py
 	@touch $@
 
@@ -787,7 +804,8 @@ verify: verify-roundtrip verify-references verify-markers verify-emits verify-me
         verify-wire verify-decoder verify-spaces
 
 # Check the format of the sources.
-vet-format: vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh vet-format-js vet-format-make
+vet-format: vet-format-c vet-format-md vet-format-py vet-format-cmake vet-format-sh vet-format-js vet-format-yaml \
+            vet-format-make
 
 # `vet-packaging` tests the packaging through `build-pkgtest/.pkg` and keeps its stamp under `build-pkgtest` rather than
 # under `.stamps`.
@@ -797,8 +815,8 @@ vet-packaging: build-pkgtest/.pkg
 # out of the file.
 vet-$(TODO_X): .stamps/vet-$(TODO_X)
 
-# The static quality mode. Vet runs the formatters in check mode, and it runs the linters. Vet also checks the C
-# comments, the leftover markers and the version. Vet ends with the packaging test.
+# Vet is the quality mode. Vet runs the formatters in check mode, and it runs the linters and the Python type check. Vet
+# also checks the C comments, the leftover markers and the version. Vet lists the packaging test last.
 vet: vet-format vet-comments vet-lint vet-pylint vet-mypy vet-$(TODO_X) vet-version vet-packaging
 
 # The Doxygen API docs, the part of the GitHub Pages payload that `build-docs/.docs` builds.
@@ -828,9 +846,10 @@ reformat-py:
 	$(FORMAT_DOCSTRING) --line-length 120 --fix-rst-backticks False $(PY_FILES) || [ $$? -eq 1 ]
 	python3 scripts/wrap_long_comments.py --apply $(PY_FILES)
 	$(BLACK) --line-length 120 $(PY_FILES)
-# The CMake, rewritten in place.
+# The target rewrites the CMake files in place. `wrap_long_comments` then wraps the comment blocks.
 reformat-cmake:
 	$(GERSEMI) --no-warn-about-unknown-commands --line-length 120 --in-place $(CMAKE_FILES)
+	python3 scripts/wrap_long_comments.py --apply $(CMAKE_FILES)
 
 # Format the shell scripts. `shfmt -w` rewrites them in place, as
 # https://github.com/mvdan/sh/blob/master/cmd/shfmt/shfmt.1.scd says. `wrap_long_comments` then wraps their comment
@@ -843,13 +862,17 @@ reformat-sh:
 reformat-js:
 	python3 scripts/wrap_long_comments.py --apply $(JS_FILES)
 
+# The comments of the YAML files. `wrap_long_comments` wraps a comment block at the column limit.
+reformat-yaml:
+	python3 scripts/wrap_long_comments.py --apply $(YAML_FILES)
+
 # The `Makefile`'s own comments. `wrap_long_comments` wraps a comment block here at the column limit. That script wraps
 # a comment block in a Python file the same way.
 reformat-make:
 	python3 scripts/wrap_long_comments.py --apply Makefile
 
 # Reformats the languages above in a single run.
-reformat: reformat-c reformat-md reformat-py reformat-cmake reformat-sh reformat-js reformat-make
+reformat: reformat-c reformat-md reformat-py reformat-cmake reformat-sh reformat-js reformat-yaml reformat-make
 
 # check-build-deps checks the tools a C build needs. check-dev-deps checks those and then the tools a developer needs.
 # Both targets run `check-deps.sh`. That script prints a missing tool by name.

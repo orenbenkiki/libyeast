@@ -57,6 +57,10 @@
       }
     },
     { "probes": "a comment", "skips": "this reads an isinstance call over ir kinds. a comment is no call." },
+    {
+      "probes": "a comment in a function body",
+      "skips": "this reads an isinstance call over ir kinds. a comment in a function body is no call."
+    },
     { "probes": "a docstring", "skips": "this reads an isinstance call over ir kinds. a docstring is no call." },
     { "probes": "a markdown line", "skips": "this reads a module of generator. a markdown file goes past it." },
     { "probes": "a string literal", "skips": "this reads an isinstance call over ir kinds. a literal is no call." },
@@ -84,6 +88,10 @@
       }
     },
     { "probes": "a comment", "skips": "this reads a `_Step(` call in normalize.py. a comment is no call." },
+    {
+      "probes": "a comment in a function body",
+      "skips": "this reads a `_Step(` call in normalize.py. a comment in a function body is no call."
+    },
     { "probes": "a docstring", "skips": "this reads a `_Step(` call in normalize.py. a docstring is no call." },
     { "probes": "a markdown line", "skips": "this reads normalize.py. a markdown file goes past it." },
     { "probes": "a string literal", "skips": "this reads a `_Step(` call in normalize.py. a literal is no call." },
@@ -103,6 +111,16 @@
     {
       "probes": "a comment",
       "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The place a run is measured.\nHELD = ()\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The place a run is measured", "new_string": "The one place a run is measured" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The place a run is measured", "new_string": "A run keeps its count here" }
+      }
+    },
+    {
+      "probes": "a comment in a function body",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # The place a run is measured.\n    return 1\n",
       "answers": {
         "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The place a run is measured", "new_string": "The one place a run is measured" }
       },
@@ -143,6 +161,16 @@
   ],
 
   "no_tree_numbers.py": [
+    {
+      "probes": "a comment in a function body",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # The pipeline hands on what the steps leave.\n    return 1\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "what the steps leave", "new_string": "42 productions" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "what the steps leave", "new_string": "what the steps hand on" }
+      }
+    },
     {
       "probes": "a comment",
       "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The pipeline hands on what the steps leave.\nHELD = ()\n",
@@ -187,13 +215,23 @@
 
   "short_comments.py": [
     {
-      "probes": "a comment",
-      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # one\n    return 1\n",
+      "probes": "a comment in a function body",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # A run holds a count.\n    return 1\n",
       "answers": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # one\n", "new_string": "    # one\n    # two\n    # three\n" }
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # A run holds a count.\n", "new_string": "    # A run holds a count.\n    # The count grows by a step.\n    # A caller reads the count.\n" }
       },
       "passes": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # one\n", "new_string": "    # one\n    # two\n" }
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # A run holds a count.\n", "new_string": "    # A run holds a count.\n    # The count grows by a step.\n" }
+      }
+    },
+    {
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # A run holds a count.\n    return 1\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # A run holds a count.\n", "new_string": "    # A run holds a count.\n    # The count grows by a step.\n    # A caller reads the count.\n" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # A run holds a count.\n", "new_string": "    # A run holds a count.\n    # The count grows by a step.\n" }
       }
     },
     {
@@ -204,12 +242,12 @@
     { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." },
     {
       "probes": "a fault the file held",
-      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # one\n    # two\n    # three\n    return 1\n",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # A run holds a count.\n    # The count grows by a step.\n    # A caller reads the count.\n    return 1\n",
       "answers": {
         "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    return 1", "new_string": "    return 2" }
       },
       "passes": {
-        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # three\n", "new_string": "" }
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    # A caller reads the count.\n", "new_string": "" }
       }
     }
   ],
@@ -226,6 +264,10 @@
       }
     },
     { "probes": "a comment", "skips": "this counts the lines of a nested docstring. a comment opens on a marker." },
+    {
+      "probes": "a comment in a function body",
+      "skips": "this counts the lines of a nested docstring. a comment in a function body opens on a marker."
+    },
     { "probes": "a string literal", "skips": "this counts the lines of a nested docstring. a literal is no docstring." },
     { "probes": "a markdown line", "skips": "this reads a module of Python. a markdown file goes past it." },
     {
@@ -252,6 +294,7 @@
       }
     },
     { "probes": "a comment", "skips": "this reads whole documents. a comment sits in a source." },
+    { "probes": "a comment in a function body", "skips": "this reads whole documents. a function body sits in a source." },
     { "probes": "a docstring", "skips": "this reads whole documents. a docstring sits in a source." },
     { "probes": "a string literal", "skips": "this reads whole documents. a literal sits in a source." }
   ],
@@ -268,12 +311,20 @@
       }
     },
     { "probes": "a comment", "skips": "this reads DESIGN.md. that file is markdown and holds no comment." },
+    {
+      "probes": "a comment in a function body",
+      "skips": "this reads DESIGN.md. that file is markdown and holds no function body."
+    },
     { "probes": "a docstring", "skips": "this reads DESIGN.md. that file is markdown and holds no docstring." },
     { "probes": "a string literal", "skips": "this reads DESIGN.md. that file is markdown and holds no literal." }
   ],
 
   "public_citations.py": [
     { "probes": "a markdown line", "skips": "this reads a header under include/. such a header is C and holds no markdown." },
+    {
+      "probes": "a comment in a function body",
+      "skips": "this reads a header under include/. no header there defines a function body."
+    },
     {
       "probes": "a comment",
       "file": "// SPDX-License-Identifier: MIT\n#ifndef PROBE_H\n#define PROBE_H\n\n/// The count of things a caller holds.\nint ys_probe_count(void);\n\n#endif\n",
@@ -289,6 +340,16 @@
   ],
 
   "plan_pointers.py": [
+    {
+      "probes": "a comment in a function body",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # The set a walk builds.\n    return 1\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set PLAN.md names" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long walk builds" }
+      }
+    },
     {
       "probes": "a markdown line",
       "file": "# The design\n\nThe pass reads the grammar.\n",
@@ -331,6 +392,32 @@
     }
   ],
 
+  "marker_lines.py": [
+    {
+      "probes": "a comment in a function body",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    try:\n        return int(\"1\")\n    except ValueError:  # not-a-failure: The probe holds no fault.\n        return 0\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The probe holds no fault.", "new_string": "The probe holds no fault. The reason after the mark runs on well past the width of a line." }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The probe holds no fault.", "new_string": "The probe holds no real fault." }
+      }
+    },
+    {
+      "probes": "a comment",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\nHELD = (\"held\",)  # not-prose: The tuple holds a name.\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The tuple holds a name.", "new_string": "The tuple holds a name. The reason after the mark runs on well past the width of a line of the tree." }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The tuple holds a name.", "new_string": "The tuple holds a short name." }
+      }
+    },
+    { "probes": "a docstring", "skips": "a mark sits in a comment after code. a docstring holds no such comment." },
+    { "probes": "a markdown line", "skips": "a mark sits in a comment after code. a markdown file holds no code." },
+    { "probes": "a string literal", "skips": "a mark sits in a comment after code. a string literal is no comment." }
+  ],
+
   "design_copies.py": [
     {
       "probes": "a markdown line",
@@ -343,6 +430,10 @@
       }
     },
     { "probes": "a comment", "skips": "this reads DESIGN.md. that file is markdown and holds no comment." },
+    {
+      "probes": "a comment in a function body",
+      "skips": "this reads DESIGN.md. that file is markdown and holds no function body."
+    },
     { "probes": "a docstring", "skips": "this reads DESIGN.md. that file is markdown and holds no docstring." },
     { "probes": "a string literal", "skips": "this reads DESIGN.md. that file is markdown and holds no literal." },
     {
@@ -358,6 +449,20 @@
   ],
 
   "prose_rewrite.py": [
+    {
+      "probes": "a comment in a function body",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # The set a walk over the grammar builds.\n    return 1\n",
+      "answers": {
+        "tool_input": {
+          "file_path": "TREE/generator/probe.py",
+          "old_string": "The set a walk over the grammar builds",
+          "new_string": "A walk over the grammar, which reads a production, and then answers with the set it built, and a caller asking twice is answered once"
+        }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk over the grammar builds", "new_string": "The set a walk over the grammar makes" }
+      }
+    },
     {
       "probes": "a comment",
       "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The set a walk over the grammar builds.\nHELD = ()\n",
@@ -454,11 +559,15 @@
   "unread_files.py": [
     {
       "probes": "a file whose language no reader knows",
-      "_": "`language_of` picks a reader from a file's path. `_LANGUAGES` gives a `.md` file a reader. It gives a `.txt` file other than `CMakeLists.txt` none.",
+      "_": "`language_of` picks a reader from a file's path. `_LANGUAGES` gives a `.md` file a reader. It gives no reader to a `.txt` file whose path does not end in `CMakeLists.txt`.",
       "answers": { "tool_input": { "file_path": "TREE/NOTES.txt", "content": "A probe. The hooks read it.\n" } },
       "passes": { "tool_input": { "file_path": "TREE/NOTES.md", "content": "A probe. The hooks read it.\n" } }
     },
     { "probes": "a comment", "skips": "this reads the path an edit names. the prose inside the file goes unread here." },
+    {
+      "probes": "a comment in a function body",
+      "skips": "this reads the path an edit names. the prose inside the file goes unread here."
+    },
     {
       "probes": "a docstring",
       "skips": "this reads the path an edit names. the prose inside the file goes unread here."
@@ -474,6 +583,16 @@
   ],
 
   "prose_citations.py": [
+    {
+      "probes": "a comment in a function body",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # The set a walk builds.\n    return 1\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set `speculate_folds_nothing` builds" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set `normalize` builds" }
+      }
+    },
     {
       "probes": "a comment",
       "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The set a walk builds.\nHELD = ()\n",
@@ -510,6 +629,16 @@
     }
   ],
   "ascii_only.py": [
+    {
+      "probes": "a comment in a function body",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef held() -> int:\n    \"\"\"A body a comment can sit in.\"\"\"\n    # The set a walk builds.\n    return 1\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long—slow walk builds" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "The set a walk builds", "new_string": "The set a long slow walk builds" }
+      }
+    },
     {
       "probes": "a comment",
       "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n# The set a walk builds.\nHELD = ()\n",
@@ -568,6 +697,10 @@
     },
     {
       "probes": "a comment",
+      "skips": "this compares the file an edit left with a recorded prediction. the kind of text the edit touched decides nothing."
+    },
+    {
+      "probes": "a comment in a function body",
       "skips": "this compares the file an edit left with a recorded prediction. the kind of text the edit touched decides nothing."
     },
     {

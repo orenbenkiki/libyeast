@@ -1,4 +1,6 @@
-# The "test" sub-gate runs the C parser tests across compilers and OSes. The tests are pure C. `CMakeLists.txt` builds the tests from `tests/test_*.c`. `.github/workflows/gh-pages.yml` runs the coverage gate `gh-pages-coverage` through the `gh-pages` target of `Makefile`.
+# The "test" sub-gate runs the C parser tests across compilers and OSes. The tests are pure C. `CMakeLists.txt` builds
+# the tests from `tests/test_*.c`. `.github/workflows/gh-pages.yml` runs the coverage gate `gh-pages-coverage` through
+# the `gh-pages` target of `Makefile`.
 
 name: test
 

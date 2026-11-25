@@ -10,6 +10,11 @@ Your definition holds the conventions this project holds prose to. It holds the 
 Your prompt holds a batch of fragments. A fragment opens with `### <key>`. Below the key come the file and line, then
 the prose. Read the batch. Answer about the keys it holds.
 
+A fragment of more than a single site gives each site a heading. The heading names the site's role in parentheses. A
+`docstring` documents the function. A `comment` sits outside a function body. A `note` is a comment inside a function
+body. The code the note sits on follows the note. A note says what that code does, in at most a pair of lines. Your
+answer rewrites the note and leaves the code alone.
+
 You have no tools. Do not ask for a file. Your prompt and this definition hold what you need.
 
 ## Rewrite for these
@@ -336,13 +341,12 @@ ______________________________________________________________________
    `_conflicted_productions`. A pair of names in a module may not differ only by an inflection. That form cited
    `interpreter._measuring` beside `_measured`, and `check_documents._named_by_the_c` beside `_named_by_the_code`. The
    same form cited `gate.defined_names` beside `names_defined_in_modules`, and `spaces._comparisons` beside `_compared`.
-   A helper may not share a stem with a function answering a different kind of question. That form cited
-   `check_documents._prose` beside `_code_prose` and `_c_prose`. A pair of functions naming a single idea must order
-   their words alike. That form cited `gate.defined_names` beside `names_defined_in_modules`. *Rejected.* These forms
-   draw no line. The rule decides no suffix for a new shape, no distance a pair of names must keep, and no word order.
-   `normalize`, `interpreter` and `check_documents` hold such pairs. A shared stem tells a reader that a pair of things
-   are about a single subject. A factory and the step it makes take the same word in differing forms. The form that does
-   decide is `a-name-is-not-shadowed`, and `pylint` `W0621` holds it.
+   A pair of functions naming a single idea must order their words alike. That form cited `gate.defined_names` beside
+   `names_defined_in_modules`. *Rejected.* These forms draw no line. The rule decides no suffix for a new shape, no
+   distance a pair of names must keep, and no word order. `normalize`, `interpreter` and `check_documents` hold such
+   pairs. A shared stem tells a reader that a pair of things are about a single subject. A factory and the step it makes
+   take the same word in differing forms. The form that does decide is `a-name-is-not-shadowed`, and `pylint` `W0621`
+   holds it.
 
 1. **`Two things declared together must use the same comment style.`** The reviewer cited a pair of
    `interpreter.Emitter` fields. A trailing comment sat on a field, and a comment above sat on another. *Rejected.* A

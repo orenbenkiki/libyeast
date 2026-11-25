@@ -2,8 +2,8 @@
   "_": "A settling run cites a rule of `.claude/conventions.md` per change. `cited` counts the changes citing a rule. `accepted` counts the changes the comparator let through. `overlaps` pairs a rule with a second rule. A later change applied that second rule to the same run of text. `record_run` writes this file.",
   "rules": {
     "a-comment-describes-what": {
-      "cited": 580,
-      "accepted": 326
+      "cited": 642,
+      "accepted": 378
     },
     "a-condition-names-what-decides-it": {
       "cited": 8,
@@ -18,23 +18,23 @@
       "accepted": 8
     },
     "a-name-keeps-its-meaning": {
-      "cited": 43,
+      "cited": 44,
       "accepted": 5
     },
     "a-piece-of-prose-is-written-once": {
-      "cited": 1021,
-      "accepted": 410
+      "cited": 1075,
+      "accepted": 437
     },
     "a-sentence-names-its-actor": {
-      "cited": 1878,
-      "accepted": 909
+      "cited": 1906,
+      "accepted": 934
     },
     "a-sentence-says-one-thing": {
-      "cited": 9682,
-      "accepted": 4162
+      "cited": 9820,
+      "accepted": 4283
     },
     "every-claim-is-checked-before-it-is-written": {
-      "cited": 248,
+      "cited": 249,
       "accepted": 114
     },
     "faulty-prose-is-rewritten-not-patched": {

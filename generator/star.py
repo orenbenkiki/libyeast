@@ -83,14 +83,16 @@ def _uri_unescape(text: str) -> str:
 
 def _expand_tag(handle: str, suffix: str, tags: Mapping[str, str]) -> str:
     """
-    A tag's `handle` and `suffix` as the event shows it. The handle resolves through `tags`. That mapping holds the
-    document's `%TAG` directives over the default primary `!` and secondary `!!`. So `!!str` is `tag:yaml.org,2002:str`,
-    a local `!foo` stays `!foo`, and a verbatim `!<uri>` is the URI it wrote. A URI's `%XX` escapes decode. A named
-    handle needs a `%TAG` to resolve it. This fold models the resolution and reports an unresolved handle as an error.
+    Resolve a tag's `handle` and `suffix` into the tag the event shows. The handle resolves through `tags`. That mapping
+    holds the document's `%TAG` directives over the default primary `!` and secondary `!!`. So `!!str` is
+    `tag:yaml.org,2002:str`, a local `!foo` stays `!foo`, and a verbatim `!<uri>` is the URI it wrote. A URI's `%XX`
+    escapes decode. A named handle needs a `%TAG` to resolve it. This fold models the resolution and reports an
+    unresolved handle as an error.
     """
     if handle.startswith("!<") and handle.endswith(">"):
         return _uri_unescape(handle[2:-1])  # a verbatim !<uri>, written with no handle span
-    if handle not in tags:  # only a named `!x!` reaches here undefined; `!` and `!!` are always the defaults
+    # only a named `!x!` reaches here undefined. `_DEFAULT_TAGS` defines `!` and `!!`, and a `%TAG` may replace either.
+    if handle not in tags:
         raise Incompatible(f"undefined tag handle {handle!r}")
     return _uri_unescape(tags[handle] + suffix)
 
@@ -151,7 +153,7 @@ def parse_events(text: str) -> list[_Event]:
             events.append(_Event(kind))
         elif kind in ("+MAP", "+SEQ"):
             anchor = tag = None
-            for token in rest.split():  # an optional `{}`/`[]` flow hint, then `&anchor`, then `<tag>`
+            for token in rest.split():
                 if token.startswith("&"):
                     anchor = token[1:]
                 elif token.startswith("<"):
@@ -244,8 +246,8 @@ class _Directive:
 def _fold(tokens: Iterable[wire.Token]) -> list[_Event]:
     """
     Fold a yeast token stream into the events it would produce. The fold raises `Incompatible` to reject a document. An
-    error token rejects it. A stray `end-escape` rejects it. A second `%YAML` directive rejects it. An undefined tag
-    handle rejects it in `_expand_tag`.
+    error token rejects it. A stray `end-escape` in a scalar rejects it. A second `%YAML` directive rejects it. An
+    undefined tag handle rejects it in `_expand_tag`.
 
     An implicit `+STR`/`-STR` brackets the stream. A scalar gathers a run of `text`/`line-fold`/`line-feed` and escapes.
     That run sits between `begin-scalar` and `end-scalar`. The indicator that opens a scalar gives its style. An alias
@@ -262,7 +264,7 @@ def _fold(tokens: Iterable[wire.Token]) -> list[_Event]:
     tag: _Tag | None = None  # while inside a begin-tag..end-tag
     tags = dict(_DEFAULT_TAGS)  # the document's tag handles, its `%TAG` directives over the defaults
     directive: _Directive | None = None  # while inside a directive
-    yaml_directives = 0  # `%YAML` directives seen in the document; a second is an error
+    yaml_directives = 0  # the count of `%YAML` directives the document has held
 
     for token in tokens:
         code = token.code
@@ -280,11 +282,9 @@ def _fold(tokens: Iterable[wire.Token]) -> list[_Event]:
             elif code == _C["end-escape"]:
                 if escape is None:
                     raise Incompatible("an `end-escape` with no `begin-escape` before it")
-                # The raise above says it is a list, and pylint does not narrow it across the loop.
                 scalar.parts.append(_resolve_escape(escape[1:]))  # pylint: disable=unsubscriptable-object
                 escape = None
-            # What an escape is made of. The backslash that opens it and the characters naming it, which the grammar
-            # gives as an indicator and meta.
+            # The grammar gives the backslash and the naming characters of an escape as indicator and meta tokens.
             elif escape is not None and code in (_C["indicator"], _C["meta"]):
                 escape.append(token.text and _unescape_wire(token.text))
             elif code == _C["indicator"] and scalar.style is None:
@@ -382,8 +382,8 @@ def _resolve_escape(parts: Iterable[str]) -> str:
 
 class Incompatible(Exception):
     """
-    libyeast rejects the document. The fold raises Incompatible on an error token. A stray `end-escape` raises it. So
-    does a second `%YAML` directive in a document. An undefined tag handle raises it in `_expand_tag`.
+    libyeast rejects the document. The fold raises Incompatible on an error token. A stray `end-escape` in a scalar
+    raises it. So does a second `%YAML` directive in a document. An undefined tag handle raises it in `_expand_tag`.
     """
 
 

@@ -43,7 +43,6 @@ class YeastConan(ConanFile):
 
     def config_options(self):
         """Drop `fPIC` on Windows."""
-        # Conan replaces the `settings` tuple above with an object of its own before calling this.
         if self.settings.os == "Windows":  # pylint: disable=no-member
             self.options.rm_safe("fPIC")
 

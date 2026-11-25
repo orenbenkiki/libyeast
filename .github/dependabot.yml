@@ -1,5 +1,5 @@
-# Dependabot version updates. The tracked ecosystem here is the GitHub Actions pinned in the workflows. Dependabot keeps the Actions
-# current via a single grouped PR per month.
+# Dependabot version updates. The tracked ecosystem here is the GitHub Actions pinned in the workflows. Dependabot keeps
+# the Actions current via a single grouped PR per month.
 version: 2
 updates:
   - package-ecosystem: github-actions

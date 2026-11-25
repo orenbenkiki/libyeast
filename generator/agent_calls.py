@@ -203,7 +203,7 @@ async def _replied(
         text = line.decode(errors="replace").strip()
         try:
             held = json.loads(text)
-        except json.JSONDecodeError:  # not-a-failure: the reply below names the fault
+        except json.JSONDecodeError:  # not-a-failure: The error reply below names the line the command wrote.
             run.kill()
             await run.wait()
             return {"is_error": True, "result": f"the command wrote no JSON: {text[:200]}"}
@@ -271,8 +271,7 @@ async def _called(
     ]
     if caller.model:
         named += ["--model", caller.model]
-    # The prompt reaches the agent as a file on its standard input. The command waits a few seconds for its input, and a
-    # file holds the prompt before the command starts.
+    # The prompt reaches the agent as a file on its standard input.
     with tempfile.TemporaryFile() as prompt:
         prompt.write(message.encode())
         prompt.seek(0)
@@ -289,7 +288,7 @@ async def _called(
     streamed: list[dict[str, Any]] = []
     try:
         held = await asyncio.wait_for(_replied(caller, kind, run, streamed, is_a_seed), _A_CALL_BUDGET)
-    except TimeoutError:  # failure-is-reported: the dead reply this returns, and the log line of its task
+    except TimeoutError:  # failure-is-reported: `_kept` writes the transcript into `dead/`.
         run.kill()
         await run.wait()
         return None, _kept(
@@ -384,7 +383,7 @@ def killed(caller: Caller) -> None:
     for run in list(caller.children):
         try:
             run.kill()
-        except ProcessLookupError:  # not-a-failure: the agent finished on its own
+        except ProcessLookupError:  # not-a-failure: The agent process has already exited.
             pass
 
 

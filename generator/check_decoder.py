@@ -57,15 +57,14 @@ def _check_consumed_sets(model: chars.Model, grammar: dict[str, ir.Prod]) -> lis
     returns exclude the line breaks. Those are the sets under a kind in `ir.REPETITIONS`, and the sets under a trimmed
     star.
 
-    The gate asks nothing of a set holding a single codepoint. A run of such a set goes unchecked even where it repeats.
-    `b-line-feed` consuming only `LF` is such a consume, and it is no fault.
+    The gate asks nothing of a set the grammar writes as a single codepoint. A run of such a set goes unchecked even
+    where it repeats. `b-line-feed` consuming only `LF` is such a consume, and it is no fault.
     """
     errors = []
     by_denotation = {denotation: name for name, denotation in model.sets}
 
     def visit(node: ir.Node, owner: str) -> None:
-        # What repeats is asked of `ir.repeated` rather than of a list of kinds kept here. Such a list would go stale
-        # the moment a run is written a new way, and leave that run unchecked.
+        # The gate asks `ir.repeated` which nodes repeat.
         repeated = ir.repeated(node)
         if repeated is not None:
             denotation = chars.denote(grammar, repeated)

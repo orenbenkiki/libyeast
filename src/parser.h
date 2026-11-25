@@ -141,17 +141,16 @@ ys_frame ys_stack_pop(ys_stack *stack);
 
 // The failure the parser stopped on, and the policy stored for the input after that failure.
 //
-// A message is a static string from `messages.h`.
+// A message is a static string from `src/messages.c`.
 //
-// The failure path therefore allocates nothing. The
-// failure path frees nothing. A token's text comes from the input or from a
-// static string. The error code does not change what `ys_are_tokens_stable` answers.
+// The failure path therefore allocates nothing. The failure path frees nothing. A token's text points into the input or
+// at a static string. A zero-width token that is not an error has NULL text. The error code does not change what
+// `ys_are_tokens_stable` answers.
 //
-// The message does not say what the parser found.
+// The message is a fixed text in `src/messages.c`. It does not say what the parser found.
 //
-// The error token is a token of its own rather than a token the queue holds. It follows
-// what the queue holds. Holding the error needs no room in the queue either. Reporting a malformed document therefore
-// cannot fail for want of memory.
+// The error token is a token of its own rather than a token the queue holds. It follows what the queue holds. Holding
+// the error needs no room in the queue either. Reporting a malformed document therefore cannot fail for want of memory.
 typedef struct ys_error {
     const char *message; // the error's text. A NULL message says the parser has no error to hand back. Handing the
                          // error back clears the message. The parser does not read `resume`.
@@ -191,8 +190,8 @@ int ys_parser_read(ys_parser *parser, ys_token *token);
 // Make at least `wanted` bytes readable. The parser reads from the source where the window holds fewer than `wanted`
 // bytes. Fewer bytes are readable at the end of the input, or after a failed fill.
 //
-// `YS_OK`, or the fault a failed fill sets in `ys_parser::fault`. That is `YS_FAILED_STREAM`
-// where the source's reader failed, and `YS_FAILED_MEMORY` where the cap or the allocator did.
+// Returns `YS_OK`, or the fault a failed fill sets in `ys_parser::fault`. That is `YS_FAILED_STREAM` where the source's
+// reader failed, and `YS_FAILED_MEMORY` where the cap or the allocator did.
 int ys_parser_fill(ys_parser *parser, size_t wanted);
 
 // Hand back a malformed document. That is the error token `ys_parser_error` describes. Its text is `message`.

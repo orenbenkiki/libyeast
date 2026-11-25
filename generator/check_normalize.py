@@ -70,9 +70,9 @@ def _spaces_held(grammar: dict[str, ir.Prod], fixtures: Sequence[spec_tests.Fixt
     """
     The places a parse reaches that the spaces say it cannot, as error strings.
 
-    `normalize.spaces_of_ways` reads the grammar to work out which places a parse may reach. This holds those spaces to
-    a parse that really happened. A space that refuses a place the parse is actually in came out too narrow. The entry
-    and exit spaces reach this gate and stop there. `normalize.spaces_of_ways` has no caller besides this gate. The gate
+    `normalize.spaces_of_ways` reads the grammar to work out which places a parse may reach. This function holds those
+    spaces to a parse a fixture ran. A space that refuses a place the parse is in came out too narrow. The entry and
+    exit spaces reach this gate and stop there. `normalize.spaces_of_ways` has no caller besides this gate. The gate
     passes a space that admits more than a parse reaches.
 
     The gate checks both ends of a way, and the far end of an action. An entry check holds what a gate admits. An entry
@@ -82,14 +82,13 @@ def _spaces_held(grammar: dict[str, ir.Prod], fixtures: Sequence[spec_tests.Fixt
     The gate compares an action's near end with no computed space. The parse supplies that end, and the gate starts
     `normalize.after_action` from it.
     """
-    # Read for a parse from the root alone, which is the machine that ships. A fixture starting outside the states the
-    # root brings it to simulates a parse no input makes.
+    # The check runs a fixture's parse from the production that fixture names.
     spaces_by_way = normalize.spaces_of_ways(grammar)
     found = gate.spread(_fixture_spaces_held, (grammar, spaces_by_way), list(fixtures))
     return sorted({fault for faults in found for fault in faults})
 
 
-def _fixture_spaces_held(
+def _fixture_spaces_held(  # pylint: disable=broad-exception-caught
     grammar_and_spaces: tuple[dict[str, ir.Prod], dict[int, tuple[str, int, spaces.SubSpace, spaces.SubSpace]]],
     fixture: spec_tests.Fixture,
 ) -> list[str]:
@@ -113,7 +112,7 @@ def _fixture_spaces_held(
                     f"the parse at position {emitter.position} sits {what} a step in a state `spaces.HELD` lacks"
                 )
         found = spaces_by_way.get(id(node))
-        if found is None:  # an action, compared with where performing it says the parse is left
+        if found is None:
             said = normalize.after_action(node, spaces.guard_answers_in(before), grammar)
             if after and not any(said.under(one) for one in after):
                 faults.append(
@@ -137,7 +136,7 @@ def _fixture_spaces_held(
             spec_tests.arguments(fixture, grammar),
             checking=checking,
         )
-    except Exception:  # noqa: BLE001  failure-is-reported: by `_corpus_errors`  # pylint: disable=W0718
+    except Exception:  # failure-is-reported: `check_interpreter.reproduced` reports this crash.
         return faults
     return faults
 
@@ -172,11 +171,11 @@ def _narrowed(
     """
     The fixtures and suite cases `corpus` names, and the suite cases `check_star.DIVERGENCES` declares, as the pair to
     search with. The search asks which step first broke *these*. The pipeline already answers any other case. The search
-    runs over the named cases. An empty narrowing hands back `fixtures` and `suite` whole.
+    runs over those cases. An empty narrowing hands back `fixtures` and `suite` whole.
     """
     named = {line.split("]", 1)[1].split(":", 1)[0].split(None, 1)[1] for line in corpus if "]" in line}
-    # A declared divergence stays in whatever suite is asked about. Its declaration is checked against the cases given,
-    # and dropping it would report the declaration stale at each probe.
+    # `cases` keeps a declared divergence. The probe's `check_star.disagreements` checks a declaration against the cases
+    # it gets. Without the divergence, `disagreements` would report the declaration as stale.
     cases = [case for case in suite if case in named or case in check_star.DIVERGENCES]
     wanted = [fixture for fixture in fixtures if os.path.basename(fixture.input_path) in named]
     return (wanted, cases) if (wanted or cases) else (fixtures, suite)
@@ -216,7 +215,7 @@ def _first_broken(
     The search starts from the range the hint left rather than from the whole pipeline.
     """
     labels = [label for label, _grammar in stages]
-    low = 0  # the stage at `low` is taken to hold; the one at `high` is known not to
+    low = 0  # The stage at `low` holds. The stage at `high` breaks.
     high = len(stages) - 1 if bound is None else bound
 
     def probed(index: int) -> list[str]:
@@ -278,7 +277,7 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
     corpus += [f"[{final_label}] star {error}" for error in check_star.disagreements(final, suite)]
     ir.say(f"[{final_label}] holding the spaces to the states the fixtures really reach")
     errors += [f"[{final_label}] space {error}" for error in _spaces_held(final, groups[-1])]
-    if corpus:  # something broke the stream; say so at once, whether or not the step behind it is asked for
+    if corpus:  # a corpus divergence prints at once, with or without a bisect
         print(f"FAILING: {len(corpus)} corpus divergence(s)", flush=True)
         for divergence in corpus[:5]:
             print(f"    {divergence}", flush=True)
@@ -297,31 +296,27 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
     for error in check_grammar_coverage.gaps(final, exercisers):
         errors.append(f"[final] coverage {error}")
     ir.say("holding the pipeline to its own law")
-    # The pipeline's own law. Each step's invariant is a count that does not rise, is none where the step settles it,
-    # and stays none after.
+    # A step's invariant is a count that does not rise. The count is none where the step settles it, and stays none.
     for fault in normalize.invariant_faults(stages):
         errors.append(f"[invariant] {fault}")
-    # A step naming neither an invariant nor a reason for having none promises what nothing checks. A step left with
-    # nothing goes rather than being found a new job.
+    # A step naming neither an invariant nor a reason for having none promises a property no check reads.
     for name in normalize.untested_steps():
         errors.append(f"[step] `{name}` names neither an invariant nor a reason for having none")
-    # A phase names the invariants it settles. Some step of the phase settles or establishes those.
+    # A phase names the invariants it settles. A step of the phase settles or establishes those.
     for fault in normalize.phase_faults():
         errors.append(f"[phase] {fault}")
-    # What the steps asked of `GUARD_CROSSES_ACTION` that it does not answer, and what it answers that nothing asked. An
-    # unnamed pair refuses the move, which looks exactly like a worked-out no unless it is said here.
+    # An unnamed pair of `GUARD_CROSSES_ACTION` refuses the move. This report tells that refusal from a worked-out no.
     for guard, action in normalize.GUARD_CROSSES_ACTION.unnamed():
         errors.append(f"[crossing] a walk asked about `{guard}` in front of `{action}`, and the table does not say")
     for guard, action in normalize.GUARD_CROSSES_ACTION.unconsulted():
         errors.append(f"[crossing] the table says `{guard}` in front of `{action}`. nothing asked about that pair.")
-    # What the runs asked of a global that one value for the parse could not have answered. A global holds a value that
-    # does not nest, said of the grammar that has just run rather than of the argument that made it one.
+    # A global holds a value that does not nest. `interpreter.ASKED` counts the reads a single slot could not answer.
     asked = interpreter.ASKED["flattened"]
     if asked:
         errors.append(f"[global] {asked} read(s) answered from a stack a single slot could not have held")
 
-    # Each question that answered a kind it had called untested, and which kind. Said before the gate reports, which
-    # exits and would take the list with it.
+    # List the questions that answered a kind they called untested. This list prints before `gate.report` exits on a
+    # fault in `errors`.
     owed = ir.owed()
     pairs = [f"{what} - {kind}" for what, kinds in owed.items() for kind in kinds]
     ir.say(
@@ -336,8 +331,7 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
                 f"tells the question from that call."
             )
 
-    # The rounds each fixpoint took, deepest first. Said before the gate reports, which exits where anything failed and
-    # would take this with it. `ir.ROUNDS` is a backstop, and this line says how far out of reach it is.
+    # `ir.ROUNDS` caps a fixpoint. This line says how far off that cap sits.
     deepest = ir.deepest_rounds()
     ir.say(
         f"deepest fixpoint {max(deepest.values(), default=0)} round(s) against a cap of {ir.ROUNDS}: "
@@ -353,30 +347,26 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
         f"suite cases",
     )
     print("    " + " -> ".join(step.name for step in normalize.STEPS))
-    # The stranded fixtures. Each guards the last stage whose grammar can still run it, the purge having taken its
-    # production out of the later ones.
+    # A stranded fixture guards the last stage whose grammar can still run it.
     stranded = len(fixtures) - len(groups[-1])
     print(f"    {stranded} fixture(s) pinned to an earlier stage's grammar, the last to run them")
-    # The steps with no invariant that say why, which is the one way a step may name none. A fault above counts the
-    # rest.
+    # A step with no invariant may say why instead. A fault above counts a step that says nothing.
     exempt = [step.name for step in normalize.STEPS if step.untestable]
     print(f"    {len(exempt)} of {len(normalize.STEPS)} step(s) have no invariant and say why: " f"{', '.join(exempt)}")
-    # A question's handler nothing reached. A kind is exercised by the inputs that reach it, and a run over the whole
-    # corpus says a handler is dead.
+    # Count the question handlers that no input reached.
     unused = ir.unexercised()
     print(
         f"    {sum(len(kinds) for kinds in unused.values())} question handler(s) nothing reached: "
         + ("; ".join(f"{what} - {', '.join(kinds)}" for what, kinds in unused.items()) or "none")
     )
-    # What the final grammar still breaks, whatever the steps settle between them. Each wants a step the pipeline lacks.
+    # An invariant the final grammar still breaks wants a step the pipeline lacks.
     unsettled = normalize.unsettled_invariants(final)
     print(
         f"    {len(unsettled)} invariant(s) the final grammar still breaks: "
         + ", ".join(f"{name} {count}" for name, count in unsettled)
     )
     print(f"    {len(final)} production(s) in the grammar the phase hands on")
-    # The globals the grammar has come to hold, and what the runs asked of them that one slot could not have answered.
-    # At none the slot is the stack, and the value does not nest.
+    # Report the globals the grammar holds and the reads a single slot could not have answered.
     held = [name for name in ir.GLOBAL_PARAMS if not any(name in final[production].params for production in final)]
     print(f"    {len(held)} global(s) - {', '.join(held) or 'none'} - asked {asked} read(s) a single slot could not")
 

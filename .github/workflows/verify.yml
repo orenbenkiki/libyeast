@@ -1,5 +1,5 @@
-# The "verify" sub-gate. The `verify` target of the `Makefile` runs the verify gates its prerequisites name. The job needs no
-# matrix.
+# The "verify" sub-gate. The `verify` target of the `Makefile` runs the verify gates its prerequisites name. The job
+# needs no matrix.
 
 name: verify
 

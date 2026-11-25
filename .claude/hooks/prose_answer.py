@@ -17,8 +17,8 @@ An agent answers again after a refusal, until this hook passes the answer. The `
 passes bounds the call.
 
 This hook reads a call naming a `verdicts` map or a `proposals` list. `.claude/agents/prose-critic.md` says what the
-critic answers with. An empty `verdicts` map gets the refusal a gap in a tiling gets. A kept fragment or a kept proposal
-spares the empty map that refusal.
+critic answers with. Outside a critic batch, an empty `verdicts` map gets the refusal an answer holding no run gets. A
+kept fragment or a kept proposal spares the empty map that refusal.
 
 A critic call names its batch through `collect_fragments.CRITIC_BATCH`. This hook refuses a verdict outside that batch.
 It also refuses an answer that leaves a key of the batch with no verdict.
@@ -480,7 +480,7 @@ def main() -> None:
     verdicts = tool_input.get(_VERDICTS)
     if not isinstance(proposals, list) and not isinstance(verdicts, dict):
         return
-    # A `claude -p` call names no agent. Its session tells parallel calls apart.
+    # A payload holding no `agent_id` keys the call by its `session_id`.
     agent_id = str(payload.get("agent_id") or payload.get("session_id") or "")
     kept = _widened(_kept(agent_id), tool_input)
     _proposed(tool_input, kept)
@@ -491,8 +491,8 @@ def main() -> None:
         verdicts = {key: one for key, one in verdicts.items() if key in batch}
     if isinstance(verdicts, dict):
         said += _judged(verdicts, kept)
-    # An answer naming no fragment reaches no verdict, and the checks above read a verdict. Such an answer leaves the
-    # whole prose unread. `tiled_faults` says that in the words a reader with a gap gets.
+    # Outside a critic batch, an empty `verdicts` map with nothing kept gets the refusal `tiled_faults` gives an answer
+    # holding no run.
     if not said and isinstance(verdicts, dict) and not verdicts and not kept[_VERDICTS] and not kept[_PROPOSALS]:
         said += agent_answers.tiled_faults("", [])
     if said:
@@ -509,7 +509,7 @@ def main() -> None:
             answer[name] = kept[name]
     if kept[_VERDICTS] or _VERDICTS in tool_input:
         answer[_VERDICTS] = kept[_VERDICTS]
-    # A call that already says everything gets no amendment. Silence is how a hook passes.
+    # A call the hook has nothing to add to gets no amendment. Silence is how a hook passes.
     if answer != tool_input:
         _logged(agent_id, "amended", answer.get(_VERDICTS), int(kept.get(_REFUSALS, 0)))
         refusal.amend(answer, _WHY)

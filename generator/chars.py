@@ -62,7 +62,9 @@ def denote(grammar: Mapping[str, ir.Prod], node: ir.Node, seen: tuple[str, ...] 
 
 def _denoted_set(node: ir.CharSet, _grammar: Mapping[str, ir.Prod], _seen: tuple[str, ...]) -> _Denotation | None:
     """A set as the parser already sees it. A single interval spanning a single character is the literal it names."""
-    intervals = [span for span in node.spans if span[0] >= 0]  # the invalid byte is no character and belongs to no set
+    intervals = [
+        span for span in node.spans if span[0] >= 0
+    ]  # The invalid byte is no character. This function leaves it out of the denotation.
     if len(intervals) == 1 and intervals[0][0] == intervals[0][1]:
         return ("literal", intervals[0][0])
     parts: tuple[_Denotation, ...] = tuple(("range", low, high) for low, high in intervals)
@@ -185,8 +187,9 @@ def _consumed_by_a_way(
 # the answer. `Question.unused` reports a handled kind that no input reaches. `Question` raises on a kind that the table
 # of `_DENOTES` leaves out. The raise names that kind.
 #
-# This group takes a run or an optional item rather than a single character. A repetition turns as often as the input
-# allows or as often as a count fixes. A sequence takes item after item. An option takes its item or nothing.
+# This group takes a run, a sequence or an optional item rather than a single character. `_try_longest_run` repeats an
+# item as often as the input allows. `_try_counted_run` repeats an item as often as a count fixes. A sequence takes item
+# after item. An option takes its item or nothing.
 _TAKES_MORE_THAN_ONE = (*ir.REPETITIONS, ir.OptTree, ir.SeqTree)
 # A kind here takes no character at all. A guard reads and gives back, and an action leaves something behind. An empty
 # match does neither. A failing match takes nothing. A comparison of counts asks about neither the input nor a
@@ -530,7 +533,9 @@ def _tested_sets(grammar: Mapping[str, ir.Prod]) -> list[tuple[str, _Denotation]
 
 
 class Model:
-    """The character model. The grammar's named literals, the sets it tests, and the key of any codepoint."""
+    """
+    The character model holds the grammar's named literals, the sets the grammar tests, and the key of any codepoint.
+    """
 
     def __init__(self, grammar: Mapping[str, ir.Prod]) -> None:
         self.literals = _literals(grammar)

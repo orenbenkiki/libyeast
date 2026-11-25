@@ -163,8 +163,8 @@ def _sites(grammar: Mapping[str, ir.Prod]) -> dict[int, tuple[list[str], list[st
     productions may do so, and the plainest of them names the character. `chars.naming_productions` answers that for a
     lone character exactly as it does for a wider set.
 
-    The characters that no production names appear inline. `ns-uri-char` writes `;` inline, and no production defines
-    `;`. A citation of such a character names the productions it appears in.
+    The characters that no production names appear inline. A citation of such a character names the productions it
+    appears in.
     """
     cited = {name: f"[{production.number:03d}] {name}" for name, production in grammar.items()}
     naming = chars.naming_productions(grammar)
@@ -180,13 +180,15 @@ def _sites(grammar: Mapping[str, ir.Prod]) -> dict[int, tuple[list[str], list[st
 
     for name, production in grammar.items():
         if _defined(grammar, production.body) is not None:
-            continue  # its own character is named above, wherever the plainest form of it appears
+            # A production that defines a character adds nothing to the second list. The first list names the plainest
+            # such production.
+            continue
         pending, seen = [production.body], set[int]()
         while pending:
             node = pending.pop()
             nested = list(chars.children(node))
-            # A character is written *here* where the node holds nothing and takes a codepoint. That is a leaf form it,
-            # rather than a shape built over one, which is cited at whatever it is built from.
+            # The second list counts a leaf node that denotes a lone codepoint. A node with children counts nothing. The
+            # loop searches the children of that node instead.
             written = None if nested else chars.single_codepoint(chars.denote(grammar, node))
             if written is not None and written not in seen:
                 seen.add(written)
@@ -242,8 +244,7 @@ def emit(out: io.StringIO, model: chars.Model, grammar: Mapping[str, ir.Prod], k
     out.write("#define YEAST_DECODER_TABLES_H\n\n")
     out.write("#include <stdint.h>\n\n")
 
-    # The layout is `chars`'. The sentence describing it is worked out from the same constants the macros below are.
-    # Written out again here, it would say whatever it said when it was last read.
+    # Write a comment on the key's layout from the `chars` constants the macros use.
     ids = f"0..{chars.SET_SHIFT - 1}"
     bits = f"{chars.SET_SHIFT}..{chars.SET_SHIFT + len(model.sets) - 1}"
     length = f"{chars.LEN_SHIFT}..{chars.LEN_SHIFT + 2}"
@@ -364,8 +365,7 @@ def _utf8_length(codepoint: int) -> int:
 def main() -> None:
     grammar = annotated2ir.load()
     model = chars.Model(grammar)
-    # Build the whole header before writing any of it. A generator that fails partway then leaves the committed file as
-    # it was, rather than truncated to whatever it had got to.
+    # The function builds the whole header before writing it. A failure then leaves the committed file untouched.
     source = io.StringIO()
     emit(source, model, grammar, check_groups(model, grammar))
     with open(TABLES, "w", encoding="utf-8") as handle:

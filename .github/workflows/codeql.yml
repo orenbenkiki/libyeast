@@ -1,4 +1,5 @@
-# CodeQL analyzes the C code of the library. The `vet-lint` target of the `Makefile` runs clang-tidy and cppcheck over the library and the tests.
+# CodeQL analyzes the C code of the library. The `vet-lint` target of the `Makefile` runs clang-tidy and cppcheck over
+# the library and the tests.
 
 name: codeql
 

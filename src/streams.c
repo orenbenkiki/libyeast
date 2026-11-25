@@ -30,8 +30,8 @@
 // errno set. https://pubs.opengroup.org/onlinepubs/9799919799/functions/read.html gives that contract for read().
 // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/read gives it for _read().
 static ptrdiff_t ys_fd_read(void *context, char *buffer, size_t size) {
-    // read()/_read() report their result in a signed type (ssize_t / int). A single call can transfer at most INT_MAX
-    // bytes, far more than any real read. Cap the request there so neither the count nor the return overflows.
+    // `_read()` returns an `int` and refuses a count past `INT_MAX`, as its page above says. The call caps the request
+    // at `INT_MAX`.
     unsigned int capped = size > (unsigned int)INT_MAX ? (unsigned int)INT_MAX : (unsigned int)size;
     return (ptrdiff_t)YS_OS_READ((int)(intptr_t)context, buffer, capped);
 }
@@ -52,8 +52,8 @@ ys_bytes_reader ys_fd_reader(int fd, ys_ownership ownership) {
     return reader;
 }
 
-// A `FILE *` gets the treatment `ys_fd_read` gives a descriptor. A read of zero bytes is the end of the file. `ferror`
-// tells that end from a failure.
+// `ys_fp_read` reads a `FILE *` through `fread`. `ys_fp_read` hands the whole `size` to `fread`. `ys_fd_read` caps its
+// request at `INT_MAX`. A read of zero bytes is the end of the file. `ferror` tells that end from a failure.
 static ptrdiff_t ys_fp_read(void *context, char *buffer, size_t size) {
     FILE *file = context;
     size_t read_count = fread(buffer, 1, size, file);

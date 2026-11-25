@@ -165,7 +165,7 @@ def lines_read(path: str) -> list[Any]:
     held = [json.loads(line) for line in above]
     try:
         held.append(json.loads(last))
-    except json.JSONDecodeError:  # not-a-failure: a kill tore this line, and the next write replaces it
+    except json.JSONDecodeError:  # not-a-failure: A kill tore this line. `rewritten` leaves the torn line out.
         pass
     return held
 

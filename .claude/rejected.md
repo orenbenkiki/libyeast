@@ -20,13 +20,12 @@ ______________________________________________________________________
    `_conflicted_productions`. A pair of names in a module may not differ only by an inflection. That form cited
    `interpreter._measuring` beside `_measured`, and `check_documents._named_by_the_c` beside `_named_by_the_code`. The
    same form cited `gate.defined_names` beside `names_defined_in_modules`, and `spaces._comparisons` beside `_compared`.
-   A helper may not share a stem with a function answering a different kind of question. That form cited
-   `check_documents._prose` beside `_code_prose` and `_c_prose`. A pair of functions naming a single idea must order
-   their words alike. That form cited `gate.defined_names` beside `names_defined_in_modules`. *Rejected.* These forms
-   draw no line. The rule decides no suffix for a new shape, no distance a pair of names must keep, and no word order.
-   `normalize`, `interpreter` and `check_documents` hold such pairs. A shared stem tells a reader that a pair of things
-   are about a single subject. A factory and the step it makes take the same word in differing forms. The form that does
-   decide is `a-name-is-not-shadowed`, and `pylint` `W0621` holds it.
+   A pair of functions naming a single idea must order their words alike. That form cited `gate.defined_names` beside
+   `names_defined_in_modules`. *Rejected.* These forms draw no line. The rule decides no suffix for a new shape, no
+   distance a pair of names must keep, and no word order. `normalize`, `interpreter` and `check_documents` hold such
+   pairs. A shared stem tells a reader that a pair of things are about a single subject. A factory and the step it makes
+   take the same word in differing forms. The form that does decide is `a-name-is-not-shadowed`, and `pylint` `W0621`
+   holds it.
 
 1. **`Two things declared together must use the same comment style.`** The reviewer cited a pair of
    `interpreter.Emitter` fields. A trailing comment sat on a field, and a comment above sat on another. *Rejected.* A

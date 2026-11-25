@@ -21,9 +21,10 @@ reads a code span as a word, and a passive behind such a span names its actor.
 
 `a-free-choice-word-is-a-universal` refuses `whatever`. `a-purpose-clause-says-no-action` refuses `exists for` and
 `exists to`. `a-pointer-names-its-referent` refuses the runs `That last` and `This last`.
-`a-name-of-the-tree-sits-in-a-code-span` refuses a name written outside the backticks. `a-question-word-is-no-noun`
-refuses a free relative behind a preposition. `a-sentence-states-no-plan` refuses a sentence ending on `yet` and a word
-of the future tense. `a-marked-up-word-is-read-as-a-word` takes the emphasis off a word before the word rules read it.
+`a-name-of-the-tree-sits-in-a-code-span` refuses a word outside the backticks holding an underscore between letters.
+`a-question-word-is-no-noun` refuses a free relative behind a preposition. `a-sentence-states-no-plan` refuses a
+sentence ending on `yet` and a word of the future tense. `a-marked-up-word-is-read-as-a-word` takes the emphasis off a
+word before the word rules read it.
 
 A shape fault is a construction. `a-sentence-stays-within-the-limits` counts the commas, the words and the third-person
 pronouns. That rule refuses a possessive with its noun dropped. It refuses a bare participle where the subject belongs.
@@ -35,8 +36,8 @@ The rules read characters. A trailing absolute clause shows up as a comma and th
 of the sentence. The checker refuses a form of `be` before a past participle where no `by` follows.
 
 `prose_faults` reads a fragment whole. It refuses a first sentence pointing outside the fragment. It refuses a last
-sentence with no full stop. `a-run-of-pronouns-reaches-back-to-a-noun` refuses a run of pronoun openers that reaches
-back to a demonstrative. `a-paragraph-opens-on-a-noun` refuses a paragraph opening on a pronoun.
+sentence ending on no `.`, `!` or `?`. `a-run-of-pronouns-reaches-back-to-a-noun` refuses a run of pronoun openers that
+reaches back to a demonstrative. `a-paragraph-opens-on-a-noun` refuses a paragraph opening on a pronoun.
 
 The checker takes a markdown table row a cell at a time. A markdown list item ends at the end of its line. An indented
 line below continues the item. The checker drops a doxygen `@code` block and a doxygen command.
@@ -46,6 +47,8 @@ line below continues the item. The checker drops a doxygen `@code` block and a d
 
 import os
 import re
+
+import gate
 
 # A claim that one counter-example refutes. The checker lists the members of the determiner classes that make such a
 # claim, beyond the words a writer happened to reach for. A list of words is a game of whack-a-mole. A writer refused
@@ -155,14 +158,13 @@ _CLOSING_MARKUP = re.compile(r"[*_`\s]+$")
 _SENTENCE = re.compile(r"(?:[^.!?]|[.!?](?=[\w.]))+[.!?]?")
 
 # A run of text in backticks. A writer marks such a run as code rather than as prose.
-_A_CODE_SPAN = re.compile(r"`[^`]*`")
+A_CODE_SPAN = re.compile(r"`[^`]*`")
 
 # A hyphenated name in bold. `.claude/conventions.md` opens an entry with the rule's name written that way. A name is
 # not a sentence.
 _A_DEFINED_NAME = re.compile(r"\*\*[a-z0-9]+(?:-[a-z0-9]+)+\*\*")
 
-# The word a code span leaves behind. A shape rule then reads a noun in place of the name. A gap would lose the subject
-# of a sentence.
+# The word a code span leaves behind. A shape rule then reads a noun in place of the name.
 _A_NAME = "name"
 
 # A sentence-ending mark inside a code span. The mark belongs to the name rather than to the sentence.
@@ -196,13 +198,12 @@ _AN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 # parenthesis.
 _A_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 
-# A directive addressed to a tool rather than to a reader.
-_A_DIRECTIVE = re.compile(
-    r"\b(?:noqa|pylint|type|fmt|isort|mypy|yapf|nopep8)\s*:\s*\S*|\bfailure-is-reported:|\bnot-a-failure:|\bnot-prose:"
-)
+# A directive addressed to a tool rather than to a reader. `gate.TOOLS` names those tools. `gate.A_MARK` matches a
+# marker for a gate of the tree.
+_A_DIRECTIVE = re.compile(rf"\b(?:{gate.TOOLS})\s*:\s*\S*|{gate.A_MARK.pattern}")
 
-# A row of a markdown table. It has no full stop, and a whole table read as one sentence reports the width of the table
-# rather than the shape of a sentence. The checker takes a cell.
+# A row of a markdown table. A table row opens and closes with a pipe. `_celled` swaps the row's pipes for full stops.
+# The prose checker then reads a cell as a sentence. `_joined` drops the row.
 _A_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 
 # A markdown list item. The pattern matches the marker opening the item. `_does_continue` takes an indented line below
@@ -300,8 +301,7 @@ _A_WHICH_TAIL = re.compile(r",\s+which\b")
 # A relative clause hung off a comma on `whose`. This belongs to the tail family beside `_A_WHICH_TAIL`.
 _A_WHOSE_TAIL = re.compile(r",\s+whose\b")
 
-# A sentence ending on a possessive. The noun the thing owns is gone, and an edit ate it. `A lookahead's.` is such a
-# docstring.
+# A sentence ending on a possessive. The noun the possessive owns is missing. `A lookahead's.` is such a docstring.
 _ENDS_ON_A_POSSESSIVE = re.compile(r"\w's\s*[.!?]\s*$")
 
 # A pointer in the first sentence of a fragment. A reader who opens the fragment cold finds no earlier sentence naming
@@ -464,11 +464,11 @@ _POINTS_AT_A_LAST_THING = re.compile(r"\b(?:that|this) last\b", re.IGNORECASE)
 # blanks the URLs. It keeps the text of a link and drops the target. An underscore between letters remains.
 _AN_UNMARKED_NAME = re.compile(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*[A-Za-z0-9]\b")
 
-# The emphasis markers around a word. A rule below matches the word without them.
+# A run of the asterisks that mark emphasis. A rule below matches the word without them.
 _EMPHASIS = re.compile(r"\*+")
 
 # A paragraph break. The referent of a pronoun opening the paragraph sits across that break.
-_A_PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
+A_PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
 
 # Some third-person pronouns. A demonstrative stays out of this checker. So does `that`.
 _A_PRONOUN = re.compile(r"\b(?:it|its|they|them|their)\b", re.IGNORECASE)
@@ -542,26 +542,32 @@ def _itemized(line: str, below: str) -> str:
 
 
 def said_by(prose: str) -> str:
-    """`prose` with what it writes as code blanked. The answer is a single line. A code span leaves `_A_NAME` behind."""
+    """
+    `prose` with what it writes as code blanked. The answer holds a line per paragraph, and a blank line between them. A
+    code span leaves `_A_NAME` behind.
+    """
     named = _A_DEFINED_NAME.sub(" ", prose)
-    without_code = _A_CODE_SPAN.sub(_A_NAME, _A_CODE_BLOCK.sub(" ", named))
+    without_code = A_CODE_SPAN.sub(_A_NAME, _A_CODE_BLOCK.sub(" ", named))
     without_links = _A_LINK.sub(r"\1", _AN_IMAGE.sub(" ", _AN_AUTOLINK.sub(" ", without_code)))
     blanked = _A_DIRECTIVE.sub(" ", A_URL.sub(" ", _A_DOXYGEN_COMMAND.sub(" ", without_links)))
     without_dividers = _A_DIVIDER_RULE.sub(" ", blanked)
     said = [_celled(line) for line in without_dividers.splitlines()]
     read = "\n".join(_itemized(line, said[at + 1] if at + 1 < len(said) else "") for at, line in enumerate(said))
-    return " ".join(read.split())
+    return "\n\n".join(" ".join(one.split()) for one in A_PARAGRAPH_BREAK.split(read) if one.strip())
 
 
 def _sentences(prose: str) -> list[str]:
     """
     The sentences `prose` writes, a list entry apiece, with the code spans intact.
 
-    A full stop inside a code span belongs to the name. The split skips it.
+    A full stop inside a code span belongs to the name. The split skips it. A paragraph break ends a sentence.
     """
-    whole = " ".join(prose.split())
-    unsplit = _A_CODE_SPAN.sub(lambda found: _A_STOP.sub("\x00", found.group(0)), whole)
-    return [said for said in (whole[at.start() : at.end()].strip() for at in _SENTENCE.finditer(unsplit)) if said]
+    held = []
+    for paragraph in A_PARAGRAPH_BREAK.split(prose):
+        whole = " ".join(paragraph.split())
+        unsplit = A_CODE_SPAN.sub(lambda found: _A_STOP.sub("\x00", found.group(0)), whole)
+        held += [said for said in (whole[at.start() : at.end()].strip() for at in _SENTENCE.finditer(unsplit)) if said]
+    return held
 
 
 # The word rules, by the name a fault goes under. A class names the patterns that find the fault. A class names the
@@ -767,7 +773,7 @@ def _pronoun_openers(prose: str, is_opener_reported: bool) -> list[str]:
     `_A_DEICTIC_OPENER` matched.
     """
     found = []
-    for at, paragraph in enumerate(_A_PARAGRAPH_BREAK.split(prose)):
+    for at, paragraph in enumerate(A_PARAGRAPH_BREAK.split(prose)):
         if at == 0 and is_opener_reported:
             continue
         said = _sentences(said_by(paragraph))
@@ -925,20 +931,20 @@ def _shape_faults(prose: str, is_stating_why: bool = False) -> list[str]:
     under `_FEWEST_WORDS`.
 
     `is_stating_why` passes a text whose whole job is a reason. `checkers` marks the `why` bullet of a pending proposal
-    that way. The WHY clause goes unread there, and the rest of the shape rules apply.
+    that way. The shape rules then skip the WHY clause of such a text and read the rest of it.
     """
     whole = said_by(prose)
     found = [
         f"[a possessive with its noun dropped: {said.group(0).strip()!r}] {said.group(0).strip()}"
         for said in _AN_ELIDED_NOUN_BEFORE_A_CONJUNCTION.finditer(prose)
     ]
-    for sentence in _SENTENCE.findall(whole):
+    for sentence in _sentences(whole):
         said = sentence.strip()
         over = _over(said, is_stating_why) if len(said.split()) >= _FEWEST_WORDS else []
         nominal = _A_NOMINAL_SUBJECT.match(said)
         if nominal:
             over.append(f"a nominalized clause opening on {nominal.group(1)!r} where the actor belongs")
-        # A stub falls under `_FEWEST_WORDS`, and the truncation is the fault. This reads such a sentence too.
+        # This check reads a sentence ending on a possessive at any length. It reads a stub under `_FEWEST_WORDS` too.
         if _ENDS_ON_A_POSSESSIVE.search(said):
             over.append("a possessive the sentence ends on, with the noun it owns dropped")
         if over:

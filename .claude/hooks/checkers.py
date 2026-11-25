@@ -37,12 +37,12 @@ from typing import Any
 
 import altitude
 import ascii_only
-import check_documents
 import collect_fragments
 import design_copies
 import document_rules
 import gate
 import kind_dispatches
+import marker_lines
 import nested_docstrings
 import no_tree_numbers
 import plan_pointers
@@ -59,14 +59,13 @@ import unread_files
 _PROSE = "prose"
 
 # The text of a markdown file whole, or the touched fragments and literals of a source joined. `no_tree_numbers` reads a
-# document that way. A count in a heading counts too.
+# document that way. `numbers_in_prose` counts a numeral in a heading.
 _DOCUMENT = "document"
 
-# The readings of the file that `_Measured` holds. `short_comments` asks how many lines a comment run takes.
+# The readings of the file that `_Measured` holds. `short_comments.runs_of` counts the lines a comment run takes.
 _FILE = "file"
 
-# The whole new text of a file, whether or not `is_prose_of_the_project` takes the file. `ascii_only`, `plan_pointers`
-# and `unread_files` read that text.
+# The whole new text of a file, whether or not `is_prose_of_the_project` takes the file.
 _ANY = "any"
 
 # The pending proposals file, as a caller names it.
@@ -79,15 +78,13 @@ class _Measured:
     The readings a checker takes of the file rather than of the words.
 
     `short_comments.runs_of` fills `comment_runs`. `nested_docstrings.long_ones_of` fills `nested_docstrings`.
-    `prose_citations.minted_by` fills `minted`. `document_rules.roster_faults_of` fills `roster_faults`.
-    `design_copies.copies_of` fills `copied`. `kind_dispatches.dispatches_of` fills `dispatches`.
-    `step_arguments.unargued_of` fills `unargued`.
+    `prose_citations.minted_by` fills `minted`. `design_copies.copies_of` fills `copied`.
+    `kind_dispatches.dispatches_of` fills `dispatches`. `step_arguments.unargued_of` fills `unargued`.
     """
 
     comment_runs: tuple[tuple[str, int], ...] = ()
     nested_docstrings: tuple[tuple[int, str, int], ...] = ()
     minted: frozenset[str] = frozenset()
-    roster_faults: tuple[str, ...] = ()
     copied: tuple[str, ...] = ()
     dispatches: tuple[str, ...] = ()
     unargued: tuple[str, ...] = ()
@@ -97,18 +94,16 @@ def _measured(source: str, path: str) -> _Measured:
     """
     The readings `_CHECKERS` takes of the file the edit would leave.
 
-    A checker reads these rather than the lines of a text. A question about a comment run is a question about the file.
-    Unwrapping a source would take the code apart. A reading covers the whole file. A checker such as
-    `short_comments.refusal_for` therefore refuses a fault the file held before the edit.
+    A `_FILE` checker reads these rather than the lines of a text. A question about a comment run is a question about
+    the file. Unwrapping a source with `collect_fragments.flattened` would take the code apart. A reading covers the
+    whole file. A checker such as `short_comments.refusal_for` therefore refuses a fault the file held before the edit.
     """
-    roster = document_rules.roster_faults_of(source, path)
     if not path.endswith(".py"):
-        return _Measured(roster_faults=roster, copied=design_copies.copies_of(source, path))
+        return _Measured(copied=design_copies.copies_of(source, path))
     return _Measured(
         short_comments.runs_of(source),
         nested_docstrings.long_ones_of(source),
         prose_citations.minted_by(source),
-        roster,
         dispatches=kind_dispatches.dispatches_of(source, path),
         unargued=step_arguments.unargued_of(source, path),
     )
@@ -136,8 +131,9 @@ class _Prose:
     measured: _Measured = _Measured()
 
 
-# The prose checkers. A row names the module of the checker. A row holds the call that gives the refusal. The last field
-# names the text the checker reads. A module naming a checker reads this list rather than writing its own.
+# The checkers that `_refusals` runs. A row names the module of the checker. A row holds the call that gives the
+# refusal. The last field names the text the checker reads. A module naming a checker reads this list rather than
+# writing its own.
 _CHECKERS = (
     ("prose_words.py", lambda one: prose_words.refusal_for(one.said, one.path), _PROSE),
     (
@@ -155,11 +151,12 @@ _CHECKERS = (
     ("public_citations.py", lambda one: public_citations.refusal_for(one.said, one.path), _DOCUMENT),
     (
         "document_rules.py",
-        lambda one: document_rules.refusal_for(one.said, one.path, one.measured.roster_faults),
+        lambda one: document_rules.refusal_for(one.said, one.path),
         _DOCUMENT,
     ),
     ("ascii_only.py", lambda one: ascii_only.refusal_for(one.said, one.path), _ANY),
     ("plan_pointers.py", lambda one: plan_pointers.refusal_for(one.said, one.path), _ANY),
+    ("marker_lines.py", lambda one: marker_lines.refusal_for(one.said, one.path), _ANY),
     (
         "short_comments.py",
         lambda one: short_comments.refusal_for(one.said, one.path, one.measured.comment_runs),
@@ -231,7 +228,7 @@ def refusals_for_edit(edit: Any, path: str) -> list[str]:
     `_measured` and no text.
     """
     found = _refusals(_Prose(edit.now, path), _ANY)
-    if not check_documents.is_prose_of_the_project(path):
+    if not gate.is_prose_of_the_project(path):
         return found
     taken = _measured(edit.now, path)
     touched = [one.prose.content for one in collect_fragments.fragments_touched(edit)]
@@ -241,8 +238,7 @@ def refusals_for_edit(edit: Any, path: str) -> list[str]:
     literals = [text for _at, text in collect_fragments.literals_touched(edit)]
     for text in literals:
         found += _refusals(_Prose(collect_fragments.flattened(text), path, is_literal=True), _PROSE)
-    # A markdown file goes to the document checkers whole. A count in a heading is a count. A source hands them the same
-    # prose the shape rules read, the code around it holding no prose.
+    # Run the `_DOCUMENT` checkers over the text read, then the `_FILE` checkers over `_measured`.
     read = edit.now if path.endswith(".md") else "\n\n".join([*touched, *literals])
     found += _refusals(_Prose(collect_fragments.flattened(read), path, measured=taken), _DOCUMENT)
     return found + _refusals(_Prose("", path, measured=taken), _FILE)

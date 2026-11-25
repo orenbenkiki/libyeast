@@ -21,7 +21,7 @@ static ys_token_sink *ys_new_sink(ys_sink_kind kind, ys_bytes_writer writer, con
         ys_discard_transport(writer.close, writer.context);
         return NULL;
     }
-    ys_token_sink *sink = ys_memory_new(memory, options, sizeof(*sink)); // sets errno on failure
+    ys_token_sink *sink = ys_memory_new(memory, options, sizeof(*sink)); // `ys_memory_new` sets errno on a failure.
     if (sink == NULL) {
         ys_discard_transport(writer.close, writer.context);
         return NULL;
@@ -46,16 +46,14 @@ int ys_write_token(ys_token_sink *sink, ys_token token) {
     if (sink->kind == YS_SINK_WIRE) {
         return ys_wire_write(&sink->writer, token);
     }
-    // The emitter. A token stream is byte-complete, and emitting it is writing the bytes a token spans. A marker
-    // spans none. An error spans none either, but is no token to render. Its text is a message, not input. An error is
-    // refused rather than skipped. A stream to emit must be filtered of errors above the emitter.
+    // The emitter refuses an error token.
     if (token.code == YS_CODE_ERROR) {
         errno = EINVAL;
         return YS_FAILED_ACTION;
     }
     size_t span = token.end.byte_offset - token.start.byte_offset;
     if (span == 0) {
-        return YS_OK; // a zero-width marker, with nothing to write
+        return YS_OK; // A zero-width marker has nothing to write.
     }
     return ys_put(&sink->writer, token.text, span);
 }
@@ -64,7 +62,7 @@ int ys_delete_token_sink(ys_token_sink *sink) {
     if (sink == NULL) {
         return YS_OK; // deleting nothing cannot fail
     }
-    // The sink allocates itself and no more. The byte transport is closed, flushing what it buffered.
+    // The sink allocates itself and no more. The byte transport closes where its close is not NULL.
     void *buffers[] = {sink};
     return ys_teardown(sink->writer.close, sink->writer.context, sink->allocator, buffers,
                        sizeof(buffers) / sizeof(buffers[0]));

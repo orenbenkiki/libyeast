@@ -1,35 +1,32 @@
 # SPDX-License-Identifier: MIT
 """
-A backtracking interpreter of the grammar, run against libyeast's conformance fixtures.
+`interpreter` runs a grammar on an input and backtracks where a match fails. `check_interpreter` runs the interpreter
+against libyeast's conformance fixtures.
 
-The interpreter is slow and obviously correct. It matches a production against an input the way the grammar reads,
-character by character with backtracking, and emits the yeast token stream. The match holds a grammar to the tokens the
-base grammar emitted when `regen_fixture` froze the fixture. The interpreter is also the net that catches a
-normalization step going wrong. It takes the grammar as an argument. `check_normalize` runs a fixture against the last
-stage of the pipeline whose grammar can still run it.
+The interpreter matches a production against an input character by character. The interpreter emits the yeast token
+stream. A fixture holds the tokens the base grammar emitted when `regen_fixture` froze that fixture. A normalization
+step that goes wrong yields tokens that differ from the fixture. The interpreter takes the grammar as an argument.
+`check_normalize` runs a fixture against the last pipeline stage that can still run that fixture.
 
-The interpreter runs a node the IR defines in the way the node calls for. A match matches, and a value expression
-evaluates. A branch of a `(case)` and the gate of an alternative both read through the node holding them. A kind neither
-table names raises rather than passing quietly. `check_interpreter` reports the fixture that reached such a kind as a
-crash.
+The interpreter matches a match node of the IR and evaluates a value expression. The interpreter reads a `(case)` branch
+through the node holding that branch. The interpreter reads the gate of an alternative the same way. The interpreter
+raises on a node kind it has no handler for. `check_interpreter` reports a fixture reaching such a kind as a crash.
 
-The interpreter covers the grammar as written. The coverage is the character-level nodes and the repetitions. It is the
-parameter machinery and the arithmetic over a parameter. It is the assertions and the lookarounds. The annotations that
-give a token a code belong here too. The annotations that give it markers belong here as well.
+The interpreter runs the grammar as written. The interpreter runs character-level nodes and repetitions. The interpreter
+runs parameters and arithmetic over a parameter. The interpreter runs assertions and lookarounds. The interpreter runs
+annotations giving a token a code or markers.
 
-The interpreter covers the canonical form too. That form holds the consumes a run of characters lowers to, the pairs a
-scope comes down to, and the actions of the provisional run. `RecoverWrapper` says where a failed `(cut)` stops
-unwinding. A node's meaning lives where the IR defines the node, and the interpreter matches those meanings node for
-node.
+The interpreter also runs the canonical form. In the canonical form a run of characters lowers to consumes. A scope
+lowers to pairs. The canonical form holds the actions of a provisional run. `RecoverWrapper` marks where a failed
+`(cut)` stops unwinding.
 
-Matching is success-continuation style. `_try_match` calls a continuation per way a node matches, in greedy order, and
-the continuation reports whether the rest of the parse succeeded. `_try_match` therefore re-enters an alternation when a
-later element fails.
+Matching uses success continuations. `_try_match` tries the ways a node matches in greedy order. `_try_match` calls a
+continuation on a way that matches. The continuation reports whether the rest of the parse succeeded. An alternation
+tries its next item when a later element fails.
 
-Past a `(cut)` the parse does not backtrack. A failure past the cut becomes an error token naming what the rule
-expected. The input from there comes back as unparsed, as far as the resume policy lets `l-unparsed` take it. A failure
-that no `(recover)` catches hands the input to `l-recover`. The rule `l-unparsed` splits the input it takes into
-unparsed text, invalid bytes and breaks.
+The parse does not backtrack past a `(cut)`. A failure past a cut becomes an error token naming what the rule expected.
+The resume policy decides how far `l-unparsed` takes the input after that token. A failure no `(recover)` catches hands
+the input to `l-recover`. `l-unparsed` splits its input into unparsed text, invalid bytes and breaks.
 """
 
 import os
@@ -179,8 +176,8 @@ class Coverage:
     """
 
     def __init__(self) -> None:
-        self.reached: set[str] = set()  # its body offered a solution, or a value expression evaluated it
-        self.rejected: set[str] = set()  # it failed to match, or a gate guarding it refused
+        self.reached: set[str] = set()
+        self.rejected: set[str] = set()
 
 
 class _DepthExceeded(Exception):
@@ -212,7 +209,7 @@ def _is_only_the_mark(node: ir.Node, grammar: Mapping[str, ir.Prod]) -> bool:
     tells the pair apart, and the question goes to the set rather than to the character.
 
     The question goes to the node a consume takes. `chars.denote` answers the question for a literal and a set. It
-    covers a range and the character a gate found as well.
+    covers a range as well. For a character a gate found, `_try_gated_char` asks about the set the action names.
 
     The store keeps the answer against the node's identity, and holds the node with it. The id then stays taken, and a
     later object cannot reuse it. The key holds no grammar. The kinds that reach here name their own characters, and the
@@ -222,8 +219,7 @@ def _is_only_the_mark(node: ir.Node, grammar: Mapping[str, ir.Prod]) -> bool:
     def is_only_the_mark() -> bool:
         if not isinstance(node, _HOLDS_ITS_OWN_CHARACTERS):
             raise ValueError(f"a consume names {type(node).__name__}. that kind names no characters of its own")
-        # A node taking no single character denotes nothing. The answer is no, rather than a set to work spans out of.
-        # What does not name the mark alone does not name it, however many characters it takes.
+        # `chars.denote` gives None for a node taking no single character. The answer is then no.
         denotation = chars.denote(grammar, node)
         spans = () if denotation is None else tuple(tuple(span) for span in chars.spans(denotation))
         return spans == ((wire.BYTE_ORDER_MARK, wire.BYTE_ORDER_MARK),)
@@ -248,8 +244,8 @@ def _decode_one(raw: bytes, offset: int) -> tuple[int | None, int]:
     """
     The codepoint of the UTF-8 sequence at `offset` and its byte length, or `(None, 1)` where the byte begins none.
 
-    The decoder follows https://www.rfc-editor.org/rfc/rfc3629 and matches the C decoder. An invalid byte is a unit of a
-    single byte. A run of invalid bytes resyncs at the next valid lead and swallows nothing behind that lead.
+    The decoder follows https://www.rfc-editor.org/rfc/rfc3629. An invalid byte is a unit of a single byte. A run of
+    invalid bytes resyncs at the next valid lead and swallows nothing behind that lead.
     """
     lead = raw[offset]
     if lead < 0x80:
@@ -261,13 +257,16 @@ def _decode_one(raw: bytes, offset: int) -> tuple[int | None, int]:
     elif 0xF0 <= lead <= 0xF4:
         length = 4
     else:
-        return None, 1  # a continuation byte alone, an overlong lead, or a byte no sequence starts with
+        return None, 1  # The lead is a continuation byte, an overlong lead or a byte past `0xF4`.
     if offset + length > len(raw):
-        return None, 1  # the sequence runs off the end of the input
+        return (
+            None,
+            1,
+        )  # The sequence runs off the end of the input.  The bytes behind the lead form no valid UTF-8 sequence.
     try:
         return ord(raw[offset : offset + length].decode("utf-8")), length
-    except UnicodeDecodeError:  # not-a-failure: no character here
-        return None, 1  # a bad continuation or an overlong encoding. or a surrogate or a codepoint past U+10FFFF
+    except UnicodeDecodeError:  # not-a-failure: The bytes at `offset` decode to no character.
+        return None, 1
 
 
 def _decode(raw: bytes) -> tuple[list[int | None], list[int]]:
@@ -300,64 +299,74 @@ class Emitter:
     going. `failing` and `unwinding` are therefore no part of a checkpoint.
 
     `shadow` is a stack per global. A `(set)` puts a value on and a `(clear)` takes it off. A read takes the top, and
-    that is right however the writes nest. The parse acts on the answer the stack gives. `ASKED` counts the reads where
-    the stack and the slot beside it differ. The tally is a single number over the whole corpus rather than a property
-    of any parse. `check_normalize._check` refuses a tally above none.
+    the top holds the right value however the writes nest. The parse acts on the answer the stack gives. `ASKED` counts
+    the reads where the stack and the slot beside it differ. The tally is a single number over the whole corpus rather
+    than a property of any parse. `check_normalize._check` refuses a tally above none.
     """
 
     def __init__(self, raw: bytes) -> None:
-        self.raw = raw  # the input bytes. a token that took input holds a slice of them, not a re-encoding
-        self.chars, self.byte_at = _decode(raw)  # a unit per character or invalid byte. position indexes them
+        self.raw = raw  # The input bytes. A token that took input holds an escaped slice of these bytes.
+        self.chars, self.byte_at = _decode(raw)  # A unit per character or invalid byte. `position` indexes the units.
         self.position = 0
         self.mark = wire.Mark(0, 0, 1, 0)
         self.tokens: list[wire.Token] = []
-        self.open_token: _OpenToken | None = None  # the token being built, or None
-        self.provisional: int | None = None  # where the open run begins in `tokens`, or None. a run is open at a time
-        self.provisional_mark: int | None = None  # where the run's mark cuts `tokens`, or None. re-taken, the last wins
+        self.open_token: _OpenToken | None = None  # The token being built. The field holds `None` between tokens.
+        # The open run begins at this index in `tokens`. A single run is open at a time.
+        self.provisional: int | None = None
+        # The index where the mark of the run cuts `tokens`. A later mark replaces an earlier mark.
+        self.provisional_mark: int | None = None
 
-        # The undo journal of the token mutations that are not appends, a retyped code and an injected marker. A rewind
-        # pops it to undo what truncating the token count cannot.
+        # The undo journal of a retyped code and an injected marker. A rewind pops the journal to undo what cutting the
+        # token count cannot.
         self.trail: list[_TrailEntry] = []
-        self.code = "unparsed-text"  # the token code the next character gets. a `(token)` sets it
+        self.code = "unparsed-text"  # The token code the next character gets. A `(token)` sets the code.
 
-        # What the parse gives back on its way out, innermost last, each entry a `(kind, value, the pairs it was opened
-        # for)`. A single stack serves the parse, so a pair a factoring split across a call closes off what it opened.
+        # The stack holds the scopes the parse gives back on its way out. The innermost scope sits last. A factoring can
+        # split a pair across a call. Such a pair still closes its own scope.
         self.stack: tuple[_Scope, ...] = ()
-        self.env: dict[str, _Value] = {}  # the current production's parameters (n/m/c/t/r) and their values
-        self.is_sol = True  # at the start of a line. true at the start of the input, and after a break
-        self.forbidden: tuple[ir.Node | None, ...] = ()  # what may not match at a start of line. the `(exclude)` guards
-        self.pending: tuple[str, ...] = ()  # the `end` markers of the `(wrap)`s the parse is inside, outermost first
-        self.ceiling: int | None = None  # where a `(max)` window ends, past which committed input may not be consumed
-        self.ceiling_message: str | None = None  # the cut message a consume past the ceiling raises, held with the
-        # window. An open displaces the window it finds, and its close puts that window back
-        self.probing = 0  # how many lookaheads are in progress. A probe may read past the ceiling, and a commit may not
+        self.env: dict[str, _Value] = {}  # The parameters of the current production and their values.
+        self.is_sol = True  # Whether the parse sits at the start of a line.
+        self.forbidden: tuple[ir.Node | None, ...] = ()  # The `(exclude)` guards on the start of a line.
+        self.pending: tuple[
+            str, ...
+        ] = ()  # The `end-` markers of the open `begin-` markers. The outermost marker sits first.
+        self.ceiling: int | None = None  # The index where a `(max)` window ends. Committed input stops there.
+        # The cut message a consume past the ceiling raises. Closing an open restores the window that open displaced.
+        self.ceiling_message: str | None = None
+        self.probing = 0  # The count of lookaheads in progress. A probe may read past the ceiling.
 
-        # Whether the `ConsumeLimitedSpanAction` just performed took its whole limit. Any other action takes the answer
-        # away, and asking with none there is a fault rather than a `False`.
+        # Whether the last `ConsumeLimitedSpanAction` took its whole limit. A later action or consume other than such a
+        # span clears the answer. A question asked while the field holds `None` raises.
         self.did_fill_span: bool | None = None
-        self.entered: list[str] = []  # the productions entered, outermost first. The depth guard's trace of the nesting
-        self.returns: list[_Continuation] = []  # where each entered production continues when it matches, outermost
-        # first. An unwind continues there rather than where the Python call stack stands. Pushed with `entered`
-        self.failing: str | None = None  # the message of the `(cut)` a failure is unwinding to a recovery for. It says
-        # the unwind gives back the scopes alone, so the recovery continues over what was read and what was emitted
+        self.entered: list[str] = []  # The productions entered, outermost first. The depth guard reads this trace.
+        # The list holds where an entered production continues on a match. The outermost entry sits first.
+        self.returns: list[_Continuation] = []
+        # The message of the `(cut)` whose recovery a failure unwinds to. The unwind gives back the scopes. The recovery
+        # continues over the input read and the tokens emitted.
+        self.failing: str | None = None
 
-        # The pairs of the `PopBackTrackAction` a failure is unwinding to, and None where the failure is an ordinary
-        # one. While this is set no choice takes another way, and the open gives the region back whole and clears it.
+        # The pairs of the `PopBackTrackAction` a failure unwinds to, and `None` for an ordinary failure. The open gives
+        # the region back whole and clears the pairs.
         self.unwinding: frozenset[int] | None = None
 
-        self.coverage: Coverage | None = None  # a `Coverage` to fill where the caller wants one. What each production
-        # was seen to do is recorded where it happens
-        self.consumed_length = 0  # how many characters the last consume took, which `(len): (match)` reads. A consume
-        # writes it, a consume that took none leaves `0`, and no other action touches it
-        self.checking: _Checking | None = None  # what the caller holds each way and action to. It is handed the way,
-        # where the parse stood either side of it, and the parse itself
-        self.holds_indent = False  # whether the grammar says where the indentation changes, which `run` reads off it.
-        # A grammar with the pushes can require the parameter and the stack to agree
-        self.passing_arguments = False  # while a call's arguments are read. The argument reads `n` under the push its
-        # own value made, which is the one place the parameter and the stack disagree
-        self.globals: tuple[str, ...] = ()  # the `ir.GLOBAL_PARAMS` no production of this grammar declares, which `run`
-        # reads off it. There is a single value for the parse, and a call takes what the callee left back out
-        self.shadow: dict[str, tuple[object, ...]] = {}  # a stack per global
+        # A `Coverage` to fill where the caller wants one. The run records in the `Coverage` what a production does.
+        self.coverage: Coverage | None = None
+        # The characters the last consume took. `(len): (match)` reads the count. A consume writes the count, and a
+        # consume that took no character leaves `0`.
+        self.consumed_length = 0
+        # The checks a caller applies to a way and to an action. A check gets the node and the parse. A check also gets
+        # the guard answers the parse can hold before and after the node.
+        self.checking: _Checking | None = None
+        # Whether the grammar says where the indentation changes. `run` reads the answer off the grammar. Such a grammar
+        # can require the indentation parameter and the stack to agree.
+        self.holds_indent = False
+        # Whether the parse reads the arguments of a call. `_evaluated_parameter` checks no `n` against the stack while
+        # the parse reads the arguments.
+        self.passing_arguments = False
+        # The `ir.GLOBAL_PARAMS` this grammar's productions leave undeclared. `run` reads the globals off the grammar. A
+        # global holds a single value for the parse.
+        self.globals: tuple[str, ...] = ()
+        self.shadow: dict[str, tuple[object, ...]] = {}  # A stack per global.
 
     def checkpoint(self) -> _Checkpoint:
         """
@@ -393,8 +402,7 @@ class Emitter:
         `give_back` rewinds where nothing is unwinding. A probe rewinds the same way. A declining recovery rewinds once
         it has cleared what was there.
         """
-        # Reaching it with a cut still unwinding would hand back the input the recovery continues from. That is the one
-        # thing that unwind may not do. It is a wrong parse rather than a failure, and it is refused here.
+        # A rewind under a cut still unwinding would hand back the input the recovery continues from.
         assert self.failing is None, "the parse gives the input back under a cut still unwinding"
         self.position = held.position
         self.mark = held.mark
@@ -407,13 +415,12 @@ class Emitter:
         self.did_fill_span = held.did_fill_span
         self.consumed_length = held.consumed_length
         self._restore_scopes(held)
-        # The journal is undone before the token list is cut back. Popping newest first restores each index the entries
-        # were recorded at.
+        # `rewind` undoes the journal from the newest entry, before it cuts the token list back.
         while len(self.trail) > held.trail_length:
             entry = self.trail.pop()
             if entry[0] == "retype":
                 self.tokens[entry[1]] = entry[2]
-            else:  # an "inject" is a marker inserted mid-list, deleted to undo what a truncation would miss
+            else:  # An entry that `inject_before` writes names a marker in the middle of the list.
                 del self.tokens[entry[1]]
         del self.tokens[held.token_count :]
 
@@ -426,10 +433,10 @@ class Emitter:
         self.forbidden = held.forbidden
         self.ceiling = held.ceiling
         self.ceiling_message = held.ceiling_message
-        # The parameters are copied out rather than adopted. An alternation rewinds to the same checkpoint once per
-        # branch, and a branch's `(set)` must not reach back into what the branch after it rewinds to.
+        # A branch of an alternation rewinds to the checkpoint its sibling rewound to. A copy keeps the `(set)` of a
+        # branch out of the next branch.
         self.env = dict(held.env)
-        self.shadow = dict(held.shadow)  # copied out the same way. a `(set)` must not reach back through it
+        self.shadow = dict(held.shadow)
 
     def is_unwinding(self) -> bool:
         """
@@ -454,17 +461,16 @@ class Emitter:
 
     def try_consume(self, is_only_the_mark: bool = False) -> bool:
         """
-        Take the character or invalid byte at the position into the open token, and say whether the take happened. A
-        token opens under the current code where none is open. An invalid byte is no break and no byte-order mark. It
-        advances a byte and a column like any other.
+        Take the character or invalid byte at the position into the open token, and say whether the take happened. The
+        take opens a token under the current code where none is open. An invalid byte is no break and no byte-order
+        mark. An invalid byte advances a byte and a column as an ordinary character does.
 
-        `is_only_the_mark` says the consume names the byte-order mark and no more. That is the take which neither ends a
-        line start nor moves the column. A set holding the rest of the content too names a mark inside a scalar. There
-        it is a character like any other.
+        `is_only_the_mark` marks a consume whose set is the byte-order mark. A wider consume reads a mark inside a
+        scalar as an ordinary character.
 
-        The character it declines is a committed character past a `(max)` window's edge. Such a character exhausts the
-        window. The cut the window names sits behind that failure, and `failing` says so. A lookahead is exempt and
-        reads on freely. The open token stays as it was, and the tokens up to here still emit.
+        A take declines a committed character past a `(max)` window's edge. Such a character exhausts the window. The
+        decline sets `failing` to the window's message. A lookahead is exempt and reads on freely. A decline touches no
+        token, and the tokens before it still emit.
         """
         if self.ceiling is not None and not self.probing and self.position >= self.ceiling:
             self.failing = self.ceiling_message
@@ -475,14 +481,13 @@ class Emitter:
         byte_length = self.byte_at[self.position + 1] - self.byte_at[self.position]
         is_break = codepoint in (wire.LINE_FEED, wire.CARRIAGE_RETURN)
         if is_break:
-            # A break puts the parse at a line start and the column at `0`. A carriage return a line feed follows is
+            # A break puts the parse at a line start and the column at `0`. A carriage return followed by a line feed is
             # half of a break, and the feed counts the line.
             counts_a_line = not (codepoint == wire.CARRIAGE_RETURN and self._is_before_line_feed())
             self.mark = wire.Mark(self.mark.byte + byte_length, self.mark.char + 1, self.mark.line + counts_a_line, 0)
             self.is_sol = True
         else:
-            # A byte-order mark the grammar asks for is no character of the line. It neither ends the start of the line
-            # nor takes a column. What follows it stands where it would have stood without it.
+            # A byte-order mark the grammar asks for neither ends the start of the line nor takes a column.
             self.mark = wire.Mark(
                 self.mark.byte + byte_length,
                 self.mark.char + 1,
@@ -618,8 +623,8 @@ class Emitter:
             self.trail.append(("inject", index + offset))
             self.tokens.insert(index + offset, wire.Token(wire.CODE_CHAR[code], start, ""))
         inserted = len(codes)
-        # An index at or past the insertion point moves right by what was inserted. That is the run start where the
-        # injection is its own, and the mark where it stands at or past the injection.
+        # The run start moves right by the count of markers where the run start is at or past the insertion point. The
+        # mark moves by the same test.
         if self.provisional >= index:
             self.provisional += inserted
         if self.provisional_mark is not None and self.provisional_mark >= index:
@@ -664,19 +669,19 @@ def _evaluate(expression: ir.Node, emitter: Emitter, grammar: Mapping[str, ir.Pr
 
 def _evaluated_parameter(node: ir.ParamValue, emitter: Emitter, _grammar: Mapping[str, ir.Prod]) -> _Value:
     """
-    A parameter's value, as the environment holds it. This refuses a parameter the environment holds nothing for, unless
-    the emitter is passing arguments.
+    A parameter's value, as the environment holds it. `_evaluated_parameter` refuses an unset parameter outside a call's
+    arguments.
     """
-    value = emitter.env.get(node.name)  # an out-parameter (m, t) may be passed on before it is set
+    value = emitter.env.get(node.name)
     if node.name == "n" and emitter.holds_indent and not emitter.passing_arguments:
-        # The indentation is on its way from a parameter to the stack. Both are kept, and a read compares them wherever
-        # the grammar has been through `push-indents`.
+        # Under `holds_indent`, a read of `n` checks the parameter against the stack's indentation. A call's arguments
+        # skip that check.
         held = _indent_in_force(emitter)
         if held != value:
             raise AssertionError(f"the stack holds an indentation of {held!r} for a parameter of {value!r}")
     if value is None and not emitter.passing_arguments:
-        # Nothing holds a value for it. Either no construct has measured a value yet, or a `ClearVarAction` has said the
-        # construct that did has ended. Passing it on is not reading it. An out-parameter travels to its setter unset.
+        # The environment holds `None` for an unset parameter. A `ClearVarAction` unsets one. Passing an argument is no
+        # read.
         raise AssertionError(f"a read of `{node.name}` finds nothing holding a value")
     return _a_value(value)
 
@@ -687,7 +692,7 @@ def _evaluated_global(node: ir.GlobalValue, emitter: Emitter, _grammar: Mapping[
 
     The stack answers. `_try_write` pushes a value onto the stack. `_try_clear` pops the value off. The slot beside the
     stack holds what a single value for the parse would have held. A read where the stack and the slot differ is a read
-    a global could not have answered. `ASKED` counts such a read rather than refusing it. `check_normalize._check`
+    a single slot could not have answered. `ASKED` counts such a read rather than refusing it. `check_normalize._check`
     refuses a count above none. At none the slot agrees with the stack.
     """
     held = emitter.shadow.get(node.name, ())
@@ -725,8 +730,8 @@ def _answers_now(emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> dict[str, 
     is `None` where the parse has none to give. The quantities are not axes. `GuardAnswers` compares the quantities and
     holds none of them. A comparison works out from the quantities, and the quantities come back beside the bits.
 
-    An answer can be missing. The action in front of a guard says whether the run just performed filled its span, and
-    any other action takes that answer away. The innermost `consume` entry of `emitter.stack` says whether the parse
+    An answer can be missing. `_try_limited_span` sets `emitter.did_fill_span`. `_try_match` clears it before a step
+    that `_DOES_TAKE_THE_ANSWER_AWAY` names. The innermost `consume` entry of `emitter.stack` says whether the parse
     took a character since that entry opened. Without such an entry there is no answer. The indentation is a null where
     the grammar applies none. The character behind the parse is unanswerable where the grammar names no `ns-char`. A
     consumed length past the column falls outside what `spaces.ALL_GUARD_ANSWERS` enumerates. The floor is a null where
@@ -744,8 +749,6 @@ def _answers_now(emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> dict[str, 
     held = _indent_or_none(emitter)
     floor = emitter.shadow.get("f", ())
     column = emitter.mark.column
-    # The standings are enumerated with the consumed length at or below the column. A consume that crossed a line break
-    # leaves a length past the column, which no standing holds.
     consumed_length = emitter.consumed_length if emitter.consumed_length <= column else None
     return {
         "is_at_line_start": emitter.is_sol,
@@ -771,8 +774,7 @@ def _guard_answers_now(emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> list
     answers = _answers_now(emitter, grammar)
     asked = {axis: answers[axis] for axis in spaces.BOOKKEEPING_AXES}
     asked.update(_compared_now(answers))
-    # Where every axis answers, a single point holds, and the code builds it rather than looking for it. This is asked
-    # at every action and every way of a parse. A walk over the enumeration would cost as much as the whole check.
+    # A full set of answers skips the walk over `spaces.ALL_GUARD_ANSWERS`.
     if all(answer is not None for answer in asked.values()):
         now = spaces.GuardAnswers(*(bool(asked[axis]) for axis in spaces.AXES))
         return [now] if now in spaces.HELD else []
@@ -1015,10 +1017,12 @@ def _try_probe(pattern: ir.Node, emitter: Emitter, grammar: Mapping[str, ir.Prod
     checkpoint it took. A lookahead keeps no effect.
 
     A `(cut)` inside a lookahead is speculative rather than a commit of the whole parse. A failure unwinding to such a
-    cut stops here, and this reads it as "did not match" rather than continuing out.
+    cut stops at the probe. The probe reads that failure as "did not match" rather than passing it out.
     """
     checkpoint = emitter.checkpoint()
-    emitter.probing += 1  # a lookahead reads past a `(max)` window's edge freely. the rewind restores the count
+    emitter.probing += (
+        1  # A lookahead reads past the edge of a `(max)` window. `try_consume` enforces no `(max)` edge during a probe.
+    )
     did_match = _try_match(pattern, emitter, grammar, _try_accept)
     if emitter.failing is not None:
         emitter.failing = None
@@ -1045,12 +1049,12 @@ def _try_repeat(item: ir.Node, emitter: Emitter, grammar: Mapping[str, ir.Prod],
         step = emitter.checkpoint()
         if not _try_match(item, emitter, grammar, _try_accept):
             if emitter.is_unwinding():
-                emitter.give_back(checkpoint)  # a turn that failed under an unwind fails the run rather than ending it
+                emitter.give_back(checkpoint)  # A turn that failed under an unwind fails the run.
                 return False
             emitter.rewind(step)
             break
         if emitter.position == before:
-            break  # a zero-width match. it is kept once, repeating it having no end
+            break  # A zero-width turn counts once. Repeating it would loop.
     if k():
         return True
     emitter.give_back(checkpoint)
@@ -1061,12 +1065,13 @@ def _try_longest_run(
     item: ir.Node, least: int, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation
 ) -> bool:
     """
-    Match the longest run of `item`, then the continuation. It matches where the run took at least `least` turns.
+    Match the longest run of `item`, then the continuation. A nonzero `least` refuses a run of no turns.
 
     `least` separates the forms of a run. A run of none or more falls through to the continuation where nothing matched.
     A run that must take a turn refuses there.
 
-    A run of none or more over a character class says what a consume says, and this hands such a run to `_try_repeat`.
+    A run of none or more over a character class says what a consume says, and `_try_longest_run` hands such a run to
+    `_try_repeat`.
     """
     if least == 0 and ir.is_one_char(item, grammar):
         return _try_repeat(item, emitter, grammar, k)
@@ -1075,13 +1080,13 @@ def _try_longest_run(
 
     def try_after_first() -> bool:
         if emitter.position == before:
-            return k()  # a zero-width turn. it is kept once, repeating it having no end
+            return k()  # A zero-width turn counts once.
         return _try_repeat(item, emitter, grammar, k)
 
     if _try_match(item, emitter, grammar, try_after_first):
         return True
     if emitter.is_unwinding():
-        return False  # taking no turn at all is another way. an unwinding failure does not take it
+        return False  # A run of no turns is another way. An unwinding failure does not take that way.
     emitter.rewind(checkpoint)
     return k() if least == 0 else False
 
@@ -1097,7 +1102,7 @@ def _is_forbidden_here(emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> bool
     if not emitter.is_sol or not emitter.forbidden:
         return False
     patterns = emitter.forbidden
-    emitter.forbidden = ()  # a forbidden pattern is matched without the guard. it would forbid its own characters
+    emitter.forbidden = ()
     try:
         return any(_try_probe(pattern, emitter, grammar) for pattern in patterns if pattern is not None)
     finally:
@@ -1119,8 +1124,8 @@ def _fail(emitter: Emitter, message: str) -> None:
     This clears the guards, the scopes and the `(max)` ceiling. The recovery gets the guards its own rules declare, and
     reads on past the edge the abandoned parse failed against. The grammar's `l-recover` decides the course from there.
     """
-    emitter.code = "unparsed-text"  # from here on the input is unparsed
-    emitter.stack = ()  # a scope left open goes, and with it whatever closing the scope would have restored
+    emitter.code = "unparsed-text"
+    emitter.stack = ()  # The failure drops the open scopes with the state their closes would restore.
     emitter.forbidden = ()
     emitter.ceiling = None
     emitter.ceiling_message = None
@@ -1137,20 +1142,20 @@ def _try_match(node: ir.Node, emitter: Emitter, grammar: Mapping[str, ir.Prod], 
     Backtracking is success-continuation style. On a match the interpreter calls `k`, and `k` returns whether the rest
     of the parse succeeded from there. A success commits the match and returns True. The emitter stays in that state. A
     failure rewinds the match and tries the next way. A failure during an unwind returns False at once and rewinds
-    nothing. A `rewind` puts back the tokens and the position both. This returns False once the ways run out. Outside an
-    unwind, the emitter then sits where the match began. A match commits where `k` accepts, and not before.
+    nothing. A `rewind` puts back the whole parse the checkpoint held. This returns False once the ways run out. Outside
+    an unwind, the emitter then sits where the match began.
 
     The machine raises on a kind it has no step for.
     """
     step = _MATCHED.get(type(node))
     if step is None:
         raise NotImplementedError(f"interpreter does not support {type(node).__name__}")
-    # The guard asking about a consume of a limited span reads the answer that consume left behind. Taken away here
-    # rather than by each action in turn, where an action that forgot looks exactly like an action that remembered.
+    # The guard asking about a consume of a limited span reads the answer that consume left behind. `_try_match` clears
+    # `did_fill_span` before a step that takes the answer away.
     if _DOES_TAKE_THE_ANSWER_AWAY(node):
         emitter.did_fill_span = None
-    # Both wrap the step rather than replacing it, and the measuring goes inside. A check reading the standing before
-    # the length was written would read the length before it.
+    # The measuring wraps the step. The check wraps the measuring. The check therefore reads the length the step just
+    # wrote.
     if _DOES_LEAVE_A_LENGTH(node):
         step = _with_measuring(step)
     if emitter.checking is not None and _IS_A_PERFORMED_STEP(node):
@@ -1290,8 +1295,8 @@ def _try_call(node: ir.RefCall, emitter: Emitter, grammar: Mapping[str, ir.Prod]
     is not None. It takes a global's value from the callee even where that value is None.
     """
     production = grammar[node.name]
-    # A parameter passed as itself (`m`, not `n+1`) is by reference. The callee may set it, which is how the block
-    # header hands the detected indent and chomping back. Its final value propagates out to the caller.
+    # A parameter passed as itself (`m`, not `n+1`) is by reference. `c-chomping-indicator` hands `t` back through
+    # `c-b-block-header` that way.
     by_reference = [
         parameter
         for parameter, argument in zip(production.params, node.args)
@@ -1301,13 +1306,15 @@ def _try_call(node: ir.RefCall, emitter: Emitter, grammar: Mapping[str, ir.Prod]
     arguments = tuple(_evaluate(argument, emitter, grammar) for argument in node.args)
     emitter.passing_arguments = False
     saved_env = emitter.env
-    saved_forbidden = emitter.forbidden  # inherited by the callee, and any (exclude) it adds is scoped to it
-    # A production inherits the ambient parameters and overrides the ones it declares. `n` stays in scope through a
-    # callee that does not name it.
+    saved_forbidden = (
+        emitter.forbidden
+    )  # The callee inherits the caller's `(exclude)` guards. A guard the callee adds ends with the call.
+    # A callee's declared parameters take the call's arguments. A caller parameter the callee does not declare stays in
+    # scope, as `n` does.
     emitter.env = {**saved_env, **dict(zip(production.params, arguments))}
 
-    # A global is the parse's rather than any one call's. This takes a cleared value out where the by-reference pass
-    # keeps the caller's.
+    # A global belongs to the whole parse. A cleared global therefore comes back out as None. A cleared by-reference
+    # parameter keeps the caller's value.
     def try_continue_out() -> bool:
         callee_env = emitter.env
         callee_forbidden = emitter.forbidden
@@ -1318,18 +1325,18 @@ def _try_call(node: ir.RefCall, emitter: Emitter, grammar: Mapping[str, ir.Prod]
                 caller_env[parameter] = value
         for name in emitter.globals:
             caller_env[name] = callee_env.get(name)
-        emitter.env = caller_env  # the caller sees its own parameters again, with any by-reference result passed out
+        emitter.env = caller_env  # The caller gets its own parameters back with the by-reference results.
         emitter.forbidden = saved_forbidden
         if emitter.coverage is not None:
-            emitter.coverage.reached.add(node.name)  # its body offered a solution. reaching it means exactly that
+            emitter.coverage.reached.add(node.name)  # Reaching this line means the body offered a solution.
         if k():
             return True
-        emitter.env = callee_env  # restore the callee's scope so its body can try its next way
+        emitter.env = callee_env  # Put the callee's scope back. The callee's body then tries another way.
         emitter.forbidden = callee_forbidden
         return False
 
     emitter.entered.append(node.name)
-    emitter.returns.append(try_continue_out)  # where this call continues, which an unwind reads as its resume point
+    emitter.returns.append(try_continue_out)  # An unwind resumes the parse at this continuation.
     if len(emitter.entered) >= _DEPTH_LIMIT:
         trace = " -> ".join(emitter.entered[-_DEPTH_TRACE:])
         emitter.entered.pop()
@@ -1371,7 +1378,9 @@ def _try_alternation(node: ir.AltTree, emitter: Emitter, grammar: Mapping[str, i
         if _try_match(item, emitter, grammar, k):
             return True
         if emitter.is_unwinding():
-            return False  # a settled region is being given back, and that forbids taking another way here
+            # An unwinding failure heads for a settled region's open or a cut's handler. The alternation then stops
+            # trying items.
+            return False
         emitter.rewind(checkpoint)
     return False
 
@@ -1406,7 +1415,7 @@ def _try_optional(node: ir.OptTree, emitter: Emitter, grammar: Mapping[str, ir.P
     if _try_match(node.item, emitter, grammar, k):
         return True
     if emitter.is_unwinding():
-        return False  # the empty match is another way, which a region being given back does not take
+        return False  # The empty match is another way. A region the parse gives back does not take that way.
     emitter.rewind(checkpoint)
     return k()
 
@@ -1426,14 +1435,14 @@ def _try_choice(node: ir.ChoiceState, emitter: Emitter, grammar: Mapping[str, ir
 
 def _try_way(node: ir.AlternativeState, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation) -> bool:
     """
-    A way is a gate, then what the way performs, then what it calls. Those run as a single sequence.
+    `_try_way` matches a way as one sequence. The sequence holds the gate's guards, then the way's actions, then the
+    way's calls.
 
-    The gate is a `GatePart`, a set of questions and no more. A question asks about the position the parse enters the
-    way at. This asks the questions in the order held, and that order does not matter. Backtracking makes trying the
-    parts in order the same as asking the gate first and committing to it.
+    The gate is a `GatePart`, and a `GatePart` holds only questions about the position where the parse enters the way.
+    The interpreter asks the questions in the order the gate holds them, and that order means nothing. Backtracking
+    makes the sequence equal to asking the gate first and committing to it.
     """
-    # A hoisted gate makes the decision the production it admits would make. A run recording coverage asks the gate on
-    # its own to attribute the refusal.
+    # A run recording coverage asks the gate first and charges a refusal to the productions the way calls.
     if emitter.coverage is not None and node.gate.guards and not _does_gate_hold(node.gate, emitter, grammar):
         for called in (node.first, node.second):
             named = getattr(called, "name", None)
@@ -1441,8 +1450,8 @@ def _try_way(node: ir.AlternativeState, emitter: Emitter, grammar: Mapping[str, 
                 emitter.coverage.rejected.add(named)
         return False
     parts = tuple(node.gate.guards) + tuple(node.actions)
-    # A recovery riding the edge is the `(recover)` scope over the call it protects. A way with no `first` is a tail
-    # call, and its `second` is the call rather than what stands past one.
+    # A recovery wraps the call it protects in a `(recover)` scope. A way with no `first` is a tail call, and its
+    # `second` holds that call.
     calls: list[ir.Node | None] = [node.first, node.second]
     at = 0 if node.first is not None else 1
     riding = calls[at]
@@ -1452,8 +1461,8 @@ def _try_way(node: ir.AlternativeState, emitter: Emitter, grammar: Mapping[str, 
     if emitter.checking is None:
         return _try_match(ir.SeqTree(parts), emitter, grammar, k)
     checking = emitter.checking
-    # Where the parse stands entering the way and where the way leaves it. Taken inside the continuation, past the way
-    # the parse may have been rewound to somewhere the way did not leave it.
+    # Under a check, the continuation hands `checking` the `GuardAnswers` at entry and the `GuardAnswers` where the way
+    # leaves the parse.
     entered = _guard_answers_now(emitter, grammar)
 
     def try_left() -> bool:
@@ -1469,8 +1478,8 @@ def _try_gated_char(
     """
     A consume names a set. The run checks the gated character against that set.
 
-    The gate decides the match. A character outside that set then marks a gate that did not do its job, rather than a
-    match to refuse. The run then raises an `AssertionError` for such a gate.
+    The gate decides whether the character matches. A character outside that set then marks a gate that did not do its
+    job, rather than a match to refuse. The run then raises an `AssertionError` for such a gate.
     """
     if emitter.position >= len(emitter.chars):
         raise AssertionError("a gated character is not there: the gate let a refused character through")
@@ -1535,23 +1544,22 @@ def _try_span(node: ir.ConsumeSpanAction, emitter: Emitter, grammar: Mapping[str
 
 def _try_trimmed_run(node: ir.TrimStarTree, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation) -> bool:
     """
-    A maximal run of `full`. The trailing `trim` characters go back.
-
-    Consume greedily. Remember where the last character outside `trim` ended. Then rewind to it. The run is possessive.
+    Consume `full` characters greedily. Then rewind past the `trim` characters at the end of the run. The run is
+    possessive.
     """
     started = emitter.position
-    kept = emitter.checkpoint()  # where the run stood past the last character it keeps, empty at the start
+    kept = emitter.checkpoint()  # The checkpoint holds the position past the last character the run keeps.
     while emitter.position < len(emitter.chars):
         at_trim = _try_probe(node.trim, emitter, grammar)
         before = emitter.position
         step = emitter.checkpoint()
         if not _try_match(node.full, emitter, grammar, _try_accept):
             if emitter.is_unwinding():
-                return False  # a turn that failed under an unwind fails the run, it does not end it
+                return False  # A turn that failed under an unwind fails the run.
             emitter.rewind(step)
             break
         if emitter.position == before:
-            emitter.rewind(step)  # a zero-width match cannot repeat without looping
+            emitter.rewind(step)  # Rewind past a zero-width turn.
             break
         if not at_trim:
             kept = emitter.checkpoint()
@@ -1569,7 +1577,8 @@ def _try_counted_run(node: ir.RepTree, emitter: Emitter, grammar: Mapping[str, i
     count = _as_number(node.count, emitter, grammar)
 
     def try_step(index: int) -> bool:
-        if index >= count:  # a non-positive count matches nothing, as an indent of no length does
+        # A count that is not positive matches the empty input. The run then calls the continuation at once.
+        if index >= count:
             return k()
         return _try_match(node.item, emitter, grammar, lambda: try_step(index + 1))
 
@@ -1671,12 +1680,12 @@ def _try_push_indent(
     node: ir.PushIndentAction, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation
 ) -> bool:
     """
-    An indentation put in force. The matching pop, `_try_pop_indent`, takes it off.
-
-    `_try_pop_indent` takes the top entry off the stack. A pop that names a level checks it against that entry.
+    Push an indentation onto the stack. The matching pop, `_try_pop_indent`, takes it off the top of the stack. A pop
+    that names a level checks that level against the top entry.
     """
     checkpoint = emitter.checkpoint()
-    # Working out what to push is not a read of the indentation in force. The level replaces that indentation.
+    # The push evaluates `node.level` without checking it against the indentation in force. The level replaces that
+    # indentation.
     emitter.passing_arguments = True
     level = _evaluate(node.level, emitter, grammar)
     emitter.passing_arguments = False
@@ -1692,10 +1701,11 @@ def _try_pop_indent(
 ) -> bool:
     """The indentation on top comes off. The indentation its push displaced comes back."""
     checkpoint = emitter.checkpoint()
-    # The pop says which indentation it takes off, and takes off whatever is on top. The level named is checked once the
-    # pop has happened, which is the scope it was written in.
+    # The pop refuses an empty stack, a wrong kind or a wrong pair. A pop may name a level. `_try_pop_indent` evaluates
+    # that level against the stack the pop leaves.
     value, _opened, emitter.stack = _popped(emitter, "indent", "an indentation", node.pair)
-    if node.level is not None:  # a pop naming the level it takes off must match it, a pop naming none matches nothing
+    # `_try_pop_indent` refuses a popped indentation differing from that level. A pop naming no level skips that check.
+    if node.level is not None:
         said = _evaluate(node.level, emitter, grammar)
         if value != said:
             raise AssertionError(f"the pop takes off an indentation of {value!r} where it says {said!r}")
@@ -1711,7 +1721,7 @@ def _try_push_code(
     """The characters from here on take a token code. The parse cuts the run where that code takes over."""
     checkpoint = emitter.checkpoint()
     emitter.cut()
-    emitter.stack += (("code", emitter.code, node.pair),)  # the code this push displaces, for its own pop to take back
+    emitter.stack += (("code", emitter.code, node.pair),)  # The pop of this push restores the code this push displaces.
     emitter.code = node.code
     if k():
         return True
@@ -1737,14 +1747,15 @@ def _try_open_window(
 ) -> bool:
     """
     The outermost window opens a budget of characters. A window nested inside it keeps that budget. Past the budget,
-    `try_consume` refuses a consume outside a lookahead. The refusal fails with the message the window names.
+    `try_consume` refuses a consume outside a lookahead. The parse then fails with the message the window names.
     """
     checkpoint = emitter.checkpoint()
     displaced = (emitter.ceiling, emitter.ceiling_message)
-    if emitter.ceiling is None:  # the outermost only. an open under it is inside the budget it already bounds
+    # The outermost window sets the ceiling, and an inner window keeps the ceiling it finds.
+    if emitter.ceiling is None:
         emitter.ceiling = emitter.position + _as_number(node.limit, emitter, grammar)
         emitter.ceiling_message = node.message
-    emitter.stack += (("window", displaced, node.pair),)  # the window this open displaced, for its close to take back
+    emitter.stack += (("window", displaced, node.pair),)  # The close of this open restores the window it displaced.
     if k():
         return True
     emitter.give_back(checkpoint)
@@ -1805,13 +1816,15 @@ def _try_open_committed(
 def _try_close_committed(
     node: ir.PopMessageAction, emitter: Emitter, _grammar: Mapping[str, ir.Prod], k: _Continuation
 ) -> bool:
-    """The committed region closed, and its commitment holds under any later backtracking."""
+    """The close marks the committed region reached."""
     record, opened, emitter.stack = _popped(emitter, "message", "a committed region", node.pair)
     assert isinstance(record, list), f"the stack holds {record!r} as a committed region"
     record[0] = True
     if k():
         return True
-    emitter.stack += (("message", record, opened),)  # backtracked into the region. it is open again, though kept
+    emitter.stack += (
+        ("message", record, opened),
+    )  # The parse backtracked into the region. The region reopens. The mark stays.
     return False
 
 
@@ -1841,7 +1854,7 @@ def _try_committed(node: ir.CommitWrapper, emitter: Emitter, grammar: Mapping[st
 def _try_open_recovery(
     node: ir.PushRecoveryAction, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation
 ) -> bool:
-    """A recovery region opened. The region answers a cut raised inside it while the region is open."""
+    """Open a recovery region. The region answers a cut raised inside it while the region is open."""
     entry = _Recovery(
         recovery=node.recovery,
         resume=node.resume,
@@ -1860,7 +1873,7 @@ def _try_open_recovery(
         return True
     if emitter.failing is not None:
         if entry.is_closed[0]:
-            return False  # the region has closed. whatever catches this sits further out
+            return False  # The region has closed. A handler further out catches this failure.
         return _try_recover(entry, emitter, grammar)
     held, _opened, emitter.stack = _popped(emitter, "recovery", "a recovery region", node.pair)
     assert held is entry, "a recovery region closed out of order"
@@ -1877,9 +1890,10 @@ def _try_close_recovery(
     if k():
         return True
     if emitter.failing is not None:
-        return False  # a cut past the close, which this region no longer catches
+        return False  # The cut reaches past the close. A handler outside the region catches the cut.
     entry.is_closed[0] = False
-    emitter.stack += (("recovery", entry, opened),)  # what follows failed. the region is open again for a way in it
+    # The parse failed after the region. The region is open again for a way in it.
+    emitter.stack += (("recovery", entry, opened),)
     return False
 
 
@@ -1895,7 +1909,7 @@ def _try_recovering(
         return True
     if emitter.failing is None:
         return False
-    # The cut asks whether this rule catches it. The recovery reads this rule's parameters rather than those of whatever
+    # The cut asks whether this rule catches it. The recovery reads the parameters of this rule, not of the rule that
     # failed below it.
     stopped = emitter.checkpoint()
     emitter.code, emitter.stack, emitter.forbidden = held.code, held.stack, held.forbidden
@@ -1903,10 +1917,10 @@ def _try_recovering(
     code, emitter.failing = emitter.failing, None
     emitter.error(MESSAGES[code])
     while len(emitter.pending) > depth:
-        emitter.marker(emitter.pending[-1])  # close what `item` opened, down to here and no further
+        emitter.marker(emitter.pending[-1])  # The loop emits the `end-` markers that `item` left on `pending`.
     if _try_match(node.recovery, emitter, grammar, _try_accept):
-        return k()  # recovered. continue as though `item` had matched, and a repetition takes its next turn
-    emitter.rewind(stopped)  # this rule does not catch it after all. leave no trace and let it go on up
+        return k()  # The rule recovered. The parse continues as though `item` had matched.
+    emitter.rewind(stopped)  # The rule does not catch the cut. The cut goes on up.
     emitter.failing = code
     return False
 
@@ -1934,15 +1948,13 @@ def _try_did_consume_since_open(
     """
     Whether the turn that must take a character has done so. The question does not close the turn.
 
-    This asks and no more, the way a gate's questions ask. The open stays on the stack. A way can then ask in front of
-    the actions it performs, and a later way can ask again.
+    A way can ask in front of the actions it performs, and a later way can ask again.
 
-    This looks down the stack for its own open rather than demanding an open on top. A pop takes what its own push put
-    there, and a pop is right to refuse anything else. A read is not a pop. A code or a committed region opened since
-    says nothing about which turn this asks after, and the pair answers that.
+    This looks down the stack for its own open rather than demanding an open on top. A code or a committed region opened
+    since does not name the turn. The pair on the open names the turn.
     """
-    # A `consume` entry holds the pair its open wrote. The pairless entry a run stands on is the indentation it is
-    # seeded with.
+    # A `consume` entry holds the pair its open wrote. The pairless entry at the bottom of the stack is the indentation
+    # `run` seeds it with.
     for held, opened_at, opened in reversed(emitter.stack):
         if held != "consume" or opened is None or not opened & node.pair:
             continue
@@ -1953,11 +1965,11 @@ def _try_did_consume_since_open(
 def _try_close_turn(
     node: ir.EndMustConsumeAction, emitter: Emitter, _grammar: Mapping[str, ir.Prod], k: _Continuation
 ) -> bool:
-    """The turn closes, and its open comes off the stack. The guard in front asks whether the turn took a character."""
+    """The turn closes, and its open comes off the stack."""
     opened_at, opened, emitter.stack = _popped(emitter, "consume", "a turn that must take a character", node.pair)
     if k():
         return True
-    emitter.stack += (("consume", opened_at, opened),)  # backtracked into the turn. it stands open again
+    emitter.stack += (("consume", opened_at, opened),)  # The parse backtracked into the turn. The turn is open again.
     return False
 
 
@@ -1968,7 +1980,7 @@ def _try_open_settled(
     A settled region opens.
 
     The region's ways sit between here and the close as live choices. The close says that a failure past it unwinds to
-    here. A choice on the way then stays where it went. The unwind gives the region back whole. Ordinary backtracking
+    here. A choice on the way then stays where it went. The unwind gives the region back. Ordinary backtracking
     continues from in front of the region.
     """
     checkpoint = emitter.checkpoint()
@@ -1976,8 +1988,12 @@ def _try_open_settled(
     if k():
         return True
     if emitter.unwinding is not None and emitter.unwinding & node.pair:
-        emitter.unwinding = None  # the open the close was unwinding to. the region is given back and that is all
-    emitter.give_back(checkpoint)  # a cut unwinding through the region continues past it, giving nothing back
+        emitter.unwinding = (
+            None  # An unwind headed for this open stops here. The open clears the unwind and gives the region back.
+        )
+    emitter.give_back(
+        checkpoint
+    )  # An unwind headed for an open further out passes on. The open still gives the region back.
     return False
 
 
@@ -2017,7 +2033,9 @@ def _try_write(node: ir.SetVarAction, emitter: Emitter, grammar: Mapping[str, ir
     checkpoint = emitter.checkpoint()
     value = _evaluate(node.value, emitter, grammar)
     emitter.env[node.param] = value
-    if node.param in emitter.globals:  # the stack beside the slot, which a nested write puts its own value on
+    if (
+        node.param in emitter.globals
+    ):  # A write to a global also puts the value on the stack `shadow` keeps for that global.
         emitter.shadow[node.param] = emitter.shadow.get(node.param, ()) + (value,)
     if k():
         return True
@@ -2033,7 +2051,7 @@ def _try_clear(node: ir.ClearVarAction, emitter: Emitter, _grammar: Mapping[str,
     """
     checkpoint = emitter.checkpoint()
     if node.param in emitter.globals:
-        # A `(clear)` with no `(set)` behind it is not refused.
+        # The action accepts a `(clear)` with no `(set)` behind it.
         emitter.shadow[node.param] = emitter.shadow.get(node.param, ())[:-1]
     emitter.env[node.param] = None
     if k():
@@ -2048,8 +2066,8 @@ def _try_raise(node: ir.IncreaseAction, emitter: Emitter, _grammar: Mapping[str,
     raised = max(_a_quantity(emitter.env.get(node.param, 0)), emitter.mark.column)
     emitter.env[node.param] = raised
     if node.param in emitter.globals:
-        # Raising a floor is not establishing one. It moves what stands rather than putting something new on. Where
-        # nothing stands it is the first. Reading it as `0` already meant that.
+        # A raise of a global parameter replaces the top of its shadow stack rather than pushing a value. On an empty
+        # stack the raised value becomes the first entry.
         held = emitter.shadow.get(node.param, ())
         emitter.shadow[node.param] = (held[:-1] + (raised,)) if held else (raised,)
     if k():
@@ -2059,17 +2077,17 @@ def _try_raise(node: ir.IncreaseAction, emitter: Emitter, _grammar: Mapping[str,
 
 
 def _try_binding(node: ir.BindTree, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation) -> bool:
-    """The condition, and the parameter given its value once the condition has matched."""
+    """The binding matches the condition and then gives the parameter its value."""
 
     def try_bound() -> bool:  # noqa: N807. a continuation, not a special method
         checkpoint = emitter.checkpoint()
         value = _evaluate(node.value, emitter, grammar)
         emitter.env[node.param] = value
-        if node.param in emitter.globals:  # a write is a write however it is written. the stack beside the slot
+        if node.param in emitter.globals:
             emitter.shadow[node.param] = emitter.shadow.get(node.param, ()) + (value,)
         if k():
             return True
-        emitter.give_back(checkpoint)  # undo the bound value so the condition can go on
+        emitter.give_back(checkpoint)  # The condition then tries its next way.
         return False
 
     return _try_match(node.cond, emitter, grammar, try_bound)
@@ -2083,17 +2101,17 @@ def _try_window(node: ir.MaxWrapper, emitter: Emitter, grammar: Mapping[str, ir.
     error. The continuation past the window takes the ceiling off.
     """
     if node.item is None:
-        return k()  # the vendored grammar's bare length note, which libyeast's own grammar never places
+        return k()  # The official grammar writes a bare `(max)` with no item.
     if emitter.ceiling is not None:
-        # nested. the outermost window applies, an inner window being inside the budget the outer already bounds.
+        # The outermost window applies. An inner window sits inside the budget the outer window bounds.
         return _try_match(node.item, emitter, grammar, k)
     emitter.ceiling = emitter.position + _as_number(node.limit, emitter, grammar)
-    emitter.ceiling_message = node.message  # a consume past the edge raises this, keeping the tokens up to it
+    emitter.ceiling_message = node.message
 
     def try_past_window() -> bool:
-        emitter.ceiling = None  # the window bounds `item`, not the parse that continues once it has matched
+        emitter.ceiling = None  # The window bounds `item` and not the rest of the parse.
         emitter.ceiling_message = None
-        # Where this fails, `item` tries its next way. Its own rewind restores the ceiling the checkpoint kept.
+        # On a failure here `item` tries its next way. The rewind of `item` restores the ceiling.
         return k()
 
     try:
@@ -2130,38 +2148,40 @@ def _try_look_behind(
         raise ValueError(f"a look-behind asks about {node.item}. That is not a single character.")
     target = emitter.position
     if target == 0:
-        return False  # nothing stands behind the first character
+        return False  # The first character has no character behind it.
     checkpoint = emitter.checkpoint()
-    emitter.probing += 1  # a look-behind reads speculatively, past a `(max)` edge. the rewind restores it
+    emitter.probing += 1  # A look-behind reads past the edge of a `(max)` window.
     emitter.position = target - 1
     did_reach = _try_match(node.item, emitter, grammar, lambda: emitter.position == target)
     if emitter.failing is not None:
-        emitter.failing = None  # a cut behind here is speculative too, as one inside a lookahead is
+        emitter.failing = None  # A cut inside a look-behind fails the look-behind, as a cut inside a lookahead does.
         did_reach = False
     emitter.rewind(checkpoint)
     return k() if did_reach else False
 
 
 def _try_token(node: ir.TokenWrapper, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation) -> bool:
-    """The item, the characters it takes under the code, cut from what is on either side."""
+    """Match the item as a token under the code. Cut the token off on either side."""
     entry = emitter.checkpoint()
     emitter.cut()
-    surrounding = emitter.code  # the production's own code, restored at the token's trailing edge
+    surrounding = emitter.code  # The trailing edge of the token restores the production's own code.
     emitter.code = node.code
 
     def try_close_token() -> bool:
         middle = emitter.checkpoint()
-        emitter.cut()  # end the token's run at its trailing edge
-        emitter.code = surrounding  # the following characters take the surrounding code again
+        emitter.cut()  # The cut ends the token's run at its trailing edge.
+        emitter.code = surrounding
         if k():
             return True
         emitter.code = node.code
-        emitter.give_back(middle)  # reopen the run so the wrapped item can try its next way
+        emitter.give_back(middle)  # The wrapped item then tries its next way.
         return False
 
     did_match = _try_match(node.item, emitter, grammar, try_close_token)
     if not did_match:
-        emitter.give_back(entry)  # undo the leading cut and the code change
+        # The give-back undoes the code change. A failure on its way to a recovery keeps the token the leading cut
+        # emitted.
+        emitter.give_back(entry)
     return did_match
 
 
@@ -2180,13 +2200,13 @@ def _try_wrapped(node: ir.Wrapper, emitter: Emitter, grammar: Mapping[str, ir.Pr
 
     did_match = _try_match(node.item, emitter, grammar, try_close_wrap)
     if not did_match:
-        emitter.give_back(entry)  # a failure on its way to a recovery leaves the `begin` for the recovery to close
+        emitter.give_back(entry)  # A failure on its way to a recovery leaves `begin` for the recovery to close.
     return did_match
 
 
 def _try_switch(node: ir.CaseTree, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation) -> bool:
     """The branch whose value the parameter holds, and the `else` where no branch holds it."""
-    value = emitter.env.get(node.var)  # a parameter left unset is no branch's value. it takes the `else`
+    value = emitter.env.get(node.var)  # An unset parameter matches no `BranchPart`. The parameter takes the `else`.
     for branch in node.branches:
         if branch.value == value:
             return _try_match(branch.item, emitter, grammar, k)
@@ -2338,7 +2358,7 @@ def _try_recover(entry: _Recovery, emitter: Emitter, grammar: Mapping[str, ir.Pr
     code, emitter.failing = emitter.failing, None
     emitter.error(MESSAGES[code])
     while len(emitter.pending) > entry.pending:
-        emitter.marker(emitter.pending[-1])  # close what the region covered opened, down to here and no further
+        emitter.marker(emitter.pending[-1])  # `marker` closes the markers on `pending`.
     resume_at = emitter.returns[entry.returns - 1]
     assert entry.recovery is not None and entry.resume is not None, "a recovery region answering with nothing"
     recovery, resume = entry.recovery, entry.resume
@@ -2377,23 +2397,20 @@ def run(
 
     The run enters the production as a reference rather than by matching the body.
     """
-    # A caller names the production polymorphically, and a monomorphized grammar holds its specialized copies alone. The
-    # resume policy is read before the move to the copy takes it from the arguments.
+    # `ir.entry` takes the arguments into the specialized copy. The run reads the resume policy before that call.
     parameters = dict(parameters or {})
     reached_through = int(parameters.pop("p", "0"))
     resume = parameters.get("r", "n")
     production, parameters = ir.entry(grammar, production, parameters)
     emitter = Emitter(data)
-    # What the rule is entered after is read rather than stipulated. The characters before `p` are taken, and the token
-    # they built is dropped.
+    # The run consumes the characters before `p`. The run then drops the token those characters built.
     if reached_through > len(emitter.chars):
         raise ValueError(
             f"the parse reaches the rule through {reached_through} characters of an input holding "
             f"{len(emitter.chars)}"
         )
     for _character in range(reached_through):
-        # A byte-order mark is refused rather than taken. What it does to the column is the grammar's to say, and there
-        # is no consume here to read that off.
+        # The run refuses a byte-order mark before `p`. The grammar decides the column of that mark.
         if emitter.chars[emitter.position] == wire.BYTE_ORDER_MARK:
             raise ValueError(
                 "the parse reaches the rule through a byte-order mark. the grammar says which column that mark sits at."
@@ -2405,28 +2422,27 @@ def run(
     emitter.checking = checking
     emitter.env = {name: int(value) if name in ("n", "m") else value for name, value in parameters.items()}
     if "r" in grammar[production].params:
-        emitter.env.setdefault("r", resume)  # a production run without a resume policy takes the zeroed one, no-resume
-    if "n" in emitter.env:  # the indentation the run is entered under, which no alternative pushed and none pops
+        emitter.env.setdefault("r", resume)
+    if "n" in emitter.env:  # The run enters the production under this indentation.
         emitter.stack = (("indent", emitter.env["n"], None),)
-    entered = emitter.stack  # what the run itself put there. a parse that closed what it opened ends at this
+    entered = emitter.stack
     entry = ir.RefCall(
         production, tuple(ir.LitValue(_a_value(emitter.env.get(name))) for name in grammar[production].params)
     )
 
-    # A cut says where the unwind lands and nothing more. A resumed parse may commit and fail again, which makes
-    # recovery a loop rather than a single handoff.
+    # A resumed parse may commit and fail again. Recovery is then a loop.
     node = entry
     failed_at = None
     while True:
         did_match = _try_match(node, emitter, grammar, _try_accept)
         if emitter.failing is not None:
             code, emitter.failing = emitter.failing, None
-            _fail(emitter, MESSAGES[code])  # committed and nothing caught it. the error names what the cut wanted
+            _fail(emitter, MESSAGES[code])  # The cut reached the run uncaught. The error names what the cut expected.
         else:
             if did_match:
                 emitter.cut()
-                # A parse that has matched has closed what it opened, leaving the stack at what the run itself put
-                # there. A close left unreached leaves its scope standing here.
+                # A matched parse ends with the stack the run entered with. An unreached close leaves its scope on the
+                # stack.
                 if emitter.stack != entered:
                     raise AssertionError(
                         "the parse ends holding "
@@ -2435,20 +2451,20 @@ def run(
                         + (", ".join(kind for kind, _value, _pair in entered) or "nothing")
                     )
                 return emitter.tokens
-            # A root parse is total and recovers rather than failing. An isolated non-root production may fail, and
-            # reports what matched and where it stopped.
+            # A root parse is total. A failed run of another production emits a bare error, then recovers like a failed
+            # cut.
             if production == ir.ROOT:
                 raise AssertionError(f"{ir.ROOT} failed without committing: the root production must be total")
-            _fail(emitter, "")  # uncommitted. a bare error where what matched ends, no expectation to name
-        # Recovering to where we already recovered from would go round for ever. A failed cut on a document boundary
-        # leaves `l-unparsed` nothing to consume. What resumes there has to be what makes the progress.
+            _fail(emitter, "")
+        # A recovery at the position of the last recovery would loop. A failed cut on a document boundary leaves
+        # `l-unparsed` nothing to consume.
         if failed_at == emitter.position:
             raise AssertionError(f"recovery at position {failed_at} consumed nothing: the parse cannot go on")
         failed_at = emitter.position
-        # The parse has unwound past each rule that might have caught it, to the stream's own level. The resume policy
-        # resolves the way the entry did, into the name where the grammar is monomorphized.
+        # The recovery enters at the level of the stream. `ir.entry` resolves the resume policy the way it resolved the
+        # entry.
         recover, recover_args = ir.entry(grammar, _RECOVER, {"n": -1, "r": resume})
-        emitter.stack = (("indent", recover_args["n"], None),)  # the stream's own level, the recovery entered under it
+        emitter.stack = (("indent", recover_args["n"], None),)
         entered = emitter.stack
         node = ir.RefCall(
             recover, tuple(ir.LitValue(_a_value(recover_args[parameter])) for parameter in grammar[recover].params)

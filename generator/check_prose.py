@@ -52,7 +52,8 @@ _USAGE = "usage: check_prose.py <directory>"  # a bad call gets it.
 
 def _faults() -> list[str]:
     """
-    The faults a hook would refuse in the files the tree tracks. A fault says its file in front.
+    The faults in the files the tree tracks. A fault is a refusal the write-time hook would give, or a `not-prose:`
+    marker that no prose literal uses. A fault says its file in front.
 
     `checkers.refusals_for_edit` reads a file of the tree as an edit that writes the file from nothing. The write-time
     hook reads an edit through the same function. That function hands a file outside `gate.prose_files` to the checkers
@@ -62,7 +63,7 @@ def _faults() -> list[str]:
     held = []
     for name in gate.tracked_files():
         path = pathlib.Path(gate.TREE, name)
-        # git tracks a path the working tree no longer holds, a deletion staged and uncommitted.
+        # `_faults` skips a tracked path missing from the working tree.
         if not path.exists():
             continue
         found = checkers.refusals_for_edit(collect_fragments.whole(str(path)), name)

@@ -25,9 +25,10 @@ def refusal_for(prose: str, path: str) -> str | None:
     """
     The refusal the number rule gives for `prose` at `path`, or None where the numbers pass.
 
-    `checkers._CHECKERS` asks here with the prose and the path of a document edit. `prose_answer` gives the critic's
-    rewrite this same refusal. `prose_answer` asks `draft_refusals`, and `draft_refusals` asks `text_refusals` to run
-    the checkers.
+    `checkers._CHECKERS` asks here with the prose and the path of an edit. `checkers.refusals_for_edit` hands a
+    `_DOCUMENT` checker a whole markdown file. For a source edit, `checkers.refusals_for_edit` joins the touched
+    fragments and literals and hands over that text. `prose_answer` gives the critic's rewrite this same refusal.
+    `prose_answer` asks `draft_refusals`, and `draft_refusals` asks `text_refusals` to run the checkers.
     """
     found = set(check_documents.numbers_in_prose(prose))
     if not found:

@@ -19,7 +19,8 @@ import check_conventions
 
 def runs_of(source: str) -> tuple[tuple[str, int], ...]:
     """
-    The long comment runs of `source`. A pair holds a run's opening line, stripped, and how many lines that run takes.
+    The long comment runs that open inside a function body of `source`. A pair holds a run's opening line, stripped, and
+    how many lines that run takes.
 
     `checkers` reads this off the file the edit would leave. A run's length is a reading of the file. Rewrapping the
     file moves that length.

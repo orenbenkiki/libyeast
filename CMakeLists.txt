@@ -1,6 +1,6 @@
-# The build, the tests and the install of libyeast. This builds the library shared and static from a single source
-# list. The build hardens the library and hides the symbols outside the public API. This builds the test suite under acutest. It installs
-# the header, the CMake package and the pkg-config file.
+# The build, the tests and the install of libyeast. This builds the library shared and static from a single source list.
+# The build hardens the library and hides the symbols outside the public API. This builds the test suite under acutest.
+# It installs the header, the CMake package and the pkg-config file.
 
 cmake_minimum_required(VERSION 3.20)
 project(yeast VERSION 0.1.0 LANGUAGES C)
@@ -10,7 +10,9 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# The option instruments the build for gcov coverage under GCC and Clang. The option adds `--coverage -O0 -g` to the compile and `--coverage` to the link. It turns off neither the sanitizers nor the hardening. The build config still decides those. The option stops with a fatal error under MSVC.
+# The option instruments the build for gcov coverage under GCC and Clang. The option adds `--coverage -O0 -g` to the
+# compile and `--coverage` to the link. It turns off neither the sanitizers nor the hardening. The build config still
+# decides those. The option stops with a fatal error under MSVC.
 option(YEAST_COVERAGE "Build with gcov coverage instrumentation (GCC and Clang)" OFF)
 if(YEAST_COVERAGE)
     if(MSVC)
@@ -25,15 +27,15 @@ include(CheckLinkerFlag)
 
 # The flags below guard the flag probes. -Werror makes an unknown -Wfoo fail the probe.
 # [Clang](https://clang.llvm.org/docs/DiagnosticsReference.html#wunknown-warning-option) only warns on an unknown -Wfoo.
-# [GCC](https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html) already fails on one. Hardening probes override those guard flags to "-O2 -Werror". glibc raises a #warning for
-# `_FORTIFY_SOURCE` without optimization, and -O2 silences it.
+# [GCC](https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html) already fails on one. Hardening probes override those
+# guard flags to "-O2 -Werror". glibc raises a #warning for `_FORTIFY_SOURCE` without optimization, and -O2 silences it.
 # [`features.h`](https://sourceware.org/git/?p=glibc.git;a=blob;f=include/features.h) holds that #warning. The probe
 # then accepts FORTIFY rather than rejecting it.
 #
 # -Werror still fails flags that are inert on this target. -fstack-clash-protection on macOS is such a flag. Clang emits
-# -Wunused-command-line-argument for that flag.
-# [Clang's diagnostics](https://clang.llvm.org/docs/DiagnosticsReference.html#wunused-command-line-argument) enable that
-# warning by default. The probe prunes those flags.
+# -Wunused-command-line-argument for that flag. [Clang's
+# diagnostics](https://clang.llvm.org/docs/DiagnosticsReference.html#wunused-command-line-argument) enable that warning
+# by default. The probe prunes those flags.
 set(YEAST_PROBE_FLAGS "-Werror")
 
 # Collect into `out_var` the flags in ARGN that the linker accepts for C.
@@ -83,9 +85,9 @@ else()
 endif()
 target_compile_options(yeast_warnings INTERFACE ${YEAST_WARN_FLAGS})
 
-# The library build and the test executables take the Debug sanitizer flags and the Release hardening flags. ASan catches
-# errors in the code that the compiler instruments with ASan.
-# [The AddressSanitizer wiki](https://github.com/google/sanitizers/wiki/AddressSanitizer) says so.
+# The library build and the test executables take the Debug sanitizer flags and the Release hardening flags. ASan
+# catches errors in the code that the compiler instruments with ASan. [The AddressSanitizer
+# wiki](https://github.com/google/sanitizers/wiki/AddressSanitizer) says so.
 add_library(yeast_build INTERFACE)
 if(NOT MSVC)
     target_compile_options(
@@ -117,14 +119,15 @@ else()
     # run-time checks and with incremental linking.
     # [AddressSanitizer](https://learn.microsoft.com/en-us/cpp/sanitizers/asan?view=msvc-170) documents these limits.
     # Under the policies of the minimum version this file names, CMake puts the run-time check flags in
-    # `CMAKE_C_FLAGS_DEBUG`. [CMP0184](https://cmake.org/cmake/help/latest/policy/CMP0184.html) documents that placement.
-    # Strip the run-time check flags and disable `/INCREMENTAL` for the Debug config.
+    # `CMAKE_C_FLAGS_DEBUG`. [CMP0184](https://cmake.org/cmake/help/latest/policy/CMP0184.html) documents that
+    # placement. Strip the run-time check flags and disable `/INCREMENTAL` for the Debug config.
     string(REGEX REPLACE "/RTC[1csu]+" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
     target_compile_options(yeast_build INTERFACE $<$<CONFIG:Debug>:/fsanitize=address>)
     target_link_options(yeast_build INTERFACE $<$<CONFIG:Debug>:/INCREMENTAL:NO>)
 endif()
 
-# The targets below build the library. The shared build and the static build compile the same source. Both builds take the same base name.
+# The targets below build the library. The shared build and the static build compile the same source. Both builds take
+# the same base name.
 #
 # The source glob uses `CONFIGURE_DEPENDS`. CMake re-checks the glob at build time. CMake reconfigures when the set of
 # files changes, as https://cmake.org/cmake/help/latest/command/file.html#glob says.
@@ -136,8 +139,8 @@ foreach(_t IN ITEMS yeast yeast_static)
         ${_t}
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
     )
-    # The POSIX baseline governs the library's code. The baseline does not cover third-party test code. The version string comes from the
-    # project version.
+    # The POSIX baseline governs the library's code. The baseline does not cover third-party test code. The version
+    # string comes from the project version.
     target_compile_definitions(
         ${_t}
         PRIVATE
@@ -176,9 +179,10 @@ if(YEAST_BUILD_TESTS)
     target_link_libraries(test_c PRIVATE yeast_build)
     add_test(NAME test_c COMMAND test_c)
 
-    # A `tests/test_*.c` file other than `tests/test_c.c` links the static archive and includes `src/`
-    # directly. The archive's symbols survive -fvisibility=hidden. That flag sets the symbol visibility of an ELF
-    # image, as https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html#index-fvisibility says. A glob over `tests/test_*.c` picks the files up, and a new test file is a test the moment it exists.
+    # A `tests/test_*.c` file other than `tests/test_c.c` links the static archive and includes `src/` directly. The
+    # archive's symbols survive -fvisibility=hidden. That flag sets the symbol visibility of an ELF image, as
+    # https://gcc.gnu.org/onlinedocs/gcc/Code-Gen-Options.html#index-fvisibility says. A glob over `tests/test_*.c`
+    # picks the files up, and a new test file is a test the moment it exists.
     file(GLOB YEAST_INTERNAL_TESTS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_*.c)
     list(REMOVE_ITEM YEAST_INTERNAL_TESTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_c.c)
     foreach(_test IN LISTS YEAST_INTERNAL_TESTS)

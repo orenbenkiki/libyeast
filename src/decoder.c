@@ -25,7 +25,7 @@ static ys_lead lead_of(uint8_t byte) {
         return (ys_lead){3, 0xA0u, 0xBFu}; // below 0xA0 the sequence would be overlong
     }
     if (byte == 0xEDu) {
-        return (ys_lead){3, 0x80u, 0x9Fu}; // above 0x9F lie the surrogates, which UTF-8 cannot encode
+        return (ys_lead){3, 0x80u, 0x9Fu}; // The surrogates lie above 0x9F, and UTF-8 encodes no surrogate.
     }
     if (byte >= 0xE1u && byte <= 0xEFu) {
         return (ys_lead){3, 0x80u, 0xBFu};
@@ -34,13 +34,13 @@ static ys_lead lead_of(uint8_t byte) {
         return (ys_lead){4, 0x90u, 0xBFu}; // below 0x90 the sequence would be overlong
     }
     if (byte == 0xF4u) {
-        return (ys_lead){4, 0x80u, 0x8Fu}; // above 0x8F lies everything past U+10FFFF
+        return (ys_lead){4, 0x80u, 0x8Fu}; // Above 0x8F lie the codepoints past U+10FFFF.
     }
     if (byte >= 0xF1u && byte <= 0xF3u) {
         return (ys_lead){4, 0x80u, 0xBFu};
     }
-    // 0x80..0xBF continue a sequence rather than beginning one, 0xC0 and 0xC1 could only ever be overlong, and
-    // 0xF5..0xFF encode nothing at all.
+    // A byte from 0x80 to 0xBF continues a sequence. 0xC0 and 0xC1 lead an overlong sequence. UTF-8 assigns 0xF5 to
+    // 0xFF no meaning.
     return (ys_lead){0, 0, 0};
 }
 
@@ -88,23 +88,22 @@ ys_char ys_next_char_slow(const uint8_t *bytes, size_t size) {
         }
     }
 
-    // Above ASCII the grammar names a pair of characters, and withholds c-printable from a pair of kinds. The rest of
-    // what is valid is
-    // ordinary content, whatever its length. The generator holds the grammar to exactly this grouping. The ladder
-    // cannot quietly fall out of step with it.
+    // Above ASCII the grammar names NEL and U+FEFF. The grammar withholds c-printable from the C1 controls and from
+    // U+FFFE and U+FFFF. A valid sequence outside those groups is ordinary content. `check_groups` in the generator
+    // holds the grammar to exactly this grouping.
     if (lead.length == 2 && bytes[0] == 0xC2u) {
         if (bytes[1] == 0x85u) {
             return YS_LIT_KEY_NEXT_LINE;
         }
         if (bytes[1] < 0xA0u) {
-            return YS_KEY_NOT_PRINTABLE | YS_LENGTH_BITS(2); // a C1 control
+            return YS_KEY_NOT_PRINTABLE | YS_LENGTH_BITS(2); // This byte pair encodes a C1 control other than NEL.
         }
     } else if (lead.length == 3 && bytes[0] == 0xEFu) {
         if (bytes[1] == 0xBBu && bytes[2] == 0xBFu) {
             return YS_LIT_KEY_ZERO_WIDTH_NO_BREAK_SPACE;
         }
         if (bytes[1] == 0xBFu && bytes[2] >= 0xBEu) {
-            return YS_KEY_NOT_PRINTABLE | YS_LENGTH_BITS(3); // U+FFFE or U+FFFF, the noncharacters
+            return YS_KEY_NOT_PRINTABLE | YS_LENGTH_BITS(3); // These bytes encode the noncharacter U+FFFE or U+FFFF.
         }
     }
     return YS_KEY_CONTENT | YS_LENGTH_BITS(lead.length);

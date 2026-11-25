@@ -2,8 +2,8 @@
 """
 The asks the prose agents read, and the shapes they answer in.
 
-A critic reads the prose of a batch of fragments and no code. `tiled_faults` and `claim_changes` read the answer of a
-claims reader.
+A critic reads the prose of a batch of fragments. A record also holds the code under a note, and the record tells the
+critic to write no part of that code. `tiled_faults` and `claim_changes` read the answer of a claims reader.
 """
 
 import difflib
@@ -485,7 +485,9 @@ def rules_by_use() -> str:
 
 def sited(fragment: dict[str, Any]) -> str:
     """
-    The prose a reader sees. A fragment with more than a single site gets a heading per site.
+    The prose a reader sees. A fragment gets a heading per site unless its only site is no note. A heading names the
+    role of its site. `collect_fragments._Split.role` gives a site its role. A role is a `docstring`, a `comment` or a
+    `note`. The code under a note follows that note.
 
     A struct's own comment and the comment on a field are sites apart. `collect_fragments._Split.sites` makes a field's
     comment a site of its own.
@@ -493,11 +495,13 @@ def sited(fragment: dict[str, Any]) -> str:
     Public. `converge_prose` lays out the prose of a critic's batch this way.
     """
     sites = fragment["sites"]
-    if len(sites) < 2:
+    if len(sites) < 2 and sites and sites[0].get("role") != "note":
         return f"{fragment['prose']['content']}\n"
     said = []
     for at, site in enumerate(sites, start=1):
-        said.append(f"--- site {at}/{len(sites)} {site['path']}\n{site['prose']}")
+        said.append(f"--- site {at}/{len(sites)} {site['path']} ({site.get('role', 'comment')})\n{site['prose']}")
+        if site.get("code_below"):
+            said.append(f"--- code under the note. Read it. Write no part of it.\n{site['code_below']}")
     return "\n".join(said) + "\n"
 
 

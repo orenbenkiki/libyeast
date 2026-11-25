@@ -31,20 +31,22 @@ static void test_ascii_character(void) {
     ys_char space = ys_next_char((const uint8_t *)" ", 1);
     TEST_CHECK(space == YS_LIT_KEY_SPACE);
     TEST_CHECK((space & YS_SET_BIT_S_WHITE) != 0);
-    TEST_CHECK((space & YS_SET_BIT_NS_CHAR) == 0); // ns-char holds the printable characters bar white space
+    TEST_CHECK((space & YS_SET_BIT_NS_CHAR) == 0); // `ns-char` takes `s-white` out of `nb-char`. `nb-char` takes line
+                                                   // breaks and the byte order mark out of the printable characters.
 
     ys_char seven = ys_next_char((const uint8_t *)"7", 1);
-    TEST_CHECK(seven == YS_KEY_DIGIT); // the grammar names '0' but no other digit
+    TEST_CHECK(seven == YS_KEY_DIGIT); // The grammar names `0` as a literal. `7` takes the shared digit key.
     TEST_CHECK((seven & YS_SET_BIT_NS_DEC_DIGIT) != 0);
     TEST_CHECK((seven & YS_SET_BIT_NS_HEX_DIGIT) != 0);
 
     ys_char nul = ys_next_char((const uint8_t *)"\0", 1);
     TEST_CHECK(nul == YS_KEY_CONTROL);
-    TEST_CHECK((nul & YS_SET_BIT_C_PRINTABLE) == 0); // a control character is in no set at all
-    TEST_CHECK(YS_LEN(nul) == 1);                    // but its length still tells it from the end of the input
+    TEST_CHECK((nul & YS_SET_BIT_C_PRINTABLE) ==
+               0); // In `src/decoder_tables.h`, a control character the grammar does not name sits in `nb-unparsed`.
+    TEST_CHECK(YS_LEN(nul) == 1); // A length of `1` sets the NUL apart from the end of the input.
 }
 
-// The pair of characters the grammar names above ASCII.
+// Above ASCII, `src/decoder_tables.h` names the next-line character and the byte-order mark.
 static void test_named_non_ascii(void) {
     ys_char next_line = ys_next_char((const uint8_t *)"\xC2\x85", 2);
     TEST_CHECK(next_line == YS_LIT_KEY_NEXT_LINE);
@@ -54,15 +56,15 @@ static void test_named_non_ascii(void) {
     ys_char byte_order_mark = ys_next_char((const uint8_t *)"\xEF\xBB\xBF", 3);
     TEST_CHECK(byte_order_mark == YS_LIT_KEY_ZERO_WIDTH_NO_BREAK_SPACE);
     TEST_CHECK(YS_LEN(byte_order_mark) == 3);
-    TEST_CHECK((byte_order_mark & YS_SET_BIT_NB_CHAR) == 0); // nb-char withholds the byte-order mark
+    TEST_CHECK((byte_order_mark & YS_SET_BIT_NB_CHAR) == 0); // The byte-order mark lies outside nb-char.
 }
 
-// Ordinary content above ASCII. A single key covers such a character at any length. The grammar cannot tell such
-// characters apart.
+// The test feeds ordinary content above ASCII. A single key covers such a character at any length. The grammar cannot
+// tell such characters apart, and `check_groups` holds it to that.
 static void test_content_non_ascii(void) {
-    ys_char latin = ys_next_char((const uint8_t *)"\xC3\xA9", 2);         // U+00E9
-    ys_char cjk = ys_next_char((const uint8_t *)"\xE4\xB8\x80", 3);       // U+4E00
-    ys_char emoji = ys_next_char((const uint8_t *)"\xF0\x9F\x98\x80", 4); // U+1F600
+    ys_char latin = ys_next_char((const uint8_t *)"\xC3\xA9", 2);
+    ys_char cjk = ys_next_char((const uint8_t *)"\xE4\xB8\x80", 3);
+    ys_char emoji = ys_next_char((const uint8_t *)"\xF0\x9F\x98\x80", 4);
     ys_char characters[3] = {latin, cjk, emoji};
 
     TEST_CHECK(YS_LEN(latin) == 2);
@@ -77,8 +79,8 @@ static void test_content_non_ascii(void) {
 
 // A C1 control is JSON-compatible. A C1 control is not printable. This test checks a noncharacter as well.
 static void test_not_printable_non_ascii(void) {
-    ys_char control = ys_next_char((const uint8_t *)"\xC2\x80", 2);          // U+0080
-    ys_char noncharacter = ys_next_char((const uint8_t *)"\xEF\xBF\xBE", 3); // U+FFFE
+    ys_char control = ys_next_char((const uint8_t *)"\xC2\x80", 2);
+    ys_char noncharacter = ys_next_char((const uint8_t *)"\xEF\xBF\xBE", 3);
 
     TEST_CHECK(control == (YS_KEY_NOT_PRINTABLE | YS_LENGTH_BITS(2)));
     TEST_CHECK(noncharacter == (YS_KEY_NOT_PRINTABLE | YS_LENGTH_BITS(3)));
@@ -108,7 +110,7 @@ static void test_malformed_utf8(void) {
         TEST_CHECK(YS_LEN(character) == 1);
         TEST_CHECK((character & YS_SET_BIT_C_PRINTABLE) == 0);
 
-        // The same question, asked of the one caller that has bytes nothing has classified yet.
+        // `ys_utf8_length` answers `0` for the truncated sequence and for the bad second and third continuation bytes.
         TEST_CHECK(ys_utf8_length((const uint8_t *)cases[index].bytes, cases[index].size) == 0);
         TEST_MSG("%s: `ys_utf8_length` called it well-formed", cases[index].name);
     }
@@ -142,7 +144,6 @@ static void test_stress_test(void) {
     static uint8_t text[32768];
     FILE *file = fopen(YS_UTF8_STRESS_TEST, "rb");
     TEST_ASSERT_(file != NULL, "cannot open %s", YS_UTF8_STRESS_TEST);
-    // A static analyzer reads no abort in the assert above.
     if (file == NULL) {
         return; // UNTESTED
     }
@@ -200,7 +201,7 @@ static void test_stress_test(void) {
     TEST_MSG("the stress test held %zu case(s)", cases);
 }
 
-// `ys_codepoint` hands `ys_utf8_length` the bytes the wire format takes in. Those bytes reach `ys_utf8_length`
+// `ys_codepoint` hands `ys_utf8_length` the bytes `ys_wire_write` takes in. Those bytes reach `ys_utf8_length`
 // unclassified. `ys_utf8_length` agrees with `ys_next_char` on the ill-formed shapes above. This test measures
 // well-formed sequences and an empty window. `ys_next_char` reads the end of the input as a character. A length of no
 // bytes is no sequence.
@@ -214,10 +215,10 @@ static void test_utf8_length(void) {
         {"no bytes at all", "", 0, 0},
         {"ASCII", "a", 1, 1},
         {"the nul byte", "\0", 1, 1},
-        {"two bytes", "\xC3\xA9", 2, 2},                     // U+00E9
-        {"three bytes", "\xE4\xB8\x80", 3, 3},               // U+4E00
-        {"four bytes", "\xF0\x9F\x98\x80", 4, 4},            // U+1F600
-        {"a sequence and what follows", "\xC3\xA9zz", 4, 2}, // it measures the first, not the window
+        {"two bytes", "\xC3\xA9", 2, 2},
+        {"three bytes", "\xE4\xB8\x80", 3, 3},
+        {"four bytes", "\xF0\x9F\x98\x80", 4, 4},
+        {"a sequence and what follows", "\xC3\xA9zz", 4, 2}, // The length counts the first sequence.
     };
 
     for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index++) {
@@ -230,10 +231,10 @@ static void test_utf8_length(void) {
 // The decoder reports the length of the encoding for a codepoint UTF-8 can encode. It rejects a surrogate. The encoder
 // here goes independently of the decoder. That independence makes the test a check rather than a tautology.
 //
-// The sweep holds the first codepoint to disagree and reports it at the end rather than at once. The sweep then
-// has no failure-only branch. A passing run covers no such branch.
+// The sweep holds the first codepoint to disagree and reports it at the end rather than at once. The sweep then has no
+// failure-only branch.
 static void test_every_codepoint(void) {
-    uint32_t first_wrong = 0; // no codepoint below U+0080 is swept. Zero can mean "none"
+    uint32_t first_wrong = 0; // The sweep starts above ASCII, and this initial value means none.
     ys_char wrong_key = 0;
 
     for (uint32_t codepoint = 0x80u; codepoint <= 0x10FFFFu; codepoint++) {
@@ -276,51 +277,45 @@ static void test_consume_set(void) {
     ys_consumed taken = ys_consume_set(digits, 7, YS_SET_ID_NS_DEC_DIGIT);
     TEST_CHECK(taken.bytes == 4 && taken.characters == 4);
 
-    // A consume of no length, when the very first character is not in the set.
+    // A consume takes nothing where the first character is not in the set.
     taken = ys_consume_set(digits, 7, YS_SET_ID_S_WHITE);
     TEST_CHECK(taken.bytes == 0 && taken.characters == 0);
 
-    // A consume stops at the end of the window, never past it.
+    // A consume stops at the end of the window.
     taken = ys_consume_set(digits, 2, YS_SET_ID_NS_DEC_DIGIT);
     TEST_CHECK(taken.bytes == 2 && taken.characters == 2);
     taken = ys_consume_set(digits, 0, YS_SET_ID_NS_DEC_DIGIT);
     TEST_CHECK(taken.bytes == 0 && taken.characters == 0);
 
-    // A consume continues through non-ASCII content, where the bytes outnumber the characters. Here "ab" and U+4E00,
-    // which is three bytes, stopping at the space.
+    // A consume runs through non-ASCII content, where the bytes outnumber the characters. The space stops it.
     taken = ys_consume_set((const uint8_t *)"ab\xE4\xB8\x80 z", 7, YS_SET_ID_NS_CHAR);
     TEST_CHECK(taken.bytes == 5 && taken.characters == 3);
 
-    // Bytes that are not UTF-8 are in no set. They end a consume rather than being consumed by it.
+    // Bytes that are not UTF-8 belong to no set. Such bytes end a consume.
     taken = ys_consume_set((const uint8_t *)"ab\xFF", 3, YS_SET_ID_NS_CHAR);
     TEST_CHECK(taken.bytes == 2 && taken.characters == 2);
 }
 
 // A trimmed consume splits the take in two. The span it keeps comes first. The trailing run given back comes after.
 static void test_consume_trim_sets(void) {
-    // A consume keeps its inner spaces and gives back the trailing ones. The span is "a b", the trim the two spaces
-    // after.
+    // A consume keeps its inner spaces and gives back the trailing ones.
     ys_trim taken = ys_consume_trim_sets((const uint8_t *)"a b  ", 5, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
     TEST_CHECK(taken.span.bytes == 3 && taken.trim.bytes == 2);
 
-    // Nothing but the given-back kind. The kept span is empty and the whole take is trim. A line of only spaces comes
-    // to that.
+    // A line of spaces keeps an empty span. The whole take is trim.
     taken = ys_consume_trim_sets((const uint8_t *)"    ", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
     TEST_CHECK(taken.span.bytes == 0 && taken.trim.bytes == 4);
 
-    // No trailing given-back characters. The span is the whole of what was taken, the trim empty. nb-char stops at
-    // the break.
+    // The trim stays empty where the take ends on no white space. `nb-char` stops at the break.
     taken = ys_consume_trim_sets((const uint8_t *)"abc\n", 4, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
     TEST_CHECK(taken.span.bytes == 3 && taken.trim.bytes == 0);
 
-    // The span is counted in characters too, stopping after a non-ASCII kept character. Here "a" then U+4E00 (three
-    // bytes), then two given-back spaces.
+    // The span counts characters as well as bytes. The kept span ends after a non-ASCII character.
     taken = ys_consume_trim_sets((const uint8_t *)"a\xE4\xB8\x80  ", 6, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
     TEST_CHECK(taken.span.bytes == 4 && taken.span.characters == 2 && taken.trim.bytes == 2 &&
                taken.trim.characters == 2);
 
-    // A non-ASCII byte in no set ends the consume as an ASCII one out of set does. Here "ab" then a byte that is not
-    // UTF-8.
+    // A byte that is not UTF-8 ends the consume.
     taken = ys_consume_trim_sets((const uint8_t *)"ab\xFF", 3, YS_SET_ID_NB_CHAR, YS_SET_ID_S_WHITE);
     TEST_CHECK(taken.span.bytes == 2 && taken.trim.bytes == 0);
 }

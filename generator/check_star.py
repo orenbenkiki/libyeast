@@ -38,7 +38,9 @@ DIVERGENCES = {
 _DECLARED = os.path.join(gate.TREE, "tests", "star")
 
 
-def _disagreement(grammar: dict[str, ir.Prod], directory: str, expected: str) -> str | None:
+def _disagreement(  # pylint: disable=broad-exception-caught
+    grammar: dict[str, ir.Prod], directory: str, expected: str
+) -> str | None:
     """
     The way libyeast's fold of `<directory>/in.yaml` disagrees with `expected`, or `None` if it agrees. `expected` is a
     directory holding a `test.event` or an `error` marker. A valid case must fold to that `test.event`. An error case
@@ -49,9 +51,9 @@ def _disagreement(grammar: dict[str, ir.Prod], directory: str, expected: str) ->
     is_error = os.path.exists(os.path.join(expected, "error"))
     try:
         events = star.run_case(grammar, data)
-    except star.Incompatible:  # failure-is-reported: as this case's verdict, a rejection being right for an error case
+    except star.Incompatible:  # failure-is-reported: The rejection is the verdict on the case.
         return None if is_error else f"libyeast rejects a case {expected} holds events for"
-    except Exception as error:  # noqa: BLE001  failure-is-reported: as this function's reason  # pylint: disable=W0718
+    except Exception as error:  # failure-is-reported: The function returns the crash.
         return f"crash: {type(error).__name__}: {error}"
     if is_error:
         return f"libyeast accepts a case {expected} marks as an error"

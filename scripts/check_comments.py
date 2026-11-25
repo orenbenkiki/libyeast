@@ -21,7 +21,7 @@ def _block_comments(text: str) -> list[tuple[int, int, int, int]]:
     """
     comments = []
     state = "code"
-    start_line = start_column = 0  # where the open block comment began, read only while inside it
+    start_line = start_column = 0  # Inside a block comment the scan looks only for the closing '*/'.
     line, column, index, size = 1, 0, 0, len(text)
     while index < size:
         character = text[index]

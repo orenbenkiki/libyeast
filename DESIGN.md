@@ -155,8 +155,8 @@ We vet the project along the axes below.
 1. **Code style:** standard tools do this. `clang-format` formats the C, and `clang-tidy` and `cppcheck` lint it.
    `black`, `ruff` and `pylint` do the same for the Python. `mdformat` handles the markdown. `gersemi` handles the
    CMake, and `shfmt` handles the shell. `scripts/check_comments.py` checks the C comment style.
-   `scripts/wrap_long_comments.py` reflows a `#` comment block to the column limit in the Python, the shell scripts and
-   the `Makefile`.
+   `scripts/wrap_long_comments.py` reflows comment blocks to the column limit. Make runs that script over the Python,
+   the CMake and the shell. Make also runs that script over the YAML, the JavaScript and the `Makefile`.
 
 1. **Prose style:** Claude generates the prose, and Claude is bad at it. We run mechanised tests for known Claude anti
    patterns directly from the `Makefile`. Its `verify-prose` target runs `generator/check_prose.py` over the tree. We
@@ -182,16 +182,16 @@ the Claude workflow. The workflows add a CodeQL scan. The workflows also build t
 ### A fragment
 
 `collect_fragments.fragments` splits the tree into a `collect_fragments.Fragment` per piece of prose, plus the code that
-prose describes. A fragment's key is `language:file:name`. The key of a file fragment leaves out the name. A fragment
-with no declared name uses the digest of its prose as the name. A paragraph of a document under a heading puts that
-heading in front of that digest.
+prose describes. A fragment's key is `language:basename:name`. The key of a file fragment leaves out the name. A
+fragment with no declared name uses the digest of its prose as the name. A paragraph of a document under a heading puts
+that heading in front of that digest.
 
-A fragment holds its prose in sites. A site is a run of lines in a file that holds prose. A fragment starts at a line of
-the file holding a site. A site gives its lines as offsets from that line. `collect_fragments.site_lines` turns the
+A `Fragment` holds its prose in sites. A site is a run of lines in a file that holds prose. A fragment starts at a line
+of the file holding a site. A site gives its lines as offsets from that line. `collect_fragments.site_lines` turns the
 offsets into line numbers.
 
-A `collect_fragments.Fragment` holds its prose as the text `collect_fragments.flattened` gives. A site of the fragment
-is a paragraph of its own. `apply_prose.does_hold` reads the lines of a site as the file wraps them.
+A `collect_fragments.Fragment` holds its prose as the text `collect_fragments.flattened` gives. `apply_prose.does_hold`
+reads the lines of a site as the file wraps them.
 
 `collect_fragments.prose_digest` computes a prose digest. The function digests the text `collect_fragments.flattened`
 gives. That text keeps the words and the blank lines between paragraphs. A fenced block keeps its line breaks in the
@@ -352,9 +352,10 @@ the draft contradicts the code. The fragment then keeps the prose of the tree an
 `settling_state.REVIEW` names. A `changed` run over text the critic kept leaves that text to the claims pass.
 `claim_state.stale_claims` names the written fragment to that pass. A reader marking no `changed` run and no
 unverifiable claim settles the written fragment instead. `converge_claims.settlement_of` gives that settlement, and
-`converge_prose` writes it into the claim store. With no `changed` run over the rewrite, `apply_prose.fragment_written`
-writes the draft into the tree. A file holding a changed site takes a single write. The prose queue follows the new
-prose key after the write. The fragment is dirty, and goes to a new critic task.
+`converge_prose` writes it into the claim store. A read the prose does not cite leaves the store unchanged. With no
+`changed` run over the rewrite, `apply_prose.fragment_written` writes the draft into the tree. A file holding a changed
+site takes a single write. The prose queue moves the entry to the new prose digest after the write. The fragment is
+dirty, and goes to a new critic task.
 
 The driver in `generator/converge_prose.py` ignores a result the prose queue does not wait for. A comparator result for
 a change which has a verdict is stale. A critic result is stale where no fragment of its batch waits for a critic. A
@@ -448,8 +449,8 @@ prose too. The rest of the pass is mechanism. `converge_prose` starts an agent t
 agent definition. `write_agent_prompts` writes the answer schema, the conventions and the rejected proposals into that
 file. The message `converge_prose` sends the critic adds the ask, the rules `rules_by_use` lists, and a batch of
 fragments. The batch gives a key and a file. The batch then gives the kind and the prose. `agent_answers.sited` lays out
-the prose with a heading per site where the fragment has more than a single site. The batch gives no code.
-`collect_fragments.CRITIC_BATCH` names the keys of the batch to the call.
+the prose with a heading per site where the fragment has more than a single site or a note. The batch gives no code
+beyond the code under a note. `collect_fragments.CRITIC_BATCH` names the keys of the batch to the call.
 
 `.claude/agents/prose-compare.md` is the comparator's system prompt. `write_agent_prompts` copies the conventions into
 that file. `converge_prose` sends the comparator a batch of changes and asks which version of a change reads better.
@@ -594,8 +595,8 @@ to the keys a file names. The pass spends agent calls. `make pc` runs none of it
 ### The agent
 
 `.claude/agents/prose-claims.md` is the reader's system prompt. The reader holds the fetch tools and the
-StructuredOutput tool that `TOOLS` names. `agent_calls` starts a call, counts what the call spent, and decides where a
-reply stops the run. `converge_prose` calls `agent_calls` too.
+StructuredOutput tool that `write_agent_prompts.TOOLS` names. `agent_calls` starts a call, counts what the call spent,
+and decides where a reply stops the run. `converge_prose` calls `agent_calls` too.
 
 A call of `generator/converge_claims.py` takes a single fragment. The record that `.claude/mcp/fetch_fragments.py`
 writes holds a fetch against the call. A batch would lose which fragment asked.

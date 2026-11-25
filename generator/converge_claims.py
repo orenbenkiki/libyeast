@@ -656,9 +656,10 @@ def main() -> None:
             is_budgeted=len(argv) == 2,
             only=only,
         )
+        # pylint: disable=broad-exception-caught
         try:
             asyncio.run(_converge(state))
-        except Exception as caught:  # failure-is-reported: the stop reason; pylint: disable=broad-exception-caught
+        except Exception as caught:  # failure-is-reported: `_stop` logs the reason.
             agent_calls.killed(state.caller)
             _stop(state, f"the run ended on {type(caught).__name__}: {caught}", False)
             claim_state.claims_written(state.settled, state.unsettled, state.by_key)

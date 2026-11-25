@@ -81,8 +81,7 @@ def _dirty(emitter: interpreter.Emitter) -> None:
     """
     emitter.code = "text"
     emitter.try_consume()
-    # What a consume leaves behind for a later question, which no method here writes. A field the dirtying leaves alone
-    # is one the rewind check cannot see.
+    # Set the restorable fields away from their initial values.
     emitter.consumed_length = 3
     emitter.did_fill_span = True
     emitter.env["n"] = 99
@@ -100,8 +99,7 @@ def _dirty(emitter: interpreter.Emitter) -> None:
     emitter.retype_provisional("meta", None, "before_mark")
     emitter.inject_before(("end-scalar",), "mark")
     emitter.commit_provisional()
-    # Left open at the end, the pair above having put these back where it found them. A field the dirtying returns to
-    # its initial value is one the rewind below cannot tell a restore from.
+    # The provisional pair stays open at the end. A field back at its initial value would hide a missed restore.
     emitter.open_provisional()
     emitter.mark_provisional()
     emitter.try_consume()
@@ -144,8 +142,7 @@ def _fields_are_accounted(errors: list[str]) -> None:
         errors.append(f"`Emitter.{name}`: nothing says whether a checkpoint restores it")
     for name in sorted((set(_RESTORED) | set(_READ_ONLY) | set(_TRANSIENT)) - held):
         errors.append(f"`Emitter.{name}`: named here but no such field")
-    # And what the rewind check reads is exactly what `RESTORED` names, or a field is declared restored and never looked
-    # at.
+    # And the rewind check reads exactly the fields `RESTORED` names.
     read = set(_state(interpreter.Emitter(b"x")))
     for name in sorted(set(_RESTORED) - read):
         errors.append(f"`RESTORED` names `Emitter.{name}`, and the rewind check leaves that field unread")
@@ -170,9 +167,9 @@ def _rewind_is_repeatable(errors: list[str]) -> None:
     """
     A single checkpoint rewound to twice restores the same state twice.
 
-    An alternation rewinds to its checkpoint after a branch fails, and the next branch starts from there. A checkpoint
-    may hand out its own mutable state rather than a copy. A branch can then reach into the state the next branch
-    rewinds to.
+    An alternation rewinds to its checkpoint after a branch fails, and the next branch starts from there. A rewind
+    handing out the checkpoint's own mutable state rather than a copy would let a branch reach into the state the next
+    branch rewinds to. `Emitter._restore_scopes` hands out a copy of `env` and of `shadow`.
     """
     emitter = interpreter.Emitter(_ENOUGH_TO_DIRTY)
     before = _state(emitter)
@@ -223,7 +220,7 @@ def _retype_selects_by_kind(errors: list[str]) -> None:
     emitter.open_provisional()
     emitter.code = "break"
     emitter.try_consume()
-    emitter.cut()  # close the break token, as a `(token)` boundary would. The space is then its own
+    emitter.cut()  # The cut closes the break token, as a `(token)` boundary would.
     emitter.code = "white"
     emitter.try_consume()
     emitter.retype_provisional("indent", "line-feed", "all")

@@ -9,17 +9,14 @@ A shape this gate leaves alone breaks the rule the same way.
 
 A surface has its own shape of the fault. A faulty shell script goes on past a failed command. A faulty `Makefile`
 recipe swallows a failure. A faulty workflow reads an agent's result without asking whether the agent answered. Another
-faulty workflow asks that only of an agent answering under a schema. Faulty Python suppresses an exception, or reads a
-command's output without reading its status.
-
-An agent may fail at a task. Such an agent reports a failure. That agent still answers under a schema. Such an answer is
-present and empty. A guard asking only whether an answer arrived passes an empty answer through. Code after that guard
-reads emptiness as work.
+faulty workflow runs an agent and reads no result. Another faulty workflow binds an agent's answer under a schema and
+holds no test of whether that answer is empty. Faulty Python suppresses an exception, or runs a command under
+`check=False` in a function holding no `returncode`.
 
 An `except` may put the caught exception into the run's report. Such an `except` takes `failure-is-reported:` in a
 comment on the `except` line itself. That marker says where the failure comes out. A gate collecting divergences over a
 corpus wants the whole set rather than the first crash. A crash is a divergence like any other.
-`check_normalize._corpus_errors` is such a gate.
+`check_normalize._corpus_errors` is such a gate. The `except` it relies on sits in `check_interpreter._run_one`.
 
 An `except` whose exception is an ordinary answer takes `not-a-failure:` in a comment on the `except` line itself. That
 marker says what the answer means. `interpreter._decode_one` answers `(None, 1)` about a byte of a malformed UTF-8
@@ -60,10 +57,10 @@ _ASKS_IF_EMPTY = r"Object\.(?:keys|values)\(\s*{name}\b|\b{name}\b[\w.\[\]]*\.le
 # https://docs.python.org/3/library/subprocess.html#subprocess.run says.
 _UNRAISED = "check"
 
-# The markers on an `except` a reader has already ruled on. Both sit on the `except` line and state their reason. A
-# writer of `failure-is-reported:` should say where the failure comes out. A writer of `not-a-failure:` should say what
-# the exception answers instead.
-_IS_EXCUSED = re.compile(r"#.*\b(?:failure-is-reported|not-a-failure):\s*(\S.*)$")
+# The markers on an `except` a reader has already ruled on. Both sit on the `except` line. A writer of
+# `failure-is-reported:` follows it with a sentence saying where the failure comes out. A writer of `not-a-failure:`
+# follows it with a sentence saying what the exception answers instead.
+_IS_EXCUSED = re.compile(r"#.*\b(?:" + "|".join(gate.EXCUSES) + r"):\s*(\S.*)$")
 
 
 def _shell_faults() -> list[tuple[str, str]]:

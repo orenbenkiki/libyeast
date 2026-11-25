@@ -254,11 +254,11 @@ def _erase(node: ir.Node, owner: str) -> ir.Node:
 
 
 def official(grammar: dict[str, ir.Prod]) -> dict[str, object]:
-    """The official grammar's mapping, recovered from the libyeast grammar."""
+    """Recover the official grammar's mapping from the libyeast grammar."""
     recovered = {}
     for name, production in grammar.items():
         if name in MARKER_ONLY or name in OWN:
-            continue  # the official grammar has no such rule, marker-only or one of libyeast's own
+            continue  # The mapping leaves out a rule that `MARKER_ONLY` or `OWN` names.
         body = _normalize(_erase(production.body, name))
         recovered[name] = ir.Prod(production.number, name, production.params, body)
     return ir2annotated.regenerate(recovered)

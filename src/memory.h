@@ -71,18 +71,20 @@ ys_options ys_resolved_options(const ys_options *options);
 
 // Build a zeroed object of `size` bytes. Say in `memory` what the object may allocate from here on. The call charges
 // the size of the object to the cap first. A cap too small to hold the object refuses the build. NULL if the cap or the
-// allocator refuses. A caller hands `memory` on to the code that allocates for the object, as `ys_new_source` does.
+// allocator refuses. A caller hands `memory` on to the code that allocates for the object, as the callers of
+// `ys_new_source` do.
 void *ys_memory_new(ys_memory *memory, const ys_options *options, size_t size);
 
 // Charge `wanted` more bytes against the cap. `YS_OK` where `max_bytes` sets no cap or the cap holds those bytes.
 // `YS_FAILED_MEMORY` where the cap falls short.
 int ys_memory_reserve(ys_memory *memory, size_t wanted);
 
-// Grow an array of `item_size`-byte items to hold at least `wanted` of them. A capacity below `wanted` doubles. The
-// doubled capacity then rises to `wanted` and to `initial` where either is higher. Returns the array. Returns NULL
-// where the byte count overflows `size_t`, and where the cap or the allocator refuses. An overflow or a cap refusal
-// leaves the array unchanged. So does a refusal of the default allocator. Its `realloc` keeps the old block, as
-// https://en.cppreference.com/w/c/memory/realloc says. A custom `reallocate` decides what its refusal leaves.
+// Grow an array of `item_size`-byte items to hold at least `wanted` of them. A capacity below `wanted` doubles, or
+// becomes `SIZE_MAX` where doubling would overflow. The doubled capacity then rises to `wanted` and to `initial` where
+// either is higher. Returns the array. Returns NULL where the byte count overflows `size_t`, and where the cap or the
+// allocator refuses. An overflow or a cap refusal leaves the array unchanged. So does a refusal of the default
+// allocator. Its `realloc` keeps the old block, as https://en.cppreference.com/w/c/memory/realloc says. A custom
+// `reallocate` decides what its refusal leaves.
 void *ys_memory_grow(ys_memory *memory, void *items, size_t *capacity, size_t wanted, size_t initial, size_t item_size);
 
 #endif // YEAST_MEMORY_H

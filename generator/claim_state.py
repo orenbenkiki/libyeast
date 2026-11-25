@@ -322,7 +322,7 @@ def refined(read: Iterable[str], runs: list[dict[str, Any]], held: list[collect_
             continue
         try:
             ranges.setdefault(key, []).append((int(citation["from"]), int(citation["to"])))
-        except (KeyError, TypeError, ValueError):  # not-a-failure: a citation naming no lines keeps the whole file
+        except (KeyError, TypeError, ValueError):  # not-a-failure: A citation naming no lines keeps the whole file.
             whole.add(key)
     narrowed = set()
     for key in read:

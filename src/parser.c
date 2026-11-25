@@ -41,16 +41,18 @@ static size_t ys_parser_retained(const ys_parser *parser) {
 int ys_parser_fill(ys_parser *parser, size_t wanted) {
     ys_window *window = &parser->window;
     while (!window->source.is_at_end && ys_window_readable(window) < wanted) {
-        // The bytes before the oldest token the parser still holds are wanted no longer. The fill discards them
-        // whether or not it goes on to read anything. The window moves past them either way.
+        // `ys_parser_retained` gives the offset of the oldest byte the parser still needs. A fill that reads drops the
+        // bytes before that offset first. A failed read or a failed allocation leaves them dropped. The window moves
+        // past them either way.
         size_t used = ys_parser_retained(parser) - window->base;
         ys_fill filled = ys_source_fill(&window->source, &parser->memory, used, 0);
         window->base += used;
         if (window->source.bytes != NULL) {
             window->bytes = window->source.bytes;
         }
-        // A failed fill records the fault. ys_read_token() reports it and marks the source done. The reader is not
-        // reached again. The allocator's failure is ENOMEM; the reader's is whatever it left, passed through.
+        // A failed fill records the fault. `ys_read_token` reports the fault and marks the source done. A later call
+        // returns `YS_FAILED_ACTION` without calling the reader. A failed allocation sets `errno` to `ENOMEM`. A failed
+        // read leaves the reader's `errno` in place.
         if (filled == YS_FILL_OUT_OF_MEMORY) {
             parser->fault = YS_FAILED_MEMORY;
             errno = ENOMEM;
@@ -73,8 +75,7 @@ static int ys_queue_make_room(ys_memory *memory, ys_queue *queue) {
         return YS_OK;
     }
     if (queue->head > 0) {
-        // That makes room. The tokens handed back left `head` slots behind them, and there is one at least. So the
-        // queue grows only when it is full from its very first slot.
+        // The tokens handed back left room at the front. The move reclaims that room before the queue grows.
         memmove(queue->tokens, queue->tokens + queue->head, queue->count * sizeof(ys_pending));
         queue->head = 0;
         return YS_OK;
@@ -192,8 +193,7 @@ ys_token ys_parser_token(const ys_parser *parser, ys_pending pending) {
 }
 
 void ys_parser_init(ys_parser *parser, ys_memory memory, const ys_options *options) {
-    // The rest of the arm is the zeroed state ys_memory_new left. A fault of `0`, is_done false, an empty queue and
-    // stack.
+    // The rest of the arm keeps the zeroed state `ys_memory_new` left.
     parser->memory = memory;
     parser->window.bytes = YS_NO_BYTES;
     parser->error.resume = ys_resolved_options(options).resume;
@@ -202,18 +202,18 @@ void ys_parser_init(ys_parser *parser, ys_memory memory, const ys_options *optio
 
 int ys_parser_read(ys_parser *parser, ys_token *token) {
     if (parser->is_done) {
-        errno = ENODATA; // the stream ended, or the source faulted, and is being read past
+        errno = ENODATA; // The queue holds no token and no error waits.
         return YS_FAILED_ACTION;
     }
 
-    // The automaton is not generated yet. There is nothing to step, and a call fails the same way each time. It is a
-    // format error. A real parse would continue past it by its resume policy. Here there is nothing to continue to.
+    // The call then records a not-implemented error and hands it back as the error token in the same call. A later call
+    // with an empty queue does the same again. The parser does not read `ys_error::resume`.
     if (!ys_queue_is_ready(&parser->queue) && parser->error.message == NULL) {
         ys_parser_fail(parser, ys_message(YS_MESSAGE_NOT_IMPLEMENTED));
     }
 
-    // A fill during the step above may have failed. The source is spent, and the failure is the return value, not a
-    // token. errno was set where the fill failed.
+    // `ys_parser_fill` may have failed earlier. The call marks the parser done. The call returns the fault in place of
+    // a token. The reader or `ys_parser_fill` set errno.
     if (parser->fault != 0) {
         parser->is_done = true;
         return parser->fault;
@@ -222,14 +222,13 @@ int ys_parser_read(ys_parser *parser, ys_token *token) {
     if (ys_queue_is_ready(&parser->queue)) {
         *token = ys_parser_token(parser, ys_queue_pop(&parser->queue));
         if (token->code == YS_CODE_END_STREAM) {
-            parser->is_done = true; // the stream is closed; the next call is the end
+            parser->is_done = true; // The next call answers `YS_FAILED_ACTION`.
         }
         return YS_OK;
     }
 
-    // The error goes behind the tokens the queue holds. Handing it back clears it. There is no longer an error to
-    // hand back. Whether the parse continues past it is ys_error::resume's business. The message that it points at is
-    // static, and the token stays good however long the caller keeps it.
+    // The call hands back the error token once the queue is empty. Handing the error back clears the message. The error
+    // token's text is a static message. The token stays valid as long as the caller keeps it.
     *token = ys_parser_token(parser, parser->error.token);
     parser->error.message = NULL;
     return YS_OK;

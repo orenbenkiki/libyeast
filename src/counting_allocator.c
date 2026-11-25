@@ -31,9 +31,7 @@ static void ys_counting_deallocate(void *context, void *pointer) {
 // Resize `pointer` to `size` bytes. The count stays right when `pointer` is NULL, when `size` asks for no bytes, or
 // when the realloc call fails.
 static void *ys_counting_reallocate(void *context, void *pointer, size_t size) {
-    // Handle the edge cases explicitly instead of leaving realloc's implementation-defined size==0 behavior to skew
-    // the count. A size of `0` frees. A NULL pointer allocates. A genuine resize keeps the count. Realloc frees the old
-    // block and returns the new block itself.
+    // A size of `0` frees. A NULL pointer allocates. Any other call goes to realloc.
     if (size == 0) {
         ys_counting_deallocate(context, pointer);
         return NULL;
@@ -64,7 +62,7 @@ ys_allocator ys_counting_allocator_functions(ys_counting_allocator *counter) {
 
 int ys_close_counting_allocator(void *counter) {
     if (((const ys_counting_allocator *)counter)->live_buffers > 0) {
-        errno = ENOMEM; // a leak. Something allocated through the counter was not freed, and its memory is still held
+        errno = ENOMEM; // A buffer allocated through the counter is still live.
         return -1;
     }
     return 0;

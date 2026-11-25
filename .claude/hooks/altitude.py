@@ -28,7 +28,7 @@ def refusal_for(prose: str, path: str) -> str | None:
     None where the citations pass.
 
     The `altitude.py` row of `checkers._CHECKERS` asks here with the text and the path of an edit. `prose_answer` gives
-    the critic's rewrite this same refusal through `draft_refusals` and `text_refusals`.
+    the critic's rewrite this same refusal through `draft_refusals`, `text_refusals` and `refusals_for_edit`.
     """
     if os.path.basename(path) != "DESIGN.md":
         return None

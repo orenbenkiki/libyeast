@@ -4,29 +4,29 @@ Check that the conformance fixtures exercise the productions of the grammar.
 
 Coverage is dynamic rather than by name. A production counts when running a fixture actually reaches it.
 
-So a production lacking a fixture, such as a `seq-spaces` or an `in-flow`, takes cover from the fixtures that reach it.
 A production nothing reaches is a gap the suite must fill.
 
 The gate proves coverage by running the fixtures through the interpreter. It does not compare the output. A crash of the
 interpreter on a fixture stops the gate.
 
 Reaching a production is half of exercising it. A rule is a decision. A fixture that sees the rule say yes leaves the
-other answer untested. So the corpus must also show a rule **reject** an input. A `(cut)` inside a rule is a way that
-can happen. `interpreter._try_call` records a rule whose match failed as rejected.
+other answer untested. So the corpus must also show a rule **reject** an input. A `(cut)` inside a rule is a way for the
+rule to reject. `interpreter._try_cut` fails the match when the parse past the cut fails. `interpreter._try_call`
+records a rule whose match failed as rejected.
 
-The exception is a rule that *cannot* say no. `l-yaml-stream` matches at any position, and its parts are optional.
-Asking for a fixture where it fails would ask for the impossible.
+The exception is a rule that *cannot* say no. `l-yaml-stream` matches at any position, and its parts are optional. A
+fixture where `l-yaml-stream` fails cannot exist.
 
-`_is_total` proves that from the body, rather than a list stating it. A rule that cannot say no is worth knowing about
-anyway. A total rule can match nothing at all. The rule enclosing it says whether the input ended. `l-yeast-stream` does
-that for the root.
+`_is_total` proves a rule total from its body rather than from a list. A total rule can match nothing at all. The rule
+enclosing a total rule says whether the input ended. `l-yeast-stream` does that for the root.
 
 A `(cut)` is a decision too, and the same argument applies to it. A cut that does not fire is a commit point nothing has
-shown reachable. It is a message nothing has shown right.
+shown reachable.
 
-The fixtures' own expected output settles that, rather than a watch on the interpreter. The expected output is stricter
-than such a watch. It proves the error survived the way back to the caller. A cut that fired inside a lookahead is
-speculative, and would prove that it can fire and no more. `interpreter._try_probe` drops the failure of such a cut.
+The gate reads a cut firing off the fixtures' own expected output rather than off a watch on the interpreter. The
+expected output is stricter than such a watch. It proves the cut's error survived the way back to the caller. A cut that
+fired inside a lookahead is speculative. Such a firing proves that the cut can fire and no more.
+`interpreter._try_probe` drops the failure of such a cut.
 
 `_exercised` takes the grammar as an argument, the way the interpreter does. So this gate answers about the base grammar
 and about any stage the pipeline hands on. A transformation reshapes the productions, and the fixtures must still
@@ -46,10 +46,11 @@ import spec_tests
 import wire
 import yaml
 
-# The nodes that match wherever the parse asks. A `(cut)` counts as matching. `interpreter._try_cut` takes nothing and
-# refuses nothing, and the parse commits there. A failure past a `(cut)` reports the `message` of that `(cut)`, unless a
-# later `(cut)` that failed first set its own `message`. The list is alphabetical. `_IS_TOTAL` is a `Question`. A
-# `Question` raises on a kind its table leaves out.
+# `_ALWAYS` lists the nodes that match wherever the parse asks. A `(cut)` counts as matching. `interpreter._try_cut`
+# takes nothing and refuses nothing, and the parse commits there. A failure past a `(cut)` reports the `message` of that
+# `(cut)`, unless a failure that came first already set `failing`. A later `(cut)` or the edge of a `(max)` window can
+# set `failing` first. The list is alphabetical. `_IS_TOTAL` is a `Question`. A `Question` raises on a kind its table
+# leaves out.
 _ALWAYS = (
     ir.ClearVarAction,
     ir.CloseWindowAction,
@@ -124,7 +125,7 @@ def _a_switch_is_total(node: ir.CaseTree, grammar: Mapping[str, ir.Prod], seen: 
     """
     A `(case)`'s answer. The branches under the case are total, and the `default` is total where the case has it.
     """
-    if node.default is not None:  # the else covers a value with no branch. No value is left to say no
+    if node.default is not None:  # The `else` covers a value with no branch.
         return _is_total(node.default, grammar, seen) and all(_is_total(b.item, grammar, seen) for b in node.branches)
     return all(_is_total(branch.item, grammar, seen) for branch in node.branches)
 
@@ -185,7 +186,8 @@ def _exercised(
 
     Returns `(reached, rejected)`. `interpreter._try_call` reaches a production whose body offers a solution.
     `interpreter._evaluated_call` reaches a production a value expression evaluates. `interpreter._try_call` rejects a
-    production that fails to match. `interpreter._try_way` rejects a production whose gate refuses.
+    production that fails to match. `interpreter._try_way` rejects the productions a way calls where the way's gate
+    refuses.
 
     A failure past a `(cut)` counts as a rejection too. `interpreter._try_cut` hands back the failure, and records its
     message where no earlier failure set one.
@@ -193,10 +195,9 @@ def _exercised(
     coverage = interpreter.Coverage()
     exercisers = spec_tests.load() if fixtures is None else fixtures
     for at, fixture in enumerate(exercisers):
-        if at and not at % 100:  # the run is instrumented and slower than a plain one. It says where it is
+        if at and not at % 100:  # The loop reports its progress.
             ir.say(f"            {at} of {len(exercisers)} fixture(s) exercised")
-        # A fixture that crashes here is a fault of its own and is raised. Swallowing it would leave the productions it
-        # covers unexercised and report a gap in the grammar.
+        # The run raises on a crashing fixture.
         arguments = spec_tests.arguments(fixture, grammar)
         interpreter.run(grammar, fixture.production, fixture.input, arguments, coverage=coverage)
     return coverage.reached, coverage.rejected
@@ -208,13 +209,13 @@ def _fired() -> set[str]:
     a text reaches the output. `interpreter._try_recover` emits the message of a `(cut)`, and `interpreter._try_error`
     emits the message of an `(error)`.
 
-    These are the texts as the wire holds them. `wire.escape` escapes them. A comparison against them wants the message
-    escaped too. A message naming a backslash is `\x5c` here and a backslash in `messages.yaml`.
+    These are the texts as the wire holds them. `error` escapes them with `wire.escape`. A comparison against them wants
+    the message escaped too. A message naming a backslash is `\x5c` here and a backslash in `messages.yaml`.
     """
     texts = set()
     for fixture in spec_tests.load():
         if not os.path.exists(fixture.output_path):
-            continue  # unpaired, which the fixture gate reports
+            continue  # `check_spec_tests` reports an input file that has no output file.
         for token in wire.parse(fixture.expected):
             if token.code == wire.ERROR:
                 texts.add(token.text)

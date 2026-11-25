@@ -19,7 +19,7 @@ def main() -> None:
         original = yaml.safe_load(handle)
     regenerated = ir2annotated.regenerate(annotated2ir.translate(original))
 
-    # A production the round-trip lost reads as one that differs, its regenerated side being nothing at all.
+    # The report prints `None` as the regenerated side of a lost production.
     errors = []
     for key in original:
         if original[key] != regenerated.get(key):

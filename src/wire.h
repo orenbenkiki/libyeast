@@ -43,14 +43,16 @@ int ys_wire_read(ys_wire *wire, ys_token *token);
 
 // Write `token` to `writer` in the yeast wire format. A token sink calls this for its wire writer. The result is
 // `YS_OK` where the write landed. The result is `YS_FAILED_STREAM` where a write to `writer` failed. `errno` then holds
-// the writer's value. The result is also `YS_FAILED_STREAM` where the position line overflows its buffer. The result is
-// `YS_FAILED_ACTION` where the code of `token` has no wire character. The result is also `YS_FAILED_ACTION` where the
-// text of `token` disagrees with its code. `errno` is `EINVAL` in both cases.
+// what the writer's callback set. A callback that writes nothing need not set `errno`. The result is also
+// `YS_FAILED_STREAM` where the position line overflows its buffer. The result is `YS_FAILED_ACTION` where the code of
+// `token` has no wire character. The result is also `YS_FAILED_ACTION` where the text of `token` disagrees with its
+// code. `errno` is `EINVAL` in both cases.
 int ys_wire_write(ys_bytes_writer *writer, ys_token token);
 
-// Write a whole buffer to a writer, and handle a short write. `ys_put` returns `YS_OK` where the whole buffer reached
-// the writer, and `YS_FAILED_STREAM` where the write callback failed or wrote nothing. `errno` then holds what the
-// callback set. The wire writer and the YAML emitter share this.
+// `ys_put` writes a whole buffer to a writer. After a short write, `ys_put` calls the callback again with the unwritten
+// bytes. `ys_put` returns `YS_OK` once the whole buffer has reached the writer. `ys_put` returns `YS_FAILED_STREAM`
+// where the callback fails or writes nothing. A failing callback has set `errno`. A callback that writes nothing need
+// not set `errno`. The wire writer and the YAML emitter both call `ys_put`.
 int ys_put(ys_bytes_writer *writer, const char *bytes, size_t size);
 
 #endif // YEAST_WIRE_H

@@ -54,7 +54,7 @@ def named_character(character: str) -> str:
 def _does_hold_past_ascii(path: str) -> bool:
     """Whether the file `path` names holds a character past ASCII."""
     whole = pathlib.Path(gate.TREE, path)
-    # git tracks a path the working tree no longer holds, a deletion staged and uncommitted.
+    # `git ls-files` lists a file with an unstaged deletion, as https://git-scm.com/docs/git-ls-files says.
     if not whole.exists():
         return False
     with open(whole, encoding="utf-8", errors="replace") as handle:

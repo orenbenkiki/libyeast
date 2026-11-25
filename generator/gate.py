@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """
-The way a gate says what it found, where the repository is, and the room a check gets to walk a grammar.
+The way a gate says what it found, where the repository is, and the room `run_deep` gives a deep recursion.
 
 A gate reports through `report` here. A failure then reads the same wherever it came from.
 
@@ -31,6 +31,24 @@ TREE = os.environ.get("YEAST_TREE") or os.path.dirname(os.path.dirname(os.path.a
 # The column the formatters wrap a source line at. `Makefile` and `.clang-format` set the same limit.
 WIDEST = 120
 
+# The tools a comment of the tree addresses by name and a colon, as in `# pylint: disable=broad-exception-caught`.
+TOOLS = r"noqa|type|pragma|pylint|fmt|isort|mypy|yapf|nopep8"
+
+# A comment opening this way speaks to a tool rather than to a reader. `collect_fragments` reads no prose in such a
+# comment inside a function body or at the end of a line. `scripts/wrap_long_comments.py` keeps such a comment as the
+# file writes it.
+TOOL_DIRECTIVE = re.compile(rf"^(SPDX-|(?:{TOOLS})\s*:|noqa\b|yapf\b|nopep8\b|!|UNTESTED$|clang-format )")
+
+# `check_failures` reads these markers on an `except` line.
+EXCUSES = ("failure-is-reported", "not-a-failure")
+
+# `collect_fragments.not_prose_lines` reads this marker beside a literal that holds no prose.
+NOT_PROSE = "not-prose"
+
+# A marker a comment writes for a gate of the tree. A sentence after the marker states its reason.
+# `generator/check_failures.py` and `not_prose_lines` read that reason.
+A_MARK = re.compile(r"\b(?:" + "|".join((*EXCUSES, NOT_PROSE)) + r"):")
+
 
 def is_in_the_tree(path: str) -> bool:
     """Whether `path` lies inside the root `TREE` names."""
@@ -39,8 +57,9 @@ def is_in_the_tree(path: str) -> bool:
 
 def modules() -> list[pathlib.Path]:
     """
-    Return the modules of `generator/` and `scripts/`. The dead-code checker walks the modules. So do the prose checker
-    and the review that reads the names a change took away.
+    Return the modules of `generator/` and `scripts/`. The dead-code checker walks the modules. `check_documents` walks
+    the modules as well. So do `check_conventions` and `check_failures`. `check_hooks` asks for the modules and the
+    hooks. The hooks `hook_health` and `kind_dispatches` read the directories of the modules.
     """
     return sorted(pathlib.Path(TREE).glob("generator/*.py")) + sorted(pathlib.Path(TREE).glob("scripts/*.py"))
 
@@ -190,11 +209,14 @@ NOT_OURS = (
 # The files a claims reader reads that hold no prose of this project. `src/decoder_tables.h` holds the keys and the set
 # bits the decoder's prose describes. `grammar/yeast-spec-1.2.yaml` holds the productions the grammar prose names. The
 # stress test under `third_party/` holds the cases the decoder's test reads. `CMakeLists.txt` sets `YS_UTF8_STRESS_TEST`
-# to the stress test's path. `tests/test_decoder.c` opens that path. `NOT_OURS` keeps these files out of the settling
-# pass, and a claims reader still reads them.
+# to the stress test's path. `tests/test_decoder.c` opens that path. The official grammar
+# `third_party/yaml-grammar/yaml-spec-1.2.yaml` is the grammar `grammar/yeast-spec-1.2.yaml` derives from.
+# `annotated2ir` translates `grammar/yeast-spec-1.2.yaml`. `NOT_OURS` holds these files. `is_prose_of_the_project`
+# answers false for a file `NOT_OURS` holds.
 READ_ONLY = (
     "src/decoder_tables.h",
     "grammar/yeast-spec-1.2.yaml",
+    "third_party/yaml-grammar/yaml-spec-1.2.yaml",
     "third_party/acutest/acutest.h",
     "third_party/utf8-stress-test/UTF-8-test.txt",
 )
@@ -227,10 +249,26 @@ def prose_files() -> list[pathlib.Path]:
     prose of the project, and `UNREAD` names the files whose prose the checkers do not read. A file `git` tracks and
     neither list names therefore lands in this roster, and the checkers read it without anybody widening a list.
 
-    `check_documents.is_prose_of_the_project` decides the same question for a path an edit names.
+    `is_prose_of_the_project` decides that question for a file.
     """
-    held = [path for path in tracked_files() if not any(part in path for part in NOT_OURS)]
-    return sorted(pathlib.Path(TREE, path) for path in held if os.path.basename(path) not in UNREAD)
+    return sorted(pathlib.Path(TREE, path) for path in tracked_files() if is_prose_of_the_project(path))
+
+
+def is_prose_of_the_project(path: str) -> bool:
+    """
+    Whether the rules on prose hold for `path`.
+
+    An absolute path outside the tree holds prose of somebody else. `NOT_OURS` names the paths in this tree holding no
+    prose of the project, and `UNREAD` names the base names of the files the checkers leave alone. Any other path is
+    prose of the project.
+
+    The code opens no file. A path nobody has added yet gets the answer an added path would get.
+    """
+    if os.path.isabs(path) and os.path.commonpath([os.path.abspath(path), TREE]) != TREE:
+        return False
+    if any(part in path for part in NOT_OURS):
+        return False
+    return os.path.basename(path) not in UNREAD
 
 
 # The directory holding the sessions of this tree. `task_outputs` reads the task output files under a session there. The
@@ -315,7 +353,7 @@ def _impatient(what: str, seconds: int = _PATIENCE) -> None:
         faulthandler.dump_traceback()
         os._exit(3)  # noqa: SLF001  the run is wedged, and a raise here reaches no thread that would act on it
 
-    # A single lock per process, the way the work it watches is one at a time.
+    # Hold the timer in the process global `_WATCHDOG`, and start it as a daemon thread.
     global _WATCHDOG  # noqa: PLW0603  # pylint: disable=global-statement
     _WATCHDOG = threading.Timer(seconds, fire)
     _WATCHDOG.daemon = True
@@ -323,8 +361,8 @@ def _impatient(what: str, seconds: int = _PATIENCE) -> None:
 
 
 def _patient() -> None:
-    """Take the watchdog off. The work it was watching has finished."""
-    # A single lock per process, the way the work it watches is one at a time.
+    """Take the watchdog off. The work the watchdog was watching has finished."""
+    # Cancel a running watchdog, and clear the global.
     global _WATCHDOG  # noqa: PLW0603  # pylint: disable=global-statement
     if _WATCHDOG is not None:
         _WATCHDOG.cancel()
@@ -337,13 +375,14 @@ _WATCHDOG: threading.Timer | None = None
 
 def _one(item: object) -> tuple[object, ir.Reached]:
     """
-    Answer an item in a worker. Hand back the answer and the whole record of the worker. The parent folds the kinds into
+    Answer an item in a worker. Hand back the answer and the kinds the worker reached. The parent folds those kinds into
     its own.
     """
     assert _SPREAD is not None, "a worker running outside a `spread` call"
     work, held, named = _SPREAD
     what = named(item) if named else str(item)
-    _impatient(what)  # a fork keeps no threads. A worker arms its own, over each item it takes
+    # A forked child runs a single thread, as https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html says.
+    _impatient(what)
     ir.working(what)
     try:
         return work(held, item), ir.what_was_reached()
@@ -374,8 +413,8 @@ def spread(
     Call `work(held, item)` per item, and share the items out over the cores. The answers come back in the order of the
     items.
 
-    A gate calling `spread` asks a question over a whole list. The answer is a pure function of something already built
-    and of an item of that list.
+    A caller of `spread` asks a question over a whole list. The answer is a pure function of something already built and
+    of an item of that list.
 
     `spread` forks the workers rather than starting them afresh, and keeps `held` in this process. The workers hand back
     their answers. The fork happens on the calling thread, and that thread's stack goes with the workers.
@@ -389,16 +428,15 @@ def spread(
     `named` says what an item is, for the lines a worker prints while it works on that item. Without a name a line names
     the item by `str(item)`.
     """
-    # What the forked workers read. There is one per process.
+    # `_SPREAD` holds what the forked workers read.
     global _SPREAD  # noqa: PLW0603  # pylint: disable=global-statement
     _SPREAD = (work, held, named)
-    # The pool hands back what a worker answered, and the type went with the fork. This signature is what says what it
-    # is.
+    # The pool hands back a worker's answer without its type. The `cast` below names that type.
     answers: list[_Answer] = []
     try:
         with multiprocessing.get_context("fork").Pool() as pool:
-            # A worker that stops answering leaves the parent waiting on a result that does not come. It is stuck, or
-            # gone where its own watchdog took it. So the parent watches too, and an answer that arrives puts it back.
+            # A worker that stops answering leaves the parent waiting on a result that does not come. The parent watches
+            # with a watchdog of its own. An answer that arrives rearms that watchdog.
             _impatient(f"an answer from one of the workers over {len(items)} item(s)")
             for answer, reached in pool.imap(_one, items, chunksize=8):
                 _impatient(f"an answer from one of the workers over {len(items)} item(s)")
@@ -419,7 +457,7 @@ _RECURSION_LIMIT = 200000
 
 def run_deep(work: Callable[[], None]) -> None:
     """
-    Run `work` on a thread with a stack for a grammar's recursion, and end the process with what it came to.
+    Run `work` on a thread with a stack for a grammar's recursion, and end the process with the outcome of `work`.
 
     An exception `work` raises decides the exit code. An exception raised in a worker thread goes to that thread's
     excepthook while the main thread exits with a success.
@@ -431,11 +469,12 @@ def run_deep(work: Callable[[], None]) -> None:
     status = {}
 
     def worker() -> None:
+        # pylint: disable=broad-exception-caught
         try:
             work()
-        except SystemExit as leaving:  # failure-is-reported: as `status["code"]`, which the main thread exits with
+        except SystemExit as leaving:  # failure-is-reported: The main thread exits with `status["code"]`.
             status["code"] = leaving.code
-        except BaseException:  # noqa: BLE001  failure-is-reported: traceback and failing exit  # pylint: disable=W0718
+        except BaseException:  # failure-is-reported: An exception other than `SystemExit` sets `status["code"]` to `1`.
             traceback.print_exc()
             status["code"] = 1
 

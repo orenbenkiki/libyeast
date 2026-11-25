@@ -33,9 +33,6 @@ through.
   family. Such a question raises on any other kind. `kind_dispatches` then refuses `_as_a`. It refuses a
   `kinds_other_than` arm answering `None`. It refuses a `getattr` naming a field of an `ir` kind. It refuses a match
   statement on a node and a call to Python's hasattr.
-- **The word rules reach a comment inside a function body.** `collect_fragments` makes no fragment of such a comment.
-  The word rules read fragments, at write time and in `check_prose`. A universal or a banned word in a body comment
-  passes unread. The rules then read those comments, and a writer fixes the body comments they refuse.
 
 ## section 4 - Implementation milestones
 

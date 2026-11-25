@@ -46,7 +46,7 @@ def _cases() -> list[tuple[str, spaces.SubSpace]]:
         ("complete", spaces.COMPLETE),
         ("letters", letters),
         ("printable", printable),
-        ("the end alone", spaces.characters(is_at_end=True)),  # not-prose: the name of a case in the table
+        ("the end alone", spaces.characters(is_at_end=True)),  # not-prose: The string names a case in the table.
         ("the invalid byte", spaces.characters([(-1, -1)])),
         ("at a line start", spaces.where(is_at_line_start=True)),
         ("not at a line start", spaces.where(is_at_line_start=False)),

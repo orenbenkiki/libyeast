@@ -49,7 +49,7 @@ def _inline_codes(command: str) -> list[str]:
     heredoc to `python -` or `python3 -` hands over its body. A command whose quoting `shlex` cannot split raises
     `ValueError`, as https://github.com/python/cpython/blob/main/Lib/shlex.py shows.
     """
-    # `punctuation_chars` makes `;`, `|` and `&` words of their own. A plain split glues them onto the code before them.
+    # `punctuation_chars` makes `;`, `|` and `&` words of their own.
     splitter = shlex.shlex(command, posix=True, punctuation_chars=True)
     splitter.whitespace_split = True
     words = list(splitter)
@@ -180,7 +180,7 @@ def main() -> None:
             found = _inline_writes(sys.stdin.read())
         else:
             found = _writes(sys.argv[1], _parsed(sys.argv[1])[2], frozenset())
-    except _UNREADABLE as caught:  # failure-is-reported: exit 2, and the hook refuses
+    except _UNREADABLE as caught:  # failure-is-reported: The hook refuses with exit status `2`.
         print(f"{sys.argv[1]} reads as no Python: {caught}", file=sys.stderr)
         sys.exit(2)
     if found is None:

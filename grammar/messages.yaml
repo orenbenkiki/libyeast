@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: MIT
-# An entry pairs a message code with an error message. A `(cut)` in the grammar names such a code. So do an `(error)`, a `(max)` and a `(commit)`. A message says what the
-# parse expected. It says nothing of the bytes the parse found. The interpreter reads this file. `check_messages` holds the codes here to the
-# codes the grammar names. The C parser emits no message from this file. `src/messages.c` holds the wire reader's messages. `src/messages.c` holds a "not implemented" message as well.
+# An entry pairs a message code with an error message. A `(cut)` in the grammar names such a code. So do an `(error)`, a
+# `(max)` and a `(commit)`. A message names the fault the parse found. A message is fixed text.
+# `generator/interpreter.py` reads this file. `check_messages` holds the codes here to the codes the grammar names. The
+# C parser emits no message from this file. `src/messages.c` holds the wire reader's messages. `src/messages.c` holds a
+# "not implemented" message as well.
 #
 # A `(cut)` or an `(error)` in `yeast-spec-1.2.yaml` names a code here.
 #
-# `ys_next_char` gives the key `YS_LIT_KEY_INVALID` to a byte that is no codepoint. The table holds no message for such a
-# byte.
+# `ys_next_char` gives the key `YS_LIT_KEY_INVALID` to a byte that is no codepoint. The table holds no message for such
+# a byte.
 
 MISSING_VALUE: "A mapping value must follow `:`"
 MISSING_KEY: "A mapping key must follow `?`"

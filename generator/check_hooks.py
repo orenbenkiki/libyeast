@@ -45,13 +45,13 @@ import re
 import subprocess
 import sys
 import tempfile
-import textwrap
 
 from collections.abc import Container, Iterable
 from typing import Any, Mapping
 
 import collect_fragments
 import gate
+import prose_rules
 
 _SETTINGS = os.path.join(gate.TREE, ".claude", "settings.json")  # the file that registers a hook.
 
@@ -72,7 +72,7 @@ _WRITES_A_FILE = ("Edit", "Write")
 _SCRATCH = "junk-hooks-"
 
 # The kinds of prose an edit may hold. A pair names the kind it puts the fault in.
-_KINDS = ("a comment", "a docstring", "a markdown line", "a string literal")
+_KINDS = ("a comment", "a comment in a function body", "a docstring", "a markdown line", "a string literal")
 
 # A checker of `checkers.READS_THE_FILE` holds a pair, and `probes` names that pair. The file of such a pair in
 # `tests/hooks.json` holds the fault before the edit. The `answers` edit changes text away from that fault. The hook
@@ -147,10 +147,7 @@ def _registered(events: Container[str] = _READS_A_TOOL_CALL) -> dict[str, tuple[
 
 
 # The columns a reflow re-wraps prose to.
-_COLUMNS = (120, 400)
-
-# A code span. `_rewrapped` keeps a span whole.
-_A_SPAN = re.compile(r"`[^`]*`")
+_COLUMNS = (gate.WIDEST, 400)
 
 # The classes of checker that read prose. Such a checker reads a text that `collect_fragments.flattened` flattened.
 _READS_PROSE = ("_PROSE", "_DOCUMENT")
@@ -161,8 +158,8 @@ _THE_CHECKERS = os.path.join(gate.TREE, ".claude", "hooks", "checkers.py")
 
 def _masked(line: str) -> tuple[str, dict[str, str]]:
     """
-    `line` with the matches of `_A_SPAN` put behind numbered markers, and a map from marker to span. A wrap then keeps a
-    span whole.
+    Hide the matches of `prose_rules.A_CODE_SPAN` in `line` behind numbered markers. Answer the masked line and a map
+    from marker to span. A wrap then keeps a span whole.
     """
     spans: dict[str, str] = {}
 
@@ -171,7 +168,7 @@ def _masked(line: str) -> tuple[str, dict[str, str]]:
         spans[key] = found.group(0)
         return key
 
-    return _A_SPAN.sub(hidden, line), spans
+    return prose_rules.A_CODE_SPAN.sub(hidden, line), spans
 
 
 def _rewrapped(text: str, columns: int) -> str:
@@ -194,15 +191,7 @@ def _rewrapped(text: str, columns: int) -> str:
         masked, spans = _masked(line.strip())
         indent = line[: len(line) - len(line.lstrip())]
         under = indent + "  " if collect_fragments.does_open_a_block(line) else indent
-        wrapped = textwrap.wrap(
-            masked,
-            columns,
-            initial_indent=indent,
-            subsequent_indent=under,
-            break_on_hyphens=False,
-            break_long_words=False,
-        )
-        for said in wrapped or [masked]:
+        for said in collect_fragments.filled(masked, indent, under, columns) or [masked]:
             for key, span in spans.items():
                 said = said.replace(key, span)
             held.append(said)
@@ -339,8 +328,8 @@ def _bypass_faults() -> list[str]:
 
     `checkers.CALLED` names the checker modules. This reports a module that imports a checker module.
 
-    A checker calls a function of a helper module to decide. `prose_rules.word_refusal` is such a function. The name of
-    such a function holds `refus` or `fault`. This reports a module that calls such a function.
+    A checker names a function of a helper module to decide. `prose_rules.word_refusal` is such a function. The name of
+    such a function holds `refus` or `fault`. This reports any other module that names such a function.
 
     `checkers` and the checker modules are exempt from both reports.
     """
@@ -441,10 +430,8 @@ def _runners() -> dict[str, tuple[str, str]]:
     """
     `{the name a pair is keyed by: (the command that runs it, the tool it matches)}`.
 
-    A checker of `checkers._CHECKERS` shares the pair of `checkers.THE_HOOK`. A settings file registering no
-    `checkers.THE_HOOK` leaves a checker with no pair. `.claude/settings.json` registers no checker as a hook of its
-    own. `.claude/settings.json` registers `checkers.THE_HOOK` on an edit. Any registered hook but `checkers.THE_HOOK`
-    keeps its own pair.
+    A registered hook other than `checkers.THE_HOOK` keeps its own pair. A checker of `checkers.CALLED` takes the pair
+    of `checkers.THE_HOOK` where the settings register that hook.
     """
     checkers = importlib.import_module("checkers")
     registered = _registered()
