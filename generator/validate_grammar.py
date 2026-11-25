@@ -140,6 +140,13 @@ def _check_annotated(grammar: Mapping[str, ir.Prod]) -> list[str]:
     return errors
 
 
+# The match a node cuts into a token, and `None` for a node that cuts none.
+_CUT_INTO_A_TOKEN: ir.Question[ir.Node | None] = ir.Question(
+    "the match a node cuts into a token",
+    {ir.TokenWrapper: lambda node: node.item, ir.kinds_other_than(ir.TokenWrapper): None},
+)
+
+
 def _check_matches(grammar: Mapping[str, ir.Prod]) -> list[str]:
     """
     `interpreter._evaluated_match` reads a `(match)` off the token under construction. It gives back the characters
@@ -152,14 +159,14 @@ def _check_matches(grammar: Mapping[str, ir.Prod]) -> list[str]:
     """
     errors = []
     for name, production in sorted(grammar.items()):
-        holders = [token for node in walk(production.body) if (token := ir.AS_A_TOKEN(node)) is not None]
-        for token in holders:
-            inner = [held for node in walk(token.item) if (held := ir.AS_A_TOKEN(node)) is not None]
-            if inner and any(ir.AS_A_MATCH(node) is not None for node in walk(token.item)):
+        cuts = [item for node in walk(production.body) if (item := _CUT_INTO_A_TOKEN(node)) is not None]
+        for item in cuts:
+            is_cut_again = any(_CUT_INTO_A_TOKEN(node) is not None for node in walk(item))
+            if is_cut_again and any(ir.DOES_READ_THE_MATCH(node) for node in walk(item)):
                 errors.append(f"{name}: a `(match)` reads a run a nested `(token)` has cut")
-        covered = {id(node) for token in holders for node in walk(token.item)}
+        covered = {id(node) for item in cuts for node in walk(item)}
         for node in walk(production.body):
-            if ir.AS_A_MATCH(node) is not None and id(node) not in covered:
+            if ir.DOES_READ_THE_MATCH(node) and id(node) not in covered:
                 errors.append(f"{name}: a `(match)` sits outside any `(token)`, and no run is its own")
     return errors
 
@@ -199,20 +206,31 @@ def _check_total_cases(grammar: Mapping[str, ir.Prod]) -> list[str]:
     say which holds. A `<fail>` branch names the decline in full. That node is an `ir.FailTree`. `interpreter._MATCHED`
     answers false for a `FailTree`. A `<fail>` branch says the case matches nothing.
     """
-    errors = []
-    for name, production in grammar.items():
-        for walked in walk(production.body):
-            node = ir.AS_A_CASE(walked)
-            if node is None or node.default is not None:
-                continue
-            if node.var not in _FINITE_VALUES:
-                errors.append(f"{name}: the case is on {node.var}. nothing enumerates the values of that parameter.")
-                continue
-            named = {branch.value for branch in node.branches}
-            missing = [value for value in _FINITE_VALUES[node.var] if value not in named]
-            if missing:
-                errors.append(f"{name}: the case on {node.var} names no branch for {', '.join(missing)}")
-    return errors
+    return [
+        fault
+        for name, production in grammar.items()
+        for node in walk(production.body)
+        for fault in _TOTALITY_FAULTS(node, name)
+    ]
+
+
+def _case_faults(node: ir.CaseTree, name: str) -> tuple[str, ...]:
+    """The faults `_check_total_cases` finds in `node`, a case of the production `name`."""
+    if node.default is not None:
+        return ()
+    if node.var not in _FINITE_VALUES:
+        return (f"{name}: the case is on {node.var}. nothing enumerates the values of that parameter.",)
+    named = {branch.value for branch in node.branches}
+    missing = [value for value in _FINITE_VALUES[node.var] if value not in named]
+    return (f"{name}: the case on {node.var} names no branch for {', '.join(missing)}",) if missing else ()
+
+
+# The faults a node gives `_check_total_cases`. A node other than a case gives no fault. An `ir.FlipValue` gives none
+# either.
+_TOTALITY_FAULTS: ir.Question[tuple[str, ...]] = ir.Question(
+    "the faults a node gives the check of total cases",
+    {ir.CaseTree: _case_faults, ir.kinds_other_than(ir.CaseTree): ()},
+)
 
 
 def _validate(grammar: Mapping[str, ir.Prod]) -> list[str]:
@@ -222,7 +240,7 @@ def _validate(grammar: Mapping[str, ir.Prod]) -> list[str]:
     )
     referenced: set[str] = set()
     for name, production in grammar.items():
-        for reference in (call for node in walk(production.body) if (call := ir.AS_A_CALL(node)) is not None):
+        for reference in (call for node in walk(production.body) if (call := ir.CALLED(node)) is not None):
             referenced.add(reference.name)
             if reference.name not in grammar:
                 errors.append(f"{name}: reference to undefined production {reference.name!r}")

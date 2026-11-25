@@ -27,12 +27,6 @@ through.
   the tokens held with it and the depth the production stack reaches. The option is a single cap over those bounds
   rather than a depth cap of its own. The threat model owes the argument for a single cap. It owes the cases behind that
   argument too.
-- **A selection is no kind test.** `ir._as_a` answers `None` for the kinds it does not name. A caller that branches on
-  that `None` decides a property outside any `ir.Question`. The `ir.AS_A_*` selections go. A branch on a kind becomes a
-  property `ir.Question`. A place expecting a single kind asks an `ir.Question` whose table names that kind and no
-  family. Such a question raises on any other kind. `kind_dispatches` then refuses `_as_a`. It refuses a
-  `kinds_other_than` arm answering `None`. It refuses a `getattr` naming a field of an `ir` kind. It refuses a match
-  statement on a node and a call to Python's hasattr.
 
 ## section 4 - Implementation milestones
 

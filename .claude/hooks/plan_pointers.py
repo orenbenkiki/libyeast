@@ -16,7 +16,8 @@ import check_documents
 
 def refusal_for(text: str, path: str) -> str | None:
     """
-    The refusal the plan rule gives for `text` at `path`, or None where the text points at no plan.
+    The refusal the plan rule gives for `text` at `path`, or None where the text points at no plan or `path` may name
+    the plan.
 
     Public. `checkers.refusals_for_edit` runs this over the whole new text of a file.
     """

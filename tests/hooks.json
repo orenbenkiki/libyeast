@@ -56,6 +56,16 @@
         "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    return node", "new_string": "    return isinstance(node, ir.Node)" }
       }
     },
+    {
+      "probes": "a getattr of a field",
+      "file": "# SPDX-License-Identifier: MIT\n\"\"\"A probe. The hooks read it.\"\"\"\n\n\ndef _probe(node):\n    \"\"\"A probe.\"\"\"\n    return node\n",
+      "answers": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    return node", "new_string": "    return getattr(node, \"items\", None)" }
+      },
+      "passes": {
+        "tool_input": { "file_path": "TREE/generator/probe.py", "old_string": "    return node", "new_string": "    return getattr(node, \"__name__\", None)" }
+      }
+    },
     { "probes": "a comment", "skips": "this reads an isinstance call over ir kinds. a comment is no call." },
     {
       "probes": "a comment in a function body",

@@ -2,29 +2,29 @@
 """
 Check the conventions a gate can decide.
 
-`.claude/conventions.md` is the written list. This gate decides a rule that walking the tree settles, and a reader is
-then free of it. A reader judges what no gate decides.
+`.claude/conventions.md` lists the conventions. This gate decides a rule that walking the tree settles, and a reader
+then skips that rule. A reader judges what no gate decides.
 
-The rules held here are `a-repository-question-with-two-callers-is-asked-once` and
-`a-literal-list-spells-each-word-once`. This gate also holds `a-private-name-carries-an-underscore`,
-`an-enumeration-of-the-tree-lives-in-gate` and `a-parsed-source-is-split-on-the-newline`. A rule here asks about the
-whole tree.
+This gate holds `a-repository-question-with-two-callers-is-asked-once` and `a-literal-list-spells-each-word-once`. This
+gate also holds `a-private-name-carries-an-underscore`, `an-enumeration-of-the-tree-lives-in-gate` and
+`a-parsed-source-is-split-on-the-newline`. A rule here asks about the whole tree.
 
-This gate holds `a-boolean-name-is-a-question` as well. It reads the answer off the type, in C and in Python alike. This
-gate leaves `a-boolean-is-a-pure-question` to the reader. The `bool` checks here read only the name.
+This gate holds `a-boolean-name-is-a-question` as well. This gate reads the answer off the type, in C and in Python
+alike. This gate leaves `a-boolean-is-a-pure-question` to the reader. The `bool` checks here judge only the name.
 
 `a-name-uses-the-words-this-project-uses` holds a bound name to the word list the prose obeys.
 
-`a-comment-inside-a-body-is-a-note` and `a-nested-docstring-is-a-note` come off the syntax tree. `long_comment_runs` and
-`long_nested_docstrings` read it, and the `short_comments` and `nested_docstrings` checkers refuse the shape.
+`long_comment_runs` reads `a-comment-inside-a-body-is-a-note` off the syntax tree, and `long_nested_docstrings` reads
+`a-nested-docstring-is-a-note` the same way. The `short_comments` and `nested_docstrings` checkers refuse the shape
+those rules name.
 
 `a-make-assignment-carries-no-trailing-comment`. `make` keeps the whitespace before a `#` inside the value, as
 https://www.gnu.org/software/make/manual/html_node/Simple-Assignment.html says. The spaces then land in the path.
 
 `a-mechanised-rule-names-its-convention`. A convention `.claude/conventions.md` marks mechanised names the module that
 decides it, and that module's docstring names the convention back. `convention_note_faults` reads the notes, and the
-`document_rules` checker refuses a broken note. A hook refusal ends on the rule it enforces, and this gate reads that
-name back the other way. The rule's note then credits the hook.
+`document_rules` checker refuses a broken note. `_uncredited_hook_faults` reads the rules a hook signs. A signed rule's
+note has to credit the hook.
 
 `a-hook-refuses-through-one-helper`. A hook answers the tool through `refusal.py` or through `.claude/hooks/refusal.sh`.
 This gate reads the payload keys off a hook. This gate passes `refusal.py` and `.claude/hooks/refusal.sh`.
@@ -36,6 +36,8 @@ Its docstring then names them.
 names across the tree. This gate skips a list holding a name too short for `_A_MATCHED_NAME`.
 
 `a-fragment-is-found-by-its-key`. This gate refuses a read of `starts` or `start_line` outside `collect_fragments`.
+
+`a-family-question-is-built-by-is-one-of`. This gate refuses a copy of the table `ir.is_one_of` builds.
 
 **Usage:** `python3 generator/check_conventions.py`.
 """
@@ -186,6 +188,38 @@ def _repeated_word_faults() -> list[tuple[str, str]]:
             if twice:
                 at = f"{name}:{node.lineno}"
                 held.append((at, f"{at} writes {', '.join(twice)} more than once in a literal list"))
+    return held
+
+
+def _family_table_faults() -> list[tuple[str, str]]:
+    """
+    `(site, what is wrong)` for a table that `ir.is_one_of` builds. An arm answers `True`. The other arm answers
+    `False`, and a call of `kinds_other_than` keys it. The arms come in either order. The table in the body of
+    `ir.is_one_of` passes.
+    """
+    held = []
+    for path in gate.modules() + gate.hook_modules():
+        name = str(path.relative_to(gate.TREE))
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        builder = {
+            id(inner)
+            for top in tree.body
+            if path.name == "ir.py" and isinstance(top, ast.FunctionDef) and top.name == "is_one_of"
+            for inner in ast.walk(top)
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Dict) or len(node.keys) != 2 or id(node) in builder:
+                continue
+            answers = [
+                one.value if isinstance(one, ast.Constant) and isinstance(one.value, bool) else None
+                for one in node.values
+            ]
+            if set(answers) != {True, False}:
+                continue
+            rest = node.keys[answers.index(False)]
+            if isinstance(rest, ast.Call) and "kinds_other_than" in ast.unparse(rest.func):
+                at = f"{name}:{node.lineno}"
+                held.append((at, f"{at} writes out the table `ir.is_one_of` builds"))
     return held
 
 
@@ -793,6 +827,7 @@ def _check() -> None:
     found = (
         _uncached_question_faults()
         + _repeated_word_faults()
+        + _family_table_faults()
         + _bare_private_faults()
         + _banned_word_name_faults()
         + _enumeration_faults()

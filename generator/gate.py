@@ -58,27 +58,27 @@ def is_in_the_tree(path: str) -> bool:
 def modules() -> list[pathlib.Path]:
     """
     Return the modules of `generator/` and `scripts/`. The dead-code checker walks the modules. `check_documents` walks
-    the modules as well. So do `check_conventions` and `check_failures`. `check_hooks` asks for the modules and the
-    hooks. The hooks `hook_health` and `kind_dispatches` read the directories of the modules.
+    the modules and the hooks. So do `check_conventions`, `check_failures` and `check_hooks`. The hooks `hook_health`
+    and `kind_dispatches` read the directories of the modules.
     """
     return sorted(pathlib.Path(TREE).glob("generator/*.py")) + sorted(pathlib.Path(TREE).glob("scripts/*.py"))
 
 
 def hook_modules() -> list[pathlib.Path]:
     """
-    The Python of `.claude/hooks`. A hook is no module of the project. The dead-code gate reports nothing a hook
-    defines, and other gates walk the hooks beside the modules. A hook does import the modules and read names out of
-    them. The checker of who reads a name walks the hooks too.
+    The Python of `.claude/hooks`. A hook is none of the modules `modules` returns. The dead-code gate reports nothing a
+    hook defines, and other gates walk the hooks beside the modules. A hook does import the modules and read names out
+    of them. The checker of who reads a name walks the hooks too.
     """
     return sorted(pathlib.Path(TREE).glob(".claude/hooks/*.py"))
 
 
 def mcp_modules() -> list[pathlib.Path]:
     """
-    The Python of the servers under `.claude/mcp`. A server is no module of the project. `check_dead_code` reports no
-    name a server defines. `check_conventions` does report a server's name that only that server reads and that has no
-    underscore. A server does import the modules and read names out of them. The checker of who reads a name walks the
-    servers too.
+    The Python of the servers under `.claude/mcp`. A server is not among the modules `modules` returns.
+    `check_dead_code` reports no name a server defines. `check_conventions` does report a server's name that only that
+    server reads and that has no underscore. A server such as `.claude/mcp/fetch_fragments.py` does import the modules
+    and read names out of them. The checker of who reads a name walks the servers too.
     """
     return sorted(pathlib.Path(TREE).glob(".claude/mcp/*.py"))
 

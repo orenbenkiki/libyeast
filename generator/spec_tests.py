@@ -43,9 +43,9 @@ _DETECTED = ("m", "f")
 # A fixture names `n` for the stack and for the parameter alike.
 #
 # `p` counts the characters a parse crossed to reach a rule. `run` starts past those characters and drops their token.
-# `run` derives the line, the column and the input behind a parse from the characters it consumes. `run` pops `p` before
-# it enters a production. A production ahead of `read-indents` declares `n`. A production past `read-indents` declares
-# no `n`.
+# `run` derives the line, the column and the input behind a parse from the characters `try_consume` consumes. `run` pops
+# `p` before it enters a production. A production ahead of `read-indents` declares `n`. A production past `read-indents`
+# declares no `n`.
 _ENTERED = ("n", "p")
 
 # A production name is the leading run of a filename. That run ends at the first `.`. A parameter is a

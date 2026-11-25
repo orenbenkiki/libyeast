@@ -2,7 +2,7 @@
 """
 The typed IR for the YAML grammar.
 
-`annotated2ir.py` reads the grammar into these nodes. `grammar2decoder.py` and the gate checks read them back out.
+`annotated2ir.py` reads the grammar into these nodes. `grammar2decoder.py` reads them back out.
 
 Over the operator vocabulary libyeast writes, the IR is a faithful mirror. An operator maps to a single node. A
 `GatePart` sorts its guards, and the reader builds no `GatePart`. The round-trip through `ir2annotated.py` therefore
@@ -145,12 +145,11 @@ class Question(Generic[_Answer]):
     - **It raises on a kind the table does not name.** The message says which question and which kind. There is no
       default and no way to write a default.
     - **`unexercised` reports a handler no input reaches.** A kind whose handler nothing reaches is a guess about the
-      grammar. `unexercised` reports it once the whole corpus has run, and not before. An input that reaches a kind
-      exercises that kind. A partial run says nothing about a kind no input reached.
+      grammar. `_check` in `check_normalize.py` calls `unexercised` once the whole corpus has run. An input that reaches
+      a kind exercises that kind. A partial run says nothing about a kind no input reached.
 
     Those rules pin the table to the kinds that occur. A missing kind raises, and the run reports a spare handler. A
-    question then says nothing about kinds it cannot see. A question raises on a new kind of the IR once an input brings
-    that kind to the question.
+    question then says nothing about kinds it cannot see.
 
     A pair of lists name kinds that have not arrived. The lists differ in whether a family answers such a kind. A
     question names the family of kinds it means, and a real property of the kinds decides that family. The question then
@@ -171,8 +170,7 @@ class Question(Generic[_Answer]):
 
     Handlers take the node and the values the caller threads through, and a caller calls a question the same way.
     `question(node, grammar, ways)` reaches `handler(node, grammar, ways)`. A handler that is not callable is the answer
-    itself. The table writes `EmptyTree: True` rather than a lambda that ignores its arguments. A call gets that value
-    back. Keep it immutable.
+    itself. A call gets that value back. Keep it immutable.
     """
 
     asked: ClassVar[list["Question"]] = []  # `asked` holds the questions in the order somebody made them.
@@ -253,8 +251,8 @@ class Question(Generic[_Answer]):
         self._arrived |= {kind for kind in KINDS if kind.__name__ in arrived}
 
 
-# A round count no fixpoint over a grammar should need. A fixpoint ends at the first round that changes nothing. A loop
-# still going here has stopped settling.
+# `rounds` raises past this many rounds. `fixed_point` raises when it answers a single key more than this many times. A
+# fixpoint ends once nothing changes. A loop still going here has stopped settling.
 #
 # `deepest_rounds` says on a run how far out of reach this cap sits.
 ROUNDS = 100
@@ -814,7 +812,8 @@ class OptTree(Node):
 @dataclass(frozen=True)
 class RepTree(Node):
     """
-    `({N})` matches `item` exactly `count` times, and `count` holds `N`. `N` is a literal or a parameter.
+    `({N})` matches `item` exactly `count` times, and no times where `count` is not positive. `count` holds `N`. `N` is
+    a literal or a parameter.
     """
 
     count: Node
@@ -877,9 +876,9 @@ class ConsumeNoCharAction(Node):
     A run that must take a character is a gate peeking its set and a consume of that set. A run that may take none
     offers that pair as one way. Its other way refuses the set and performs this action.
 
-    A counted run builds this action too. The parse may work the count out. A guard then asks whether the count is none
-    or below, and the way behind that guard performs this action. The grammar may write the count as none. The run is
-    then this action and no more.
+    A counted run builds this action too. The parse may work the count out. A guard then refuses a positive count, and
+    the way behind that guard performs this action. The grammar may write a literal count that is no positive integer.
+    The run is then this action and no more.
 
     The way taking none performs this rather than performing nothing. A length read past a way that performed nothing
     would be the length the last run left. That is a different run's answer.
@@ -999,7 +998,7 @@ class AlternativeState(Node):
 class ChoiceState(Node):
     """
     A production's body as the state machine reads it. The body holds its `alternatives` in order. The parse takes the
-    first alternative that matches. A `ChoiceState` replaces `AltTree` where a pass has shaped a body. A canonical
+    first alternative that matches. A pass shapes a body into a `ChoiceState` unless the body is a set. A canonical
     choice then reads apart from an unshaped body.
     """
 
@@ -1248,9 +1247,9 @@ class ClearVarAction(Node):
     """
     A zero-width action says `param` stops applying here. Past this action the environment holds no value for `param`. A
     read of the parameter there faults, unless the emitter is passing arguments. A global's stack gives up only its top
-    value. A read of the global there finds the value beneath, and faults only where the stack is empty.
+    value. A value beneath the top stays on the stack.
 
-    A construct that measures `param` ends on this action.
+    After `_clear_reads`, a production that reads `param` ends on this action.
     """
 
     param: str
@@ -1376,9 +1375,9 @@ class PopIndentAction(Node):
     `None`. `pair` holds the mark that the pop shares with its push. The level says nothing the stack does not already
     hold, and the pop restores from the stack instead. A pop takes off the entry on top.
 
-    `interpreter._try_pop_indent` checks the level where the pop runs, and that makes the pairing a refusal rather than
-    a claim. Pops of the same level with different `pair` marks compare unequal. `pair`, not the level, keeps such pops
-    from merging.
+    `interpreter._try_pop_indent` checks a named level where the pop runs. `interpreter._popped` refuses a top opened
+    for another pair, and that makes the pairing a refusal rather than a claim. Pops of the same level with different
+    `pair` marks compare unequal. `pair`, not the level, keeps such pops from merging.
 
     The level is `None` where the pop names none. A push names the level it puts there.
     """
@@ -1460,8 +1459,9 @@ class PushMessageAction(Node):
 @dataclass(frozen=True)
 class PopMessageAction(Node):
     """
-    A zero-width action that closes the committed region the innermost `PushMessageAction` opened. Reaching it keeps the
-    region's commitment, and a later failure then backtracks through the region softly.
+    A zero-width action that closes the committed region the innermost `PushMessageAction` opened. A parse that reaches
+    this action marks the region reached. A later failure then backtracks through the region like any other, and reports
+    no error.
 
     `_lowered_commit` wraps the item of a `CommitWrapper` in a `PushMessageAction` and a `PopMessageAction`. The pop
     pairs with its push on the stack of the parse, the way a `(token)`'s code does.
@@ -1499,10 +1499,10 @@ class PushRecoveryAction(Node):
 class PopRecoveryAction(Node):
     """
     A zero-width action that takes back what the innermost `PushRecoveryAction` established. A cut past this point then
-    unwinds to the rule that answered before it.
+    unwinds to the recovery region that answered before that push.
 
-    The pop and `PushRecoveryAction` go together. The halves pair on the stack of the parse rather than where a step
-    wrote them.
+    The pop takes the top of the parse's stack. The pop refuses a top that is not a recovery region. The pop also
+    refuses a top opened for pairs of which none is in `pair`.
     """
 
     pair: frozenset[int]
@@ -1577,14 +1577,12 @@ class DidConsumeSinceOpenGuard(Node):
 class EndMustConsumeAction(Node):
     """
     A zero-width action that closes the region its own `StartMustConsumeAction` opened. It takes that open off the stack
-    of the parse. It takes the open on *top*, and that open must name this `pair`. A top naming another pair means a
-    step moved a half of a pair past a boundary it must not cross. The action then looks no further down. Popping the
-    top tells this action apart from `DidConsumeSinceOpenGuard`. That guard reads rather than pops, and walks past the
-    opens of other pairs.
+    of the parse. It takes the open on *top*, and that open must name this `pair`. The action looks no further down.
+    Popping the top tells this action apart from `DidConsumeSinceOpenGuard`. That guard reads rather than pops, and
+    walks past the opens of other pairs.
 
     The action says nothing about whether the region matched. `DidConsumeSinceOpenGuard` asks that. A way holding this
-    action has entered on the answer already. Splitting the pair keeps a gate read-only. A guard that closed the region
-    could sit in front of nothing that touches the stack. A second ask would find the region gone.
+    action has entered on the answer already.
     """
 
     pair: frozenset[int]
@@ -1607,9 +1605,8 @@ class PushBackTrackAction(Node):
 @dataclass(frozen=True)
 class PopBackTrackAction(Node):
     """
-    A zero-width action that closes the region the innermost `PushBackTrackAction` opened. It settles the ways taken
-    inside that region. The pop and `PushBackTrackAction` go together. `_popped` refuses a stack top that shares no pair
-    with the pop.
+    A zero-width action closes the region the innermost `PushBackTrackAction` opened. It settles the ways taken inside
+    that region. `_popped` refuses a stack top opened for pairs of which none is in the pop's `pair`.
     """
 
     pair: frozenset[int]
@@ -1823,8 +1820,7 @@ CONSUMING = (
     RangeSet,
 )
 
-# The kinds that leave something behind and match wherever a way reaches them. Such a kind moves the state the parse
-# holds rather than the position. In alphabetical order.
+# `ACTIONS` holds the action kinds that `CONSUMING` leaves out. `ACTIONS` sorts its kinds by name.
 ACTIONS = (
     ClearVarAction,
     CloseWindowAction,
@@ -1996,7 +1992,7 @@ HOLDS_A_MATCH = (AltTree, BindTree, RecoverWrapper, SeqTree)
 
 # `BODY_KINDS` names the shapes of a production's body. An `AltTree` is an alternation. A `ChoiceState` is a shaped
 # choice. A `RecoverWrapper` holds a way under a `(recover)` handler. A `SeqTree` is a concatenation. A body of another
-# kind is a single way. `BODY_KINDS` leaves a binding out. A body that is a binding hides a write behind a match, and
+# kind is a single way. `BODY_KINDS` leaves a binding out. A body that is a `BindTree` hides a write behind a match, and
 # `no-bind-nodes` counts such a body. The names run in alphabetical order.
 BODY_KINDS = (AltTree, ChoiceState, RecoverWrapper, SeqTree)
 
@@ -2280,23 +2276,12 @@ def kinds_other_than(*kinds: type) -> tuple[type, ...]:
     return tuple(one for family in _PARTITION for one in family if one not in kinds)
 
 
-# The kind a selection gives a node as.
-_Kind = TypeVar("_Kind", bound="Node")
-
-
-def _as_a(kind: type[_Kind], what: str) -> Question[_Kind | None]:
+def is_one_of(family: tuple[type, ...], what: str) -> Question[bool]:
     """
-    The question giving a node as `kind`, and `None` for a node of any other kind that a family of `_PARTITION` holds.
-    `what` says the question in words.
+    The question whether a node is of a kind in `family`. `what` says the question in words.
 
-    The question names `kind` and the other kinds of `_PARTITION`. The question answers `None` for a kind a family takes
-    in later.
+    `normalize` builds its yes-or-no questions over a family through this function.
     """
-    return Question(what, {kind: lambda node: node, kinds_other_than(kind): None})
-
-
-def _is_one_of(family: tuple[type, ...], what: str) -> Question[bool]:
-    """The question whether a node is of a kind in `family`. `what` says the question in words."""
     return Question(what, {family: True, kinds_other_than(*family): False})
 
 
@@ -2309,71 +2294,84 @@ ITEMS_IN_A_SEQUENCE: Question[tuple["Node", ...]] = Question(
     },
 )
 
-# A node as a `(match)`.
-AS_A_MATCH = _as_a(MatchValue, "a node as a `(match)`")
+# Whether a node reads the text the parse matched.
+DOES_READ_THE_MATCH = is_one_of((MatchValue,), "whether a node reads the text the parse matched")
 
-# A node as a parameter.
-AS_A_PARAMETER = _as_a(ParamValue, "a node as a parameter")
+# Whether a node is the length the last consume took. `(len)` of `(match)` is that length.
+IS_THE_CONSUMED_LENGTH: Question[bool] = Question(
+    "whether a node is the length the last consume took",
+    {LenValue: lambda node: DOES_READ_THE_MATCH(node.arg), kinds_other_than(LenValue): False},
+)
 
-# A node as `<empty>`.
-AS_AN_EMPTY = _as_a(EmptyTree, "a node as `<empty>`")
+# The call of a production a node makes, and `None` for a node that hands control to no production.
+CALLED: Question[RefCall | None] = Question(
+    "the call of a production a node makes", {CALLS: lambda node: node, kinds_other_than(*CALLS): None}
+)
 
-# A node as a `(token)`.
-AS_A_TOKEN = _as_a(TokenWrapper, "a node as a `(token)`")
+# The name of the production a call enters. Any other kind raises.
+NAME_CALLED: Question[str] = Question("the name of the production a call enters", {CALLS: lambda node: node.name})
 
-# A node as a `(case)`.
-AS_A_CASE = _as_a(CaseTree, "a node as a `(case)`")
+# The kinds holding a `pair`. A bracket opens and closes with nodes of the same pair.
+_PAIRED = (
+    CloseWindowAction,
+    DidConsumeSinceOpenGuard,
+    EndMustConsumeAction,
+    OpenWindowAction,
+    PopBackTrackAction,
+    PopCodeAction,
+    PopIndentAction,
+    PopMessageAction,
+    PopRecoveryAction,
+    PushBackTrackAction,
+    PushCodeAction,
+    PushIndentAction,
+    PushMessageAction,
+    PushRecoveryAction,
+    StartMustConsumeAction,
+)
 
-# A node as a call of a production.
-AS_A_CALL = _as_a(RefCall, "a node as a call of a production")
+# The pair a node holds, and `None` for a node that holds no pair.
+PAIR_HELD: Question[frozenset[int] | None] = Question(
+    "the pair a node holds", {_PAIRED: lambda node: node.pair, kinds_other_than(*_PAIRED): None}
+)
 
-# A node as a push of an indentation.
-AS_A_PUSH_INDENT = _as_a(PushIndentAction, "a node as a push of an indentation")
+# The parameter a node reads, and `None` for a node that reads none. A `GlobalValue` is no parameter.
+PARAMETER_READ: Question[str | None] = Question(
+    "the parameter a node reads", {ParamValue: lambda node: node.name, kinds_other_than(ParamValue): None}
+)
 
-# A node as a pop of an indentation.
-AS_A_POP_INDENT = _as_a(PopIndentAction, "a node as a pop of an indentation")
+# The change a node makes to the depth of the indentation stack.
+INDENTS_PUSHED: Question[int] = Question(
+    "the change a node makes to the depth of the indentation stack",
+    {PushIndentAction: 1, PopIndentAction: -1, kinds_other_than(PushIndentAction, PopIndentAction): 0},
+)
 
-# A node as an alternation.
-AS_AN_ALTERNATION = _as_a(AltTree, "a node as an alternation")
+# Whether a node does nothing.
+DOES_NOTHING = is_one_of((EmptyTree,), "whether a node does nothing")
 
-# A node as a binding.
-AS_A_BINDING = _as_a(BindTree, "a node as a binding")
+# Whether a node is a character set the parser tests by its spans. A `DiffSet` and a `RangeSet` are other set forms.
+IS_A_CHARACTER_SET = is_one_of((CharSet,), "whether a node is a character set the parser tests by its spans")
 
-# A node as `<fail>`.
-AS_A_FAIL = _as_a(FailTree, "a node as `<fail>`")
+# Whether a node is `<fail>`, the match no input makes.
+DOES_ALWAYS_FAIL = is_one_of((FailTree,), "whether a node is the match no input makes")
 
-# A node as a choice of ways.
-AS_A_CHOICE = _as_a(ChoiceState, "a node as a choice of ways")
+# Whether a node cuts its way. `interpreter._try_cut` reports the error a `(cut)` names where a failure comes past that
+# cut. `_try_cut` skips that report where a later cut failed first.
+DOES_CUT = is_one_of((CutAction,), "whether a node cuts its way")
 
-# A node as a sequence.
-AS_A_SEQUENCE = _as_a(SeqTree, "a node as a sequence")
+# The match a commit holds, and `None` for a node that commits nothing. `interpreter._try_committed` sets an error where
+# that match fails before its end. The error is the commit's `message`.
+COMMITTED: Question["Node | None"] = Question(
+    "the match a commit holds", {CommitWrapper: lambda node: node.item, kinds_other_than(CommitWrapper): None}
+)
 
-# A node as an `(exclude)`.
-AS_AN_EXCLUSION = _as_a(ExcludeAtAction, "a node as an `(exclude)`")
+# The spans a character set takes. Any other kind raises.
+SPANS_OF_A_SET: Question[tuple[tuple[int, int], ...]] = Question(
+    "the spans a character set takes", {CharSet: lambda node: node.spans}
+)
 
-# A node as a run of at least a turn.
-AS_A_PLUS = _as_a(PlusTree, "a node as a run of at least a turn")
-
-# A node as a run of none or more turns.
-AS_A_STAR = _as_a(StarTree, "a node as a run of none or more turns")
-
-# A node as a counted repetition.
-AS_A_REPETITION = _as_a(RepTree, "a node as a counted repetition")
-
-# A node as a `(len)`.
-AS_A_LENGTH = _as_a(LenValue, "a node as a `(len)`")
-
-# A node as a `(recover)`.
-AS_A_RECOVERY = _as_a(RecoverWrapper, "a node as a `(recover)`")
-
-# A node as an alternative of a choice.
-AS_AN_ALTERNATIVE = _as_a(AlternativeState, "a node as an alternative of a choice")
-
-# A node as a `(commit)`.
-AS_A_COMMIT = _as_a(CommitWrapper, "a node as a `(commit)`")
-
-# A node as a literal value.
-AS_A_LITERAL_VALUE = _as_a(LitValue, "a node as a literal value")
+# Whether a run can take no turn. `(***)` can. `(+++)` must take a turn.
+CAN_TAKE_NO_TURN: Question[bool] = Question("whether a run can take no turn", {StarTree: True, PlusTree: False})
 
 # The change a node makes to the count of open message regions.
 REGIONS_OPENED: Question[int] = Question(
@@ -2395,56 +2393,17 @@ WINDOWS_OPENED: Question[int] = Question(
     },
 )
 
-# A node as a `LookGuard`.
-AS_A_LOOK = _as_a(LookGuard, "a node as a `LookGuard`")
-
-# A node as a `NegLookGuard`.
-AS_A_NEGATIVE_LOOK = _as_a(NegLookGuard, "a node as a `NegLookGuard`")
-
-# A node as a `DidMatchFullSpanGuard`.
-AS_A_FULL_SPAN_GUARD = _as_a(DidMatchFullSpanGuard, "a node as a `DidMatchFullSpanGuard`")
-
-# A node as a `ConsumeLimitedSpanAction`.
-AS_A_LIMITED_SPAN = _as_a(ConsumeLimitedSpanAction, "a node as a `ConsumeLimitedSpanAction`")
-
-# A node as a `DidConsumeSinceOpenGuard`.
-AS_A_SINCE_OPEN_GUARD = _as_a(DidConsumeSinceOpenGuard, "a node as a `DidConsumeSinceOpenGuard`")
-
-# A node as a `StartMustConsumeAction`.
-AS_A_MUST_CONSUME_START = _as_a(StartMustConsumeAction, "a node as a `StartMustConsumeAction`")
-
-# A node as a `SetVarAction`.
-AS_A_SET_VAR = _as_a(SetVarAction, "a node as a `SetVarAction`")
-
-# A node as a `ClearVarAction`.
-AS_A_CLEAR_VAR = _as_a(ClearVarAction, "a node as a `ClearVarAction`")
-
-# A node as an `EndOfStreamGuard`.
-AS_AN_END_OF_STREAM = _as_a(EndOfStreamGuard, "a node as an `EndOfStreamGuard`")
-
-# A node as a `ConsumeCharAction`.
-AS_A_CONSUME_CHAR = _as_a(ConsumeCharAction, "a node as a `ConsumeCharAction`")
-
-# A node as a `ConsumeSpanAction`.
-AS_A_CONSUME_SPAN = _as_a(ConsumeSpanAction, "a node as a `ConsumeSpanAction`")
-
 # Whether a node asks about the input in front of the parse.
-IS_LOOKING_AHEAD = _is_one_of(_LOOKS_AHEAD, "whether a node asks about the character in front of the parse")
+IS_LOOKING_AHEAD = is_one_of(_LOOKS_AHEAD, "whether a node asks about the character in front of the parse")
 
 # Whether a node is an item the machine does where it appears.
-IS_A_LEAF_ITEM = _is_one_of(LEAF_ITEMS, "whether a node is an item the machine does where it appears")
+IS_A_LEAF_ITEM = is_one_of(LEAF_ITEMS, "whether a node is an item the machine does where it appears")
 
 # Whether a node is a guard.
-IS_A_GUARD = _is_one_of(GUARDS, "whether a node is a guard")
+IS_A_GUARD = is_one_of(GUARDS, "whether a node is a guard")
 
 # Whether a node takes characters.
-IS_CONSUMING = _is_one_of(CONSUMING, "whether a node takes characters")
-
-# A node as a difference of sets.
-AS_A_DIFFERENCE = _as_a(DiffSet, "a node as a difference of sets")
-
-# A node as a character set.
-AS_A_CHAR_SET = _as_a(CharSet, "a node as a character set")
+IS_CONSUMING = is_one_of(CONSUMING, "whether a node takes characters")
 
 # The match a lookaround holds, or `None` for a node that peeks at nothing.
 PEEKED: Question["Node | None"] = Question(
@@ -2452,14 +2411,23 @@ PEEKED: Question["Node | None"] = Question(
     {PEEKS: lambda node: node.item, kinds_other_than(*PEEKS): None},
 )
 
+# The ways an alternation offers, and `None` for a node of any other kind. `ITEMS_IN_AN_ALTERNATION` answers `(node,)`
+# for such a node.
+WAYS_OF_AN_ALTERNATION: Question[tuple["Node", ...] | None] = Question(
+    "the ways an alternation offers", {AltTree: lambda node: node.items, kinds_other_than(AltTree): None}
+)
+
+# The items a sequence runs in order, and `None` for a node that runs none. `ITEMS_IN_A_SEQUENCE` answers `(node,)` for
+# such a node.
+ITEMS_IN_ORDER: Question[tuple["Node", ...] | None] = Question(
+    "the items a sequence runs in order", {SeqTree: lambda node: node.items, kinds_other_than(SeqTree): None}
+)
+
 # The items a node puts in an alternation it sits in. An alternation puts its own items there.
 ITEMS_IN_AN_ALTERNATION: Question[tuple["Node", ...]] = Question(
     "the items a node puts in an alternation it sits in",
     {AltTree: lambda node: node.items, kinds_other_than(AltTree): lambda node: (node,)},
 )
-
-# A node as a `(cut)`.
-AS_A_CUT = _as_a(CutAction, "a node as a `(cut)`")
 
 
 def repeated(node: "Node") -> "Node | None":

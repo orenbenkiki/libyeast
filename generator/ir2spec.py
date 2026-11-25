@@ -102,7 +102,7 @@ def _normalized_sequence(node: ir.SeqTree) -> ir.Node:
 
 def _normalized_alternation(node: ir.AltTree) -> ir.Node:
     """`node` as an optional, where its last branch is `<empty>`."""
-    if not (node.items and ir.AS_AN_EMPTY(node.items[-1]) is not None):
+    if not (node.items and ir.DOES_NOTHING(node.items[-1])):
         return node
     rest = node.items[:-1]
     return ir.OptTree(rest[0] if len(rest) == 1 else ir.AltTree(rest))
@@ -110,10 +110,10 @@ def _normalized_alternation(node: ir.AltTree) -> ir.Node:
 
 def _normalized_case(node: ir.CaseTree) -> ir.Node:
     """
-    `_normalized_case` returns `node` unchanged where the branches and the default of `node` differ. Otherwise
-    `_normalized_case` returns the shared item. The soft-commit case of `c-double-quoted` has such branches once
-    `_erase` strips the `CommitWrapper`. `generator/check_vendor_spec.py` compares that rule with the output of
-    `official`.
+    `_normalized_case` reads the branch items of `node`, and the default where `node` has one. `_normalized_case`
+    returns the first item where no item differs from it. Otherwise `_normalized_case` returns `node` unchanged. The
+    soft-commit case of `c-double-quoted` has equal items once `_erase` strips the `CommitWrapper`.
+    `generator/check_vendor_spec.py` compares that rule with the output of `official`.
     """
     held = [branch.item for branch in node.branches] + ([node.default] if node.default is not None else [])
     return held[0] if held and all(item == held[0] for item in held) else node

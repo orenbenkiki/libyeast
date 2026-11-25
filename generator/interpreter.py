@@ -324,7 +324,9 @@ class Emitter:
         # The stack holds the scopes the parse gives back on its way out. The innermost scope sits last. A factoring can
         # split a pair across a call. Such a pair still closes its own scope.
         self.stack: tuple[_Scope, ...] = ()
-        self.env: dict[str, _Value] = {}  # The parameters of the current production and their values.
+        # The parameters in scope at the current production and their values. A callee keeps a caller's parameter it
+        # does not declare.
+        self.env: dict[str, _Value] = {}
         self.is_sol = True  # Whether the parse sits at the start of a line.
         self.forbidden: tuple[ir.Node | None, ...] = ()  # The `(exclude)` guards on the start of a line.
         self.pending: tuple[
@@ -648,7 +650,10 @@ def _as_number(expression: ir.Node, emitter: Emitter, grammar: Mapping[str, ir.P
 
 
 def _as_text(expression: ir.Node, emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> str:
-    """The value `expression` comes to. That value has to be text. `(atoi)` and `(len)` read text."""
+    """
+    The value `expression` comes to. That value has to be text. `(atoi)` reads text. So does a `(len)` that does not
+    count the last consume.
+    """
     value = _evaluate(expression, emitter, grammar)
     assert isinstance(value, str), f"a read wants text, and the expression comes to {value!r}"
     return value
@@ -656,13 +661,8 @@ def _as_text(expression: ir.Node, emitter: Emitter, grammar: Mapping[str, ir.Pro
 
 def _evaluate(expression: ir.Node, emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> _Value:
     """
-    Evaluate a value expression. A parameter, a literal and the matched text are value expressions. So are the
-    arithmetic and the dispatch over those.
-
-    `AtoiValue` reads the text of the expression under it. `Match()` is the open token's text. `LenValue` of `Match()`
-    reads the length the last consume took. The consume leaves that length in a slot of its own. `LenValue` of anything
-    else measures what the expression under it evaluates to. Those meanings of `Match()` differ where a cut falls inside
-    a consume. They differ too where a token holds more than a consume.
+    Evaluate a value expression. `_EVALUATE` maps a kind of value expression to its handler. Parameters, literals and
+    matched text are some of those kinds.
     """
     return _EVALUATE(expression, emitter, grammar)
 
@@ -821,7 +821,7 @@ def _evaluated_length(node: ir.LenValue, emitter: Emitter, grammar: Mapping[str,
     This reads a slot the consume leaves rather than the token the parser is building. An annotation opening or closing
     cuts a token. The grammar's `(len): (match)` asks for the length of the run just consumed.
     """
-    if ir.AS_A_MATCH(node.arg) is None:
+    if not ir.IS_THE_CONSUMED_LENGTH(node):
         return len(_as_text(node.arg, emitter, grammar))
     return emitter.consumed_length
 
@@ -830,7 +830,7 @@ def _evaluated_match(_node: ir.Node, emitter: Emitter, _grammar: Mapping[str, ir
     """
     The open token's text.
 
-    `c-indentation-indicator` reads the digits the token holds. `s-indent-lt` and `s-indent-le` read `(len): (match)`.
+    `c-indentation-indicator` reads the digit the token holds. `s-indent-lt` and `s-indent-le` read `(len): (match)`.
     `_evaluated_length` answers that from a slot rather than from here. The consumed length has a slot of its own, and
     no token holds that length.
     """
@@ -946,7 +946,7 @@ _WHAT_A_GRAMMAR_HOLDS: dict[tuple[int, object], tuple[object, tuple[bool, tuple[
 
 def _what_a_grammar_holds(grammar: Mapping[str, ir.Prod]) -> tuple[bool, tuple[str, ...]]:
     """
-    `(whether `grammar` says where the indentation changes, the globals the productions leave undeclared)`.
+    `(whether `grammar` pushes an indentation, the globals the productions leave undeclared)`.
 
     Both are properties of the grammar rather than of a run. This works both out once per grammar, rather than once per
     fixture run against the grammar.
@@ -956,9 +956,7 @@ def _what_a_grammar_holds(grammar: Mapping[str, ir.Prod]) -> tuple[bool, tuple[s
     """
 
     def worked_out() -> tuple[bool, tuple[str, ...]]:
-        does_push = any(
-            ir.AS_A_PUSH_INDENT(node) is not None for name in grammar for node in _nodes(grammar[name].body)
-        )
+        does_push = any(ir.INDENTS_PUSHED(node) > 0 for name in grammar for node in _nodes(grammar[name].body))
         held_globals = tuple(
             name for name in ir.GLOBAL_PARAMS if not any(name in grammar[held].params for held in grammar)
         )
@@ -1300,7 +1298,7 @@ def _try_call(node: ir.RefCall, emitter: Emitter, grammar: Mapping[str, ir.Prod]
     by_reference = [
         parameter
         for parameter, argument in zip(production.params, node.args)
-        if (named := ir.AS_A_PARAMETER(argument)) is not None and named.name == parameter
+        if ir.PARAMETER_READ(argument) == parameter
     ]
     emitter.passing_arguments = True
     arguments = tuple(_evaluate(argument, emitter, grammar) for argument in node.args)
@@ -1439,15 +1437,13 @@ def _try_way(node: ir.AlternativeState, emitter: Emitter, grammar: Mapping[str, 
     way's calls.
 
     The gate is a `GatePart`, and a `GatePart` holds only questions about the position where the parse enters the way.
-    The interpreter asks the questions in the order the gate holds them, and that order means nothing. Backtracking
-    makes the sequence equal to asking the gate first and committing to it.
+    The interpreter asks the questions in the order the gate holds them, and that order means nothing.
     """
     # A run recording coverage asks the gate first and charges a refusal to the productions the way calls.
     if emitter.coverage is not None and node.gate.guards and not _does_gate_hold(node.gate, emitter, grammar):
         for called in (node.first, node.second):
-            named = getattr(called, "name", None)
-            if isinstance(named, str) and named in grammar:
-                emitter.coverage.rejected.add(named)
+            if called is not None and called.name in grammar:
+                emitter.coverage.rejected.add(called.name)
         return False
     parts = tuple(node.gate.guards) + tuple(node.actions)
     # A recovery wraps the call it protects in a `(recover)` scope. A way with no `first` is a tail call, and its
@@ -1461,8 +1457,8 @@ def _try_way(node: ir.AlternativeState, emitter: Emitter, grammar: Mapping[str, 
     if emitter.checking is None:
         return _try_match(ir.SeqTree(parts), emitter, grammar, k)
     checking = emitter.checking
-    # Under a check, the continuation hands `checking` the `GuardAnswers` at entry and the `GuardAnswers` where the way
-    # leaves the parse.
+    # Under a check, the continuation hands `checking` a pair of lists of `GuardAnswers`. The first list holds the
+    # answers the parse may hold at entry. The second list holds the answers the parse may hold where the way ends.
     entered = _guard_answers_now(emitter, grammar)
 
     def try_left() -> bool:
@@ -1931,8 +1927,8 @@ def _try_open_turn(
     """
     A turn that must take a character opens.
 
-    A guard that asks after the turn at the open's position finds that the turn has not matched. A loop that would
-    repeat the turn forever ends there instead.
+    A guard that asks after the turn at the open's position finds that the turn has taken no character. A loop that
+    would repeat the turn forever ends there instead.
     """
     checkpoint = emitter.checkpoint()
     emitter.stack += (("consume", emitter.position, node.pair),)
@@ -2096,9 +2092,9 @@ def _try_binding(node: ir.BindTree, emitter: Emitter, grammar: Mapping[str, ir.P
 def _try_window(node: ir.MaxWrapper, emitter: Emitter, grammar: Mapping[str, ir.Prod], k: _Continuation) -> bool:
     """
     The window gives the item a budget of characters. `Emitter.try_consume` refuses a committed character past that
-    budget. The refusal sets `failing` to the message the window names. The parse then unwinds to the recovery.
-    `Emitter.give_back` keeps the tokens read up to the edge. `Emitter.error` cuts the open token before it emits the
-    error. The continuation past the window takes the ceiling off.
+    budget. The refusal sets `failing` to the message the window names. `Emitter.is_unwinding` then holds, and the parse
+    unwinds to the recovery. `Emitter.give_back` keeps the tokens read up to the edge. `Emitter.error` cuts the open
+    token before it emits the error. The continuation past the window takes the ceiling off.
     """
     if node.item is None:
         return k()  # The official grammar writes a bare `(max)` with no item.
@@ -2111,7 +2107,7 @@ def _try_window(node: ir.MaxWrapper, emitter: Emitter, grammar: Mapping[str, ir.
     def try_past_window() -> bool:
         emitter.ceiling = None  # The window bounds `item` and not the rest of the parse.
         emitter.ceiling_message = None
-        # On a failure here `item` tries its next way. The rewind of `item` restores the ceiling.
+        # On a failure here `item` tries its next way. `Emitter.rewind` in `item` restores the ceiling.
         return k()
 
     try:

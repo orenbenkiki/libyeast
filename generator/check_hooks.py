@@ -93,11 +93,12 @@ def _pairs() -> dict[str, list[dict[str, Any]]]:
 
 def _landed(pair: Mapping[str, Any], scratch: str) -> Mapping[str, Any]:
     """
-    Write the file the pair names into `scratch`, and answer the pair. An edit then has somewhere to land.
+    Write the text under `file` into `scratch` for the `answers` side and the `passes` side. Answer a copy of the pair
+    that names those files. An edit then has somewhere to land.
 
-    A hook reads the file its payload names and asks what the edit would leave. At a path holding nothing, a hook sees
-    an edit that cannot apply and passes the payload it came in with. `collect_fragments.written` answers `None` for
-    such an edit, and `prose_gate` then passes it. The pair says what the path holds.
+    A hook reads the file its payload names and asks what the edit would leave. An empty path lacks the `old_string` of
+    an Edit. A hook passes such an Edit unread. `collect_fragments.written` answers `None` for such an edit, and
+    `prose_gate` then passes it. The pair says what the path holds.
 
     The directory the pair names comes along. A hook that decides by directory reads `generator/probe.py` as a file of
     the generator. `kind_dispatches.dispatches_of` decides by directory.

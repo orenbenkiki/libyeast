@@ -14,8 +14,8 @@ other answer untested. So the corpus must also show a rule **reject** an input. 
 rule to reject. `interpreter._try_cut` fails the match when the parse past the cut fails. `interpreter._try_call`
 records a rule whose match failed as rejected.
 
-The exception is a rule that *cannot* say no. `l-yaml-stream` matches at any position, and its parts are optional. A
-fixture where `l-yaml-stream` fails cannot exist.
+A rule that *cannot* say no is exempt. `l-yaml-stream` matches at any position, and its parts are optional. A fixture
+where `l-yaml-stream` fails cannot exist.
 
 `_is_total` proves a rule total from its body rather than from a list. A total rule can match nothing at all. The rule
 enclosing a total rule says whether the input ended. `l-yeast-stream` does that for the root.

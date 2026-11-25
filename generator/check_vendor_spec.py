@@ -153,7 +153,7 @@ def _match_drift(vendored: dict[str, ir.Prod], ours: dict[str, ir.Prod]) -> list
     """
     holders = {
         label: {
-            name for name, production in grammar.items() if any(ir.AS_A_MATCH(n) is not None for n in _walk(production))
+            name for name, production in grammar.items() if any(ir.DOES_READ_THE_MATCH(n) for n in _walk(production))
         }
         for label, grammar in (("official", vendored), ("libyeast", ours))
     }

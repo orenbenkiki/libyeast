@@ -197,7 +197,10 @@
 
 - The checkers and `make reformat` catch the faults below.
 
-  - `kind_dispatches` refuses a look at a node's kind outside an `ir.Question`.
+  - `kind_dispatches` refuses a look at a node's kind outside an `ir.Question`. It refuses a `getattr` naming a field of
+    an `ir` kind, a `hasattr` call and a match statement. The `ir.AS_A_*` selections are gone, and property questions
+    take their place.
+  - `check_conventions` refuses a hand-written copy of the table `ir.is_one_of` builds.
   - `step_arguments` refuses a pipeline step with no argument in the comment above it.
   - `design_copies` refuses a `DESIGN.md` text that copies the prose of a name it cites.
   - `written_by` follows a script into the modules of the tree it writes through.

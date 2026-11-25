@@ -2,8 +2,8 @@
 """
 Check that nothing in `generator/` or `scripts/` is unreachable.
 
-This gate calls a module, a definition or a kind of `ir` dead. A dead module has no runner and no importer. A dead
-top-level function, class or constant is one no root reaches. A dead kind of `ir` has no construction that anything
+This gate calls a module, a definition or a kind of `ir` dead. A dead module has no runner and no importer that runs. A
+dead top-level function, class or constant is one no root reaches. A dead kind of `ir` has no construction that anything
 reaches.
 
 Naming a kind costs little. Building a kind is the commitment. A kind nobody builds is as dead as a helper nobody calls.
@@ -202,11 +202,15 @@ def _dead_code_errors() -> list[str]:
             # `gate.defined_names` gives the names a top-level definition or assignment binds. A binding's reads include
             # its annotation. The walk reaches a type alias that annotation names.
             for name in gate.defined_names(node):
-                held = (
-                    [node]
-                    if gate.is_a_definition(node)
-                    else [getattr(node, "value", None), getattr(node, "annotation", None)]
-                )
+                held: list[ast.AST | None]
+                if gate.is_a_definition(node):
+                    held = [node]
+                elif isinstance(node, ast.AnnAssign):
+                    held = [node.value, node.annotation]
+                elif isinstance(node, ast.Assign):
+                    held = [node.value]
+                else:
+                    raise AssertionError(f"{path.name}:{node.lineno}: a binding of a statement no reading covers")
                 read_from: list[ast.AST] = [one for one in held if one is not None]
                 defined.setdefault(name, f"{path.name}:{node.lineno}")
                 for one in read_from:

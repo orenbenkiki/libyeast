@@ -82,7 +82,14 @@ whether a gate decides it. The author asks that of an accepted rule before the n
 - **a-kind-dispatch-raises** - a question about the grammar is a total `ir.Question`. A default arm reports the
   question's blindness as a fact about the grammar. *Mechanised by `ir` and `kind_dispatches`. A `Question` raises on a
   kind its table does not name, and `check_normalize` reports a handler that a corpus run left unreached. The
-  `kind_dispatches` checker refuses an `isinstance` test and a `type()` comparison over kinds.*
+  `kind_dispatches` checker refuses an `isinstance` test and a `type()` comparison over kinds. It refuses a `getattr`
+  naming a field of an `ir` kind, a `hasattr` call and a match statement.*
+- **an-ir-question-is-asked-once** - identical `ir.Question` tables ask the same question. Use the question that exists.
+  Nearly identical tables are suspect too. Either they ask the same question, or the difference marks a bug in a
+  caller's logic. *Not mechanised.*
+- **a-family-question-is-built-by-is-one-of** - a question answering yes for a family of kinds and no for every other
+  kind is `ir.is_one_of` of that family. A copy of its table is a second definition of the same shape. *Mechanised by
+  `check_conventions`.*
 - **a-declared-exception-carries-its-reason** - the gate checks the declaration in both directions. A declaration the
   tree has outgrown fails as loudly as a missing one. `KEPT_THOUGH_DEAD` and `NAMES_THE_TREE_NO_LONGER_HOLDS` are such
   declarations. `NAMES_STILL_OWED`, `DEVIATIONS` and `ABSENT_NAMES_A_FILE_MAY_CITE` are such declarations as well. A

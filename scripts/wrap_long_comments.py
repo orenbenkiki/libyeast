@@ -21,9 +21,9 @@ A triple-quoted Python string may hold a ``- `` bullet past the width. This scri
 and keeps the hanging indent. A bullet whose lines fit stays as written.
 
 ``--apply`` rewrites files in place. ``--check`` reports the blocks, moved comments and bullets that want a change, and
-it exits with a failing status on a find. ``make reformat`` applies this script. ``make vet-format`` checks the files
-with this script. Neither target runs this script on a C or Markdown file. ``make reformat-c`` and ``make reformat-md``
-hand those files to other tools.
+it exits with a failing status on a find. ``make reformat`` applies this script through ``make reformat-py`` and ``make
+reformat-make``. ``make vet-format`` checks the files with this script through ``make vet-format-py``. Neither target
+runs this script on a C or Markdown file. ``make reformat-c`` and ``make reformat-md`` hand those files to other tools.
 """
 
 import io

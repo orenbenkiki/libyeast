@@ -462,10 +462,10 @@ verify-roundtrip: .stamps/verify-roundtrip
 
 verify-references: .stamps/verify-references
 
-# `official` erases libyeast's token annotations from `grammar/yeast-spec-1.2.yaml`. `_erased_call` writes a reference
-# to an indicator production back as the character it names. The remainder must be the vendored grammar, save the
-# productions `check_vendor_spec._DEVIATIONS` declares. An edit meant to add a token annotation must not change an
-# official production.
+# `official` erases libyeast's token annotations from `grammar/yeast-spec-1.2.yaml`, the file `DEFAULT_GRAMMAR` names
+# and `annotated2ir.load` reads. `_erased_call` writes a reference to an indicator production back as the character it
+# names. The remainder must be the vendored grammar, save the productions `check_vendor_spec._DEVIATIONS` declares. An
+# edit meant to add a token annotation must not change an official production.
 .stamps/verify-spec: $(GRAMMAR_SPEC) $(ANNOTATED) $(GEN_SRC) | .stamps
 	python3 generator/check_vendor_spec.py
 	@touch $@

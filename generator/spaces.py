@@ -147,27 +147,27 @@ def comparisons(quantities: Sequence[int]) -> tuple[bool, ...]:
 
 def _every_ordering(is_at_line_start: bool) -> list[tuple[bool, ...]]:
     """
-    The ways the parse's quantities can compare against one another, as `(the comparison axes above)` tuples.
+    The ways the parse's quantities can compare against one another, as the tuples `comparisons` answers.
 
     This works the orderings out from the quantities rather than declaring them. The answers are then consistent by
-    construction. An ordering is transitive, and no set of integers makes a tuple that is not here.
+    construction. An ordering is transitive, and no set of integers the facts below allow makes a tuple that is not
+    here.
 
     The facts below bound the orderings. They hold true of a parse rather than of the grammar's current shape.
 
-    - **A column is where the parse is in its line, and a line start is column `0`.** So the column is `0` at a
-      line start and at least `1` anywhere else. A take keeps that. `interpreter.Emitter.try_consume` moves
-      the column. A break goes to column `0` and a line start. Any
-      other character takes a column and leaves the line start behind. The byte-order mark moves neither column nor
-      line start.
+    - **A column is where the parse is in its line, and a line start is column `0`.** Anywhere else the column is at
+      least `1`. A take keeps both facts. `interpreter.Emitter.try_consume` moves the column. A break goes to column `0`
+      and a line start. Any other character takes a column and leaves the line start behind. A byte-order mark the
+      grammar asks for moves neither column nor line start.
     - **The indentation does not fall below `-1`.** `l-bare-document` enters the root at `-1` and has pushed nothing
-      there, and `0 < n` tells that apart from a pushed `0`. The grammar does compute lower. Under `block-out`,
-      `seq-spaces` puts a block sequence at `n - 1`. `interpreter._indent` holds the value it hands back to `-1`, and no
-      state of a parse falls outside the enumeration here.
+      there. The grammar does compute lower. Under `block-out`, `seq-spaces` puts a block sequence at `n - 1`.
+      `interpreter._indent` clamps the value it hands back at `-1`. A parse then reaches no state outside these
+      orderings.
     - **What a consume took and the floor are lengths.** Neither is negative.
-    - **A consume falls within the line the parse is on.** The consumed length is at most the column. A site reading
-      the consumed length reads it right after a run that takes no break and no byte-order mark, as
-      `check_spaces._check_grammar` checks. A break would reset the column under the consume. A byte-order mark takes
-      no column of its own.
+    - **A consume falls within the line the parse is on.** The consumed length is at most the column. A site reading the
+      consumed length reads it right after a run that takes no break and no byte-order mark, as
+      `check_spaces._check_grammar` checks. A break would reset the column under the consume. A byte-order mark takes no
+      column of its own.
     """
     return sorted({comparisons(quantities) for quantities in _quantified(is_at_line_start)})
 

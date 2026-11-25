@@ -247,6 +247,9 @@ whether a gate decides it. The author asks that of an accepted rule before the n
 
 - **one-answer-per-question** - a pair of walks answering the same question drift. Grep for a walk that answers the
   question before writing one. Call the walk that exists. *Not mechanised.*
+- **an-ir-question-is-asked-once** - identical `ir.Question` tables ask the same question. Use the question that exists.
+  Nearly identical tables are suspect too. Either they ask the same question, or the difference marks a bug in a
+  caller's logic. *Not mechanised.*
 - **a-gates-prerequisites-list-what-it-reads** - a gate reads a file, and that gate's stamp rule names the file as a
   prerequisite. A stamp rule missing an input turns a skipped gate into a green one. *Not mechanised. The `Makefile`
   cannot check itself.*

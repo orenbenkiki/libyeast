@@ -231,6 +231,17 @@ def _check_guard_answers() -> list[str]:
     ]
 
 
+# The match a counted run repeats. A node that counts no turns gives `None`.
+_COUNTED: ir.Question[ir.Node | None] = ir.Question(
+    "the match a counted run repeats", {ir.RepTree: lambda node: node.item, ir.kinds_other_than(ir.RepTree): None}
+)
+
+# The match a `(***)` run repeats. A node of any other kind gives `None`.
+_TAKEN_NONE_OR_MORE_TIMES: ir.Question[ir.Node | None] = ir.Question(
+    "the match a `(***)` run repeats", {ir.StarTree: lambda node: node.item, ir.kinds_other_than(ir.StarTree): None}
+)
+
+
 def _check_grammar() -> list[str]:
     """
     Check that the grammar holds the facts `_check_guard_answers` assumes of it. A counted run of a single character
@@ -247,25 +258,26 @@ def _check_grammar() -> list[str]:
     placed = 0
     for name, production in grammar.items():
         for node in validate_grammar.walk(production.body):
-            repetition = ir.AS_A_REPETITION(node)
-            if repetition is not None and ir.is_one_char(repetition.item, grammar):
-                taken = _spans(grammar, repetition.item)
+            counted = _COUNTED(node)
+            if counted is not None and ir.is_one_char(counted, grammar):
+                taken = _spans(grammar, counted)
                 if taken is None:
                     raise AssertionError(f"{name}: a counted run of a single character denotes no set")
                 if chars.intersected_spans(taken, breaks):
                     errors.append(f"{name}: a counted run takes a `b-char`")
-            sequence = ir.AS_A_SEQUENCE(node)
-            items = sequence.items if sequence is not None else ()
+            items = ir.ITEMS_IN_ORDER(node) or ()
             for at, item in enumerate(items):
                 read = _lengths_read(item)
                 if not read:
                     continue
                 placed += read
-                run = ir.AS_A_STAR(items[at - 1]) if at else None
-                taken = _spans(grammar, run.item) if run is not None else None
+                run = _TAKEN_NONE_OR_MORE_TIMES(items[at - 1]) if at else None
+                taken = _spans(grammar, run) if run is not None else None
                 if taken is None or chars.intersected_spans(taken, excluded):
                     errors.append(f"{name}: a `(len)` of `(match)` follows no `(***)` run free of breaks and marks")
-    everywhere = sum(_is_a_length_read(node) for one in grammar.values() for node in validate_grammar.walk(one.body))
+    everywhere = sum(
+        ir.IS_THE_CONSUMED_LENGTH(node) for one in grammar.values() for node in validate_grammar.walk(one.body)
+    )
     if placed != everywhere:
         errors.append(f"{everywhere - placed} `(len)` of `(match)` read(s) sit in no sequence")
     return errors
@@ -277,17 +289,14 @@ def _spans(grammar: dict[str, ir.Prod], node: ir.Node) -> list[tuple[int, int]] 
     return chars.spans(denotation) if denotation is not None else None
 
 
-def _is_a_length_read(node: ir.Node) -> bool:
-    """Whether `node` is a `(len)` of `(match)`."""
-    length = ir.AS_A_LENGTH(node)
-    return length is not None and ir.AS_A_MATCH(length.arg) is not None
-
-
 def _lengths_read(node: ir.Node) -> int:
-    """The reads of a `(len)` of `(match)` inside `node`. The walk does not descend into a nested sequence."""
-    if ir.AS_A_SEQUENCE(node) is not None:
+    """
+    Answer the reads of a `(len)` of `(match)` inside `node`. The walk counts no read inside a sequence, and that holds
+    for `node` itself.
+    """
+    if ir.ITEMS_IN_ORDER(node) is not None:
         return 0
-    return _is_a_length_read(node) + sum(_lengths_read(child) for child in chars.children(node))
+    return ir.IS_THE_CONSUMED_LENGTH(node) + sum(_lengths_read(child) for child in chars.children(node))
 
 
 def main() -> None:

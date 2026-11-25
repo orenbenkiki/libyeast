@@ -179,8 +179,8 @@ def _node(x: object) -> ir.Node:
             return ir.NegLookGuard(_node(value))
         if op == "(<==)":
             return ir.LookBehindGuard(_node(value))
-        # `yaml-spec-1.2.yaml.s-indent-lt` and `yaml-spec-1.2.yaml.s-indent-le` wrap a repetition in `(<<<)`. A
-        # repetition here matches possessively. A possessive repetition gives back nothing for `(<<<)` to undo.
+        # `yaml-spec-1.2.yaml.s-indent-lt` and `yaml-spec-1.2.yaml.s-indent-le` wrap a repetition in `(<<<)`.
+        # `_try_repeat` leaves `(<<<)` nothing to undo.
         if op == "(<<<)":
             return _node(value)
         if op == "(---)":

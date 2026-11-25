@@ -4,9 +4,9 @@
 A checker of `checkers`. This checker refuses a test of a node's kind. A total `ir.Question` looks at the kind instead.
 `a-kind-dispatch-raises` is the rule.
 
-A dispatch looks at a node's kind. A selection and a rewrite look at it too. Somebody adds a kind to `ir`, and a place
-that looks at the kind then owes a decision about it. A total `ir.Question` raises on the new kind until somebody makes
-that decision. An `isinstance` test lets the new kind through silently.
+A dispatch looks at a node's kind. A rewrite looks at the kind too. Somebody adds a kind to `ir`, and a place that looks
+at the kind then owes a decision about it. A total `ir.Question` raises on the new kind until somebody makes that
+decision. An `isinstance` test lets the new kind through silently.
 
 The checker reads the syntax tree of a module of the generator, the scripts or the hooks. An `isinstance` call whose
 second argument names a kind or a family of `ir` is a fault. The argument may write `ir.SeqTree` or a bare `SeqTree`. An
@@ -14,10 +14,14 @@ second argument names a kind or a family of `ir` is a fault. The argument may wr
 kind. A test against `ir.Node` names no kind. Such a test asks whether a value is a node at all, and this checker passes
 it.
 
+The checker refuses a `getattr` naming a field of an `ir` kind. It refuses a `hasattr` call and a match statement as
+well.
+
 `.claude/settings.json` sets the `PYTHONPATH` that puts `generator` on the path.
 """
 
 import ast
+import dataclasses
 import os
 import re
 from typing import TypeGuard
@@ -89,16 +93,36 @@ def _does_test_a_kind(node: ast.AST, passed: set[str]) -> TypeGuard[ast.Call | a
 
 def _kind_tests(source: str) -> list[str]:
     """
-    `name:line` per test of a kind of `ir` in `source`, keyed by the top-level definition, or by `line` for a top-level
-    statement with no name.
+    A `name:line` entry marks a node in `source` that tests or selects a kind of `ir`. The `name` is the top-level
+    definition holding the node. A top-level statement with no name gives `line` as its name.
     """
     held = []
     for top in ast.parse(source).body:
         passed = _typed_as_a_type(top)
+        key = top.name if gate.is_a_definition(top) else "line"
         held += [
-            f"{getattr(top, 'name', 'line')}:{node.lineno}" for node in ast.walk(top) if _does_test_a_kind(node, passed)
+            f"{key}:{node.lineno}"
+            for node in ast.walk(top)
+            if isinstance(node, (ast.expr, ast.stmt)) and (_does_test_a_kind(node, passed) or _does_select_a_kind(node))
         ]
     return held
+
+
+# The fields the kinds of `ir` declare.
+_FIELD_NAMES = frozenset(field.name for kind in ir.KINDS for field in dataclasses.fields(kind))
+
+
+def _does_select_a_kind(node: ast.AST) -> bool:
+    """
+    Whether `node` decides a kind outside a total `ir.Question`. A `getattr` call naming a field of `_FIELD_NAMES` does.
+    So do a `hasattr` call and a match statement.
+    """
+    if isinstance(node, ast.Match) or _is_a_call_of(node, "hasattr"):
+        return True
+    if _is_a_call_of(node, "getattr"):
+        named = node.args[1] if len(node.args) > 1 else None
+        return isinstance(named, ast.Constant) and named.value in _FIELD_NAMES
+    return False
 
 
 def dispatches_of(source: str, path: str) -> tuple[str, ...]:
@@ -128,6 +152,7 @@ def refusal_for(source: str, path: str, dispatches: tuple[str, ...] | None = Non
         f"This edit leaves a test of the kind of a node in {path}: {'; '.join(found)}.\n\n"
         "A total `ir.Question` names the kinds that reach it, and raises on a kind it does not name. A kind somebody "
         "adds then raises here until somebody decides what this place does with it. Build the question from the "
-        "families of `ir`.\n\n"
+        "families of `ir`. Reuse a question that already answers it. A `getattr` of a field, a `hasattr` and a "
+        "match statement are such tests too.\n\n"
         "Rule: a-kind-dispatch-raises."
     )

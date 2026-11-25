@@ -17,7 +17,8 @@ def refusal_for(text: str, path: str) -> str | None:
     file whose language has no marker in `collect_fragments.MARKERS`. `collect_fragments.trailing_comments` finds the
     comment that follows code on a line.
 
-    Public. `checkers.refusals_for_edit` runs this over the whole new text of a file.
+    Public. `.claude/hooks/checkers.py` lists this as an `_ANY` checker, and `checkers.refusals_for_edit` runs it over
+    the whole new text of a file.
     """
     language = collect_fragments.language_of(path)
     if not collect_fragments.MARKERS.get(language or "", ""):
