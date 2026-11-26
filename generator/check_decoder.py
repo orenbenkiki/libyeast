@@ -61,7 +61,7 @@ def _check_consumed_sets(model: chars.Model, grammar: dict[str, ir.Prod]) -> lis
     where it repeats. `b-line-feed` consuming only `LF` is such a consume, and it is no fault.
     """
     errors = []
-    by_denotation = {denotation: name for name, denotation in model.sets}
+    by_denotation = {denotation: set_name for set_name, denotation in model.sets}
 
     def visit(node: ir.Node, owner: str) -> None:
         # The gate asks `ir.repeated` which nodes repeat.
@@ -71,10 +71,10 @@ def _check_consumed_sets(model: chars.Model, grammar: dict[str, ir.Prod]) -> lis
             if denotation is not None and denotation[0] != "literal":
                 for codepoint in (0x0A, 0x0D):
                     if chars.does_contain(denotation, codepoint):
-                        name = by_denotation.get(denotation, "an unnamed set")
+                        set_name = by_denotation.get(denotation, "an unnamed set")
                         errors.append(
-                            f"{owner}: consumes {name}. that set admits U+{codepoint:04X}, and a consume could then "
-                            f"cross a line."
+                            f"{owner}: consumes {set_name}. that set admits U+{codepoint:04X}, and a consume could "
+                            f"then cross a line."
                         )
         for child in chars.children(node):
             visit(child, owner)

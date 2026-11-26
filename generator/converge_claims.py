@@ -305,7 +305,7 @@ def _written_into_tree(state: _Claiming, key: str, runs: list[dict[str, Any]]) -
     driver exits with `FAILED` for a person to investigate. `apply_prose.applied` raises on a change no site holds.
     """
     one = state.by_key[key]
-    draft = [site.prose for site in one.sites]
+    draft = [fragment_site.prose for fragment_site in one.sites]
     for site in one.sites:
         if not apply_prose.does_hold(one, site):
             _given_up(state, key, [], f"the driver cannot write it back into {site.path}")
@@ -539,7 +539,7 @@ def _re_read(state: _Claiming) -> dict[str, str]:
         state.unsettled.pop(key, None)
     if not state.only:
         return found
-    return {key: why for key, why in found.items() if key in state.only}
+    return {stale_key: why for stale_key, why in found.items() if stale_key in state.only}
 
 
 async def _converge(state: _Claiming) -> None:
@@ -548,8 +548,8 @@ async def _converge(state: _Claiming) -> None:
     fills the slot. The run ends where no call is in flight and `_next_keys` takes no key. A stop launches no further
     call, and the run ends once the calls in flight end.
 
-    A write moves the lines below it. The run reads the tree again after a write, ahead of the next answer. The next
-    write then lands on the lines the file holds.
+    The run reads the tree again after a write, ahead of the next answer. The next write then lands on the lines the
+    file holds.
 
     The run waits for the first call before it launches a second. The first call writes the cached prefix the later
     calls read. https://platform.claude.com/docs/en/build-with-claude/prompt-caching describes that prefix.
@@ -627,7 +627,7 @@ def main() -> None:
         held = collect_fragments.fragments()
         print(update_ledger_and_queue.updated(into, held), file=sys.stderr)
         settled, unsettled = claim_state.read_claims()
-        lost = sorted(key for key in only if key not in {one.key for one in held})
+        lost = sorted(named_key for named_key in only if named_key not in {one.key for one in held})
         if lost:
             print(f"the tree holds no fragment under {', '.join(lost)}", file=sys.stderr)
             sys.exit(2)
@@ -682,7 +682,7 @@ def main() -> None:
     if state.stopped:
         print(f"this run stopped: {state.stopped}", file=sys.stderr)
         sys.exit(agent_calls.RESUMABLE if state.is_resumable else agent_calls.FAILED)
-    unread = sorted(key for key in only if key not in state.rounds)
+    unread = sorted(named_key for named_key in only if named_key not in state.rounds)
     if unread:
         print(f"this run read none of {', '.join(unread)}, and `--only` or `--again` names them", file=sys.stderr)
         sys.exit(agent_calls.FAILED)

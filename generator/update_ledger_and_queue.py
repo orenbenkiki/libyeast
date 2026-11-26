@@ -79,7 +79,7 @@ def updated(into: str, fragments: Iterable[collect_fragments.Fragment]) -> str:
     by_fragment: dict[str, collect_fragments.Fragment] = {}
     for one in held:
         by_fragment.setdefault(one.prose.sha, one)
-    by_digest = {digest: one.key for digest, one in by_fragment.items()}
+    by_digest = {fragment_digest: fragment.key for fragment_digest, fragment in by_fragment.items()}
     tree = set(by_digest)
     was = settling_state.ledger()
     ledger = _kept(was, tree)
@@ -95,7 +95,7 @@ def updated(into: str, fragments: Iterable[collect_fragments.Fragment]) -> str:
             purged += _purged(by_fragment[digest], state)
         queue[digest] = state
     suggested = settling_state.lines_read(settling_state.SUGGESTED)
-    proposals = [one for one in suggested if not record_run.proposal_refusals(one)]
+    proposals = [proposal for proposal in suggested if not record_run.proposal_refusals(proposal)]
     for digest in by_digest:
         if digest not in settled:
             queue.setdefault(digest, settling_state.UNEXAMINED)
@@ -104,7 +104,9 @@ def updated(into: str, fragments: Iterable[collect_fragments.Fragment]) -> str:
     settling_state.prose_queue_rewritten(into, queue)
     if len(proposals) < len(suggested):
         settling_state.rewritten(settling_state.SUGGESTED, proposals)
-    started = [digest for digest, state in queue.items() if state != settling_state.UNEXAMINED]
+    started = [
+        queued_digest for queued_digest, queued_state in queue.items() if queued_state != settling_state.UNEXAMINED
+    ]
     return (
         f"the tree has {len(tree)} prose digest(s). the ledger holds {len(ledger)} of them, and dropped "
         f"{len(set(was)) - len(ledger)}. the prose queue holds {len(queue)}, and work started on {len(started)}. "
@@ -115,7 +117,10 @@ def updated(into: str, fragments: Iterable[collect_fragments.Fragment]) -> str:
 
 
 def main() -> None:
-    """Take the run lock over the directory the command line names. Then update the ledger and the queues there."""
+    """
+    Take the run lock over the directory the command line names. Then update the queues there, and update the ledger and
+    the suggested proposals the tree holds.
+    """
     if len(sys.argv) != 2:
         print(_USAGE, file=sys.stderr)
         sys.exit(2)

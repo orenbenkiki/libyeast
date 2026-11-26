@@ -122,7 +122,7 @@ def _literal_name(codepoint: int) -> str:
 
 
 def _set_name(name: str) -> str:
-    """The C identifier for a character set. `ns-plain-safe-in` becomes `NS_PLAIN_SAFE_IN`."""
+    """The suffix of a character set's C identifiers. `ns-plain-safe-in` becomes `NS_PLAIN_SAFE_IN`."""
     return name.upper().replace("-", "_")
 
 
@@ -166,7 +166,10 @@ def _sites(grammar: Mapping[str, ir.Prod]) -> dict[int, tuple[list[str], list[st
     The characters that no production names appear inline. A citation of such a character names the productions it
     appears in.
     """
-    cited = {name: f"[{production.number:03d}] {name}" for name, production in grammar.items()}
+    cited = {
+        production_name: f"[{named_production.number:03d}] {production_name}"
+        for production_name, named_production in grammar.items()
+    }
     naming = chars.naming_productions(grammar)
     definer: dict[int, list[str]] = {}
     for denotation, name in naming.items():
@@ -175,7 +178,8 @@ def _sites(grammar: Mapping[str, ir.Prod]) -> dict[int, tuple[list[str], list[st
             rivals = definer.setdefault(codepoint, [])
             rivals.append(name)
     found: dict[int, tuple[list[str], list[str]]] = {
-        codepoint: ([cited[chars.simplest_name(grammar, names)]], []) for codepoint, names in definer.items()
+        defined_codepoint: ([cited[chars.simplest_name(grammar, names)]], [])
+        for defined_codepoint, names in definer.items()
     }
 
     for name, production in grammar.items():
@@ -199,8 +203,8 @@ def _sites(grammar: Mapping[str, ir.Prod]) -> dict[int, tuple[list[str], list[st
 
 def _cite(codepoint: int, where: Mapping[int, tuple[list[str], list[str]]]) -> str:
     """
-    _cite returns the text of a comment naming the productions that define a character. A character no production
-    defines gets the productions that use it.
+    _cite returns the sorted, comma-joined names of the productions that define a character, for a comment to cite. A
+    character no production defines gets the productions that use it.
     """
     defining, using = where.get(codepoint, ([], []))
     return ", ".join(sorted(defining or using))
@@ -208,8 +212,8 @@ def _cite(codepoint: int, where: Mapping[int, tuple[list[str], list[str]]]) -> s
 
 def _defines(out: io.StringIO, rows: Sequence[tuple[str, str, str]]) -> None:
     """Write `#define` lines. The names, the values and the comments line up into columns."""
-    name_width = max(len(name) for name, _value, _comment in rows)
-    value_width = max(len(value) for _name, value, _comment in rows)
+    name_width = max(len(row_name) for row_name, _value, _comment in rows)
+    value_width = max(len(row_value) for _name, row_value, _comment in rows)
     for name, value, comment in rows:
         line = f"#define {name:<{name_width}} {value:<{value_width}}"
         out.write(f"{line} // {comment}\n" if comment else f"{line.rstrip()}\n")
@@ -217,7 +221,7 @@ def _defines(out: io.StringIO, rows: Sequence[tuple[str, str, str]]) -> None:
 
 def _entries(out: io.StringIO, rows: Sequence[tuple[str, str]]) -> None:
     """Write the entries of an initializer, and align their comments into a column."""
-    width = max(len(value) for value, _comment in rows)
+    width = max(len(row_value) for row_value, _comment in rows)
     for value, comment in rows:
         out.write(f"    {value + ',':<{width + 1}} // {comment}\n")
 
@@ -289,8 +293,8 @@ def emit(out: io.StringIO, model: chars.Model, grammar: Mapping[str, ir.Prod], k
     _defines(
         out,
         [
-            (f"YS_SET_BIT_{_set_name(name)}", f"0x{model.set_mask(index):08X}u", _set_cite(name, grammar))
-            for index, (name, _denotation) in enumerate(model.sets)
+            (f"YS_SET_BIT_{_set_name(set_name)}", f"0x{model.set_mask(index):08X}u", _set_cite(set_name, grammar))
+            for index, (set_name, _set_denotation) in enumerate(model.sets)
         ],
     )
 
@@ -303,7 +307,13 @@ def emit(out: io.StringIO, model: chars.Model, grammar: Mapping[str, ir.Prod], k
 
     out.write("// The bit of a character set. Its id finds the bit.\n")
     out.write("static const uint32_t YS_SET_BITS[YS_SET_ID_COUNT] = {\n")
-    _entries(out, [(f"YS_SET_BIT_{_set_name(name)}", _set_cite(name, grammar)) for name, _denotation in model.sets])
+    _entries(
+        out,
+        [
+            (f"YS_SET_BIT_{_set_name(set_name)}", _set_cite(set_name, grammar))
+            for set_name, _set_denotation in model.sets
+        ],
+    )
     out.write("};\n\n")
 
     out.write("// The key of an ASCII character the grammar does not name - one per group of characters that the\n")

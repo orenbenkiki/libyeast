@@ -465,7 +465,7 @@ def after(space: SubSpace, reached: Mapping[GuardAnswers, Iterable[GuardAnswers]
     where it goes.
 
     `does_take` says whether the action consumed a character. That decides the characters the result admits. Past a take
-    the next character is a character the input holds. An action taking nothing leaves the question unchanged.
+    the result admits any character and the end of the stream. An action taking nothing leaves the question unchanged.
     """
     held_by: dict[GuardAnswers, _Characters] = {}
     for guard_answers in ALL_GUARD_ANSWERS:
@@ -475,7 +475,7 @@ def after(space: SubSpace, reached: Mapping[GuardAnswers, Iterable[GuardAnswers]
         handed_on = _ANYTHING if does_take else admitted
         for landed in reached[guard_answers]:
             held_by[landed] = _joined(held_by.get(landed, _NONE), handed_on)
-    return SubSpace(tuple(held_by.get(guard_answers, _NONE) for guard_answers in ALL_GUARD_ANSWERS))
+    return SubSpace(tuple(held_by.get(answers, _NONE) for answers in ALL_GUARD_ANSWERS))
 
 
 def guard_answers_in(wanted_answers: Iterable[GuardAnswers]) -> SubSpace:
@@ -505,7 +505,11 @@ def where(**asked: bool) -> SubSpace:
             raise ValueError(f"no axis named {axis}: the axes are {', '.join(AXES)}")
     return SubSpace(
         tuple(
-            _ANYTHING if all(getattr(guard_answers, axis) == wanted for axis, wanted in asked.items()) else _NONE
+            (
+                _ANYTHING
+                if all(getattr(guard_answers, asked_axis) == wanted for asked_axis, wanted in asked.items())
+                else _NONE
+            )
             for guard_answers in ALL_GUARD_ANSWERS
         )
     )

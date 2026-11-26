@@ -3,8 +3,8 @@
 """
 Write the names a citation beside the code may name.
 
-Building that set from the grammar runs the whole pipeline. A write-time hook cannot pay for a pipeline run per edit.
-This writes the set once. The gate and the hooks then read the file.
+Building that set from the grammar runs the whole pipeline. This writes the set once. The gate and the hooks then read
+the file.
 
 `check_documents` compares the file with the live pipeline. A file behind the pipeline fails that gate.
 

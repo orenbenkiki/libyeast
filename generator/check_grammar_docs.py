@@ -2,14 +2,14 @@
 """
 Check that libyeast's grammar documents the tokens its rules emit.
 
-The grammar libyeast derives from is a document. The YAML specification at https://yaml.org/spec/1.2.2/ holds it. A rule
-is preceded by its spec BNF, and a rule that needs explaining gets a section of prose. libyeast's additions deserve no
-less. A reader should not have to work out for themselves why `c-quoted-quote` marks the second quote `meta` while the
-first, a `c-single-quote`, is an `indicator`.
+The grammar libyeast derives from is a document. The YAML specification at https://yaml.org/spec/1.2.2/ holds it. In
+`grammar/yeast-spec-1.2.yaml`, a rule is preceded by its spec BNF, and a rule that needs explaining gets a section of
+prose. libyeast's additions deserve no less.
 
-So a rule that emits a token is preceded by an `Emits:` line. The line names the codes without repeats, in the order the
-rule first emits them. The codes come from the grammar itself. A mere presence check would let the comment drift. A note
-that is wrong fails the build exactly as a note that is missing does.
+A rule whose own body emits a token is preceded by an `Emits:` line. The line lists the codes of that body without
+repeats, in the order of first emission. A `RefCall` holds only a name and args. The check counts no code from a called
+rule. The codes come from the grammar itself. A note that is wrong fails the build exactly as a note that is missing
+does.
 """
 
 import re
@@ -104,7 +104,7 @@ def main() -> None:
         elif said[name] != codes:
             errors.append(f"{name}: says it emits {', '.join(said[name])} and emits {', '.join(codes)} instead")
 
-    emitting = sum(1 for production in grammar.values() if _emitted(production.body))
+    emitting = sum(1 for named_production in grammar.values() if _emitted(named_production.body))
     gate.report(
         errors,
         "undocumented or misdocumented rule(s)",

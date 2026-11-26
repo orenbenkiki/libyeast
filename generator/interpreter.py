@@ -347,8 +347,8 @@ class Emitter:
         # continues over the input read and the tokens emitted.
         self.failing: str | None = None
 
-        # The pairs of the `PopBackTrackAction` a failure unwinds to, and `None` for an ordinary failure. The open gives
-        # the region back whole and clears the pairs.
+        # The pairs of the `PopBackTrackAction` a failure passed back through, and `None` for an ordinary failure. The
+        # open gives the region back whole and clears the pairs.
         self.unwinding: frozenset[int] | None = None
 
         # A `Coverage` to fill where the caller wants one. The run records in the `Coverage` what a production does.
@@ -745,7 +745,7 @@ def _answers_now(emitter: Emitter, grammar: Mapping[str, ir.Prod]) -> dict[str, 
     is_after_ns_char = (
         None if named is None else behind is not None and any(low <= behind <= high for low, high in named)
     )
-    opened_at = next((value for held, value, _pair in reversed(emitter.stack) if held == "consume"), None)
+    opened_at = next((value for kind, value, _pair in reversed(emitter.stack) if kind == "consume"), None)
     held = _indent_or_none(emitter)
     floor = emitter.shadow.get("f", ())
     column = emitter.mark.column
@@ -930,9 +930,9 @@ def _nodes(node: ir.Node) -> Iterable[ir.Node]:
     yield node
     children: list[ir.Node] = []
 
-    def seen(child: ir.Node) -> ir.Node:
-        children.append(child)
-        return child
+    def seen(nested: ir.Node) -> ir.Node:
+        children.append(nested)
+        return nested
 
     ir.rebuilt(node, seen)
     for child in children:

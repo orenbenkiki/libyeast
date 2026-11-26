@@ -218,12 +218,15 @@ def _first_broken(
     low = 0  # The stage at `low` holds. The stage at `high` breaks.
     high = len(stages) - 1 if bound is None else bound
 
-    def probed(index: int) -> list[str]:
+    def probed(stage_index: int) -> list[str]:
         """A running search reports a stage before it checks the corpus there, and reports again after the check."""
-        ir.say(f"    probing [{labels[index]}] ({index} of {len(stages) - 1})")
-        errors = _corpus_errors(*stages[index], fixtures, suite)
-        ir.say(f"    [{labels[index]}] {'breaks' if errors else 'holds'} over {high - low} stage(s) still in range")
-        return errors
+        ir.say(f"    probing [{labels[stage_index]}] ({stage_index} of {len(stages) - 1})")
+        stage_errors = _corpus_errors(*stages[stage_index], fixtures, suite)
+        ir.say(
+            f"    [{labels[stage_index]}] {'breaks' if stage_errors else 'holds'} over {high - low} stage(s) still in "
+            "range"
+        )
+        return stage_errors
 
     if hint is not None and hint in labels:
         index = labels.index(hint)
@@ -272,11 +275,13 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
     for (label, grammar), pinned in zip(stages, groups):
         if pinned:
             ir.say(f"[{label}] {len(pinned)} pinned fixture(s)")
-            corpus += [f"[{label}] fixture {error}" for error in check_interpreter.reproduced(grammar, pinned)]
+            corpus += [
+                f"[{label}] fixture {fixture_error}" for fixture_error in check_interpreter.reproduced(grammar, pinned)
+            ]
     ir.say(f"[{final_label}] {len(suite)} suite case(s)")
-    corpus += [f"[{final_label}] star {error}" for error in check_star.disagreements(final, suite)]
+    corpus += [f"[{final_label}] star {star_error}" for star_error in check_star.disagreements(final, suite)]
     ir.say(f"[{final_label}] holding the spaces to the states the fixtures really reach")
-    errors += [f"[{final_label}] space {error}" for error in _spaces_held(final, groups[-1])]
+    errors += [f"[{final_label}] space {space_error}" for space_error in _spaces_held(final, groups[-1])]
     if corpus:  # a corpus divergence prints at once, with or without a bisect
         print(f"FAILING: {len(corpus)} corpus divergence(s)", flush=True)
         for divergence in corpus[:5]:
@@ -291,8 +296,15 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
         else:
             print("    re-run with `--bisect [step]` to name the step behind it", flush=True)
     errors += corpus
-    exercisers = [(grammar, pinned) for (_label, grammar), pinned in zip(stages, groups) if pinned]
-    ir.say(f"coverage of [{final_label}] against {sum(len(pinned) for _grammar, pinned in exercisers)} exerciser(s)")
+    exercisers = [
+        (stage_grammar, stage_fixtures)
+        for (_label, stage_grammar), stage_fixtures in zip(stages, groups)
+        if stage_fixtures
+    ]
+    ir.say(
+        f"coverage of [{final_label}] against "
+        f"{sum(len(exerciser_fixtures) for _grammar, exerciser_fixtures in exercisers)} exerciser(s)"
+    )
     for error in check_grammar_coverage.gaps(final, exercisers):
         errors.append(f"[final] coverage {error}")
     ir.say("holding the pipeline to its own law")
@@ -318,7 +330,7 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
     # List the questions that answered a kind they called untested. This list prints before `gate.report` exits on a
     # fault in `errors`.
     owed = ir.owed()
-    pairs = [f"{what} - {kind}" for what, kinds in owed.items() for kind in kinds]
+    pairs = [f"{owed_what} - {owed_kind}" for owed_what, owed_kinds in owed.items() for owed_kind in owed_kinds]
     ir.say(
         f"{len(pairs)} question answer(s) taken on a family's word and untested, against a corpus that "
         f"{'did not hold' if corpus else 'held'}: " + ("; ".join(pairs) or "none")
@@ -335,7 +347,7 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
     deepest = ir.deepest_rounds()
     ir.say(
         f"deepest fixpoint {max(deepest.values(), default=0)} round(s) against a cap of {ir.ROUNDS}: "
-        + ("; ".join(f"{what} {took}" for what, took in deepest.items()) or "none")
+        + ("; ".join(f"{deepest_what} {took}" for deepest_what, took in deepest.items()) or "none")
     )
 
     ir.say("done, results:")
@@ -356,18 +368,21 @@ def _check(does_bisect: bool = False, hint: str | None = None) -> None:
     # Count the question handlers that no input reached.
     unused = ir.unexercised()
     print(
-        f"    {sum(len(kinds) for kinds in unused.values())} question handler(s) nothing reached: "
-        + ("; ".join(f"{what} - {', '.join(kinds)}" for what, kinds in unused.items()) or "none")
+        f"    {sum(len(unused_kinds) for unused_kinds in unused.values())} question handler(s) nothing reached: "
+        + (
+            "; ".join(f"{unused_what} - {', '.join(unused_kinds)}" for unused_what, unused_kinds in unused.items())
+            or "none"
+        )
     )
     # An invariant the final grammar still breaks wants a step the pipeline lacks.
     unsettled = normalize.unsettled_invariants(final)
     print(
         f"    {len(unsettled)} invariant(s) the final grammar still breaks: "
-        + ", ".join(f"{name} {count}" for name, count in unsettled)
+        + ", ".join(f"{invariant} {count}" for invariant, count in unsettled)
     )
     print(f"    {len(final)} production(s) in the grammar the phase hands on")
     # Report the globals the grammar holds and the reads a single slot could not have answered.
-    held = [name for name in ir.GLOBAL_PARAMS if not any(name in final[production].params for production in final)]
+    held = [param for param in ir.GLOBAL_PARAMS if not any(param in final[production].params for production in final)]
     print(f"    {len(held)} global(s) - {', '.join(held) or 'none'} - asked {asked} read(s) a single slot could not")
 
 

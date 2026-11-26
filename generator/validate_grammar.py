@@ -114,7 +114,7 @@ def _check_annotated(grammar: Mapping[str, ir.Prod]) -> list[str]:
     The check reaches a production with an annotation around it, without one, or both ways. The check follows the
     references from the root and runs until the set of reached productions settles.
     """
-    reached: dict[str, set[bool]] = {name: set() for name in grammar}
+    reached: dict[str, set[bool]] = {production_name: set() for production_name in grammar}
     reached[ir.ROOT].add(False)
     is_settled = False
     while not is_settled:
@@ -159,12 +159,15 @@ def _check_matches(grammar: Mapping[str, ir.Prod]) -> list[str]:
     """
     errors = []
     for name, production in sorted(grammar.items()):
-        cuts = [item for node in walk(production.body) if (item := _CUT_INTO_A_TOKEN(node)) is not None]
-        for item in cuts:
-            is_cut_again = any(_CUT_INTO_A_TOKEN(node) is not None for node in walk(item))
-            if is_cut_again and any(ir.DOES_READ_THE_MATCH(node) for node in walk(item)):
+        cuts = [
+            cut_item for body_node in walk(production.body) if (cut_item := _CUT_INTO_A_TOKEN(body_node)) is not None
+        ]
+        covered: set[int] = set()
+        for cut_item in cuts:
+            is_cut_again = any(_CUT_INTO_A_TOKEN(held_node) is not None for held_node in walk(cut_item))
+            if is_cut_again and any(ir.DOES_READ_THE_MATCH(held_node) for held_node in walk(cut_item)):
                 errors.append(f"{name}: a `(match)` reads a run a nested `(token)` has cut")
-        covered = {id(node) for item in cuts for node in walk(item)}
+            covered.update(map(id, walk(cut_item)))
         for node in walk(production.body):
             if ir.DOES_READ_THE_MATCH(node) and id(node) not in covered:
                 errors.append(f"{name}: a `(match)` sits outside any `(token)`, and no run is its own")

@@ -446,8 +446,8 @@ build-docs/.docs: $(PUB_HDR) Doxyfile DoxygenLayout.xml CMakeLists.txt
 
 vet-version: .stamps/vet-version
 
-# Grammar round-trip. annotated2ir -> IR -> ir2annotated must reproduce libyeast's grammar exactly. This is the
-# lossless-ingest gate for the generator. The token annotations count as part of the grammar.
+# The round trip annotated2ir -> IR -> ir2annotated must reproduce libyeast's grammar exactly. This is the
+# lossless-ingest gate for the generator.
 .stamps/verify-roundtrip: $(ANNOTATED) $(GEN_SRC) | .stamps
 	python3 generator/check_annotated_roundtrip.py
 	@touch $@
@@ -480,8 +480,9 @@ verify-spec: .stamps/verify-spec
 
 verify-markers: .stamps/verify-markers
 
-# Grammar documentation. A rule that emits tokens holds a note. That note names the tokens without repeats, in the order
-# the rule first emits them. The gate checks the note against the grammar itself. A wrong note fails like a missing one.
+# Grammar documentation. A rule whose own body emits tokens holds a note. That note names the tokens without repeats, in
+# the order the rule first emits them. The gate checks the note against the grammar itself. A wrong note fails like a
+# missing one.
 .stamps/verify-emits: $(ANNOTATED) $(GEN_SRC) | .stamps
 	python3 generator/check_grammar_docs.py
 	@touch $@
@@ -791,8 +792,8 @@ test: test-debug test-release
 
 # `verify-grammar` runs `verify-grammar-base` and `verify-grammar-base-coverage`.
 #
-# `check_interpreter` runs the base grammar and reproduces the fixtures a production at a time. `check_grammar_coverage`
-# checks that the fixtures exercise the base grammar throughout.
+# `check_interpreter` reproduces the fixtures `spec_tests.load` finds. A fixture runs its own production in the base
+# grammar. `check_grammar_coverage` checks that the fixtures exercise the base grammar throughout.
 verify-grammar: verify-grammar-base verify-grammar-base-coverage
 # The prerequisites name the verify gates this target runs. The list opens with `verify-roundtrip` and closes with
 # `verify-spaces`.

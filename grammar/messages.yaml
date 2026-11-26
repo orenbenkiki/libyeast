@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: MIT
 # An entry pairs a message code with an error message. A `(cut)` in the grammar names such a code. So do an `(error)`, a
 # `(max)` and a `(commit)`. A message names the fault the parse found. A message is fixed text.
-# `generator/interpreter.py` reads this file. `check_messages` holds the codes here to the codes the grammar names. The
-# C parser emits no message from this file. `src/messages.c` holds the wire reader's messages. `src/messages.c` holds a
-# "not implemented" message as well.
+# `generator/interpreter.py` reads this file. `check_messages` holds the codes here to the codes the grammar names.
+# `src/messages.c` holds the wire reader's messages. `src/messages.c` holds a "not implemented" message as well.
 #
 # A `(cut)` or an `(error)` in `yeast-spec-1.2.yaml` names a code here.
 #

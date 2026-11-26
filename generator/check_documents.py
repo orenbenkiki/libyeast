@@ -9,8 +9,8 @@ may appear. The rule covers `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`, and it co
 `no_tree_numbers` checker applies the rule. The gate prints the live figures on a run. `prose_rules` says what replaces
 a number.
 
-`a-design-citation-keeps-its-altitude` of `.claude/conventions.md`. `private_citation_errors` decides which citations
-are private.
+`private_citation_errors` decides which citations are private under `a-design-citation-keeps-its-altitude` of
+`.claude/conventions.md`.
 
 `a-design-paragraph-copies-no-cited-prose`. A paragraph of `DESIGN.md` shares no long run of words with the prose of a
 fragment it cites. `copied_prose_errors` finds such a run.
@@ -24,8 +24,7 @@ narrating history in `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`.
 
 `every-cited-name-exists` is the half of `every-claim-is-checked-before-it-is-written` a gate can decide. A backticked
 name names something in the tree. `citation_refusal` asks that of `DESIGN.md`, `PLAN.md` and `CHANGELOG.md`, and of the
-prose beside the code. `CHANGELOG.md` may also cite a name that `_NAMES_THE_TREE_NO_LONGER_HOLDS` declares gone. An
-entry naming what a change took away is the entry doing its job.
+prose beside the code. `CHANGELOG.md` may also cite a name that `_NAMES_THE_TREE_NO_LONGER_HOLDS` declares gone.
 
 `an-owed-name-lives-while-the-plan-owes-it`. `_unplanned_owed_errors` refuses an owed name `PLAN.md` does not cite.
 `_stale_owed_errors` refuses an owed name the tree holds.
@@ -39,7 +38,8 @@ an offset in that line back to the line of the text. `_AS_DIGITS` maps a word nu
 writes those digits over the word.
 
 This module builds the stages of the pipeline the documents describe, and measures the counts off those stages. The
-measure reads the grammar and runs the steps. It counts the conformance fixtures `spec_tests.load` lists.
+measure reads the grammar and tests the invariants of the steps on the last stage. It counts the conformance fixtures
+`spec_tests.load` lists.
 """
 
 import ast
@@ -347,11 +347,9 @@ def _stale_owed_errors(named: Container[str], known: Container[str]) -> list[str
 
 def _unplanned_owed_errors(plan: _Lines) -> list[str]:
     """
-    The errors for the names `_NAMES_STILL_OWED` declares that `plan` does not cite. `plan` holds the lines of
-    `PLAN.md`.
+    Refuse a name in `_NAMES_STILL_OWED` that `plan` does not cite. `plan` holds the lines of `PLAN.md`.
 
-    A name stays owed while the plan holds its work. A plan that drops the work leaves the name excusing a citation of
-    something nobody will build.
+    A name stays owed while `PLAN.md` holds its work. An owed name whose work `PLAN.md` dropped excuses no citation.
     """
     said = "\n".join(line for _number, line in plan)
     return [
@@ -788,7 +786,7 @@ def names_written_by(source: str) -> set[str]:
     declared = set(_NAMES_THE_TREE_NO_LONGER_HOLDS) | set(_NAMES_STILL_OWED)
     declared |= {one for names in _ABSENT_NAMES_A_FILE_MAY_CITE.values() for one in names}
     found = {
-        held.string for held in tokenize.generate_tokens(io.StringIO(source).readline) if held.type == tokenize.NAME
+        token.string for token in tokenize.generate_tokens(io.StringIO(source).readline) if token.type == tokenize.NAME
     }
     for held in ast.walk(ast.parse(source)):
         if isinstance(held, ast.Constant) and isinstance(held.value, str) and _A_NAME.fullmatch(held.value):
@@ -808,8 +806,7 @@ def _stale_gone_errors(lines: _Lines, named: Container[str]) -> list[str]:
     for _number, line in lines:
         cited |= set(_A_CITED_NAME.findall(line))
         cited |= set(_A_HYPHENATED_NAME.findall(line))
-    # The check splits a dotted name at its dots. The name counts as held where the tree defines the module and the
-    # member. A module in the tree says nothing about its member.
+    # The check splits a dotted name at its dots. The name counts as held where the tree defines its parts.
     faults = [
         f"`NAMES_THE_TREE_NO_LONGER_HOLDS` declares `{name}`, and the tree still holds it"
         for name in sorted(_NAMES_THE_TREE_NO_LONGER_HOLDS)
@@ -1001,7 +998,9 @@ def _stale_elsewhere_errors(texts: Mapping[str, _Lines]) -> list[str]:
     """
     own = os.path.relpath(__file__, gate.TREE)
     source = pathlib.Path(__file__).read_text(encoding="utf-8").split("\n")
-    ends = next(at for at, line in enumerate(source, start=1) if line.startswith("_NAMES_FROM_ELSEWHERE = "))
+    ends = next(
+        at for at, source_line in enumerate(source, start=1) if source_line.startswith("_NAMES_FROM_ELSEWHERE = ")
+    )
     opens = ends
     while opens > 1 and source[opens - 2].startswith("#"):
         opens -= 1
@@ -1136,7 +1135,9 @@ def _check() -> None:
     errors += [f"[cites] {fault}" for fault in _stale_excuse_errors(code_prose)]
     texts = {**code_prose, **{document: _document_lines(document) for document in _DOCUMENTS_CITED}}
     errors += [f"[cites] {fault}" for fault in _stale_elsewhere_errors(texts)]
-    rosters = {name: pathlib.Path(gate.TREE, name).read_text(encoding="utf-8") for name in ("Makefile", "README.md")}
+    rosters = {
+        roster: pathlib.Path(gate.TREE, roster).read_text(encoding="utf-8") for roster in ("Makefile", "README.md")
+    }
     errors += [f"[roster] {fault}" for fault in _readme_gate_errors(rosters["Makefile"], rosters["README.md"])]
     # Print the measured counts by name, then report the faults.
     for name, count in sorted(_measured_for_the_report(stages, final).items()):

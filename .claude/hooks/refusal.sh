@@ -5,9 +5,8 @@
 # the payloads. `.claude/hooks/no-shell-file-writes.sh`, `.claude/hooks/one-at-a-time.sh` and
 # `.claude/hooks/workflow-from-the-tree.sh` source it.
 #
-# `refuse` turns the call back with a reason the model reads. `deny` turns it back as a permission decision. The pair
-# differ in the shape the tool wants, and a hook picks the shape its event takes. https://code.claude.com/docs/en/hooks
-# gives the shapes.
+# `deny` turns a call back as a permission decision. `refuse` and `deny` differ in the shape the tool wants, and a hook
+# picks the shape its event takes. https://code.claude.com/docs/en/hooks gives the shapes.
 #
 # This is no hook. `.claude/settings.json` registers the hooks and does not name this file. `refusal.py` answers the
 # same question for a hook written in Python. `a-hook-refuses-through-one-helper` is the rule.

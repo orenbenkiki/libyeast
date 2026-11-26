@@ -166,13 +166,15 @@ def _consumed_by_a_way(
     node: ir.AlternativeState, grammar: Mapping[str, ir.Prod], seen: tuple[str, ...]
 ) -> _Denotation | None:
     """
-    Answer a way's codepoints where the way's action takes a single character.
+    Answer a way's codepoints where a single action or call of the way takes characters. That action or call takes a
+    single character.
 
     The way's gate is no part of the answer. An action in `ir.ACTIONS` takes nothing, and a consume names the set it
     takes.
 
     A way that hands control on takes what it calls. A span goes on to `denote`, and `denote` raises on a span.
-    `Question` raises on an action that `_TAKEN` does not list. A pair of things taking at once names no set.
+    `Question` raises on an action that `_TAKEN` does not list. The answer names no set where a pair of actions or calls
+    take characters at once.
     """
     taking = [taken for taken in map(_TAKEN, node.actions) if taken is not None]
     calls = [held for held in (node.first, node.second) if held is not None]
@@ -319,7 +321,8 @@ def simplest_name(grammar: Mapping[str, ir.Prod], names: Iterable[str]) -> str:
 
 def naming_productions(grammar: Mapping[str, ir.Prod]) -> dict[_Denotation, str]:
     """
-    `{denotation: the production that names it}`. The map holds a single answer per set the grammar denotes.
+    `{denotation: the production that names it}`. The map holds a single answer per set that a production's whole body
+    denotes.
 
     The map names a lone character the way it names a wider set.
 
@@ -331,7 +334,7 @@ def naming_productions(grammar: Mapping[str, ir.Prod]) -> dict[_Denotation, str]
         denotation = denote(grammar, production.body)
         if denotation is not None:
             candidates.setdefault(denotation, []).append(name)
-    return {denotation: simplest_name(grammar, names) for denotation, names in candidates.items()}
+    return {named_denotation: simplest_name(grammar, names) for named_denotation, names in candidates.items()}
 
 
 def spans(denotation: _Denotation) -> list[tuple[int, int]]:
@@ -507,14 +510,14 @@ def _tested_sets(grammar: Mapping[str, ir.Prod]) -> list[tuple[str, _Denotation]
     """
     owners: dict[_Denotation, str] = {}
 
-    def collect(node: ir.Node, owner: str, is_inside_set: bool) -> None:
-        denotation = denote(grammar, node)
-        if denotation is not None:
-            if not is_inside_set and denotation[0] != "literal":
-                owners.setdefault(denotation, owner)
+    def collect(node: ir.Node, owner_name: str, is_inside_set: bool) -> None:
+        node_denotation = denote(grammar, node)
+        if node_denotation is not None:
+            if not is_inside_set and node_denotation[0] != "literal":
+                owners.setdefault(node_denotation, owner_name)
             is_inside_set = True
         for child in children(node):
-            collect(child, owner, is_inside_set)
+            collect(child, owner_name, is_inside_set)
 
     for name, production in grammar.items():
         collect(production.body, name, False)
@@ -534,7 +537,8 @@ def _tested_sets(grammar: Mapping[str, ir.Prod]) -> list[tuple[str, _Denotation]
 
 class Model:
     """
-    The character model holds the grammar's named literals, the sets the grammar tests, and the key of any codepoint.
+    The character model holds the grammar's named literals and the sets the grammar tests. It computes the key of a
+    codepoint.
     """
 
     def __init__(self, grammar: Mapping[str, ir.Prod]) -> None:
@@ -562,5 +566,8 @@ class Model:
         return key
 
     def sentinel(self, literal_id: int, length: int) -> int:
-        """The key of a sentinel. The key holds a literal id and no set bits. A membership test fails at such a key."""
+        """
+        The key of a sentinel. The key holds a literal id, the length, and no set bits. A membership test with a `Model`
+        set mask fails at such a key. The set bits start at `SET_SHIFT`, past the `LIT_BITS` of the literal id.
+        """
         return literal_id | (length << LEN_SHIFT)

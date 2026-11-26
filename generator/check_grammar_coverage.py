@@ -268,25 +268,25 @@ _UNGATED_CALLS: ir.Question[list[str]] = ir.Question(
 
 def _decided_by_callers(grammar: Mapping[str, ir.Prod], wanted: Iterable[str]) -> set[str]:
     """
-    The bases among `wanted` that a caller gates before entering. A refusal by such a base then goes unseen.
+    The bases of the names in `wanted` that some production calls and that no body calls ungated. A refusal by such a
+    base then goes unseen.
 
     `interpreter._try_way` tests a way's gate before the call behind it. A refused gate counts as a refusal by the
     productions the way calls. `accepted-and-gated-charsets-are-equal` holds a way's gate to the characters that way
     consumes itself.
 
-    A gate saying no already counts as a refusal by the production behind that gate. The same holds here of a production
-    whose callers have taken up its refusals. A gate in a caller's caller does not count.
+    A production whose callers have taken up its refusals counts the same way as a refused gate. A gate in a caller's
+    caller does not count.
 
-    The answer leaves out a production that some body calls ungated. The parse can still walk into such a production and
-    find a refusal.
+    The parse can still walk into a production that some body calls ungated and find a refusal there.
     """
-    gated = {name: True for name in wanted}
+    gated = {wanted_name: True for wanted_name in wanted}
     for production in grammar.values():
         for name in _UNGATED_CALLS(production.body):
             if name in gated:
                 gated[name] = False
-    called = {name for production in grammar.values() for name in production.references()}
-    return {_base(name) for name, is_gated in gated.items() if is_gated and name in called}
+    called = {called_name for calling_production in grammar.values() for called_name in calling_production.references()}
+    return {_base(gated_name) for gated_name, is_gated in gated.items() if is_gated and gated_name in called}
 
 
 def gaps(
@@ -301,13 +301,12 @@ def gaps(
     transformation reshapes. A monomorphic copy counts as covered where its base counts as covered.
 
     `exercisers` is `(grammar, fixtures)` pairs, and this runs them in turn. That is how a pipeline's grammars pool
-    their coverage. A fixture stranded by a transformation runs against the last grammar its production is reachable in.
-    A base name exercised at any stage credits its copies here. With `exercisers` left out, `grammar` itself runs
-    against the whole suite.
+    their coverage. A fixture stranded by a transformation runs against the last grammar that can run it. A base name
+    exercised at any stage credits its copies here. With `exercisers` left out, `grammar` itself runs against the whole
+    suite.
 
     A base that is total where the fixtures run it goes without the rejection. A production that matches at any position
-    shows no refusal to see. A copy that says no where the base matched empty would ask the corpus for a refusal the
-    untransformed grammar had no place to show.
+    shows no refusal to see.
     """
     reached_bases: set[str] = set()
     rejected_bases: set[str] = set()
@@ -330,8 +329,8 @@ def gaps(
     excused = {
         base
         for base in {_base(name) for name in wanting}
-        for stage, _fixtures in ([] if exercisers is None else exercisers)
-        if base in stage and _is_total(stage[base].body, stage, frozenset({base}))
+        for stage_grammar, _fixtures in ([] if exercisers is None else exercisers)
+        if base in stage_grammar and _is_total(stage_grammar[base].body, stage_grammar, frozenset({base}))
     }
     excused |= _decided_by_callers(grammar, set(wanting))
     errors += [

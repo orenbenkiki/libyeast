@@ -252,8 +252,7 @@ def is_a_heading(said: str) -> bool:
     """
     Whether the comment block `said` opens a section and says nothing besides.
 
-    Public. Such a block names the code below it. A heading documents no code of its own. `collect_fragments` makes no
-    fragment of one.
+    Public. A heading documents no code of its own. `collect_fragments` makes no fragment of one.
     """
     lines = [line for line in said.strip().split("\n") if line.strip()]
     return len(lines) == 1 and bool(_A_DIVIDER_RULE.match(lines[0]))
@@ -496,8 +495,7 @@ _MOST_WORDS = 26
 # The third-person pronouns a single sentence may hold.
 _MOST_PRONOUNS = 1
 
-# The fewest words a sentence holds for `_shape_faults` to hand it to `_over`. A short label states a single idea under
-# any punctuation.
+# The fewest words a sentence holds for `_shape_faults` to hand it to `_over`.
 _FEWEST_WORDS = 6
 
 
@@ -664,20 +662,20 @@ def words_found(prose: str) -> dict[str, list[str]]:
     single line offers a single opening. `words_found` strips the bold markers from a sentence first. The word rules
     then read a bolded claim as a bare one.
     """
-    found: dict[str, set[str]] = {what: set() for what in _A_WORD_RULE}
+    found: dict[str, set[str]] = {fault: set() for fault in _A_WORD_RULE}
     for sentence in _sentences(said_by(prose)):
         bare = _EMPHASIS.sub("", sentence).strip()
         for what, (patterns, _) in _A_WORD_RULE.items():
             for pattern in patterns:
                 found[what] |= {one.group(0).lower().strip() for one in pattern.finditer(bare)}
-    return {what: sorted(said) for what, said in found.items()}
+    return {fault: sorted(words) for fault, words in found.items()}
 
 
-# The files beyond the agent definitions whose text states a rule. A rule wording holds a universal. A checker reads
-# `refuses every sentence ending on a verb` as the rule it enforces, and the universal rule passes such a wording here.
-# `settling_state.PENDING` names `.claude/proposals-pending.md`. That file takes a proposal the critic raised, and
-# `record_run.proposal_refusals` names that path when `prose_answer` checks one. `write_agent_prompts` copies the
-# conventions and the rejections into agent definitions, and those hold the same wordings.
+# The files beyond the agent definitions whose text states a rule. `settling_state.PENDING` names
+# `.claude/proposals-pending.md`. `_condensed` condenses the critic's proposals from `settling_state.SUGGESTED`, and
+# `proposals_appended` writes them into that file. `record_run.proposal_refusals` names that path when `prose_answer`
+# checks a proposal. `write_agent_prompts` copies the conventions and the rejections into agent definitions, and those
+# hold the same wordings.
 _A_RULE_IS_STATED_IN = (
     "conventions.md",
     "rejected.md",
@@ -935,8 +933,8 @@ def _shape_faults(prose: str, is_stating_why: bool = False) -> list[str]:
     """
     whole = said_by(prose)
     found = [
-        f"[a possessive with its noun dropped: {said.group(0).strip()!r}] {said.group(0).strip()}"
-        for said in _AN_ELIDED_NOUN_BEFORE_A_CONJUNCTION.finditer(prose)
+        f"[a possessive with its noun dropped: {elided.group(0).strip()!r}] {elided.group(0).strip()}"
+        for elided in _AN_ELIDED_NOUN_BEFORE_A_CONJUNCTION.finditer(prose)
     ]
     for sentence in _sentences(whole):
         said = sentence.strip()

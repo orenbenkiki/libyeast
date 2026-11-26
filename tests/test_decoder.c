@@ -291,7 +291,7 @@ static void test_consume_set(void) {
     taken = ys_consume_set((const uint8_t *)"ab\xE4\xB8\x80 z", 7, YS_SET_ID_NS_CHAR);
     TEST_CHECK(taken.bytes == 5 && taken.characters == 3);
 
-    // Bytes that are not UTF-8 belong to no set. Such bytes end a consume.
+    // Bytes that are not UTF-8 end a consume.
     taken = ys_consume_set((const uint8_t *)"ab\xFF", 3, YS_SET_ID_NS_CHAR);
     TEST_CHECK(taken.bytes == 2 && taken.characters == 2);
 }

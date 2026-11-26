@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 """
-The store holding what a claim pass verified. The store also names the fragments the pass must read once more.
+The store holding what a claim pass verified. The module also names the fragments the pass must read once more.
 
 A claim pass reads a fragment's prose against its code. The pass records the fragment and the digests it held. The pass
 keeps the keys of the fetched fragments that a run of the answer cites. The pass keeps the questions it asked, cited or
@@ -11,7 +11,8 @@ A fragment falls stale where its own prose or code moved. A fragment falls stale
 moved. A fragment falls stale where a fragment it read left the tree. A stale fragment goes back to the pass.
 
 **Usage:** `python3 generator/claim_state.py`. The run names the fragments the pass owes a reading. The run also names
-the fragments the store holds unsettled. The run fails where it names any fragment.
+the fragments the store holds unsettled. The run also names a verified fragment that read a fragment it does not point
+at. The run fails where it names any fragment.
 """
 
 import dataclasses
@@ -182,11 +183,10 @@ def stale_claims(fragments: Iterable[collect_fragments.Fragment]) -> dict[str, s
 
     Public. `converge_claims` replays an answer of the journal only for a key this names.
 
-    A fragment the store lacks reads again. `claims_purged` drops the entry of a fragment this reports, and a fragment
-    no pass has read has none. A fragment whose own digests moved reads again. A fragment that read another fragment
-    reads again where that other fragment moved or left the tree.
+    A fragment the store lacks reads again. A fragment whose own digests moved reads again. A fragment that read another
+    fragment reads again where that other fragment moved or left the tree.
 
-    A fragment the store calls unsettled stays out while its own digests hold. A person owes such a fragment a reading.
+    A fragment the store calls unsettled stays out while its own digests hold. A person owes such a fragment an edit.
     `_NOTE` tells that person what to do. An edit to such a fragment moves those digests, and the fragment goes back to
     the pass. The claims the store holds for that fragment name the text of the reading before that edit.
 
@@ -198,7 +198,7 @@ def stale_claims(fragments: Iterable[collect_fragments.Fragment]) -> dict[str, s
     """
     held = list(fragments)
     settled, unsettled = read_claims()
-    by_key = {one.key: one for one in held + collect_fragments.code_only()}
+    by_key = {other.key: other for other in held + collect_fragments.code_only()}
     around = list(by_key.values())
     by_name = collect_fragments.keys_by_name(around)
     answers: dict[str, str] = {}
@@ -361,7 +361,7 @@ def _path_of(held: list[collect_fragments.Fragment], key: str) -> str:
     raise KeyError(f"the tree holds no fragment under {key}")
 
 
-# The languages whose names `_reached_privately` follows.
+# The languages of the starts whose names `_reached_privately` follows.
 _NAMING = ("C", "Python")
 
 
@@ -375,11 +375,11 @@ def _reached_privately(
     by_key = {other.key: other for other in held}
     reached: set[str] = set()
     waiting = [
-        key
+        named
         for start in sorted(starts)
         if start in by_key and start.partition(":")[0] in _NAMING
-        for key in collect_fragments.named_by(by_key[start], by_name)
-        if key in by_key
+        for named in collect_fragments.named_by(by_key[start], by_name)
+        if named in by_key
     ]
     while waiting:
         key = waiting.pop()
@@ -399,14 +399,14 @@ def unpointed_settlements(fragments: Iterable[collect_fragments.Fragment]) -> di
     Public. `converge_claims` moves such a settlement to the unsettled map as a run starts.
 
     A read of a declaration counts as pointed where a read of its file would. `refined` narrows a read of a file to such
-    reads, and `converge_claims` checked the read of the file before the narrowing.
+    reads, and `converge_claims.settlement_of` checked the read of the file before the narrowing.
     """
     held = list(fragments)
     every = held + collect_fragments.code_only()
     by_name = collect_fragments.keys_by_name(every)
-    by_key = {one.key: one for one in held}
-    every_key = {one.key: one for one in every}
-    file_of = {one.path: one.key for one in every if collect_fragments.is_a_file(one.key)}
+    by_key = {other.key: other for other in held}
+    every_key = {other.key: other for other in every}
+    file_of = {other.path: other.key for other in every if collect_fragments.is_a_file(other.key)}
     settled, _unsettled = read_claims()
     found = {}
     for key, was in sorted(settled.items()):

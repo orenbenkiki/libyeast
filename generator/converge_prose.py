@@ -433,7 +433,9 @@ def _read_critic(state: _Settling, task_keys: dict[str, str], said: Any, told: s
     rewritten = {one["key"]: one["changes"] for one in answer["rewritten"]}
     spoken = passed | set(rewritten) | set(answer["out_of_budget"])
     outside, unanswered = agent_answers.batch_mismatch(spoken, set(task_keys))
-    faults = [f"{key} sits outside the batch" for key in outside] + [f"{key} got no verdict" for key in unanswered]
+    faults = [f"{outside_key} sits outside the batch" for outside_key in outside] + [
+        f"{unanswered_key} got no verdict" for unanswered_key in unanswered
+    ]
     for key, changes in sorted(rewritten.items()):
         if key in task_keys:
             placed = _placed(_state_of(state, task_keys[key]).draft, changes)
@@ -491,7 +493,7 @@ def _written_into_tree(state: _Settling, digest: str, entry: settling_state.Pros
         return ""
     apply_prose.fragment_written(fragment, draft)
     new_digest = collect_fragments.prose_digest(draft)
-    before = [site.prose for site in fragment.sites]
+    before = [fragment_site.prose for fragment_site in fragment.sites]
     settling_state.write_logged(state.into, "prose", fragment.key, before, draft, new_digest)
     rewritten = collect_fragments.drafted(fragment, draft)
     rewritten.key = collect_fragments.key_for(fragment.key, new_digest)
@@ -1095,10 +1097,10 @@ async def _run(state: _Settling) -> None:
 
 async def _ended(state: _Settling) -> None:
     """
-    Cancel the tasks still running, and wait for them a while. The log names a task that outlives its cancel, with the
-    stack the task holds.
+    Cancel the tasks still running, and wait for them a while. A task can outlive its cancel. The log then shows the
+    await chain of that task.
     """
-    left = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
+    left = [running for running in asyncio.all_tasks() if running is not asyncio.current_task()]
     for task in left:
         task.cancel()
     if not left:
@@ -1166,7 +1168,7 @@ def main() -> None:
             by_digest=by_digest,
             queue=queue,
             fresh=int(argv[1]) if len(argv) == 2 else len(queue),
-            by_key={one.key: one for one in fragments + collect_fragments.code_only()},
+            by_key={fragment.key: fragment for fragment in fragments + collect_fragments.code_only()},
         )
         # pylint: disable=broad-exception-caught
         try:

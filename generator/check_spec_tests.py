@@ -37,7 +37,7 @@ def main() -> None:
 
     errors = []
 
-    inputs = {os.path.basename(fixture.input_path)[: -len(".input")] for fixture in fixtures}
+    inputs = {os.path.basename(loaded_fixture.input_path)[: -len(".input")] for loaded_fixture in fixtures}
     outputs = {path.name[: -len(".output")] for path in gate.named_in(spec_tests.TESTS_DIR, ".output")}
     for stem in sorted(inputs - outputs):
         errors.append(f"the input of {stem} has no matching output")

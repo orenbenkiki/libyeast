@@ -60,7 +60,7 @@ _SCHEMAS = {
     "prose-claims.md": agent_answers.CLAIMED,
 }
 
-# The sentence over the schema. A reader answers in the shape the schema decides.
+# The text over the schema. A reader answers in the shape the schema decides.
 _ANSWERS = (
     "Answer by calling the StructuredOutput tool. The schema below decides the shape of the input to that call. Write "
     "no sentence beside the call. A hook may turn the call back with a refusal. Rewrite the refused prose, and call "

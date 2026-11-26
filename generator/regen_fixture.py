@@ -55,7 +55,7 @@ def _frozen(stem: str) -> list[str]:
 
     Reports where what the fixture holds differs from what the interpreter emits. A re-freeze says what it gave up.
     """
-    wanted = [fixture for fixture in spec_tests.load() if _stem(fixture) == stem]
+    wanted = [candidate for candidate in spec_tests.load() if _stem(candidate) == stem]
     if not wanted:
         return [f"{stem}: no fixture of that name in {spec_tests.TESTS_DIR}"]
     (fixture,) = wanted

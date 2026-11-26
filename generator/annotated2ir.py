@@ -4,9 +4,9 @@ Translate libyeast's annotated grammar into the typed IR (the IR).
 
 A yaml-grammar operator maps to a single IR node. The vendored `(<<<)` maps to no node of its own. `_node` returns the
 translation of its operand. The translation neither flattens nor normalizes, except that the vendored `(ord)` translates
-to the node `(atoi)` gives. The round-trip through `ir2annotated.py` reproduces libyeast's grammar exactly, and
-`check_annotated_roundtrip.py` checks that. The translation raises an error on an unexpected input rather than dropping
-that input.
+to the node `(atoi)` gives. The round-trip through `ir2annotated.py` reproduces libyeast's grammar as parsed data, and
+`check_annotated_roundtrip.py` checks that. `_node` raises an error on an unexpected input rather than dropping that
+input. `_expr` translates an unknown operator to a `RefCall`.
 
 Usage: `python3 generator/annotated2ir.py [spec.yaml] > grammar.py`.
 """

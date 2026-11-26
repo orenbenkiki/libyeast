@@ -28,7 +28,7 @@ _REVIEW = "review"
 # The file holding how a rule fares. `gate.rule_use` reads it back.
 _RULE_USE = os.path.join(gate.TREE, ".claude", "rule-use.json")
 
-# The note that file opens with. `collect_fragments` reads the `_` key of a JSON file as its prose.
+# The note `.claude/rule-use.json` opens with. `collect_fragments` reads the `_` key of a JSON file as its prose.
 _RULE_USE_SAYS = (
     "A settling run cites a rule of `.claude/conventions.md` per change. `cited` counts the changes citing a rule. "
     "`accepted` counts the changes the comparator let through. `overlaps` pairs a rule with a second rule. A later "
@@ -41,7 +41,7 @@ def _counted(changes: list[dict[str, Any]], was: dict[str, Any]) -> dict[str, An
     `was` with `changes` counted into it. A rule holds a count of the changes citing it and a count of the changes the
     comparator took.
     """
-    held = {name: dict(one) for name, one in was.items()}
+    held = {name: dict(counts) for name, counts in was.items()}
     for one in changes:
         rule = str(one.get("rule", ""))
         if not rule:
@@ -91,7 +91,7 @@ def rule_use_counted(changes: list[dict[str, Any]]) -> tuple[int, int]:
     held = {
         "_": _RULE_USE_SAYS,
         "rules": {name: rules[name] for name in sorted(rules)},
-        "overlaps": [{"rules": list(pair), "count": overlaps[pair]} for pair in sorted(overlaps)],
+        "overlaps": [{"rules": list(rule_pair), "count": overlaps[rule_pair]} for rule_pair in sorted(overlaps)],
     }
     with open(_RULE_USE, "w", encoding="utf-8") as handle:
         json.dump(held, handle, indent=2)

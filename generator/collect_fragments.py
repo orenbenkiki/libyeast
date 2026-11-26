@@ -250,8 +250,8 @@ def _spec_productions(text: str) -> list[tuple[str, int, str]]:
     for at, one in enumerate(lines, start=1):
         if re.match(r":\d+: ", one) and not _A_SPEC_MARKER.match(one):
             raise ValueError(f"the spec marker on line {at} holds no production name: {one}")
-    found = ((at, _A_SPEC_MARKER.match(one)) for at, one in enumerate(lines))
-    opens = [(at, one.group(2)) for at, one in found if one]
+    found = ((index, _A_SPEC_MARKER.match(line)) for index, line in enumerate(lines))
+    opens = [(index, matched.group(2)) for index, matched in found if matched]
     held = []
     banner: list[str] = []
     for (at, name), (next_at, _named) in zip(opens, opens[1:] + [(len(lines), "")]):
@@ -411,16 +411,16 @@ def bare_code(code: str, language: str | None) -> str:
     Blank the string literals and the comments of `code`. A language of `_UNCALLED` goes blank whole. A blanked
     character turns into a space. A line break stays.
 
-    An f-string keeps its interpolations. A JS template literal goes blank along with its interpolations. A string of a
-    `_QUOTES` language outside `_TEXT_STRINGS` stays. A comment of `_CODE_COMMENTS` stays. A language outside
-    `_UNCALLED`, `_QUOTES` and Python raises.
+    A JS template literal goes blank along with its interpolations. A string of a `_QUOTES` language outside
+    `_TEXT_STRINGS` stays. A comment of `_CODE_COMMENTS` stays. A language outside `_UNCALLED`, `_QUOTES` and Python
+    raises.
 
     Public. `check_documents` reads the names the C writes through here.
     """
     if language in _UNCALLED:
         spans = [(0, len(code))]
     elif language == "Python":
-        starts = [0] + [at + 1 for at, char in enumerate(code) if char == "\n"]
+        starts = [0] + [offset + 1 for offset, char in enumerate(code) if char == "\n"]
         spans = [
             (starts[token.start[0] - 1] + token.start[1], starts[token.end[0] - 1] + token.end[1])
             for token in tokenize.generate_tokens(io.StringIO(code).readline)
@@ -428,7 +428,11 @@ def bare_code(code: str, language: str | None) -> str:
         ]
     elif language in _QUOTES:
         strings, comments = _scanned(code, _QUOTES[language], MARKERS[language])
-        spans = [(opens, ends) for _line, opens, ends, _said in strings if language in _TEXT_STRINGS]
+        spans = [
+            (string_opens, string_ends)
+            for _line, string_opens, string_ends, _said in strings
+            if language in _TEXT_STRINGS
+        ]
         spans += _prose_comments(comments, language)
     else:
         raise ValueError(f"`bare_code` knows no literals of the language {language}")
@@ -468,18 +472,20 @@ def _naming(
     holds such a line as a prototype. `_joined` adds the code of that prototype to the fragment.
     """
     if declaring is None:
-        declaring = frozenset(one.key for one in held if one.key.rpartition(":")[2] == name)
+        declaring = frozenset(fragment.key for fragment in held if fragment.key.rpartition(":")[2] == name)
     if AN_IDENTIFIER.fullmatch(word):
-        held = [one for one in held if word in _identifiers(one.code.content)]
+        held = [fragment for fragment in held if word in _identifiers(fragment.code.content)]
     lines = {
-        one.key: collections.Counter(
+        fragment.key: collections.Counter(
             line.strip()
             for line in (
-                bare_code(one.code.content, language_of(one.path)) if is_blanking_text else one.code.content
+                bare_code(fragment.code.content, language_of(fragment.path))
+                if is_blanking_text
+                else fragment.code.content
             ).split("\n")
             if says.search(line)
         )
-        for one in held
+        for fragment in held
     }
     declared = collections.Counter[str]()
     for one in held:
@@ -665,7 +671,7 @@ def outline_of(held: list[Fragment], one: Fragment) -> str:
         key=lambda other: (other.start_line, other.key),
     )
     covered = collections.Counter(
-        line.strip() for other in inner for line in other.code.content.split("\n") if line.strip()
+        code_line.strip() for other in inner for code_line in other.code.content.split("\n") if code_line.strip()
     )
     kept = []
     for at, line in enumerate(one.code.content.rstrip().split("\n"), start=1):
@@ -683,8 +689,12 @@ def outline_of(held: list[Fragment], one: Fragment) -> str:
     if language_of(one.path) == "Markdown":
         with open(os.path.join(gate.TREE, one.path), encoding="utf-8") as handle:
             source = handle.read()
-        listed += [(at, line) for at, line in _document_lines(source) if _A_HEADING.match(line)]
-    return said + "\n#### declarations\n\n" + "\n".join(line for _at, line in sorted(listed)) + "\n"
+        listed += [
+            (line_number, document_line)
+            for line_number, document_line in _document_lines(source)
+            if _A_HEADING.match(document_line)
+        ]
+    return said + "\n#### declarations\n\n" + "\n".join(entry for _at, entry in sorted(listed)) + "\n"
 
 
 def owners_of(held: list[Fragment], one: Fragment, first: int, last: int) -> set[str]:
@@ -756,8 +766,7 @@ def prose_lines() -> dict[str, list[tuple[int, str]]]:
     The prose runs of the files `gate.prose_files` names, as `{file: [(the line a run opens on, its prose)]}`. A run is
     a site of a fragment, or a literal `prose_literals` reads as prose.
 
-    Public. `check_documents` reads the citations of the tree through here. The write-time hooks read the same sites and
-    the same literals.
+    Public. `check_documents` reads the citations of the tree through here.
     """
     held = {}
     for path in gate.prose_files():
@@ -785,7 +794,11 @@ def _python_code(code: str) -> str:
     indent does not count.
     """
     skipped = (tokenize.COMMENT, tokenize.NL, tokenize.ENCODING)
-    tokens = [token for token in tokenize.generate_tokens(io.StringIO(code).readline) if token.type not in skipped]
+    tokens = [
+        scanned_token
+        for scanned_token in tokenize.generate_tokens(io.StringIO(code).readline)
+        if scanned_token.type not in skipped
+    ]
     opens = (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT)
     closes = (tokenize.NEWLINE, tokenize.ENDMARKER)
     kept = []
@@ -840,7 +853,7 @@ def _named_by(prose: _Text) -> str:
 
 def drafted(one: Fragment, prose_by_site: list[str]) -> Fragment:
     """
-    `one` with `prose_by_site` as the prose of its sites. The key stays.
+    `one` with the flattened `prose_by_site` as the prose of its sites. The key stays.
 
     Public. `converge_prose` and `converge_claims` build a rewritten fragment this way. `prose_answer` reads a claims
     answer against a draft this way.
@@ -1118,9 +1131,9 @@ def standalone_comments(source: str, language: str | None) -> dict[int, int]:
 def filled(text: str, first: str, then: str | None = None, width: int = gate.WIDEST) -> list[str]:
     """
     `text` filled to `width` by `textwrap.wrap`. The first line opens on `first`. A later line opens on `then`, or on
-    `first` where the caller gives no `then`. A word longer than the width stays whole, and a hyphen breaks no word.
+    `first` where the caller gives no `then`.
 
-    Public. A module that wraps text to the width calls this.
+    Public. Other modules call this.
     """
     return textwrap.wrap(
         text,
@@ -1179,7 +1192,9 @@ def comment_reflowed(block: list[str], indent: int, marker: str) -> list[str]:
         if _is_laid_out(paragraph, marker):
             out.extend(paragraph)
         else:
-            out.extend(filled(" ".join(comment_body(line, marker).strip() for line in paragraph), prefix))
+            out.extend(
+                filled(" ".join(comment_body(paragraph_line, marker).strip() for paragraph_line in paragraph), prefix)
+            )
         paragraph.clear()
 
     for line in block:
@@ -1209,18 +1224,25 @@ def trailing_comments(source: str, language: str | None) -> dict[int, int]:
     `marker_lines` reads a mark in such a comment.
     """
     if language == "Python":
-        return {at: len(before) for at, (before, _said) in python_comments(source).items() if before.strip()}
-    if language == "Make":
-        found = ((at, line, _AN_UNESCAPED_HASH.search(line)) for at, line in enumerate(source.split("\n"), 1))
         return {
-            at: mark.start()
-            for at, line, mark in found
-            if mark is not None and not line.startswith("\t") and line[: mark.start()].strip()
+            line_number: len(before)
+            for line_number, (before, _said) in python_comments(source).items()
+            if before.strip()
+        }
+    if language == "Make":
+        found = (
+            (line_number, source_line, _AN_UNESCAPED_HASH.search(source_line))
+            for line_number, source_line in enumerate(source.split("\n"), 1)
+        )
+        return {
+            line_number: mark.start()
+            for line_number, source_line, mark in found
+            if mark is not None and not source_line.startswith("\t") and source_line[: mark.start()].strip()
         }
     marker = MARKERS.get(language or "")
     if not marker:
         raise ValueError(f"`trailing_comments` knows no comments of the language {language}")
-    starts = [0] + [at + 1 for at, char in enumerate(source) if char == "\n"]
+    starts = [0] + [offset + 1 for offset, char in enumerate(source) if char == "\n"]
     lines = source.split("\n")
     held = {}
     quotes = _SETTING_QUOTES if language == "Conf" else _QUOTES[language or ""]
@@ -1523,7 +1545,7 @@ class _Split:
             else:
                 continue
             opens = at
-        return [(tuple(lines), "\n".join(said)) for lines, said in held]
+        return [(tuple(lines), "\n".join(prose)) for lines, prose in held]
 
     def code(self, owned: Iterable[int]) -> _Text:
         """The code of the lines `owned`, in the order the file writes them."""
@@ -1708,12 +1730,16 @@ def _gathered(
     A block opening inside a function body makes no unattached comment, whether or not an extent encloses it.
     """
     extents = _grouped(extents, split, branches)
-    taken = {at for _kind, _name, first, last in extents for at in range(first, last + 1)}
-    loose = [one for one in blocks if one[0] not in taken and one[0] not in bodies]
-    describes_the_file = [one for one in loose[:1] if one[0] == _first_line_of(split)]
+    taken = {
+        line_number
+        for _kind, _name, first_line, last_line in extents
+        for line_number in range(first_line, last_line + 1)
+    }
+    loose = [block for block in blocks if block[0] not in taken and block[0] not in bodies]
+    describes_the_file = [block for block in loose[:1] if block[0] == _first_line_of(split)]
     below = loose[len(describes_the_file) :]
-    unattached = [one for one in below if not prose_rules.is_a_heading(one[2])]
-    headings = [one for one in below if prose_rules.is_a_heading(one[2])]
+    unattached = [block for block in below if not prose_rules.is_a_heading(block[2])]
+    headings = [block for block in below if prose_rules.is_a_heading(block[2])]
     owned_by: dict[tuple[str, str, int], set[int]] = {}
     spanned: dict[tuple[str, str, int], set[int]] = {}
     for kind, name, first, last in extents:
@@ -1727,7 +1753,7 @@ def _gathered(
         held.append(one)
     for first, last, _said in unattached:
         held.append(_a_fragment(language, path, "unattached", None, first, split, range(first, last + 1)))
-    aside = {at for one in unattached + headings for at in range(one[0], one[1] + 1)}
+    aside = {line_number for block in unattached + headings for line_number in range(block[0], block[1] + 1)}
     left = set(range(1, len(split.lines) + 1)) - taken - aside
     kind = "module" if language == "Python" else "file"
     describes = _a_fragment(language, path, kind, "", 1, split, left)
@@ -1771,20 +1797,20 @@ def _python_extents(tree: ast.Module, blocks: list[tuple[int, int, str]]) -> lis
     held: list[tuple[str, str, int, int]] = []
     overrides = _overridden(tree)
 
-    def walk(node: ast.AST, prefix: str) -> None:
-        for child in ast.iter_child_nodes(node):
+    def walk(parent: ast.AST, prefix: str) -> None:
+        for child in ast.iter_child_nodes(parent):
             if not gate.is_a_definition(child) or child.name == "__init__":
                 continue
-            if not ast.get_docstring(child) and child.name == "main" and isinstance(node, ast.Module):
+            if not ast.get_docstring(child) and child.name == "main" and isinstance(parent, ast.Module):
                 continue
-            if isinstance(node, ast.ClassDef) and child.name in overrides and not ast.get_docstring(child):
+            if isinstance(parent, ast.ClassDef) and child.name in overrides and not ast.get_docstring(child):
                 continue
-            name = prefix + child.name
+            dotted_name = prefix + child.name
             opens = min([child.lineno] + [one.lineno for one in child.decorator_list])
             kind = "class" if isinstance(child, ast.ClassDef) else "function"
-            held.append((kind, name, _opens_above(blocks, opens, set()), child.end_lineno or child.lineno))
+            held.append((kind, dotted_name, _opens_above(blocks, opens, set()), child.end_lineno or child.lineno))
             if isinstance(child, ast.ClassDef):
-                walk(child, name + ".")
+                walk(child, dotted_name + ".")
 
     walk(tree, "")
     for node in tree.body:
@@ -1831,15 +1857,15 @@ def _python_fragments(path: str, source: str) -> list[Fragment]:
     lines = source.split("\n")
     bodies = _python_bodies(tree)
     comments = {
-        at: said
-        for at, said in _python_comments(source).items()
-        if at not in bodies or not gate.TOOL_DIRECTIVE.match(said)
+        line_number: comment
+        for line_number, comment in _python_comments(source).items()
+        if line_number not in bodies or not gate.TOOL_DIRECTIVE.match(comment)
     }
     blocks = _blocks(comments)
     strings = _docstring_extents(tree)
-    is_prose = {at for opens, closes in strings for at in range(opens, closes + 1)} | {
-        at for first, last, _said in blocks for at in range(first, last + 1)
-    }
+    is_prose = {
+        line_number for first_line, last_line in strings for line_number in range(first_line, last_line + 1)
+    } | {line_number for first, last, _said in blocks for line_number in range(first, last + 1)}
     split = _Split(source, is_prose)
     split.in_bodies.update(bodies)
     for at, said in comments.items():
@@ -1899,12 +1925,12 @@ def _c_declared(said: str, closing: str) -> tuple[str, str]:
 
 def _c_extents(source: str, marker: str) -> list[tuple[str, str, int, int]]:
     """
-    The declarations a C file makes at file scope, as `(kind, name, first line, last line)`.
+    The declarations a C file makes at file scope, include guards aside, as `(kind, name, first line, last line)`.
 
-    A brace block runs to the line where its braces balance, once that line opens with `}` or ends with `;`. A `#define`
-    holding no brace runs to its last continued line. Anything else runs to the semicolon that ends it.
+    A brace block runs to the first line at balance that opens with `}` or ends with `;`. A `#define` holding no brace
+    runs to its last continued line. Anything else runs to the semicolon that ends it.
     """
-    lines = _at_file_scope([line.partition(marker)[0] for line in source.split("\n")])
+    lines = _at_file_scope([source_line.partition(marker)[0] for source_line in source.split("\n")])
     held: list[tuple[str, str, int, int]] = []
     opens, said, depth = 0, "", 0
     is_continuing_a_directive = False
@@ -1974,8 +2000,8 @@ def _c_bodies(source: str, marker: str, extents: list[tuple[str, str, int, int]]
 
 def _c_fragments(path: str, source: str) -> list[Fragment]:
     """
-    The fragments of a C file. The file makes a fragment. A type, a function and a `#define` make a fragment apiece. So
-    does a variable at file scope.
+    The fragments of a C file. The file makes a fragment. A type, a function and a `#define` make a fragment apiece. The
+    `#define` of an include guard makes none. A variable at file scope makes a fragment too.
 
     A member of a type is part of that type rather than a fragment of its own. A comment block inside a function body is
     prose of the function's fragment, unless it is a tool directive.
@@ -1984,13 +2010,19 @@ def _c_fragments(path: str, source: str) -> list[Fragment]:
     blocks = _blocks(_comments(source, "C"))
     branches = _branch_lines(source, marker)
     extents = [
-        (kind, name, _opens_above(blocks, first, branches), last)
-        for kind, name, first, last in _c_extents(source, marker)
+        (kind, name, _opens_above(blocks, first_line, branches), last_line)
+        for kind, name, first_line, last_line in _c_extents(source, marker)
     ]
     bodies = _c_bodies(source, marker, extents)
     comments = _comments(source, "C")
-    directives = {at for at in bodies if at in comments and gate.TOOL_DIRECTIVE.match(comments[at])}
-    is_prose = {at for first, last, _said in blocks for at in range(first, last + 1)} - directives
+    directives = {
+        line_number
+        for line_number in bodies
+        if line_number in comments and gate.TOOL_DIRECTIVE.match(comments[line_number])
+    }
+    is_prose = {
+        line_number for first_line, last_line, _said in blocks for line_number in range(first_line, last_line + 1)
+    } - directives
     split = _Split(source, is_prose)
     split.in_bodies.update(bodies)
     for at, said in comments.items():
@@ -2042,9 +2074,13 @@ def _make_fragments(path: str, source: str) -> list[Fragment]:
     blocks = _blocks(_comments(source, "Make"))
     branches = _branch_lines(source, "#")
     extents = [
-        (kind, name, _opens_above(blocks, first, branches), last) for kind, name, first, last in _make_extents(source)
+        (kind, name, _opens_above(blocks, first_line, branches), last_line)
+        for kind, name, first_line, last_line in _make_extents(source)
     ]
-    split = _Split(source, {at for first, last, _said in blocks for at in range(first, last + 1)})
+    split = _Split(
+        source,
+        {line_number for first_line, last_line, _said in blocks for line_number in range(first_line, last_line + 1)},
+    )
     for at, said in _comments(source, "Make").items():
         split.says(at, said)
     for at, (code, said, last) in _marked_trailing(source, "Make").items():
@@ -2067,7 +2103,7 @@ def _said_by_note(strings: list[str]) -> str:
             paragraphs[-1].append(one.strip())
         elif paragraphs[-1]:
             paragraphs.append([])
-    return "\n\n".join(" ".join(one) for one in paragraphs if one)
+    return "\n\n".join(" ".join(paragraph) for paragraph in paragraphs if paragraph)
 
 
 def _json_fragments(path: str, source: str) -> list[Fragment]:
@@ -2115,7 +2151,10 @@ def _flat_fragments(language: str, path: str, source: str) -> list[Fragment]:
     itself.
     """
     blocks = _blocks(_comments(source, language))
-    split = _Split(source, {at for first, last, _said in blocks for at in range(first, last + 1)})
+    split = _Split(
+        source,
+        {line_number for first_line, last_line, _said in blocks for line_number in range(first_line, last_line + 1)},
+    )
     for at, said in _comments(source, language).items():
         split.says(at, said)
     for at, (code, said, last) in _marked_trailing(source, language).items():
@@ -2150,7 +2189,7 @@ def _document_fragments(path: str, source: str) -> list[Fragment]:
     with the items under it.
 
     A fenced block is code and makes no fragment. The heading above a paragraph and a digest of the paragraph's prose
-    name that paragraph. A rule of `_THE_RULES` takes the rule's name instead.
+    name that paragraph. A fragment holding a rule of `_THE_RULES` takes the rule's name instead.
 
     A `COPIED_BELOW` line ends the document. The prose under that line lives elsewhere in the tree, and a copy makes no
     fragment.
@@ -2160,7 +2199,7 @@ def _document_fragments(path: str, source: str) -> list[Fragment]:
     block: list[str] = []
     first = 1
 
-    def close(opens: int) -> None:
+    def close(first_line: int) -> None:
         content = "\n".join(block).strip("\n")
         if not content:
             return
@@ -2171,11 +2210,13 @@ def _document_fragments(path: str, source: str) -> list[Fragment]:
         else:
             name = f"{heading} {_named_by(prose)}" if heading else _named_by(prose)
         sites = (_Site(path, tuple(range(len(block))), flattened(content), content),)
-        held.append(Fragment(_keyed("Markdown", path, name), path, "paragraph", {path: opens}, prose, _text([]), sites))
+        key = _keyed("Markdown", path, name)
+        held.append(Fragment(key, path, "paragraph", {path: first_line}, prose, _text([]), sites))
 
     for at, line in _document_lines(source):
         found = _A_HEADING.match(line)
-        # A top-level item closes the item before it. A nested item continues with the item it sits under.
+        # A top-level item closes the item before it. A blank line closes an item. A nested item joins the item above
+        # it.
         opens = bool(_A_TOP_ITEM.match(line)) and bool(block)
         if found or not line.strip() or opens:
             close(first)
@@ -2229,7 +2270,11 @@ def _joined(held: list[Fragment]) -> list[Fragment]:
     `_joined` matches a pair by name. The joined fragment keeps the source's key and the prose of both sites.
     """
     is_split = ("function", "type")
-    bodies = {one.key.rpartition(":")[2]: one for one in held if one.kind in is_split and one.path.endswith(".c")}
+    bodies = {
+        fragment.key.rpartition(":")[2]: fragment
+        for fragment in held
+        if fragment.kind in is_split and fragment.path.endswith(".c")
+    }
     joined = []
     for one in held:
         named = one.key.rpartition(":")[2]
@@ -2481,10 +2526,10 @@ def fragments() -> list[Fragment]:
     held = _joined(held)
     reachable = held + code_only()
     resolves = resolved(reachable)
-    by_key = {one.key: one for one in reachable}
+    by_key = {fragment.key: fragment for fragment in reachable}
     for one in held:
         one.references = {key: code_digest(by_key[key]) for key in cited_keys(one, one.prose.content, resolves, by_key)}
-    return sorted(held, key=lambda one: (one.path, one.start_line))
+    return sorted(held, key=lambda fragment: (fragment.path, fragment.start_line))
 
 
 @dataclass(frozen=True)
@@ -2807,7 +2852,7 @@ def prose_literals(source: str, language: str = "Python") -> list[tuple[int, str
     a line opening on `usage:` count as data as well. A literal a caller splits into words is a word list. A hook
     refusal ends on the name of the rule it enforces. `prose_literals` leaves such a refusal out too.
     """
-    bare = [(at, said) for at, said in _unquoted_prose(source, language) if _does_read_as_prose(said)]
+    bare = [(at, prose) for at, prose in _unquoted_prose(source, language) if _does_read_as_prose(prose)]
     if language in _QUOTES:
         scanned = _quoted_runs(source, _QUOTES[language], MARKERS[language])
         if language in ("Shell", "Make", "YAML"):
@@ -2818,47 +2863,49 @@ def prose_literals(source: str, language: str = "Python") -> list[tuple[int, str
         return sorted(
             set(bare)
             | {
-                (at, said)
-                for at, said in ((at, _said_by_run(one, language)) for at, one in runs)
-                if _does_read_as_prose(said)
+                (at, prose)
+                for at, prose in ((line_number, _said_by_run(one, language)) for line_number, one in runs)
+                if _does_read_as_prose(prose)
             }
         )
     if language != "Python":
         return sorted(set(bare))
     tree = ast.parse(source)
     docstrings = {
-        id(node.body[0].value)
-        for node in ast.walk(tree)
-        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        and node.body
-        and isinstance(node.body[0], ast.Expr)
-        and isinstance(node.body[0].value, ast.Constant)
-        and isinstance(node.body[0].value.value, str)
+        id(tree_node.body[0].value)
+        for tree_node in ast.walk(tree)
+        if isinstance(tree_node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and tree_node.body
+        and isinstance(tree_node.body[0], ast.Expr)
+        and isinstance(tree_node.body[0].value, ast.Constant)
+        and isinstance(tree_node.body[0].value.value, str)
     }
     # An f-string counts as a single literal. The pieces of an f-string are parts of that literal.
     pieces = {
         id(inner)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.JoinedStr)
-        for part in node.values
+        for tree_node in ast.walk(tree)
+        if isinstance(tree_node, ast.JoinedStr)
+        for part in tree_node.values
         for inner in ast.walk(part)
     }
     # A pattern passed to `re.compile` is data.
     patterns = {
         id(inner)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr in ("compile", "match", "search", "fullmatch", "sub", "findall", "finditer", "split")
-        for arg in node.args
+        for tree_node in ast.walk(tree)
+        if isinstance(tree_node, ast.Call)
+        and isinstance(tree_node.func, ast.Attribute)
+        and tree_node.func.attr in ("compile", "match", "search", "fullmatch", "sub", "findall", "finditer", "split")
+        for arg in tree_node.args
         for inner in ast.walk(arg)
     }
     # A literal a caller splits into words is data.
     word_lists = {
         id(inner)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "split"
-        for inner in ast.walk(node.func.value)
+        for tree_node in ast.walk(tree)
+        if isinstance(tree_node, ast.Call)
+        and isinstance(tree_node.func, ast.Attribute)
+        and tree_node.func.attr == "split"
+        for inner in ast.walk(tree_node.func.value)
     }
     held = []
     for node in ast.walk(tree):
@@ -3012,7 +3059,7 @@ def main() -> None:
     gate.report(_undescribed_fragments(held), "fragment(s) holding no prose", "")
     gate.report(_keys_not_naming_their_prose(held), "fragment key(s) the prose does not name", "")
     if "--json" in sys.argv:
-        json.dump([asdict(one) for one in held], sys.stdout, indent=2)
+        json.dump([asdict(fragment) for fragment in held], sys.stdout, indent=2)
         return
     if "--jsonl" in sys.argv:
         for one in held:
@@ -3021,8 +3068,9 @@ def main() -> None:
     by_kind: dict[str, int] = {}
     for one in held:
         by_kind[one.kind] = by_kind.get(one.kind, 0) + 1
-    cited = sum(len(one.references) for one in held)
-    print(f"prose: {len(held)} fragment(s) over {len({one.path for one in held})} file(s) holding {cited} reference(s)")
+    cited = sum(len(fragment.references) for fragment in held)
+    files = len({fragment.path for fragment in held})
+    print(f"prose: {len(held)} fragment(s) over {files} file(s) holding {cited} reference(s)")
     for kind, count in sorted(by_kind.items()):
         print(f"    {count} {kind}")
 

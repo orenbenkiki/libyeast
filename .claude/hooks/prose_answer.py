@@ -274,7 +274,7 @@ def _unpointed(fragment: collect_fragments.Fragment, draft: list[str], runs: lis
     resolves = collect_fragments.resolved(held)
     cited = collect_fragments.cited_keys(fragment, "\n".join(draft), resolves, by_key)
     drafted = dataclasses.replace(
-        fragment, references={key: collect_fragments.code_digest(by_key[key]) for key in cited}
+        fragment, references={cited_key: collect_fragments.code_digest(by_key[cited_key]) for cited_key in cited}
     )
     relied = claim_state.relied_on(_reads(), runs, held)
     left = claim_state.unpointed_reads(drafted, relied, held, collect_fragments.keys_by_name(held))
@@ -292,10 +292,10 @@ def _unpointed(fragment: collect_fragments.Fragment, draft: list[str], runs: lis
             if key in left and key not in names:
                 if key in collect_fragments.cited_keys(fragment, f"`{name}`", resolves, by_key):
                     names[key] = name
-    unnamed = [key for key in left if key not in names]
+    unnamed = [unpointed_key for unpointed_key in left if unpointed_key not in names]
     if unnamed:
         raise ValueError(f"no name the tree resolves reaches {', '.join(unnamed)}, and `{fragment.key}` read it")
-    reads = "\n".join(f"- `{key}`: cite it as `{names[key]}`" for key in left)
+    reads = "\n".join(f"- `{unpointed_key}`: cite it as `{names[unpointed_key]}`" for unpointed_key in left)
     return [_NOT_POINTED.format(key=fragment.key, reads=reads)]
 
 
@@ -354,7 +354,7 @@ def _judged(held: dict[str, Any], kept: dict[str, Any]) -> list[str]:
 
     A draft from `_drafts` takes the place of the prose the tree holds for its fragment.
     """
-    by_key = {one.key: one for one in collect_fragments.fragments()}
+    by_key = {tree_fragment.key: tree_fragment for tree_fragment in collect_fragments.fragments()}
     for key, draft in _drafts().items():
         by_key[key] = collect_fragments.drafted(by_key[key], draft)
     said = []

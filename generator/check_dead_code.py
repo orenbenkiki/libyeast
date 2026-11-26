@@ -95,7 +95,7 @@ def _imports() -> dict[str, set[str]]:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".")[0])
         found[path.stem] = imported
-    return {name: imported & set(found) for name, imported in found.items()}
+    return {name: imported_modules & set(found) for name, imported_modules in found.items()}
 
 
 def _unrun_module_errors() -> list[str]:
@@ -116,8 +116,8 @@ def _unrun_module_errors() -> list[str]:
             faults.append(f"the Makefile runs `{name}`, and the stale reason for keeping it says {why}")
     reached = _reached_from(runs | set(_RUN_FROM_ELSEWHERE), imports, imports)
     return faults + [
-        f"the module {name} has no runner and no importer that runs. no declaration says why the tree keeps it."
-        for name in sorted(set(imports) - reached)
+        f"the module {module} has no runner and no importer that runs. no declaration says why the tree keeps it."
+        for module in sorted(set(imports) - reached)
     ]
 
 
@@ -161,7 +161,7 @@ def _reached_from(roots: Iterable[str], reaches: Mapping[str, Collection[str]], 
     `held` says which names exist and `reaches` says what a name reaches. The module walk passes a single dictionary for
     both. A key is a module, and its value holds the modules that module imports.
     """
-    reached, waiting = set(), [name for name in roots if name in held]
+    reached, waiting = set(), [root for root in roots if root in held]
     while waiting:
         name = waiting.pop()
         if name not in reached:
@@ -211,7 +211,7 @@ def _dead_code_errors() -> list[str]:
                     held = [node.value]
                 else:
                     raise AssertionError(f"{path.name}:{node.lineno}: a binding of a statement no reading covers")
-                read_from: list[ast.AST] = [one for one in held if one is not None]
+                read_from: list[ast.AST] = [held_node for held_node in held if held_node is not None]
                 defined.setdefault(name, f"{path.name}:{node.lineno}")
                 for one in read_from:
                     reads.setdefault(name, set()).update(_names_in(one) - {name})
@@ -231,7 +231,7 @@ def _dead_code_errors() -> list[str]:
         if path.stem in runs or path.stem in _RUN_FROM_ELSEWHERE:
             roots.add("main")
     # A name a hook or an MCP server reads off a module is a root.
-    named = {path.stem for path in gate.modules()}
+    named = {module_path.stem for module_path in gate.modules()}
     for path in gate.hook_modules() + gate.mcp_modules():
         for read in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(read, ast.Attribute) and isinstance(read.value, ast.Name) and read.value.id in named:
@@ -241,14 +241,14 @@ def _dead_code_errors() -> list[str]:
     # A definition's calls build a kind only once the walk reaches that definition.
     for name in reached:
         built |= builds.get(name, set())
-    dead = {name for name in defined if not name.startswith("__")} - reached
+    dead = {defined_name for defined_name in defined if not defined_name.startswith("__")} - reached
     dead |= kinds - built
     # A helper reached from a `_KEPT_THOUGH_DEAD` name goes unreported. The declaration names the root of that cluster.
     dead -= _reached_from(_KEPT_THOUGH_DEAD, reads, defined) - set(_KEPT_THOUGH_DEAD)
     faults = [
-        f"{defined.get(name, 'ir')} defines `{name}`. nothing reaches that name, and no declaration says why the "
-        f"tree keeps it."
-        for name in sorted(dead - set(_KEPT_THOUGH_DEAD))
+        f"{defined.get(dead_name, 'ir')} defines `{dead_name}`. nothing reaches that name, and no declaration says why "
+        f"the tree keeps it."
+        for dead_name in sorted(dead - set(_KEPT_THOUGH_DEAD))
     ]
     for name, why in sorted(_KEPT_THOUGH_DEAD.items()):
         if name not in defined and name not in kinds:

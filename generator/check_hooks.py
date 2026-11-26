@@ -295,11 +295,11 @@ def _runner_faults() -> list[str]:
 
 def _unasked_faults(named: Iterable[str]) -> list[str]:
     """
-    The faults naming a hook on an edit that `checkers` does not call. `checkers.THE_HOOK` draws no fault.
+    The faults naming a hook that runs on an edit and that `checkers` does not call. `checkers.THE_HOOK` draws no fault.
 
     `prose_answer` checks the rewrites of an agent with `apply_prose.draft_refusals`. That call reaches
-    `checkers.refusals_for_edit` through `text_refusals`. A hook missing from there reads an edit a writer makes. It
-    then says nothing about the same prose from an agent.
+    `checkers.refusals_for_edit` through `text_refusals`. `.claude/settings.json` registers such a hook on an edit. The
+    hook reads an edit a writer makes and says nothing about the same prose from an agent.
     """
     checkers = importlib.import_module("checkers")
     faults = []
@@ -329,8 +329,9 @@ def _bypass_faults() -> list[str]:
 
     `checkers.CALLED` names the checker modules. This reports a module that imports a checker module.
 
-    A checker names a function of a helper module to decide. `prose_rules.word_refusal` is such a function. The name of
-    such a function holds `refus` or `fault`. This reports any other module that names such a function.
+    A checker hands its decision to a function of a helper module. `prose_words.refusal_for` names
+    `prose_rules.word_refusal` that way. The name of such a function holds `refus` or `fault`. This reports a module
+    that names such a function of another module.
 
     `checkers` and the checker modules are exempt from both reports.
     """
@@ -338,10 +339,10 @@ def _bypass_faults() -> list[str]:
     called = {name.removesuffix(".py") for name in checkers.CALLED}
     by_module = {path.stem: _reached(path) for path in gate.modules() + gate.hook_modules()}
     deciding = {
-        (module, name)
+        (owner, name)
         for checker in called
-        for module, name in by_module.get(checker, (set(), set()))[1]
-        if module not in called and ("refus" in name or "fault" in name)
+        for owner, name in by_module.get(checker, (set(), set()))[1]
+        if owner not in called and ("refus" in name or "fault" in name)
     }
     faults = []
     for module, (imported, read) in sorted(by_module.items()):
@@ -421,8 +422,8 @@ def _unchecked_writer_faults() -> list[str]:
                 f"in `_WRITES_NO_NEW_PROSE` with what it writes."
             )
     faults += [
-        f"`_WRITES_NO_NEW_PROSE` declares {name}, and `no-shell-file-writes.sh` declares no such writer"
-        for name in sorted(set(_WRITES_NO_NEW_PROSE) - set(declared))
+        f"`_WRITES_NO_NEW_PROSE` declares {writer}, and `no-shell-file-writes.sh` declares no such writer"
+        for writer in sorted(set(_WRITES_NO_NEW_PROSE) - set(declared))
     ]
     return faults
 
@@ -451,7 +452,7 @@ def _kind_faults(name: str, pairs: list[dict[str, Any]]) -> list[str]:
     comment's pair. That hook then reads as complete. So a kind in `_KINDS` needs a pair. A pair that skips its kind
     writes a reason.
     """
-    probed = {one["probes"]: one for one in pairs}
+    probed = {pair["probes"]: pair for pair in pairs}
     faults = []
     for kind in _KINDS:
         one = probed.get(kind)
@@ -529,7 +530,9 @@ def _silent_hook_faults() -> list[str]:
     tried = _pairs()
     # A hook after the edit reads no prose an agent could hand over. `edit_landed` compares a landed file instead.
     on_an_edit = [
-        name for name, (_, matcher) in _registered(("PreToolUse",)).items() if any(t in matcher for t in _WRITES_A_FILE)
+        hook
+        for hook, (_, hook_matcher) in _registered(("PreToolUse",)).items()
+        if any(tool_name in hook_matcher for tool_name in _WRITES_A_FILE)
     ]
     faults = (
         _runner_faults()

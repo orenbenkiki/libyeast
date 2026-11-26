@@ -240,14 +240,15 @@ def applied(prose_by_site: list[str], changes: list[dict[str, str]]) -> list[str
     holding the text. A change quoting text no site holds raises. A caller wanting to skip such a change asks `is_held`
     first.
 
-    Public. `prose_answer` hands `draft_refusals` the prose that the changes of a `verdicts` answer leave.
+    Public. `converge_claims`, `converge_prose` and `update_ledger_and_queue` call this. `prose_answer` hands
+    `draft_refusals` the prose that the changes of a `verdicts` answer leave.
     """
     held = list(prose_by_site)
     for one in changes:
         old, new = str(one.get("old", "")), str(one.get("new", ""))
         if not is_held(held, old):
             raise ValueError(f"a change quotes text no site holds: {old[:80]!r}")
-        at = next(at for at, said in enumerate(held) if old in said)
+        at = next(site for site, said in enumerate(held) if old in said)
         held[at] = held[at].replace(old, new, 1)
     return held
 

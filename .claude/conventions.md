@@ -47,7 +47,8 @@ whether a gate decides it. The author asks that of an accepted rule before the n
   question, and a linter answers nothing here. The gate reads a call rather than an annotation. A name another module
   writes only in a signature stays with the reader.*
 - **a-name-is-not-shadowed** - a local does not take the name of something in the enclosing scope. *Mechanised by
-  `pylint` `W0621`.*
+  `pylint` `W0621` and `check_conventions`. `W0621` refuses a name a module binds. `check_conventions` refuses a name an
+  enclosing function binds.*
 
 ## Structure
 

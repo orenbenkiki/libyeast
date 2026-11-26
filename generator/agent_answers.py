@@ -330,7 +330,7 @@ def tiled_faults(prose: str, chunks: Any, path: str = "") -> list[str]:
             faults.append(f"run {at} holds no `text`. copy the run's text out of the fragment.")
         verdict = str(one.get("verdict") or "")
         if verdict not in _VERDICTS:
-            named = ", ".join(f"`{one}`" for one in _VERDICTS)
+            named = ", ".join(f"`{known_verdict}`" for known_verdict in _VERDICTS)
             faults.append(f"run {at} takes the verdict {verdict!r}. give the run one of {named}.")
         if verdict in (_SOUND, _CHANGED) or (verdict == _EXTERNAL and not is_context):
             faults += _unbacked_faults(at, one, verdict)
@@ -339,7 +339,7 @@ def tiled_faults(prose: str, chunks: Any, path: str = "") -> list[str]:
                 f"run {at} says `{_EXTERNAL}` and its text links no source. a run resting on a source outside the tree "
                 f"links that source. a run whose text links none is `{UNVERIFIABLE}`."
             )
-    joined = "".join(str(one.get("text") or "") for one in chunks if isinstance(one, dict))
+    joined = "".join(str(run.get("text") or "") for run in chunks if isinstance(run, dict))
     if joined != prose:
         at = next((n for n, (a, b) in enumerate(zip(joined, prose)) if a != b), min(len(joined), len(prose)))
         faults.append(

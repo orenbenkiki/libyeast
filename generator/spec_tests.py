@@ -22,10 +22,9 @@ import ir
 
 TESTS_DIR = os.path.join(gate.TREE, "tests", "spec")  # the directory the conformance fixtures live in.
 
-# `annotated2ir` lists the parameter values the grammar understands. This module keeps no second list. `n` is an
-# indentation. `bad_value` accepts any integer for `n`. `l-bare-document` enters at an `n` of `-1`. `p` counts
-# characters. `bad_value` accepts only a non-negative integer for `p`. `check_spec_tests` reports a fixture with a bad
-# value as malformed.
+# `annotated2ir` lists the parameter values the grammar understands. This module keeps no second list. `bad_value`
+# accepts any integer for `n`. `l-bare-document` enters at an `n` of `-1`. `p` counts characters. `bad_value` accepts
+# only a non-negative integer for `p`. `check_spec_tests` reports a fixture with a bad value as malformed.
 CONTEXTS, CHOMPINGS, RESUMES = annotated2ir.CONTEXTS, annotated2ir.CHOMPINGS, annotated2ir.RESUMES
 _INDENT_MODES = (
     annotated2ir.INDENT_MODES

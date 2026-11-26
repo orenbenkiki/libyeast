@@ -27,7 +27,7 @@ def main() -> None:
     for key in sorted(set(regenerated) - set(original)):
         errors.append(f"{key}: regenerated, but the source has no such production")
 
-    rules = sum(1 for key in original if not key.startswith(":"))
+    rules = sum(1 for grammar_key in original if not grammar_key.startswith(":"))
     gate.report(errors, "production(s) that do not round-trip", f"grammar round-trip OK: {rules} productions")
 
 

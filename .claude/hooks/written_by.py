@@ -93,7 +93,9 @@ def _parsed_text(source: str, name: str) -> tuple[dict[str, ast.AST], dict[str, 
     """
     tree = ast.parse(source, name)
     functions: dict[str, ast.AST] = {
-        node.name: node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        function.name: function
+        for function in ast.walk(tree)
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
     imported: dict[str, str] = {}
     for node in ast.walk(tree):

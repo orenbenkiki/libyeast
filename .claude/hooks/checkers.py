@@ -114,9 +114,9 @@ class _Prose:
     """
     A text as a checker reads it.
 
-    `said` is the text a checker reads. The `_PROSE` and `_DOCUMENT` checkers get it with the wrapping taken out. `path`
-    is the file holding it. `is_literal` marks a string literal. A literal takes `literal_shape_faults`, a narrower
-    shape rule than a comment takes.
+    `said` is the text a checker reads. The `_PROSE` and `_DOCUMENT` checkers read `said` with the wrapping taken out.
+    `path` is the file holding the text. `is_literal` marks a string literal. `prose_rewrite.refusal_for` checks a
+    literal with `literal_shape_faults`. `literal_shape_faults` blanks the speaker and the place a literal opens on.
 
     `is_stating_why` marks the `why` bullet of a pending proposal. `prose_rewrite.refusal_for` passes that bullet under
     the WHY rules.
@@ -204,7 +204,7 @@ def _prose_refusals(prose: str, path: str) -> list[str]:
     """
     lines = prose.split("\n")
     opens = f"- {settling_state.WHY}"
-    at = next((at for at, line in enumerate(lines) if line.lstrip().startswith(opens)), None)
+    at = next((index for index, line in enumerate(lines) if line.lstrip().startswith(opens)), None)
     if path != _PENDING or at is None:
         return _refusals(_Prose(collect_fragments.flattened(prose), path), _PROSE)
     ends = next((end for end in range(at + 1, len(lines)) if lines[end].lstrip().startswith("- ")), len(lines))
@@ -235,7 +235,7 @@ def refusals_for_edit(edit: Any, path: str) -> list[str]:
     for prose in touched:
         if prose.strip():
             found += _prose_refusals(prose, path)
-    literals = [text for _at, text in collect_fragments.literals_touched(edit)]
+    literals = [literal for _at, literal in collect_fragments.literals_touched(edit)]
     for text in literals:
         found += _refusals(_Prose(collect_fragments.flattened(text), path, is_literal=True), _PROSE)
     # Run the `_DOCUMENT` checkers over the text read, then the `_FILE` checkers over `_measured`.

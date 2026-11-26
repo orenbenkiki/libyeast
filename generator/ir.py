@@ -2,7 +2,7 @@
 """
 The typed IR for the YAML grammar.
 
-`annotated2ir.py` reads the grammar into these nodes. `grammar2decoder.py` reads them back out.
+`annotated2ir.py` reads the grammar into these nodes. `grammar2decoder.py` reads them to emit the decoder's tables.
 
 Over the operator vocabulary libyeast writes, the IR is a faithful mirror. An operator maps to a single node. A
 `GatePart` sorts its guards, and the reader builds no `GatePart`. The round-trip through `ir2annotated.py` therefore
@@ -190,11 +190,11 @@ class Question(Generic[_Answer]):
                 self._by_kind[kind] = handler
         self._untested = frozenset(untested)
         self._unknown = frozenset(unknown)
-        both = sorted(kind.__name__ for kind in self._untested & self._unknown)
+        both = sorted(overlapping_kind.__name__ for overlapping_kind in self._untested & self._unknown)
         if both:
             raise TypeError(f"the question of {what} calls {', '.join(both)} both untested and unknown")
         # The question refuses an untested kind no family names.
-        idle = sorted(kind.__name__ for kind in self._untested if kind not in self._by_kind)
+        idle = sorted(untested_kind.__name__ for untested_kind in self._untested if untested_kind not in self._by_kind)
         if idle:
             raise TypeError(
                 f"the question of {what} calls {', '.join(idle)} untested. no group of that question names the kind."
@@ -202,7 +202,11 @@ class Question(Generic[_Answer]):
         # The question drops an unknown kind from the families.
         for kind in self._unknown:
             self._by_kind.pop(kind, None)
-        stray = sorted(kind.__name__ for kind in (*self._by_kind, *self._untested, *self._unknown) if kind not in KINDS)
+        stray = sorted(
+            named_kind.__name__
+            for named_kind in (*self._by_kind, *self._untested, *self._unknown)
+            if named_kind not in KINDS
+        )
         if stray:
             raise TypeError(f"the question of {what} names {', '.join(stray)}. those are no kinds of node.")
         self._used: set[type] = set()
@@ -256,8 +260,7 @@ class Question(Generic[_Answer]):
 # `deepest_rounds` says on a run how far out of reach this cap sits.
 ROUNDS = 100
 
-# The most rounds a fixpoint has taken, and the name says which fixpoint. The cap `ROUNDS` is a backstop far out of
-# reach. This binding says how far, and the run reports the depth at the end.
+# The most rounds a fixpoint has taken, beside the name of that fixpoint. A run reports this depth at its end.
 _DEEPEST: dict[str, int] = {}
 
 
@@ -723,16 +726,15 @@ class InvalidSet(Node):
 @dataclass(frozen=True)
 class CharSet(Node):
     """
-    The node matches a character out of `spans`. The parser sees the set that way, and the parser can ask about a
-    character that way.
+    The node matches a character out of `spans`.
 
     `spans` is a tuple of inclusive `(low, high)` codepoint intervals, sorted and disjoint and merged. A pair of nodes
     denoting the same characters are therefore the same node. The invalid byte is the interval `(-1, -1)`, a unit no
     character can hold. A set holding the invalid byte beside real characters holds that interval.
 
-    A pass computes a union or a subtraction as it makes this node, and the node keeps neither operation. `chars.Model`
-    gives a character a key holding a bit per set the grammar tests. `src/decoder.c` tests a character against a set
-    with a bit mask.
+    A pass computes a union, an intersection or a subtraction as it makes this node, and the node keeps no operation.
+    `chars.Model` gives a character a key holding a bit per set the grammar tests. `src/decoder.c` tests a character
+    against a set with a bit mask.
     """
 
     spans: tuple[tuple[int, int], ...]
@@ -917,16 +919,12 @@ def _asked_in_order(guard: object) -> tuple[str, str]:
 @dataclass(frozen=True)
 class GatePart(Node):
     """
-    The `guards` are the questions a parse enters an alternative on. A guard takes no character and holds at the parse's
-    position. The guards mean a set rather than a sequence. They ask about the same position, and no order between
-    guards means anything. A gate holding no guard is the unconditional fallthrough, and it sits on the last
-    alternative.
+    The `guards` are the questions `interpreter._try_way` asks as a parse enters an alternative. The guards mean a set
+    rather than a sequence. They ask about the same position, and no order between guards means anything.
 
     A gate holds its guards as a tuple in a canonical order rather than as a set. A pair of gates asking the same
     questions are then the same gate. The sweep in `normalize._cleaned` can therefore merge the productions that hold
-    them. The pipeline's output stays the same from run to run. A set would order its members by hash. A `ParamValue`
-    names its parameter with a string. Python salts a string's hash afresh per process, as
-    https://docs.python.org/3/reference/datamodel.html#object.__hash__ says.
+    them. The pipeline's output stays the same from run to run.
     """
 
     guards: tuple[Node, ...] = ()
@@ -2006,11 +2004,10 @@ LEAF_ITEMS = (*CONSUMES_NOTHING, *CONSUMING, RefCall)
 # `interpreter._EVALUATE` works out the value of the kinds it lists. It lists no `AutoDetectIndentValue`. `ColumnValue`
 # measures a position. `IndentValue` reads the indentation in force. A grammar that pushes holds the indentation on the
 # stack. Another grammar holds it in the parameter `n`. `LenValue` measures the length of its argument. `LenValue` of
-# `(match)` gives the length the last consume took. `AutoDetectIndentValue` is the official grammar's detected
-# indentation. `interpreter._EVALUATE` is a `Question`, and a `Question` raises on a kind its table leaves out.
-# `LitValue`, `ParamValue` and `GlobalValue` name a value. `MatchValue` reads the matched text. `AtoiValue` reads the
-# text of its `arg` as an integer. `AddValue` and `SubValue` do arithmetic. `FlipValue` switches over a parameter. The
-# tuple lists the kinds in alphabetical order.
+# `(match)` gives the length the last consume took. `interpreter._EVALUATE` is a `Question`, and a `Question` raises on
+# a kind its table leaves out. `LitValue`, `ParamValue` and `GlobalValue` name a value. `MatchValue` reads the matched
+# text. `AtoiValue` reads the text of its `arg` as an integer. `AddValue` and `SubValue` do arithmetic. `FlipValue`
+# switches over a parameter. The tuple lists the kinds in alphabetical order.
 VALUE_KINDS = (
     AddValue,
     AtoiValue,
@@ -2119,7 +2116,7 @@ KINDS = _NOT_ONE_CHAR + (AltTree, CaseTree, OneCharSet, CharSet, DiffSet, Invali
 def _refuse_a_kind_outside_the_partition() -> None:
     """
     Refuse a kind that sits in a pair of the families of `_PARTITION`. A kind of `KINDS` may sit in none. A `Question`
-    built from the families then raises on that kind, and the question names that kind by hand.
+    keyed by `kinds_other_than` raises on a kind in no family unless the question names that kind by hand.
     """
     placed = [one for family in _PARTITION for one in family]
     twice = sorted({one.__name__ for one in placed if placed.count(one) > 1})
@@ -2276,7 +2273,7 @@ def is_one_of(family: tuple[type, ...], what: str) -> Question[bool]:
     """
     Build the question whether a node is of a kind in `family`. `what` says the question in words.
 
-    Public. `normalize` calls this.
+    Public. `ir` and `normalize` call this.
     """
     return Question(what, {family: True, kinds_other_than(*family): False})
 

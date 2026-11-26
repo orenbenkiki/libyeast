@@ -39,6 +39,9 @@ names across the tree. This gate skips a list holding a name too short for `_A_M
 
 `a-family-question-is-built-by-is-one-of`. This gate refuses a copy of the table `ir.is_one_of` builds.
 
+`a-name-is-not-shadowed`. This gate refuses a nested function, a lambda or a comprehension that binds a name its
+enclosing function binds.
+
 **Usage:** `python3 generator/check_conventions.py`.
 """
 
@@ -46,7 +49,7 @@ import ast
 import re
 import tokenize
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 import collect_fragments
 import gate
@@ -120,7 +123,11 @@ def _questions(tree: ast.Module) -> set[str]:
     The names of the module-level functions whose code mentions `subprocess`, and of the module-level functions that
     name one of those.
     """
-    direct = {node.name for node in tree.body if isinstance(node, ast.FunctionDef) and "subprocess" in ast.dump(node)}
+    direct = {
+        function.name
+        for function in tree.body
+        if isinstance(function, ast.FunctionDef) and "subprocess" in ast.dump(function)
+    }
     held = set(direct)
     for node in tree.body:
         if not isinstance(node, ast.FunctionDef):
@@ -223,6 +230,108 @@ def _family_table_faults() -> list[tuple[str, str]]:
     return held
 
 
+# The comprehensions.
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+# The nodes that open a scope inside a function. A function, a lambda and a comprehension see the names of the scope
+# around them. The shadow check starts a class scope with none of the names around it.
+_INNER_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, *_COMPREHENSIONS)
+
+
+def _scope_parts(node: ast.AST) -> Iterator[ast.AST]:
+    """The nodes in the scope `node` opens, and the scopes nested in it. The walk does not enter a nested scope."""
+    for child in ast.iter_child_nodes(node):
+        yield child
+        if not isinstance(child, (*_INNER_SCOPES, ast.ClassDef)):
+            yield from _scope_parts(child)
+
+
+def _comprehension_parts(node: ast.AST) -> Iterator[ast.AST]:
+    """
+    Collect the nodes in the scope `node` opens and in the comprehensions that scope nests. The walk does not enter a
+    function, a lambda or a class.
+    """
+    for part in _scope_parts(node):
+        yield part
+        if isinstance(part, _COMPREHENSIONS):
+            yield from _comprehension_parts(part)
+
+
+def _bound_in(scope: ast.AST) -> dict[str, int]:
+    """
+    `_bound_in` maps a name to its line. The map holds the names `scope` binds as its own. The map of a function holds
+    the name a walrus binds in a comprehension of that function. The map of any other scope drops the name a walrus
+    binds. A name `scope` declares `nonlocal` or `global` is no name of its own. The map drops `_`.
+    """
+    held: dict[str, int] = {}
+    is_a_function = False
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        is_a_function = True
+        arguments = scope.args
+        for one in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs, arguments.vararg, arguments.kwarg):
+            if one is not None:
+                held[one.arg] = one.lineno
+    elsewhere: set[str] = {"_"}
+    for part in _scope_parts(scope):
+        for named, line in _names_bound_by(part):
+            held.setdefault(named, line)
+        if isinstance(part, (ast.Nonlocal, ast.Global)):
+            elsewhere.update(part.names)
+        elif isinstance(part, ast.NamedExpr) and not is_a_function and isinstance(part.target, ast.Name):
+            elsewhere.add(part.target.id)
+        elif isinstance(part, _COMPREHENSIONS) and is_a_function:
+            for inner in _comprehension_parts(part):
+                if isinstance(inner, ast.NamedExpr) and isinstance(inner.target, ast.Name):
+                    held.setdefault(inner.target.id, inner.lineno)
+    for named in elsewhere:
+        held.pop(named, None)
+    return held
+
+
+def _names_bound_by(part: ast.AST) -> Iterator[tuple[str, int]]:
+    """A `(name, line)` pair per name `part` binds in the scope that holds it."""
+    if isinstance(part, ast.Name) and isinstance(part.ctx, ast.Store):
+        yield part.id, part.lineno
+    elif isinstance(part, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        yield part.name, part.lineno
+    elif isinstance(part, ast.alias):
+        yield (part.asname or part.name).split(".")[0], part.lineno
+    elif isinstance(part, ast.ExceptHandler) and part.name is not None:
+        yield part.name, part.lineno
+    elif isinstance(part, (ast.MatchAs, ast.MatchStar)) and part.name is not None:
+        yield part.name, part.lineno
+    elif isinstance(part, ast.MatchMapping) and part.rest is not None:
+        yield part.rest, part.lineno
+
+
+def _enclosing_shadow_faults() -> list[tuple[str, str]]:
+    """
+    `(site, what is wrong)` for a scope inside a function binding a name the function binds. A nested function, a lambda
+    and a comprehension are such scopes.
+    """
+    held: list[tuple[str, str]] = []
+    for path in gate.modules() + gate.hook_modules():
+        _shadows_under(ast.parse(path.read_text(encoding="utf-8")), frozenset(), str(path.relative_to(gate.TREE)), held)
+    return held
+
+
+def _shadows_under(node: ast.AST, enclosing: frozenset[str], path: str, held: list[tuple[str, str]]) -> None:
+    """
+    A function, lambda or comprehension under `node` binds names. Append to `held` a `(site, what is wrong)` per such
+    name that `enclosing` holds. `enclosing` holds the names the functions, lambdas and comprehensions around that scope
+    bind. A class starts `enclosing` empty.
+    """
+    for part in _scope_parts(node):
+        if isinstance(part, _INNER_SCOPES):
+            own = _bound_in(part)
+            for shadowed in sorted(set(own) & enclosing):
+                at = f"{path}:{own[shadowed]}"
+                held.append((at, f"{at} shadows `{shadowed}` of an enclosing function"))
+            _shadows_under(part, enclosing | frozenset(own), path, held)
+        elif isinstance(part, ast.ClassDef):
+            _shadows_under(part, frozenset(), path, held)
+
+
 def _bare_private_faults() -> list[tuple[str, str]]:
     """
     `(site, what is wrong)` for a bare module-level name with no reader outside its own module. A bare name lacks a
@@ -231,16 +340,19 @@ def _bare_private_faults() -> list[tuple[str, str]]:
     """
     # A hook and an MCP server hold module-level names of their own. A name its own module reads counts as private.
     outside = gate.hook_modules() + gate.mcp_modules()
-    trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in gate.modules() + outside}
-    # `read` holds `(the module that reads, the module read, the name read)` for a `module.name` in the tree.
+    trees = {
+        module_path: ast.parse(module_path.read_text(encoding="utf-8")) for module_path in gate.modules() + outside
+    }
+    # `read` holds `(the module that reads, the plain name before the dot, the attribute after it)` for an attribute
+    # read off a plain name in a module, hook or MCP server. The plain name need not be a module.
     read = {
-        (path.stem, node.value.id, node.attr)
-        for path, tree in trees.items()
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+        (reading_path.stem, reading_node.value.id, reading_node.attr)
+        for reading_path, reading_tree in trees.items()
+        for reading_node in ast.walk(reading_tree)
+        if isinstance(reading_node, ast.Attribute) and isinstance(reading_node.value, ast.Name)
     }
     # `shell` holds the text of the shell scripts. A `module.name` in that text counts as a read.
-    shell = "\n".join(path.read_text(encoding="utf-8") for path in gate.shell_scripts())
+    shell = "\n".join(script.read_text(encoding="utf-8") for script in gate.shell_scripts())
     held = []
     for path, tree in trees.items():
         name = str(path.relative_to(gate.TREE))
@@ -383,7 +495,11 @@ def _comment_runs(source: str) -> list[tuple[int, int]]:
 
     A comment sharing its line with code opens no run. `collect_fragments.python_comments` reads the comments.
     """
-    alone = {at for at, (before, _said) in collect_fragments.python_comments(source).items() if not before.strip()}
+    alone = {
+        comment_line
+        for comment_line, (before, _said) in collect_fragments.python_comments(source).items()
+        if not before.strip()
+    }
     runs: list[tuple[int, int]] = []
     for at in sorted(alone):
         if runs and at == runs[-1][0] + runs[-1][1]:
@@ -440,7 +556,7 @@ def long_nested_docstrings(source: str) -> list[tuple[int, str, int]]:
         tree = ast.parse(source)
     except SyntaxError:  # not-a-failure: A half-written source holds no fault.
         return []
-    outer = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    outer = [function for function in tree.body if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))]
     nested = {id(one) for top in outer for one in ast.walk(top) if one is not top}
     held = set()
     for node in ast.walk(tree):
@@ -828,6 +944,7 @@ def _check() -> None:
         _uncached_question_faults()
         + _repeated_word_faults()
         + _family_table_faults()
+        + _enclosing_shadow_faults()
         + _bare_private_faults()
         + _banned_word_name_faults()
         + _enumeration_faults()

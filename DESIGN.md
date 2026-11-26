@@ -27,11 +27,11 @@ pretty printers.
 
 1. `spec_tests` and `star` take their fixtures from the test cases of the
    [Haskell YamlReference](https://github.com/orenbenkiki/yamlreference) and
-   [YAML Test Suite](https://github.com/yaml/yaml-test-suite) projects. `check_normalize` runs the grammar and the
-   result of a transformation step against those fixtures. The C parser takes no step between states. `ys_parser_read`
-   answers `YS_OK` with a `not implemented` error token instead. `tests/test_c.c` tests the library's interface.
-   `tests/test_decoder.c` tests the decoder. `tests/test_parser.c` tests the parser's internals and the error a read
-   answers with.
+   [YAML Test Suite](https://github.com/yaml/yaml-test-suite) projects. `check_normalize` runs a fixture against the
+   last stage's grammar that can run it. `check_normalize` runs the YAML Test Suite against the final stage's grammar.
+   The C parser takes no step between states. `ys_parser_read` answers `YS_OK` with a `not implemented` error token
+   instead. `tests/test_c.c` tests the library's interface. `tests/test_decoder.c` tests the decoder.
+   `tests/test_parser.c` tests the parser's internals and the error a read answers with.
 
 1. The attached [Makefile](Makefile) coordinates development. The Makefile runs the Python code that generates the
    tables, and runs the tests. The authors built this project from the ground up with Claude. The project tests how far
@@ -183,8 +183,8 @@ the Claude workflow. The workflows add a CodeQL scan. The workflows also build t
 
 `collect_fragments.fragments` splits the tree into a `collect_fragments.Fragment` per piece of prose, plus the code that
 prose describes. A fragment's key is `language:basename:name`. The key of a file fragment leaves out the name. A
-fragment with no declared name uses the digest of its prose as the name. A paragraph of a document under a heading puts
-that heading in front of that digest.
+fragment with no declared name takes `#` followed by a prefix of the digest of its prose as the name. A paragraph of a
+document under a heading puts that heading in front of that digest.
 
 A `Fragment` holds its prose in sites. A site is a run of lines in a file that holds prose. A fragment starts at a line
 of the file holding a site. A site gives its lines as offsets from that line. `collect_fragments.site_lines` turns the
@@ -228,8 +228,9 @@ critic rounds lands there. So does a fragment where a claims reader changed the 
 `generator/settling_state.py` names that file. A writer may delete the file. `update_ledger_and_queue` then puts the
 fragments of the deleted file back in the prose queue at the next run.
 
-`writes.jsonl` holds a record per write of `converge_prose` or `converge_claims` into the tree. A record holds the prose
-before and after the write. `settling_state.last_write` reads the record behind a digest.
+`generator/settling_state.py` logs a record per write of `converge_prose` or `converge_claims` into the tree to
+`writes.jsonl`. A record holds the prose before and after the write. `settling_state.last_write` reads the record behind
+a digest.
 
 `review.jsonl` holds a record where a claims reader corrected a critic's draft. `generator/settling_state.py` writes
 that record. A record names the fragment's key. A record also holds the prose of the tree, the draft and the corrected
@@ -476,9 +477,8 @@ to reuse.
 ## Checking the claims
 
 The settling pass in `generator/converge_prose.py` judges how prose reads. `generator/converge_claims.py` judges whether
-prose is true, through the agent `AN_AGENT` names. A comment that went false when the code moved reads the same as a
-true one. The settling pass keys prose on its `prose_digest`. `update_ledger_and_queue.updated` queues no digest the
-ledger holds. The settling pass sees no such comment.
+prose is true, through the agent `AN_AGENT` names. The settling pass keys prose on its `prose_digest`.
+`update_ledger_and_queue.updated` queues no digest the ledger holds. The settling pass sees no such comment.
 
 `converge_claims` is the driver. It hands a reader a fragment, and the reader answers with a verdict per run of that
 fragment's prose. The reader rewrites a run the code contradicts. The fetch server `fetch_fragments` records what the
@@ -493,7 +493,7 @@ narrowing.
 ### The store
 
 `claim_state` names `.claude/prose-dependencies.json`. `gate.NOT_OURS` holds the file. `is_prose_of_the_project` turns
-the file down. `refusals_for_edit` then passes it to no prose checker.
+the file down. `refusals_for_edit` then returns before the prose checkers.
 
 `generator/claim_state.py` writes a `verified` section, and that section maps a fragment key to a
 `claim_state.Verified`. That record holds the digests of the fragment, the count of calls, and the reads. A flag marks a
@@ -555,8 +555,9 @@ file the driver names.
 fragment points at. `prose_answer` turns an answer back where the fragment of that answer leaves a kept read unpointed.
 `prose_answer` reads that fragment with the rewrite of the answer applied. A reader then names the unpointed fragment in
 a rewrite, or drops a citation the claim does not rest on. An answer may change nothing and leave no run unverifiable.
-`converge_claims` stores the kept reads of such an answer. `claim_state.refined` narrows a kept read of a file to the
-declarations its citations reach.
+`converge_claims.settlement_of` returns a settlement over the kept reads of such an answer where `unpointed_reads`
+leaves no kept read unpointed. The callers of `settlement_of` store that settlement. `claim_state.refined` narrows a
+kept read of a file to the declarations its citations reach.
 
 ### The answer
 

@@ -185,12 +185,12 @@ def _settle(grammar: Mapping[str, ir.Prod], values: Mapping[str, str]) -> tuple[
     """
     The way a rule balances its markers. `values` fixes the finite parameters. The walk assumes balance and iterates.
 
-    A pass takes an answer at least a call further. A grammar of `n` productions settles in at most `n` passes, and a
-    grammar that has not settled by then is not settling.
+    A grammar of `n` productions settles in at most `n` passes, and a grammar that has not settled by then is not
+    settling.
 
     The walk raises on such a grammar rather than returning.
     """
-    known: dict[str, _Effect] = {name: _BALANCED for name in grammar}
+    known: dict[str, _Effect] = {production_name: _BALANCED for production_name in grammar}
     errors: dict[str, str] = {}
     for _pass in range(len(grammar)):
         did_change = False

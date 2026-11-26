@@ -276,7 +276,9 @@ def _check_grammar() -> list[str]:
                 if taken is None or chars.intersected_spans(taken, excluded):
                     errors.append(f"{name}: a `(len)` of `(match)` follows no `(***)` run free of breaks and marks")
     everywhere = sum(
-        ir.IS_THE_CONSUMED_LENGTH(node) for one in grammar.values() for node in validate_grammar.walk(one.body)
+        ir.IS_THE_CONSUMED_LENGTH(walked_node)
+        for one in grammar.values()
+        for walked_node in validate_grammar.walk(one.body)
     )
     if placed != everywhere:
         errors.append(f"{everywhere - placed} `(len)` of `(match)` read(s) sit in no sequence")

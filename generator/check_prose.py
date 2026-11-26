@@ -77,8 +77,8 @@ def _faults() -> list[str]:
         for at, _literal in collect_fragments.prose_literals(source, language or ""):
             used.update(marker for marker in (at, at - 1) if marker in marked)
         held += [
-            f"{name}:{at} states a `not-prose:` marker, and no literal there reads as prose"
-            for at in sorted(set(marked) - used)
+            f"{name}:{unused_marker} states a `not-prose:` marker, and no literal there reads as prose"
+            for unused_marker in sorted(set(marked) - used)
         ]
     return held
 

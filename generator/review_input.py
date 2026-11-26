@@ -39,7 +39,8 @@ _MOST_LINES = 800
 # The report lists at most this many mentions of a word. It counts the mentions past that cap.
 _MOST_MENTIONS = 200
 
-# The record of a change inside a function shows this many lines on both sides of a changed line.
+# The record of a change inside a function or class shows up to this many lines on both sides of a changed line. The
+# file's first and last lines bound that span.
 _AROUND = 3
 
 # Above how many mentions an ordinary word gets a count instead of its lines.
@@ -226,20 +227,31 @@ def _hunks() -> str:
         lines = source.split("\n")
         held, was = _holders(source), _holders(_at_base(path) or "")
         changed = _changed_lines(path)
-        width = {name: last - first for name, (first, last, _docstring) in held.items()}
+        width = {holder: holder_last - holder_first for holder, (holder_first, holder_last, _docstring) in held.items()}
         owner = {
-            at: min(
-                (name for name, (first, last, _docstring) in held.items() if first <= at <= last), key=width.__getitem__
+            changed_line: min(
+                (
+                    holder
+                    for holder, (holder_first, holder_last, _docstring) in held.items()
+                    if holder_first <= changed_line <= holder_last
+                ),
+                key=width.__getitem__,
             )
-            for at in changed
-            if any(first <= at <= last for first, last, _docstring in held.values())
+            for changed_line in changed
+            if any(
+                holder_first <= changed_line <= holder_last for holder_first, holder_last, _docstring in held.values()
+            )
         }
-        for name, (first, last, docstring) in sorted(held.items(), key=lambda one: one[1]):
-            mine = sorted(at for at in changed if owner.get(at) == name)
+        for name, (first, _last, docstring) in sorted(held.items(), key=lambda one: one[1]):
+            mine = sorted(changed_line for changed_line in changed if owner.get(changed_line) == name)
             if not mine:
                 continue
             wanted = sorted(
-                {at for one in mine for at in range(max(1, one - _AROUND), min(len(lines), one + _AROUND) + 1)}
+                {
+                    nearby_line
+                    for one in mine
+                    for nearby_line in range(max(1, one - _AROUND), min(len(lines), one + _AROUND) + 1)
+                }
             )
             body, seen = [], None
             for at in wanted:
@@ -254,9 +266,9 @@ def _hunks() -> str:
                 f"--- the docstring AT THE BASE ---\n{older or '(none)'}\n"
                 f"--- the change. `>` marks a changed line ---\n" + "\n".join(body) + "\n"
             )
-        loose = sorted(at for at in changed if at not in owner)
+        loose = sorted(changed_line for changed_line in changed if changed_line not in owner)
         if loose:
-            shown = "\n".join(f">{at:>5} {lines[at - 1]}" for at in loose)
+            shown = "\n".join(f">{changed_line:>5} {lines[changed_line - 1]}" for changed_line in loose)
             written.append(f"### {path} (outside any function)\n--- the changed lines ---\n{shown}\n")
     return "\n".join(written)
 
@@ -299,7 +311,11 @@ def _references() -> str:
             left.update(_took_out(path))
     # A name the tree still binds stays out of `gone`. A Python builtin stays out of `gone` too.
     bound = gate.names_defined_in_modules() | set(dir(builtins))
-    gone = {word for word, times in left.items() if (_is_a_name(word) or times > 1) and word not in bound}
+    gone = {
+        taken_word
+        for taken_word, times in left.items()
+        if (_is_a_name(taken_word) or times > 1) and taken_word not in bound
+    }
     written, held_back, unmentioned = [], [], []
     for word in sorted(gone):
         # `status_for_no_match` is the status `git grep` gives a pattern missing from the tree, as
@@ -362,7 +378,7 @@ def _written(into: str, name: str, prepared: str) -> list[str]:
         return [path]
     written = []
     # Without record starts, a full part holds exactly `_MOST_LINES` lines below its header.
-    has_records = any(line.startswith(_STARTS_A_RECORD) for line in lines)
+    has_records = any(prepared_line.startswith(_STARTS_A_RECORD) for prepared_line in lines)
     part: list[str] = []
     held: list[list[str]] = []
     for line in lines:
@@ -452,10 +468,11 @@ def _previous() -> str:
 
 def _uncovered() -> list[str]:
     """
-    The staged paths that no prepared file shows. That set should come back empty.
+    The staged paths that no prepared file shows, less the vendored paths and the paths of `gate.TOOL_STORES`. That set
+    should come back empty.
 
     A slice takes the paths it names. `main` passes the paths `_uncovered` returns to `report`. `report` exits with a
-    failure where that list holds a path. A vendored path and a path of `gate.TOOL_STORES` reach nobody on purpose.
+    failure where that list holds a path.
     """
     covered = (*_THE_CODE, *_THE_DOCUMENTS, *_THE_FIXTURES)
     unread = (*_VENDORED, *gate.TOOL_STORES)
@@ -496,12 +513,12 @@ def main() -> None:
             if a_part.fullmatch(stale.name):
                 os.remove(stale)
     gate.report(
-        [f"{path}: changed and not staged" for path in _unstaged()],
+        [f"{unstaged_path}: changed and not staged" for unstaged_path in _unstaged()],
         "unstaged path(s). Stage the whole change. A review reads what will land.",
         "",
     )
     gate.report(
-        [f"{path}: staged and shown by no prepared file" for path in _uncovered()],
+        [f"{uncovered_path}: staged and shown by no prepared file" for uncovered_path in _uncovered()],
         "staged path(s) no reviewer would see. Name them in `THE_CODE`, `THE_DOCUMENTS` or `_THE_FIXTURES`.",
         "",
     )

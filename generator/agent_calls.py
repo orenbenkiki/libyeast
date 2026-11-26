@@ -126,7 +126,9 @@ def _kept(
     A dead call writes into `dead/`. A call that `spoken` keeps writes into `_KEPT`, and that folder holds the newest
     `_MOST_KEPT` files.
     """
-    session = next((one["session_id"] for one in streamed if "session_id" in one), f"{caller.began}-{caller.calls}")
+    session = next(
+        (message["session_id"] for message in streamed if "session_id" in message), f"{caller.began}-{caller.calls}"
+    )
     held = os.path.join(caller.into, folder)
     os.makedirs(held, exist_ok=True)
     path = os.path.join(held, f"{session}.jsonl")
@@ -143,7 +145,8 @@ _SEEDED = "is_seeded"
 # The folder under a run's directory holding the transcripts of the calls `spoken` keeps.
 _KEPT = "kept"
 
-# The most transcripts `_KEPT` holds. A run deletes the oldest past this.
+# The most transcripts `_KEPT` holds. `_kept` writes into `_KEPT` and deletes the oldest transcripts past this bound.
+# `files_by_age` decides which transcripts are oldest.
 _MOST_KEPT = 200
 
 
@@ -383,6 +386,7 @@ def killed(caller: Caller) -> None:
     for run in list(caller.children):
         try:
             run.kill()
+        # https://docs.python.org/3/library/exceptions.html#ProcessLookupError says the process does not exist.
         except ProcessLookupError:  # not-a-failure: The agent process has already exited.
             pass
 
@@ -409,7 +413,7 @@ def summed(caller: Caller) -> dict[str, Any]:
     The journal of calls holds the calls these totals add up. A dead call joins the count of dead calls, and its own
     totals stay in the sum. The journal keeps the records of an earlier run, and `began` leaves those records out.
     """
-    blank = {"calls": 0, "dead": 0, **{name: 0 for name in _A_TOTAL}, **{name: 0 for name in _A_TOKEN}}
+    blank = {"calls": 0, "dead": 0, **{total: 0 for total in _A_TOTAL}, **{token: 0 for token in _A_TOKEN}}
     held: dict[str, Any] = {}
     for got in _records_of(caller):
         into = held.setdefault(got["kind"], dict(blank))

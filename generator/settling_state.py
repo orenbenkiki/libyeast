@@ -2,10 +2,10 @@
 """
 The files that hold the state of the settling, and the lock a run takes over them.
 
-The ledger holds an approved prose digest per line. The prose queue holds a line per change of a `ProseState`, keyed by
-the prose digest. The unsettled prose queue holds a digest per line. The write journal holds a record per write of a
-pass into the tree. `converge_prose` keeps the `Task`s waiting to run in memory, in the `pending` list of `_Settling`.
-The completed tasks queue holds a `TaskResult` per finished task.
+The ledger holds an approved prose digest per line. The prose queue holds a line per prose digest change. A line holds a
+`ProseState` or `UNEXAMINED`. A line holding `None` drops its digest. The unsettled prose queue holds a digest per line.
+The write journal holds a record per write of a pass into the tree. `converge_prose` keeps the `Task`s waiting to run in
+memory, in the `pending` list of `_Settling`. The completed tasks queue holds a `TaskResult` per finished task.
 
 A kill can tear the last line of a file. A reader drops that line. A rewrite goes in under a second name, and a rename
 puts it in place. An append to the completed tasks queue and a take off it both hold a file lock.
