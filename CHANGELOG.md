@@ -1729,10 +1729,10 @@
 
 - **A parse hands back no action. A guard refuses.** At a refusal, a choice goes on to its next way. A gate that
   admitted an action lets the action do its work. An action that fails after its gate admitted it shows the gate lied. A
-  gate that lied is a crash and not a parse. `_can_be_refused` said exactly that in words, and its table said otherwise.
-  The table listed the consumes among the kinds an input can hand back. The rewritten table answers by kind. An action
-  answers no. A consume answers no. A guard answers yes. A set where a match belongs answers yes. Such a set is a match
-  rather than a consume or a guard.
+  gate that lied is a crash and not a parse. `_can_be_backtracked` said exactly that in words, and its table said
+  otherwise. The table listed the consumes among the kinds an input can hand back. The rewritten table answers by kind.
+  An action answers no. A consume answers no. A guard answers yes. A set where a match belongs answers yes. Such a set
+  is a match rather than a consume or a guard.
 
 - **A consume holds the set it consumes, and consumes that set.** `ConsumeCharAction` meant "the character the gate
   found". A gate hoisted to a caller took the consume's meaning with it. A reader then had to work out the set a way
@@ -2115,8 +2115,8 @@
   the key type and the value type. A `kept_for` store holds `ir.Kept` values. Such a value pairs a subject with its
   answer. The store keys that value by the subject's id.
 
-  `mypy` also found a bug. `ir.LitValue` holds an int, a string or nothing. `_can_be_refused` read a repetition's count
-  as a number and did not check the count's type. A count written as a string would have made that read raise.
+  `mypy` also found a bug. `ir.LitValue` holds an int, a string or nothing. `_can_be_backtracked` read a repetition's
+  count as a number and did not check the count's type. A count written as a string would have made that read raise.
 
 - **A `bool` answers a question, and a command hands back a `ys_status`.** The internals had a second failure
   convention. The functions below reported a host failure as `false`.
@@ -2184,6 +2184,11 @@
   checkers over the tracked files.
 
 ### Fixed
+
+- `every-option-is-reachable` read a way apart from what runs after it. A way that did not fail counted as keeping the
+  parse. A failure further on still comes back into the choice. A gate counted as refusing the states it admits. The
+  check reads what runs after the choice, and it reads a gated way past its gate. The grammar holds the invariant from
+  the start.
 
 - The yeast wire format dropped an error's message. It took a token's text to be the input the token spans, and an error
   spans none. For a malformed document, the format therefore wrote `!` and no message. Haskell YamlReference writes `!`

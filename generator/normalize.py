@@ -34,7 +34,8 @@ of a choice short of the last. It unions what the paths into the production ask,
 import collections
 import dataclasses
 import os
-from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Mapping, Sequence
+from typing import Literal
 
 import annotated2ir
 import chars
@@ -1128,10 +1129,10 @@ def unsettled_invariants(grammar: dict[str, ir.Prod]) -> list[tuple[str, int]]:
 
 def _entered_by_name(grammar: dict[str, ir.Prod]) -> set[str]:
     """
-    The productions that a parse enters without a call, as start states of their own. The root has a copy per resume
-    policy. The recovery a failed cut lands on has a copy per resume policy. A caller of the library chooses the resume
-    policy in `ys_options.resume`. A redirect cannot reach a production no caller names. These therefore keep their own
-    names through a cleanup.
+    The productions that a parse enters by name, as start states of their own. The root has a copy per resume policy.
+    The recovery a failed cut lands on, `l-recover`, has a copy per resume policy. A caller of the library chooses the
+    resume policy in `ys_options.resume`. A redirect cannot reach a production no caller names. A cleanup therefore
+    keeps the name of such a production.
     """
     return {
         ir.entry(grammar, name, {"n": -1, "r": resume})[0]
@@ -1924,10 +1925,8 @@ _PARAMETER_USES: ir.Question[list[str]] = ir.Question(
 )
 
 
-# `specialize` establishes this invariant, and the phase finishes once it holds. The grammar then holds neither the
-# chomping `t` nor the block scalar's indentation mode `i`. A production sets both by matching, and a production further
-# away reads them. A read of either means nothing until the reader knows the caller. The same specialization settles
-# both.
+# `specialize` settles this invariant. Once `specialize` finishes, the grammar holds neither the chomping `t` nor the
+# block scalar's indentation mode `i`.
 _NO_I_T_PARAMETERS = _Invariant("no-i-t-parameters", lambda grammar: _parameter_uses(grammar, {"i", "t"}))
 
 # The invariant of `drop-f` covers the block scalar's leading-empty floor.
@@ -3548,41 +3547,115 @@ def _inverted(named: Mapping[str, Iterable[str]]) -> dict[str, set[str]]:
     return inverse
 
 
-def _can_be_refused(node: ir.Node, grammar: dict[str, ir.Prod], seen: frozenset[str] = frozenset()) -> bool:
+def _can_be_backtracked(node: ir.Node, grammar: dict[str, ir.Prod], seen: frozenset[str] = frozenset()) -> bool:
     """
-    Whether some input makes `node` fail and hands it back. Matching and raising are the other outcomes.
-
-    This says whether a parse can reach the ways behind a way. A choice goes on to the next way exactly where the parse
-    hands this one back. A way that no input refuses is therefore the last way the machine takes. Matching and raising
-    both stop the choice, and neither leaves the way behind anything to enter on.
+    Whether some input sends a failure back out of `node` before anything commits. A failure inside the `item` of a
+    `CommitWrapper` is the `message` of that `CommitWrapper`. A caller asks about the items of a run, the items before a
+    lifted commit, or the body of a continuation's production.
 
     `seen` holds the productions the walk is already inside. A recursion reached again says nothing new.
     """
-    return _CAN_BE_REFUSED(node, grammar, seen)
+    return _CAN_BE_BACKTRACKED(node, grammar, seen)
 
 
-def _can_a_way_be_refused(way: ir.AlternativeState, grammar: dict[str, ir.Prod], seen: frozenset[str]) -> bool:
+def _can_a_way_be_backtracked(way: ir.AlternativeState, grammar: dict[str, ir.Prod], seen: frozenset[str]) -> bool:
     """
-    Whether some input makes a way fail and hands it back. This reads the items in turn. It stops at a `(cut)`.
-
-    A gate sits in front of the way. A way whose gate holds a guard is therefore refused wherever the gate declines.
-    Past a `CutAction`, or inside a region a `PushMessageAction` opened, a failure is the message rather than a way
-    handed back. The walk stops at a `(cut)` and passes over a committed item. A failure travelling out of a region that
-    has not closed takes the message the region names. A failure out of a region that has closed goes back like any
-    other.
+    Whether some input sends a failure back out of a way before anything commits. A way whose gate holds a guard sends a
+    failure back where the gate declines. `_items_end` walks the items past the gate.
     """
-    if _DOES_A_GATE_DECIDE(way):
-        return True
+    return _DOES_A_GATE_DECIDE(way) or _items_end(_items_of_way(way), grammar, seen) == "backtracked"
+
+
+# The point a run of items reaches. `backtracked` is a failure coming back before a cut. `committed` is a cut. `ended`
+# is the end of the run with neither a cut nor a failure coming back on the way.
+_RunEnd = Literal["backtracked", "committed", "ended"]
+
+
+def _items_end(items: Sequence[ir.Node], grammar: dict[str, ir.Prod], seen: frozenset[str]) -> _RunEnd:
+    """
+    The point `items` reach. A failure past a `CutAction` is the message the cut names. A failure inside a region a
+    `PushMessageAction` opened is the message the push names. The walk passes over a committed item.
+    """
     open_regions = 0
-    for item in map(_unheld, _items_of_way(way)):
+    for item in map(_unheld, items):
         open_regions += ir.REGIONS_OPENED(item)
         if ir.DOES_CUT(item):
-            return False  # A failure past a `CutAction` is the error the cut names.
+            return "committed"
         if ir.COMMITTED(item) is not None:
-            continue  # A failure inside a `CommitWrapper` raises the commit's error.
-        if not open_regions and _can_be_refused(item, grammar, seen):
+            continue
+        if not open_regions and _can_be_backtracked(item, grammar, seen):
+            return "backtracked"
+    return "ended"  # A region open here closes further on. A failure past the close comes back.
+
+
+# Whether a node runs its items in order.
+_DOES_RUN_ITEMS_IN_ORDER = ir.is_one_of((ir.AlternativeState, ir.SeqTree), "whether a node runs its items in order")
+
+
+def _placed(node: ir.Node, after: tuple[ir.Node, ...] | None) -> Iterator[tuple[ir.Node, tuple[ir.Node, ...] | None]]:
+    """
+    `(node, after)` for `node` and for the nodes inside it. `after` lists the items the production runs past that node.
+    `None` marks a node whose following items this walk does not track. Such a node is a child outside its parent's
+    items, or a node below such a child.
+    """
+    yield node, after
+    is_in_order = _DOES_RUN_ITEMS_IN_ORDER(node)
+    items = _items_of_way(node) if is_in_order else _CHOICE_WAYS(node)
+    for at, item in enumerate(items):
+        yield from _placed(item, after if not is_in_order or after is None else (*items[at + 1 :], *after))
+    placed = {id(item) for item in items}
+    for child in chars.children(node):
+        if id(child) not in placed:
+            yield from _placed(child, None)
+
+
+def _is_follow_backtracked(grammar: dict[str, ir.Prod]) -> dict[str, bool]:
+    """
+    `{name: whether a failure comes back into the production from the items run after it}`. A production of
+    `_entered_by_name` answers yes. A call site answers yes where the items past it send a failure back. A call site
+    also answers yes where its production runs on into such a failure. A call site this walk does not follow answers
+    yes.
+    """
+    sites: dict[str, list[tuple[str, tuple[ir.Node, ...] | None]]] = {}
+    for name, production in grammar.items():
+        for node, after in _placed(production.body, ()):
+            if (call := ir.CALLED(node)) is not None and call.name in grammar:
+                sites.setdefault(call.name, []).append((name, after))
+    entered_by_name = _entered_by_name(grammar)
+
+    def does_follow_backtrack(name: str, known: Mapping[str, bool]) -> bool:
+        if name in entered_by_name:
             return True
-    return False
+        return any(_is_after_backtracked(after, grammar, known[caller]) for caller, after in sites.get(name, ()))
+
+    dependents: dict[str, set[str]] = {}
+    for callee, calls in sites.items():
+        for caller, _after in calls:
+            dependents.setdefault(caller, set()).add(callee)
+    return ir.fixed_point(
+        "whether a failure comes back into a production from the items run after it",
+        {name: False for name in grammar},
+        does_follow_backtrack,
+        dependents,
+    )
+
+
+def _is_end_backtracked(end: _RunEnd, is_follow_backtracked: bool) -> bool:
+    """
+    Whether a failure comes back past a run that reaches `end`. `is_follow_backtracked` says whether the items after the
+    run send a failure back.
+    """
+    return end == "backtracked" or (end == "ended" and is_follow_backtracked)
+
+
+def _is_after_backtracked(
+    after: tuple[ir.Node, ...] | None, grammar: dict[str, ir.Prod], is_follow_backtracked: bool
+) -> bool:
+    """
+    Whether a failure comes back from the items `after` a node. `None` marks items `_placed` does not follow, and those
+    answer yes. `is_follow_backtracked` says whether the items after the production send a failure back.
+    """
+    return after is None or _is_end_backtracked(_items_end(after, grammar, frozenset()), is_follow_backtracked)
 
 
 # Whether the way is an alternative whose gate holds a guard. `interpreter._try_way` enters such a way only where the
@@ -3596,7 +3669,7 @@ _DOES_A_GATE_DECIDE: ir.Question[bool] = ir.Question(
 )
 
 
-_CAN_BE_REFUSED: ir.Question[bool] = ir.Question(
+_CAN_BE_BACKTRACKED: ir.Question[bool] = ir.Question(
     "whether some input makes a match fail and hands it back. Matching and raising are the other outcomes.",
     {
         # An action does not go back. A gate that admitted an action and then saw it fail lied. `interpreter._try_span`
@@ -3622,29 +3695,29 @@ _CAN_BE_REFUSED: ir.Question[bool] = ir.Question(
             *ir.GUARDS,
         ): True,
         (ir.OptTree, ir.StarTree): False,
-        ir.PlusTree: lambda node, grammar, seen: _can_be_refused(node.item, grammar, seen),
+        ir.PlusTree: lambda node, grammar, seen: _can_be_backtracked(node.item, grammar, seen),
         # A count of none takes nothing under any input. any other count turns on what it repeats.
         ir.RepTree: lambda node, grammar, seen: not (
             _IS_A_LITERAL(node.count) and isinstance(literal := _LITERAL_VALUE(node.count), int) and literal <= 0
         )
-        and _can_be_refused(node.item, grammar, seen),
+        and _can_be_backtracked(node.item, grammar, seen),
         # A recursion reached again says nothing new. The walk is already judging that production further out.
         ir.RefCall: lambda node, grammar, seen: node.name not in seen
-        and _can_be_refused(grammar[node.name].body, grammar, seen | {node.name}),
-        (ir.AlternativeState, ir.SeqTree): _can_a_way_be_refused,
+        and _can_be_backtracked(grammar[node.name].body, grammar, seen | {node.name}),
+        (ir.AlternativeState, ir.SeqTree): _can_a_way_be_backtracked,
         # A choice goes back only where the ways it offers go back. A way that matches makes the choice match.
         (ir.AltTree, ir.ChoiceState): lambda node, grammar, seen: all(
-            _can_be_refused(way, grammar, seen) for way in _ways_or_items(node)
+            _can_be_backtracked(way, grammar, seen) for way in _ways_or_items(node)
         ),
         # `interpreter._try_committed` records an error where the commit's item fails. the region does not go back.
         ir.CommitWrapper: False,
         (ir.MaxWrapper, ir.RecoverWrapper, ir.TokenWrapper, ir.Wrapper): lambda node, grammar, seen: (
-            node.item is not None and _can_be_refused(node.item, grammar, seen)
+            node.item is not None and _can_be_backtracked(node.item, grammar, seen)
         ),
-        ir.BindTree: lambda node, grammar, seen: _can_be_refused(node.cond, grammar, seen),
+        ir.BindTree: lambda node, grammar, seen: _can_be_backtracked(node.cond, grammar, seen),
         # `_monomorphize` settles a switch. A switch goes back only where the branches it could take go back.
         ir.CaseTree: lambda node, grammar, seen: all(
-            _can_be_refused(item, grammar, seen)
+            _can_be_backtracked(item, grammar, seen)
             for item in [branch.item for branch in node.branches] + ([node.default] if node.default else [])
         ),
     },
@@ -3663,17 +3736,52 @@ _CHOICE_WAYS: ir.Question[tuple[ir.Node, ...]] = ir.Question(
 
 def _every_option_is_reachable(grammar: dict[str, ir.Prod]) -> list[str]:
     """
-    Check that some input reaches a way a choice offers. An input can refuse the ways in front of such a way.
+    Report a way a choice offers that no input reaches. The ways in front of such a way keep the states the parse enters
+    it in.
 
-    A choice may hold a single way that no input refuses, and that way comes last. There it is the fallthrough a choice
-    ends in.
+    A way keeps the parse where no failure comes back out of it. A failure comes back out of a way before the way
+    commits. A failure also comes back where the way ends uncommitted and the items after the choice send a failure
+    back. A choice may hold a single ungated way that keeps the parse, and that way comes last.
+
+    A gate refuses the states it does not admit, and no others. A gated way that keeps the parse keeps the states its
+    gate admits. A later way is out of reach where the earlier gated ways keep the states the parse reaches it in.
     """
     faults = []
+    tables: list[_Entered] = []
+    follows = _is_follow_backtracked(grammar)
+
+    def entered(name: str, way: ir.AlternativeState) -> spaces.SubSpace:
+        if not tables:
+            tables.append(_leaf_tables(grammar)[2])
+        return _entered_in(name, way, grammar, tables[0])
+
+    def does_keep(way: ir.Node, is_way_follow_backtracked: bool) -> bool:
+        return not _is_after_backtracked(_items_of_way(way), grammar, is_way_follow_backtracked)
+
     for name, production in grammar.items():
-        for node in _held(production.body):
-            for way in _CHOICE_WAYS(node)[:-1]:
-                if not _can_be_refused(way, grammar):
-                    faults.append(f"{name}: a way no input refuses, with a way behind it")
+        fault = f"{name}: a way behind ways that keep the states it enters in"
+        for node, after in _placed(production.body, ()):
+            ways = _CHOICE_WAYS(node)
+            if not ways:
+                continue
+            is_choice_follow_backtracked = _is_after_backtracked(after, grammar, follows[name])
+            alternatives = _ALTERNATIVES(node)
+            if alternatives is None:
+                kept = next(
+                    (at for at, way in enumerate(ways[:-1]) if does_keep(way, is_choice_follow_backtracked)), len(ways)
+                )
+                faults += [fault] * len(ways[kept + 1 :])
+                continue
+            is_all_caught, caught = False, spaces.NOWHERE
+            for at, way in enumerate(alternatives):
+                if is_all_caught or (caught and not entered(name, way) - caught):
+                    faults.append(fault)
+                elif at == len(alternatives) - 1 or not does_keep(way, is_choice_follow_backtracked):
+                    continue
+                elif _DOES_A_GATE_DECIDE(way):
+                    caught = caught | entered(name, way)
+                else:
+                    is_all_caught = True
     return faults
 
 
@@ -4308,16 +4416,15 @@ def _spaces_paths_enter_ways_in(grammar: dict[str, ir.Prod]) -> dict[str, list[s
 def _conflicts(grammar: dict[str, ir.Prod]) -> list[tuple[str, int, int]]:
     """
     `(name, at, behind)`. A way that a gate must choose between sits beside a way behind it. The parse enters both in
-    exactly the same states. The pair of ways do different things there. There is an entry per way behind. A way appears
-    here once per way the machine cannot tell it from.
+    exactly the same states. The pair of ways do different things there. The result holds an entry per way behind. A way
+    appears here once per way the machine cannot tell it from.
 
     A pair of ways doing the same thing is no conflict, and the pair gets no entry here. A way the parse enters in no
-    state at all conflicts with nothing. A pair of ways alike but for their gates is a single way reached along a pair
-    of routes, and `_does_the_same` says so. The same thing happens when either gate answers first, and the input
-    decides nothing between the gates.
+    state at all conflicts with nothing. `_does_the_same` reads a pair of ways with matching parts and differing gates
+    as a single way reached along a pair of routes.
 
     A caller wanting to know what conflicts reads this. `every-choice-way-is-different` counts the ways.
-    `every-conflict-is-a-tail-call` asks where a caller reaches the productions holding the conflicting ways.
+    `every-conflict-is-a-tail-call` asks where a caller reaches the productions `_conflicted_productions` names.
     """
     held, decided = [], _decided_ways(grammar)
     for name, spaced in _spaces_paths_enter_ways_in(grammar).items():
@@ -4452,7 +4559,7 @@ def _productions_decided_from_outside(grammar: dict[str, ir.Prod]) -> set[str]:
     for name, at, behind in _conflicts(grammar):
         one, other = decided[name][at], decided[name][behind]
         assert one.second is not None, f"{name}: a conflicted way has no continuation"
-        if _is_alike_and_continues_elsewhere(name, one, other) and not _can_be_refused(
+        if _is_alike_and_continues_elsewhere(name, one, other) and not _can_be_backtracked(
             grammar[one.second.name].body, grammar
         ):
             held.add(name)
@@ -6852,10 +6959,13 @@ _HELD_MATCH: ir.Question[ir.Node] = ir.Question(
             ir.BindTree,
             ir.ChoiceState,
             ir.CommitWrapper,
+            ir.CaseTree,
+            ir.FailTree,
             ir.OptTree,
             ir.RefCall,
             ir.RepTree,
             ir.SeqTree,
+            ir.TrimStarTree,
         ): lambda node: node,
     },
 )
@@ -7286,7 +7396,7 @@ def _split_counted(node: ir.RepTree, grammar: dict[str, ir.Prod], ways: _Ways) -
 def _lifted_commit(body: ir.Node, grammar: dict[str, ir.Prod]) -> ir.Node:
     """
     `body` with a commit lifted off. The commit sits over `body` entire, or over the last item of a sequence. The items
-    before that commit have `_effects`, and `_can_be_refused` answers no for them. A `body` without a commit to lift
+    before that commit have `_effects`, and `_can_be_backtracked` answers no for them. A `body` without a commit to lift
     comes back unchanged.
     """
     committed = ir.COMMITTED(body)
@@ -7295,7 +7405,7 @@ def _lifted_commit(body: ir.Node, grammar: dict[str, ir.Prod]) -> ir.Node:
     items = ir.ITEMS_IN_ORDER(body) or ()
     last = ir.COMMITTED(items[-1]) if items else None
     leading = ir.SeqTree(items=items[:-1])
-    if last is None or _effects(leading, grammar) is None or _can_be_refused(leading, grammar):
+    if last is None or _effects(leading, grammar) is None or _can_be_backtracked(leading, grammar):
         return body
     return ir.SeqTree(items=items[:-1] + (last,))
 
@@ -7835,7 +7945,9 @@ def _a_read_is_bounded(param: str) -> _Invariant:
 # The grammar arrives already holding `_EVERY_CONDITIONAL_WAY_IS_GATED`. The phase claims it with a step that has no
 # transform. The grammar holds no conditional way until `build-alternatives` says a way by its parts. That step leaves a
 # way with an empty gate.
-_AT_THE_START = _Phase("at-the-start", establishes=_EVERY_CONDITIONAL_WAY_IS_GATED)
+#
+# The grammar arrives holding `_EVERY_OPTION_IS_REACHABLE` as well.
+_AT_THE_START = _Phase("at-the-start", establishes=(_EVERY_CONDITIONAL_WAY_IS_GATED, _EVERY_OPTION_IS_REACHABLE))
 
 # The specialization takes `_NO_I_T_PARAMETERS` to none. The grammar then declares, passes and reads neither the
 # chomping nor the block scalar's indentation mode. The chomping and the indentation mode stay data-dependent until the
@@ -7861,8 +7973,6 @@ _SPECIALIZE = _Phase(
                 _absent("no-context-case", ir.CaseTree, ir.FlipValue),
                 _FINITE_PARAMETERS_ARE_ALWAYS_LITERAL,
                 _NO_I_T_PARAMETERS,
-                # The count reaches none once the specialization has run, and no earlier.
-                _EVERY_OPTION_IS_REACHABLE,
             ),
         ),
     ),

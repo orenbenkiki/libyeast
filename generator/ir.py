@@ -33,9 +33,8 @@ from typing import ClassVar, Generic, Self, TypeVar, TypeVarTuple, cast
 # a `TRAILING_CONTENT` error that `l-recover` follows.
 ROOT = "l-yeast-stream"
 
-# A failed cut hands the input to this production. The parser enters the production by name rather than by a call.
-# RECOVER is a start state of its own, like a copy of the root. An unwind lands on RECOVER. A resume policy decides
-# whether the parse goes on past RECOVER.
+# The parser enters this production by name rather than by a call. RECOVER is a start state of its own, like a copy of
+# the root.
 RECOVER = "l-recover"
 
 # The parameters `normalize._monomorphize` specializes away into a production's name. Such a parameter has finitely many
@@ -921,8 +920,7 @@ class GatePart(Node):
     The `guards` are the questions a parse enters an alternative on. A guard takes no character and holds at the parse's
     position. The guards mean a set rather than a sequence. They ask about the same position, and no order between
     guards means anything. A gate holding no guard is the unconditional fallthrough, and it sits on the last
-    alternative. `normalize._every_option_is_reachable` checks that a way no input refuses comes last. The question
-    about the character in front is a `LookGuard` over its class, and that guard sits among the other guards.
+    alternative.
 
     A gate holds its guards as a tuple in a canonical order rather than as a set. A pair of gates asking the same
     questions are then the same gate. The sweep in `normalize._cleaned` can therefore merge the productions that hold
@@ -958,10 +956,9 @@ class AlternativeState(Node):
     `recover` rides the member of the pair holding the call it protects. That is `first` where a call sits there, and
     `second` where the way is a tail call.
 
-    A cut unwinding out of that call stops at the recovery production `recover` names. The interpreter emits the error.
-    It closes the markers the call opened down to that recovery. That recovery production matches what the failed call
-    gives up, and the parse continues past the call as though it had matched. A recovery that does not match sends the
-    cut on up.
+    A cut unwinding out of that call stops at the recovery `recover` holds. The interpreter emits the error. It closes
+    the markers the call opened down to that recovery. That recovery production matches what the failed call gives up,
+    and the parse continues past the call as though it had matched. A recovery that does not match sends the cut on up.
     """
 
     gate: GatePart
@@ -1268,14 +1265,13 @@ class IncreaseAction(Node):
 
 # --- token annotations.
 #
-# The parser accumulates the characters it consumes into a run, and gives the run a code. A run ends wherever a
-# `TokenWrapper` scope begins or ends, and wherever an `EmitAction` marker falls. A run that ends becomes a token. So an
-# annotation does not make *a* token. It says what code the characters consumed within take. It also says where the
-# parser cuts the runs.
+# The parser gathers the characters it consumes into a run and gives the run a code. A run ends at the start or the end
+# of a `TokenWrapper` scope, and at an `EmitAction` marker. An ended run becomes a token. An annotation sets the code of
+# the characters inside it. An annotation also decides where the parser cuts runs. An annotation makes no single token.
 #
-# A character consumed under no annotation gets the code `unparsed-text`, the code a new `Emitter` starts with.
+# A character outside an annotation takes the code `unparsed-text`. A new `Emitter` starts with that code.
 # `interpreter._fail` gives that code to the input past a failure. On the success path an `unparsed` character is a
-# mistake. `validate_grammar.py` refuses a character-consuming node that lies outside a `TokenWrapper`.
+# mistake. `validate_grammar.py` refuses a production that can consume a character no `TokenWrapper` covers.
 
 
 @dataclass(frozen=True)
@@ -2278,9 +2274,9 @@ def kinds_other_than(*kinds: type) -> tuple[type, ...]:
 
 def is_one_of(family: tuple[type, ...], what: str) -> Question[bool]:
     """
-    The question whether a node is of a kind in `family`. `what` says the question in words.
+    Build the question whether a node is of a kind in `family`. `what` says the question in words.
 
-    `normalize` builds its yes-or-no questions over a family through this function.
+    Public. `normalize` calls this.
     """
     return Question(what, {family: True, kinds_other_than(*family): False})
 
